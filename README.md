@@ -39,7 +39,15 @@ class MyBuilder:
 
 `place(part, x, y, z, color, rotation)` puts any LDraw part on stud `(x, y)` at plate height `z`; footprints and
 heights come from the part geometry, so all ~25k parts work without a catalog. Register builders in
-`server/brickyard/builders/__init__.py`. The only builder today is the scripted `demo` cottage.
+`server/brickyard/builders/__init__.py`.
+
+| Builder | What it does |
+| --- | --- |
+| `holo` | Holo (`holo4-27b`) in a tool loop: `add_bricks`, `remove_bricks`, `look`, `find_parts`, `list_pieces`, `set_name`. Bricks are validated (bounds, overlaps, floating); `look` returns a 4-view render from the open viewer. Reasoning streams live into the chat. |
+| `demo` | Scripted cottage, no model needed. |
+
+Holo needs a key: `HOLO_API_KEY=... server/.venv/bin/brickyard` (`HAI_API_KEY` also works). Optional: `HOLO_MODEL`,
+`HOLO_BASE_URL`.
 
 ## Tests
 

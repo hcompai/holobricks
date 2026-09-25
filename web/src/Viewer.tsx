@@ -36,7 +36,7 @@ export function Viewer({ build, step, renderRequest }: Props) {
     if (!s) return;
     s.setPieces(build?.pieces ?? []).then(async () => {
       if (!build || !build.pieces.length) return;
-      if (framedBuild.current !== build.id) {
+      if (framedBuild.current !== build.id || (build.status === "building" && !s.userMoved)) {
         framedBuild.current = build.id;
         s.frameView(view, width, depth);
       }
@@ -62,7 +62,9 @@ export function Viewer({ build, step, renderRequest }: Props) {
 
   const choose = (v: View) => {
     setView(v);
-    scene.current?.frameView(v, width, depth);
+    if (!scene.current) return;
+    scene.current.userMoved = false;
+    scene.current.frameView(v, width, depth);
   };
 
   return (

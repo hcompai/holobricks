@@ -35,6 +35,8 @@ export class BrickScene {
   private materials: Promise<void>;
   private visibleStep = Infinity;
   private loading: Promise<void> = Promise.resolve();
+  /** Set once the user orbits or zooms, so live framing stops fighting them. */
+  userMoved = false;
   private resizeObserver: ResizeObserver;
   private frame = 0;
 
@@ -57,6 +59,7 @@ export class BrickScene {
 
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
+    this.controls.addEventListener("start", () => (this.userMoved = true));
     this.controls.autoRotateSpeed = 1.2;
 
     this.loader.smoothNormals = true;
