@@ -15,7 +15,7 @@ export interface Step {
 }
 
 export interface Message {
-  role: "user" | "assistant" | "system";
+  role: "user" | "assistant" | "system" | "tool";
   text: string;
   at: number;
 }
@@ -55,7 +55,10 @@ export type BuildEvent =
   | { type: "hello"; build: BuildSummary }
   | { type: "build"; build: BuildSummary }
   | { type: "message"; message: Message }
-  | { type: "step"; step: Step; pieces: Piece[] };
+  | { type: "step"; step: Step; pieces: Piece[] }
+  | { type: "remove"; ids: number[] }
+  | { type: "thinking"; text: string; reset: boolean }
+  | { type: "render"; request: string };
 
 async function json<T>(response: Promise<Response>): Promise<T> {
   const r = await response;
@@ -70,9 +73,13 @@ export const api = {
   builds: () => json<BuildSummary[]>(fetch("/api/builds")),
   build: (id: string) => json<Build>(fetch(`/api/builds/${id}`)),
   bom: (id: string) => json<BomLine[]>(fetch(`/api/builds/${id}/bom`)),
-  create: (prompt: string) => json<BuildSummary>(post("/api/builds", { prompt })),
+  builders: () => json<string[]>(fetch("/api/builders")),
+  create: (prompt: string, builder: string) => json<BuildSummary>(post("/api/builds", { prompt, builder })),
   say: (id: string, text: string) => json<BuildSummary>(post(`/api/builds/${id}/messages`, { text })),
+  stop: (id: string) => post(`/api/builds/${id}/stop`, {}),
   events: (id: string) => new EventSource(`/api/builds/${id}/events`),
+  putRender: (id: string, request: string, png: Blob) =>
+    fetch(`/api/builds/${id}/renders/${request}`, { method: "PUT", body: png }),
   putThumbnail: (id: string, png: Blob) => fetch(`/api/builds/${id}/thumbnail.png`, { method: "PUT", body: png }),
   thumbnailUrl: (id: string) => `/api/builds/${id}/thumbnail.png`,
   downloadUrl: (id: string) => `/api/builds/${id}/download.ldr`,

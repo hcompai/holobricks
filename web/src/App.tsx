@@ -15,7 +15,7 @@ function initialBuildId(): string | null {
 
 export default function App() {
   const [buildId, setBuildId] = useState<string | null>(initialBuildId);
-  const build = useBuild(buildId);
+  const { build, thinking, renderRequest } = useBuild(buildId);
   const [builds, setBuilds] = useState<BuildSummary[]>([]);
   const [left, setLeft] = useState<"chat" | "library">("chat");
   const [center, setCenter] = useState<"model" | "parts">("model");
@@ -63,8 +63,8 @@ export default function App() {
     setFollowing(s >= last);
   };
 
-  const create = async (prompt: string) => {
-    const created = await api.create(prompt);
+  const create = async (prompt: string, builder: string) => {
+    const created = await api.create(prompt, builder);
     open(created.id);
     setLeft("chat");
     refreshBuilds();
@@ -104,7 +104,12 @@ export default function App() {
           </button>
         </div>
         {left === "chat" ? (
-          <ChatPanel build={build} onCreate={create} onSay={(text) => build && api.say(build.id, text)} />
+          <ChatPanel
+            build={build}
+            thinking={thinking}
+            onCreate={create}
+            onSay={(text) => build && api.say(build.id, text)}
+          />
         ) : (
           <LibraryPanel
             builds={builds}
@@ -131,7 +136,7 @@ export default function App() {
         </div>
         <div className="stage">
           <div className={center === "model" ? "pane" : "pane hidden"}>
-            <Viewer build={build} step={visibleStep} />
+            <Viewer build={build} step={visibleStep} renderRequest={renderRequest} />
           </div>
           {center === "parts" && build && (
             <div className="pane">

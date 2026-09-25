@@ -8,11 +8,18 @@ const VIEWS: { id: View; label: string }[] = [
   { id: "top", label: "Top" },
 ];
 
-export function Viewer({ build, step }: { build: Build | null; step: number }) {
+interface Props {
+  build: Build | null;
+  step: number;
+  renderRequest: string | null;
+}
+
+export function Viewer({ build, step, renderRequest }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const scene = useRef<BrickScene | null>(null);
   const framedBuild = useRef<string | null>(null);
   const thumbnailed = useRef(new Set<string>());
+  const answered = useRef(new Set<string>());
   const [view, setView] = useState<View>("iso");
   const [spin, setSpin] = useState(false);
   const width = build?.width ?? 32;
@@ -40,6 +47,15 @@ export function Viewer({ build, step }: { build: Build | null; step: number }) {
       }
     });
   }, [build?.id, build?.pieces, build?.status]);
+
+  useEffect(() => {
+    const s = scene.current;
+    if (!s || !build || !renderRequest || answered.current.has(renderRequest)) return;
+    answered.current.add(renderRequest);
+    s.setPieces(build.pieces)
+      .then(() => s.sheet())
+      .then((png) => png && api.putRender(build.id, renderRequest, png));
+  }, [renderRequest, build?.id, build?.pieces]);
 
   useEffect(() => scene.current?.setVisibleStep(step), [step]);
   useEffect(() => scene.current?.setSpin(spin), [spin]);

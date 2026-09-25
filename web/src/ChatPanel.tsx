@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { Build } from "./api";
+import { api, type Build } from "./api";
 
 const SUGGESTIONS = [
   "A red-and-white lighthouse",
@@ -9,31 +9,50 @@ const SUGGESTIONS = [
   "A pine tree",
 ];
 
+const BUILDER_LABELS: Record<string, string> = { holo: "Holo", demo: "Scripted demo" };
+
 interface Props {
   build: Build | null;
-  onCreate: (prompt: string) => void;
+  thinking: string;
+  onCreate: (prompt: string, builder: string) => void;
   onSay: (text: string) => void;
 }
 
-export function ChatPanel({ build, onCreate, onSay }: Props) {
+export function ChatPanel({ build, thinking, onCreate, onSay }: Props) {
   const [text, setText] = useState("");
   const [mode, setMode] = useState<"change" | "new">("change");
+  const [builders, setBuilders] = useState<string[]>([]);
+  const [builder, setBuilder] = useState("");
   const log = useRef<HTMLDivElement>(null);
+  const thought = useRef<HTMLDivElement>(null);
   const busy = build?.status === "building";
   const target = build && mode === "change" ? "change" : "new";
 
   useEffect(() => {
+    api.builders().then((list) => {
+      setBuilders(list);
+      setBuilder((b) => b || list[0] || "");
+    });
+  }, []);
+
+  useEffect(() => {
     log.current?.scrollTo({ top: log.current.scrollHeight, behavior: "smooth" });
-  }, [build?.messages.length]);
+  }, [build?.messages.length, busy]);
+
+  useEffect(() => {
+    thought.current?.scrollTo({ top: thought.current.scrollHeight });
+  }, [thinking]);
 
   const send = (value = text) => {
     const prompt = value.trim();
     if (!prompt || (busy && target === "change")) return;
     if (target === "change") onSay(prompt);
-    else onCreate(prompt);
+    else onCreate(prompt, builder);
     setText("");
     setMode("change");
   };
+
+  const who = BUILDER_LABELS[build?.builder ?? builder] ?? build?.builder ?? "Builder";
 
   return (
     <div className="chat">
@@ -58,19 +77,42 @@ export function ChatPanel({ build, onCreate, onSay }: Props) {
             </div>
           ))
         )}
-        {busy && <div className="msg assistant typing">Building…</div>}
-      </div>
-      <div className="composer">
-        {build && (
-          <div className="modes">
-            <button className={mode === "change" ? "active" : ""} onClick={() => setMode("change")}>
-              Change this build
-            </button>
-            <button className={mode === "new" ? "active" : ""} onClick={() => setMode("new")}>
-              Start a new build
-            </button>
+        {busy && (
+          <div className="msg assistant thinking">
+            <div className="thinking-head">
+              <span className="pulse" />
+              {who} is {thinking ? "thinking" : "working"}…
+            </div>
+            {thinking && (
+              <div className="thinking-text" ref={thought}>
+                {thinking}
+              </div>
+            )}
           </div>
         )}
+      </div>
+      <div className="composer">
+        <div className="modes">
+          {build && (
+            <>
+              <button className={mode === "change" ? "active" : ""} onClick={() => setMode("change")}>
+                Change this build
+              </button>
+              <button className={mode === "new" ? "active" : ""} onClick={() => setMode("new")}>
+                Start a new build
+              </button>
+            </>
+          )}
+          {target === "new" && builders.length > 1 && (
+            <select className="builder-select" value={builder} onChange={(e) => setBuilder(e.target.value)}>
+              {builders.map((b) => (
+                <option key={b} value={b}>
+                  {BUILDER_LABELS[b] ?? b}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
         <textarea
           value={text}
           placeholder={target === "change" ? "Describe how to change it…" : "Describe what to build…"}
@@ -82,9 +124,15 @@ export function ChatPanel({ build, onCreate, onSay }: Props) {
             }
           }}
         />
-        <button className="send" disabled={!text.trim() || (busy && target === "change")} onClick={() => send()}>
-          Send →
-        </button>
+        {busy && build && target === "change" ? (
+          <button className="send stop" onClick={() => api.stop(build.id)}>
+            Stop
+          </button>
+        ) : (
+          <button className="send" disabled={!text.trim()} onClick={() => send()}>
+            Send →
+          </button>
+        )}
       </div>
     </div>
   );
