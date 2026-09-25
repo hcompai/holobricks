@@ -2,6 +2,8 @@
 
 Watch an agent build Lego models from real LDraw parts, step by step, in the browser.
 
+![Garden Cottage](docs/iso.jpg)
+
 ```
 web (Vite + React + three.js)                         server (FastAPI)
 ┌ header: name · pieces · steps · Download ┐         ┌ Build = pieces (LDraw transforms) + steps + chat
