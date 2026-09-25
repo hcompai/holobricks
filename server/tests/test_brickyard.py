@@ -35,7 +35,7 @@ def test_demo_build_streams_to_completion_and_exports_steps(tmp_path, monkeypatc
     monkeypatch.setattr(app_module, "store", Store(tmp_path))
     monkeypatch.setattr(BUILDERS["demo"], "delay", 0)
     with TestClient(app_module.app) as client:
-        created = client.post("/api/builds", json={"prompt": "a cottage"}).json()
+        created = client.post("/api/builds", json={"prompt": "a cottage", "builder": "demo"}).json()
         for _ in range(300):
             build = client.get(f"/api/builds/{created['id']}").json()
             if build["status"] in ("done", "error"):

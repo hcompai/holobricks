@@ -6,7 +6,7 @@ import asyncio
 import json
 import os
 from collections import Counter
-from contextlib import suppress
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
@@ -16,6 +16,7 @@ from pydantic import BaseModel
 
 from brickyard import ldraw
 from brickyard.builders import BUILDERS
+from brickyard.builders.holo import system_prompt
 from brickyard.model import Build
 from brickyard.session import Session, Store
 
@@ -25,7 +26,7 @@ HEARTBEAT_S = 15
 
 class NewBuild(BaseModel):
     prompt: str
-    builder: str = "demo"
+    builder: str = next(iter(BUILDERS))
 
 
 class Say(BaseModel):
@@ -34,7 +35,16 @@ class Say(BaseModel):
 
 store = Store()
 sessions: dict[str, Session] = {}
-app = FastAPI(title="Brickyard")
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    warm = asyncio.create_task(asyncio.to_thread(lambda: (ldraw.catalog(), system_prompt())))
+    yield
+    warm.cancel()
+
+
+app = FastAPI(title="Brickyard", lifespan=lifespan)
 
 
 def session_for(build_id: str) -> Session:
@@ -55,6 +65,9 @@ def start(session: Session, request: str) -> None:
         await session.set_status("building")
         try:
             await builder.run(session, request)
+            await session.set_status("done")
+        except asyncio.CancelledError:
+            await session.say("Stopped.", role="system")
             await session.set_status("done")
         except Exception as e:  # noqa: BLE001
             await session.say(f"Builder failed: {e}", role="system")
@@ -96,6 +109,19 @@ async def post_message(build_id: str, body: Say) -> dict:
     await session.say(body.text, role="user")
     start(session, body.text)
     return session.build.summary()
+
+
+@app.post("/api/builds/{build_id}/stop")
+def stop(build_id: str) -> dict:
+    session = session_for(build_id)
+    if session.task and not session.task.done():
+        session.task.cancel()
+    return {"ok": True}
+
+
+@app.put("/api/builds/{build_id}/renders/{request}")
+async def put_render(build_id: str, request: str, body: Request) -> dict:
+    return {"accepted": session_for(build_id).deliver_render(request, await body.body())}
 
 
 @app.get("/api/builds/{build_id}/events")

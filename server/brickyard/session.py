@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import uuid
 from pathlib import Path
 from typing import Protocol
 
@@ -41,6 +42,7 @@ class Session:
         self.store = store
         self.subscribers: set[asyncio.Queue[dict]] = set()
         self.task: asyncio.Task | None = None
+        self.renders: dict[str, asyncio.Future[bytes]] = {}
 
     def subscribe(self) -> asyncio.Queue[dict]:
         queue: asyncio.Queue[dict] = asyncio.Queue()
@@ -70,6 +72,38 @@ class Session:
         self._publish({"type": "step", "step": step.model_dump(), "pieces": [p.model_dump() for p in pieces]})
         await asyncio.sleep(0)
         return step
+
+    async def remove(self, ids: set[int]) -> list[Piece]:
+        removed = [p for p in self.build.pieces if p.id in ids]
+        self.build.pieces = [p for p in self.build.pieces if p.id not in ids]
+        self._publish({"type": "remove", "ids": [p.id for p in removed]})
+        return removed
+
+    def think(self, text: str, reset: bool = False) -> None:
+        """Stream the builder's live reasoning; ephemeral, never persisted."""
+        for queue in self.subscribers:
+            queue.put_nowait({"type": "thinking", "text": text, "reset": reset})
+
+    async def render(self, timeout: float = 30) -> bytes | None:
+        """Ask an open viewer to render the model; None when no viewer answers in time."""
+        request = uuid.uuid4().hex[:8]
+        future: asyncio.Future[bytes] = asyncio.get_running_loop().create_future()
+        self.renders[request] = future
+        for queue in self.subscribers:
+            queue.put_nowait({"type": "render", "request": request})
+        try:
+            return await asyncio.wait_for(future, timeout)
+        except TimeoutError:
+            return None
+        finally:
+            self.renders.pop(request, None)
+
+    def deliver_render(self, request: str, png: bytes) -> bool:
+        future = self.renders.get(request)
+        if future is None or future.done():
+            return False
+        future.set_result(png)
+        return True
 
     async def rename(self, name: str) -> None:
         self.build.name = name

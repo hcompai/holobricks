@@ -1,5 +1,6 @@
-"""Builders turn a chat request into build steps."""
+from brickyard.builders.demo import DemoBuilder
+from brickyard.builders.holo import HoloBuilder
+from brickyard.session import Builder
 
-from brickyard.builders.demo import BUILDERS
-
-__all__ = ["BUILDERS"]
+holo = HoloBuilder.from_env()
+BUILDERS: dict[str, Builder] = {**({"holo": holo} if holo else {}), "demo": DemoBuilder()}

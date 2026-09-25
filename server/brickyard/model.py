@@ -37,7 +37,7 @@ class Step(BaseModel):
 
 
 class Message(BaseModel):
-    role: Literal["user", "assistant", "system"]
+    role: Literal["user", "assistant", "system", "tool"]
     text: str
     at: float = Field(default_factory=time.time)
 
@@ -112,3 +112,43 @@ def place(part: str, x: int, y: int, z: int, color: int, rotation: int = 0) -> P
 def attach(anchor: Placement, part: str, color: int) -> Placement:
     """A part designed to share its anchor's origin, like the glass of a window frame."""
     return Placement(part=ldraw.normalize(part), color=color, pos=anchor.pos, rot=anchor.rot)
+
+
+ACCESSORIES = {"60592.dat": ("60601.dat", 47)}
+
+
+def with_accessories(placement: Placement) -> list[Placement]:
+    """The placement plus the inserts it is never used without, like window glass."""
+    extra = ACCESSORIES.get(placement.part)
+    return [placement, attach(placement, *extra)] if extra else [placement]
+
+
+def baseplate(color: int) -> Placement:
+    """A 32x32 baseplate whose top surface is plate height 0."""
+    return place("3811.dat", 0, 0, 0, color).model_copy(update={"pos": (320.0, 0.0, 320.0)})
+
+
+Vec = tuple[float, float, float]
+
+
+def bounds(p: Placement | Piece) -> tuple[Vec, Vec]:
+    """World-space bounding box in LDU, studs included."""
+    info = ldraw.info(p.part)
+    r = p.rot
+    corners = [
+        (x, y, z) for x in (info.lo[0], info.hi[0]) for y in (info.lo[1], info.hi[1]) for z in (info.lo[2], info.hi[2])
+    ]
+    world = [
+        (r[0] * x + r[1] * y + r[2] * z, r[3] * x + r[4] * y + r[5] * z, r[6] * x + r[7] * y + r[8] * z)
+        for x, y, z in corners
+    ]
+    lo = tuple(min(c[k] for c in world) + p.pos[k] for k in range(3))
+    hi = tuple(max(c[k] for c in world) + p.pos[k] for k in range(3))
+    return lo, hi  # type: ignore[return-value]
+
+
+def grid(p: Placement | Piece) -> tuple[int, int, int, int | None]:
+    """(x, y, z, rotation) in the same stud and plate units `place` takes."""
+    lo, hi = bounds(p)
+    rotation = next((deg for deg, m in ROTATIONS.items() if m == tuple(p.rot)), None)
+    return round(lo[0] / ldraw.STUD), round(lo[2] / ldraw.STUD), round(-hi[1] / ldraw.PLATE), rotation

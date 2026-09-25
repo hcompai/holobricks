@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import asyncio
 
-from brickyard.model import Placement, attach, place
+from brickyard.model import Placement, baseplate, place, with_accessories
 from brickyard.session import Session
 
-GREEN, WHITE, TAN, RED, DARK_RED, YELLOW = 2, 15, 19, 4, 320, 14
-BROWN, LIGHT_GRAY, DARK_GRAY, DARK_GREEN, CLEAR = 70, 71, 72, 288, 47
+GREEN, WHITE, RED, DARK_RED, YELLOW = 2, 15, 4, 320, 14
+BROWN, LIGHT_GRAY, DARK_GRAY, DARK_GREEN = 70, 71, 72, 288
 BRICKS = {4: "3010.dat", 3: "3622.dat", 2: "3004.dat", 1: "3005.dat"}
 X0, Y0, X1, Y1 = 8, 10, 23, 21
 DOOR = range(15, 17)
@@ -91,8 +91,7 @@ class DemoBuilder:
             "Scripted demo builder: I always build the same cottage, so you can see the shell work end to end. "
             "Starting with a 32x32 baseplate."
         )
-        baseplate = place("3811.dat", 0, 0, 0, GREEN)
-        await self._step(session, "Baseplate", [baseplate.model_copy(update={"pos": (320.0, 0.0, 320.0)})])
+        await self._step(session, "Baseplate", [baseplate(GREEN)])
         path = [place("3068b.dat", DOOR.start, y, 0, LIGHT_GRAY) for y in range(2, Y0, 2)]
         await self._step(session, "Stone path to the door", path)
 
@@ -104,12 +103,10 @@ class DemoBuilder:
                 windows = []
                 for x in WINDOWS_FRONT_BACK:
                     for y in (Y0, Y1):
-                        frame = place("60592.dat", x, y, 3, WHITE)
-                        windows += [frame, attach(frame, "60601.dat", CLEAR)]
+                        windows += with_accessories(place("60592.dat", x, y, 3, WHITE))
                 for x in (X0, X1):
                     for y in WINDOWS_SIDES:
-                        frame = place("60592.dat", x, y, 3, WHITE, rotation=90)
-                        windows += [frame, attach(frame, "60601.dat", CLEAR)]
+                        windows += with_accessories(place("60592.dat", x, y, 3, WHITE, rotation=90))
                 await self._step(session, "Windows", windows)
             if z == 9:
                 await self._step(session, "Door arch", [place("3659.dat", DOOR.start - 1, Y0, 12, BROWN)])
@@ -143,6 +140,3 @@ class DemoBuilder:
         fence = [place("3633.dat", x, 0, 0, BROWN) for x in [*range(0, 12, 4), *range(20, 32, 4)]]
         await self._step(session, "Fence", fence)
         await session.say(f"Done: {len(session.build.pieces)} pieces in {len(session.build.steps)} steps.")
-
-
-BUILDERS = {"demo": DemoBuilder()}

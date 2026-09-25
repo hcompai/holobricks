@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
@@ -36,6 +37,40 @@ def _index() -> dict[str, Path]:
 
 def exists(name: str) -> bool:
     return normalize(name) in _index()
+
+
+def resolve(name: str) -> str | None:
+    """The library name for a part id like `3001`, `3001.dat` or `parts/3001.DAT`, if it exists."""
+    part = normalize(name).removeprefix("parts/")
+    part = part if part.endswith(".dat") else f"{part}.dat"
+    return part if part in _index() and "/" not in part else None
+
+
+@cache
+def catalog() -> dict[str, str]:
+    """Part -> title for every buildable part: top-level `parts/`, without moved, alias or obsolete entries."""
+    cached = LDRAW / "brickyard-catalog.json"
+    if cached.exists():
+        return json.loads(cached.read_text())
+    titles = {}
+    for path in sorted((LDRAW / "parts").glob("*.dat")):
+        with path.open(encoding="utf-8", errors="replace") as f:
+            title = f.readline().removeprefix("0").strip()
+        if title and title[0] not in "~=_|" and "obsolete" not in title.lower():
+            titles[path.name.lower()] = " ".join(title.split())
+    cached.write_text(json.dumps(titles))
+    return titles
+
+
+def search(query: str, limit: int = 20) -> list[str]:
+    """Parts whose title contains every word of `query`, shortest (most generic) titles first."""
+
+    def tokens(text: str) -> list[str]:
+        return re.sub(r"(\d)\s*x\s*(\d)", r"\1 x \2", text.lower()).split()
+
+    words = tokens(query)
+    hits = [p for p, t in catalog().items() if all(any(tok.startswith(w) for tok in tokens(t)) for w in words)]
+    return sorted(hits, key=lambda p: (len(catalog()[p]), p))[:limit]
 
 
 @cache
