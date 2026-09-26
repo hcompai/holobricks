@@ -16,11 +16,11 @@ from urllib.parse import quote
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, PlainTextResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from brickyard import ldraw
 from brickyard.builders import BUILDERS
-from brickyard.model import Build
+from brickyard.model import Build, Camera
 from brickyard.session import Session, Store
 from brickyard.viewer import headless
 from brickyard.workbench import Workbench
@@ -183,11 +183,22 @@ async def agent_say(build_id: str, body: AgentSay) -> dict:
 
 
 @app.get("/api/builds/{build_id}/sheet.png")
-async def get_sheet(build_id: str, request: Request) -> Response:
-    """The four views a builder checks its work on, from a headless viewer when no tab has the build open."""
+async def get_sheet(
+    build_id: str,
+    request: Request,
+    angle: float | None = None,
+    elevation: float = 30,
+    zoom: float = 1,
+    at: str | None = None,
+) -> Response:
+    """The four views a builder checks its work on, or one view when `angle` is set; `at` is "x,y,z"."""
+    try:
+        camera = None if angle is None else Camera(angle=angle, elevation=elevation, zoom=zoom, at=at and at.split(","))
+    except ValidationError as e:
+        raise HTTPException(400, str(e)) from e
     session = session_for(build_id)
     async with headless(str(request.base_url).rstrip("/"), build_id):
-        png = await session.render(timeout=SHEET_TIMEOUT_S)
+        png = await session.render(camera, timeout=SHEET_TIMEOUT_S)
     if png is None:
         raise HTTPException(503, "no viewer rendered the build; build the web app and install Chrome")
     return Response(png, media_type="image/png")

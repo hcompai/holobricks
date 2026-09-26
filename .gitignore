@@ -4,6 +4,7 @@ data/
 docs/*
 !docs/brickyard.jpg
 !docs/brick.png
+!docs/hogwarts-build-log.md
 node_modules/
 web/dist/
 .venv/

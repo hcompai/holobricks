@@ -6,7 +6,7 @@ import random
 from collections.abc import Iterable
 
 from brickyard import ldraw, shapes
-from brickyard.model import Build, Message, Placement, mount
+from brickyard.model import Build, Message, Placement, mount, place
 from brickyard.session import Session, Store
 from brickyard.shapes import BRICK_RUN, BRICKS, MOSAIC, PLATES, Cell, footprint, rect, split
 from brickyard.workbench import Workbench
@@ -28,6 +28,13 @@ class Kit:
 
     def add(self, part: str, x: int, y: int, z: int, color: int, rotation: int = 0) -> None:
         self.pending.append(shapes.brick(part, x, y, z, color, rotation))
+
+    def centered(self, part: str, x: int, y: int, z: int, color: int) -> None:
+        """A 1x1 part on the stud at the middle of a 2x2 top, like a finial on a cone; x, y is the 2x2's corner."""
+        p = place(ldraw.resolve(part) or part, x, y, z, color)
+        self.mounted.append(
+            p.model_copy(update={"pos": (p.pos[0] + ldraw.STUD / 2, p.pos[1], p.pos[2] + ldraw.STUD / 2)})
+        )
 
     def mount(self, part: str, x: int, y: int, z: int, color: int, facing: str) -> None:
         """A part hung on the wall behind stud (x, y), its top facing `facing`."""
