@@ -88,7 +88,15 @@ const urls = GALLERY ? GALLERY_URLS : LIVE_URLS;
 
 async function json<T>(response: Promise<Response>): Promise<T> {
   const r = await response;
-  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  if (!r.ok) {
+    const body = await r.text();
+    let detail = body;
+    try {
+      const parsed = JSON.parse(body).detail;
+      if (parsed) detail = typeof parsed === "string" ? parsed : JSON.stringify(parsed);
+    } catch {}
+    throw new Error(`${r.status}: ${detail}`);
+  }
   return r.json() as Promise<T>;
 }
 
@@ -104,7 +112,7 @@ export const api = {
   partUrl: urls.part,
   ldconfigUrl: urls.ldconfig,
   builders: () => json<string[]>(fetch("/api/builders")),
-  create: (prompt: string, builder: string) => json<BuildSummary>(post("/api/builds", { prompt, builder })),
+  create: (prompt: string, builder: string) => json<BuildSummary>(post("/api/builds", { prompt, builder: builder || undefined })),
   say: (id: string, text: string) => json<BuildSummary>(post(`/api/builds/${id}/messages`, { text })),
   stop: (id: string) => post(`/api/builds/${id}/stop`, {}),
   events: (id: string) => new EventSource(`/api/builds/${id}/events`),

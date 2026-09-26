@@ -28,7 +28,7 @@ export default function App() {
   const last = (build?.steps.length ?? 0) - 1;
 
   const refreshBuilds = useCallback(() => {
-    api.builds().then(setBuilds);
+    api.builds().then(setBuilds, console.error);
   }, []);
 
   useEffect(refreshBuilds, [refreshBuilds, build?.status, left]);
@@ -47,7 +47,7 @@ export default function App() {
   const home = () => (GALLERY ? open(builds[0]?.id ?? null) : open(null));
 
   useEffect(() => {
-    if (GALLERY && !buildId && builds.length) open(builds[0].id);
+    if (GALLERY && builds.length && !builds.some((b) => b.id === buildId)) open(builds[0].id);
   }, [buildId, builds, open]);
 
   useEffect(() => {
@@ -118,7 +118,9 @@ export default function App() {
             build={build}
             thinking={thinking}
             onCreate={create}
-            onSay={(text) => build && api.say(build.id, text)}
+            onSay={async (text) => {
+              if (build) await api.say(build.id, text);
+            }}
           />
         ) : (
           <LibraryPanel

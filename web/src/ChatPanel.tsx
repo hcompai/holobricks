@@ -15,8 +15,8 @@ const BUILDER_LABELS: Record<string, string> = { holo: "Holo", demo: "Scripted d
 interface Props {
   build: Build | null;
   thinking: string;
-  onCreate: (prompt: string, builder: string) => void;
-  onSay: (text: string) => void;
+  onCreate: (prompt: string, builder: string) => Promise<void>;
+  onSay: (text: string) => Promise<void>;
 }
 
 export function ChatPanel({ build, thinking, onCreate, onSay }: Props) {
@@ -24,6 +24,8 @@ export function ChatPanel({ build, thinking, onCreate, onSay }: Props) {
   const [mode, setMode] = useState<"change" | "new">("change");
   const [builders, setBuilders] = useState<string[]>([]);
   const [builder, setBuilder] = useState("");
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState("");
   const log = useRef<HTMLDivElement>(null);
   const thought = useRef<HTMLDivElement>(null);
   const busy = build?.status === "building";
@@ -34,7 +36,7 @@ export function ChatPanel({ build, thinking, onCreate, onSay }: Props) {
     api.builders().then((list) => {
       setBuilders(list);
       setBuilder((b) => b || list[0] || "");
-    });
+    }, console.error);
   }, []);
 
   useEffect(() => {
@@ -45,13 +47,20 @@ export function ChatPanel({ build, thinking, onCreate, onSay }: Props) {
     thought.current?.scrollTo({ top: thought.current.scrollHeight });
   }, [thinking]);
 
-  const send = (value = text) => {
+  const send = async (value = text) => {
     const prompt = value.trim();
-    if (!prompt || (busy && target === "change")) return;
-    if (target === "change") onSay(prompt);
-    else onCreate(prompt, builder);
-    setText("");
-    setMode("change");
+    if (!prompt || sending || (busy && target === "change")) return;
+    setSending(true);
+    setError("");
+    try {
+      await (target === "change" ? onSay(prompt) : onCreate(prompt, builder));
+      setText("");
+      setMode("change");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSending(false);
+    }
   };
 
   const who = BUILDER_LABELS[build?.builder ?? builder] ?? build?.builder ?? "Builder";
@@ -144,11 +153,12 @@ export function ChatPanel({ build, thinking, onCreate, onSay }: Props) {
               Stop
             </button>
           ) : (
-            <button className="send" disabled={!text.trim()} onClick={() => send()}>
+            <button className="send" disabled={!text.trim() || sending} onClick={() => send()}>
               Send
               <ArrowUpIcon size={14} weight="bold" />
             </button>
           )}
+          {error && <p className="composer-error">{error}</p>}
         </div>
       )}
     </div>

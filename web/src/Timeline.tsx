@@ -18,12 +18,15 @@ export function Timeline({ build, step, playing, speed, onStep, onPlay, onSpeed 
   const steps = build?.steps ?? [];
   const last = steps.length - 1;
   const current = Math.min(step, last);
+  const failed = build?.status === "error" && current === last;
   const finished = build?.status !== "building" && current === last;
   const visiblePieces = build?.pieces.filter((p) => p.step <= current).length ?? 0;
   const label = !steps.length
     ? "No steps yet"
-    : finished
-      ? "Finished model"
+    : failed
+      ? "Stopped with an error"
+      : finished
+        ? "Finished model"
       : `Step ${current + 1} of ${steps.length}: ${steps[current]?.title ?? ""}`;
 
   return (
@@ -69,7 +72,7 @@ export function Timeline({ build, step, playing, speed, onStep, onPlay, onSpeed 
           style={{ "--fill": `${last > 0 ? (current / last) * 100 : 0}%` } as CSSProperties}
         />
       </div>
-      <span className={`status ${build?.status ?? "idle"}`}>{build?.status === "building" ? "Building…" : finished ? "Finished" : ""}</span>
+      <span className={`status ${build?.status ?? "idle"}`}>{build?.status === "building" ? "Building…" : failed ? "Failed" : finished ? "Finished" : ""}</span>
     </div>
   );
 }

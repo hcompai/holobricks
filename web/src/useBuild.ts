@@ -34,7 +34,7 @@ export interface LiveBuild {
   renderRequest: string | null;
 }
 
-/** The open build, kept live by its event stream; events that arrive before the first fetch are replayed on it. */
+/** The open build, kept live by its event stream; every (re)connect resyncs from a snapshot and replays what arrived meanwhile. */
 export function useBuild(id: string | null): LiveBuild {
   const [build, setBuild] = useState<Build | null>(null);
   const [thinking, setThinking] = useState("");
@@ -47,16 +47,39 @@ export function useBuild(id: string | null): LiveBuild {
     if (!id) return;
     let active = true;
     if (GALLERY) {
-      api.build(id).then((fetched) => active && setBuild(fetched));
+      api.build(id).then((fetched) => active && setBuild(fetched), console.error);
       return () => {
         active = false;
       };
     }
-    let pending: BuildEvent[] | null = [];
+    let pending: BuildEvent[] | null = null;
     let current: Build | null = null;
+    let sync = 0;
+    const resync = () => {
+      const mine = ++sync;
+      pending = [];
+      api.build(id).then(
+        (fetched) => {
+          if (!active || mine !== sync) return;
+          current = (pending ?? []).reduce(apply, fetched);
+          pending = null;
+          setBuild(current);
+        },
+        (error) => {
+          if (mine === sync) pending = null;
+          console.error(error);
+        },
+      );
+    };
     const source = api.events(id);
     source.onmessage = (e) => {
+      if (!active) return;
       const event = JSON.parse(e.data) as BuildEvent;
+      if (event.type === "hello") {
+        resync();
+        return;
+      }
+      if (event.type === "build" && event.build.status === "building") setThinking("");
       if (event.type === "thinking") {
         setThinking((t) => (event.reset ? "" : t + event.text).slice(-THINKING_CHARS));
         return;
@@ -68,12 +91,6 @@ export function useBuild(id: string | null): LiveBuild {
       if (pending) pending.push(event);
       else if (current) setBuild((current = apply(current, event)));
     };
-    api.build(id).then((fetched) => {
-      if (!active) return;
-      current = (pending ?? []).reduce(apply, fetched);
-      pending = null;
-      setBuild(current);
-    });
     return () => {
       active = false;
       source.close();

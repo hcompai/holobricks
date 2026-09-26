@@ -632,6 +632,18 @@ main {
   display: none;
 }
 
+.status.error {
+  background: var(--background-muted);
+  color: var(--red-600);
+}
+
+.composer-error {
+  margin: 0;
+  padding: 0 4px;
+  color: var(--red-600);
+  font-size: 12px;
+}
+
 .status.building {
   background: var(--orange-100);
   color: var(--accent);
