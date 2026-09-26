@@ -246,7 +246,12 @@ class Workbench:
             else:
                 placement = place(part, brick.x, brick.y, brick.z, brick.color, brick.rotation)
                 candidates.append((label, placement, brick.z > 0))
-        candidates += [(f"mounted {p.part.removesuffix('.dat')}", p, False) for p in mounted]
+        for p in mounted:
+            label = f"mounted {p.part.removesuffix('.dat')}"
+            if ldraw.resolve(p.part) is None:
+                rejected.append(f"{label}: unknown part")
+            else:
+                candidates.append((label, p, False))
         for label, placement, needs_support in candidates:
             box = bounds(placement)
             if box[0][0] < -EPS or box[0][2] < -EPS or box[1][0] > width + EPS or box[1][2] > depth + EPS:
@@ -382,6 +387,8 @@ class Workbench:
 
     async def remove(self, ids: list[int]) -> Result:
         removed = await self.session.remove(set(ids))
+        for p in removed:
+            self._boxes.pop(p.id, None)
         missing = sorted(set(ids) - {p.id for p in removed})
         text = f"Removed {len(removed)} pieces." + (f" No such pieces: {missing}." if missing else "")
         return Result(text, note=f"Removed {len(removed)} pieces")
