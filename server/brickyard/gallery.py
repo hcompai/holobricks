@@ -50,7 +50,7 @@ def _load(store: Store, build_id: str) -> Build:
 
 def _image(store: Store, url: str, out: Path) -> str:
     name = url.rsplit("/", 1)[-1]
-    shutil.copy(store.images / name, out / "images" / name)
+    shutil.copy(store.image(name), out / "images" / name)
     return f"{URL}/images/{name}"
 
 

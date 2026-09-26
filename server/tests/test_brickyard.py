@@ -140,3 +140,14 @@ def test_an_idle_build_rewritten_on_disk_is_served_fresh(tmp_path, monkeypatch):
         assert client.get(f"/api/builds/{build.id}").json()["name"] == "old"
         store.save(build.model_copy(update={"name": "new"}))
         assert client.get(f"/api/builds/{build.id}").json()["name"] == "new"
+
+
+def test_file_names_from_requests_cannot_leave_the_data_folder(tmp_path):
+    from brickyard.session import Store
+
+    (tmp_path / "secret.json").write_text("{}")
+    store = Store(tmp_path / "data")
+    assert store.load("../../secret") is None
+    for reach in (lambda: store.thumbnail("../../secret"), lambda: store.image("../../secret.json")):
+        with pytest.raises(ValueError):
+            reach()

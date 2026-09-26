@@ -26,8 +26,19 @@ class Store:
         tmp.write_text(build.model_dump_json())
         tmp.replace(path)
 
+    @staticmethod
+    def _file(folder: Path, name: str) -> Path:
+        """`folder / name`; raises ValueError for names that reach outside `folder`."""
+        path = os.path.realpath(folder / name)
+        if not path.startswith(os.path.realpath(folder) + os.sep):
+            raise ValueError(f"bad file name {name!r}")
+        return Path(path)
+
     def thumbnail(self, build_id: str) -> Path:
-        return self.root.parent / "thumbnails" / f"{build_id}.png"
+        return self._file(self.root.parent / "thumbnails", f"{build_id}.png")
+
+    def image(self, name: str) -> Path:
+        return self._file(self.images, name)
 
     @property
     def images(self) -> Path:
@@ -41,7 +52,10 @@ class Store:
         return f"/api/images/{name}"
 
     def load(self, build_id: str) -> Build | None:
-        path = self.root / f"{build_id}.json"
+        try:
+            path = self._file(self.root, f"{build_id}.json")
+        except ValueError:
+            return None
         return Build.model_validate_json(path.read_text()) if path.exists() else None
 
     def all(self) -> list[Build]:

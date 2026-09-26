@@ -172,8 +172,11 @@ async def put_thumbnail(build_id: str, request: Request) -> dict:
 
 @app.get("/api/builds/{build_id}/thumbnail.png")
 def get_thumbnail(build_id: str) -> FileResponse:
-    path = store.thumbnail(build_id)
-    if not path.exists():
+    try:
+        path = store.thumbnail(build_id)
+    except ValueError:
+        path = None
+    if path is None or not path.exists():
         raise HTTPException(404, "no thumbnail yet")
     return FileResponse(path, media_type="image/png", headers={"Cache-Control": "no-cache"})
 
@@ -199,8 +202,11 @@ def part(part: str) -> PlainTextResponse:
 
 @app.get("/api/images/{name}")
 def image(name: str) -> FileResponse:
-    path = store.images / name
-    if "/" in name or not path.is_file():
+    try:
+        path = store.image(name)
+    except ValueError:
+        path = None
+    if path is None or not path.is_file():
         raise HTTPException(404, "no such image")
     return FileResponse(path, headers={"Cache-Control": "public, max-age=86400"})
 
