@@ -15,7 +15,7 @@ W, D = 152, 92
 BLACK, TAN, DTAN, LBG, DBG, GOLD, LIT = 0, 19, 28, 71, 72, 297, 46
 GREEN, DGREEN, OLIVE = 2, 288, 330
 DBLUE, TLBLUE, TMBLUE = 272, 43, 41
-DBROWN = 308
+DBROWN, BROWN = 308, 70
 
 Cell = tuple[int, int]
 PROMPT = (
@@ -336,12 +336,13 @@ def great_hall(sc: Sculpture, finials: Finials) -> None:
     x1, y1, top = x0 + w - 1, y0 + d - 1, PLATEAU + 26
 
     def color(x: int, y: int, k: int) -> int:
-        if k < PLATEAU + 2 or k in (PLATEAU + 13, top - 1):
-            return DTAN
-        if y in (y0, y1) and (x - x0) % 4 in (1, 2) and PLATEAU + 4 <= k <= PLATEAU + 21:
+        u = (x - x0) % 4
+        if y in (y0, y1) and u and PLATEAU + 4 <= k <= PLATEAU + (22 if u == 2 else 20):
             return LIT
         if x in (x0, x1) and 4 <= y - y0 <= 9 and PLATEAU + 5 <= k <= PLATEAU + 22 and (y - y0) not in (6, 7):
             return LIT
+        if k < PLATEAU + 2 or k in (PLATEAU + 13, top - 1):
+            return DTAN
         return TAN
 
     sc.fill(rect(x0, y0, w, d), PLATEAU, top, color)
@@ -374,8 +375,10 @@ def stone(bands: set[int]) -> Callable[[int, int, int], int]:
     return lambda x, y, k: DTAN if k in bands else TAN
 
 
-def block(sc: Sculpture, x0: int, y0: int, w: int, d: int, courses: int, every: int = 3, skip: set[Cell] = frozenset()):
-    """A tan wing with rows of small windows every `every` studs, under a hipped slate roof."""
+def block(
+    sc: Sculpture, x0: int, y0: int, w: int, d: int, courses: int, ridge: str | None = None, every: int = 3
+) -> int:
+    """A tan wing with rows of small windows every `every` studs, under a gabled or hipped roof; returns the course above it."""
     top = PLATEAU + courses
     rows = range(PLATEAU + 4, top - 3, 5)
 
@@ -387,9 +390,8 @@ def block(sc: Sculpture, x0: int, y0: int, w: int, d: int, courses: int, every: 
             return LIT if (u + k) % 3 else BLACK
         return TAN
 
-    cells = rect(x0, y0, w, d) - skip
-    sc.fill(cells, PLATEAU, top, color)
-    sc.roof(cells, top, DBG)
+    sc.fill(rect(x0, y0, w, d), PLATEAU, top, color)
+    return gable_roof(sc, x0, y0, w, d, top, ridge) if ridge else sc.roof(rect(x0, y0, w, d), top, DBG)
 
 
 def entrance(sc: Sculpture) -> None:
@@ -444,10 +446,16 @@ def pepperpot(sc: Sculpture, finials: Finials) -> None:
     round_tower(sc, 64, 25, 5, PLATEAU - 6, PLATEAU + 18, 9, finials)
 
 
-def quad(sc: Sculpture) -> None:
-    """The wings around the courtyard behind the Great Hall."""
+def quad(sc: Sculpture, finials: Finials) -> None:
+    """Gabled wings around the courtyard behind the Great Hall, and a tall square tower at its far corner."""
     sc.owner = "the Quad"
-    block(sc, 26, 48, 40, 30, 18, skip=rect(34, 56, 24, 14))
+    block(sc, 26, 48, 8, 30, 22, ridge="y")
+    block(sc, 34, 70, 32, 8, 18, ridge="x")
+    block(sc, 34, 48, 30, 8, 14, ridge="x")
+    block(sc, 58, 56, 8, 14, 14, ridge="y")
+    sc.owner = "the Quad's tower"
+    top = block(sc, 20, 72, 10, 10, 44)
+    finials.append((24, 76, top))
 
 
 def east_front(sc: Sculpture, finials: Finials) -> None:
@@ -494,11 +502,22 @@ def castle(sc: Sculpture, finials: Finials) -> None:
     entrance(sc)
     staircase_tower(sc, finials)
     pepperpot(sc, finials)
-    quad(sc)
+    quad(sc, finials)
     east_front(sc, finials)
     gate_tower(sc, finials)
     viaduct(sc)
     boathouse(sc)
+
+
+async def boats(kit: Kit, ground: Ground) -> None:
+    """The first years' little boats crossing the lake in a line, a lantern at each bow."""
+    for i in range(12):
+        x, y = 6 + 9 * i, 6 + round(3 * math.sin(i * 0.9))
+        if any(ground.course(u, v) for u in range(x - 1, x + 3) for v in range(y - 1, y + 5)):
+            continue
+        kit.add("3020", x, y, 2, BROWN, 90)
+        kit.add("3062b", x, y + 3, 3, LIT)
+    await kit.step("Boats with lanterns crossing the Black Lake")
 
 
 async def raise_castle(kit: Kit, sc: Sculpture, ground: Ground, finials: Finials, band: int = 6) -> None:
@@ -528,6 +547,7 @@ async def build() -> Kit:
     await ground.mesh()
     await ground.surface({"castle": lambda x, y: LBG, "footing": lambda x, y: DBG, "crag": lambda x, y: grass(x, y)})
     await raise_castle(kit, sc, ground, finials)
+    await boats(kit, ground)
     kit.save(STORY)
     print(f"{sc.overhangs} bricks hang from the one above")
     return kit

@@ -72,7 +72,7 @@ Loop: script, run, render 4 views, then close-up looks at weak spots, fix, repea
 
 ### 4.3 Castle v1: rejected
 
-![v1](../data/refs/hogwarts/v1-sheet.png)
+![v1](hogwarts/v1-sheet.jpg)
 
 10.7k pieces, 0 problems, and still wrong. User: "super off regarding the architecture", "no thin ass towers/walls".
 
@@ -107,6 +107,37 @@ Big round towers and cones don't exist as parts, and hand-placing bricks can't u
 
 Test: a 24-stud tower + cone next to a gabled hall, 3.3k pieces in 0.1 s, 4 floaters left (fixing).
 
-![sculpt test](../data/refs/hogwarts/sculpt-test.png)
+![sculpt test](hogwarts/sculpt-test.jpg)
 
 Lesson: **when parts can't express the shape, build a small geometry layer** and let it guarantee the rules (support, no overlap) by construction.
+
+### 4.6 A bug that lied to me: stale renders
+
+A render looked unchanged after a real change. Cause: the user's open browser tab also answers render requests, and it still showed the old model.
+
+- Fix: every render request carries the piece count; a viewer answers only if its model matches. Viewers resync when the build changes on disk.
+- Lesson: **when a render disagrees with the code, suspect the renderer first**. Check the piece count before believing a picture.
+
+### 4.7 Terrain under the castle
+
+- Rock pillars grew under the corbelled crowns: pads counted overhanging courses. Now only courses up to the plateau make pads.
+- The viaduct deck flattened the ravine. Now only its pier feet make pads, and a wider span lets the piers stand in water.
+- Lesson: **derive the terrain from the buildings**, but only from the parts that touch the ground.
+
+### 4.8 Details that make it read as Hogwarts
+
+| Change | Why |
+|---|---|
+| Hall lancets 3 wide, pointed, not cut by the band | the film's tall lit windows |
+| Dumbledore's turrets hug the cone | they looked like separate towers |
+| Quad as gabled wings plus a square tower | it read as one big box from the back |
+| 9 boats with lanterns on the lake | the arrival shot |
+| darker rock palette | the cliff read as concrete |
+
+Result: 26.3k pieces, 41 steps, 0 problems.
+
+![hero](hogwarts/hero.jpg)
+![sheet](hogwarts/sheet.jpg)
+
+Lesson: **compare against the reference shot from the same camera** (`r.sh hogwarts out.png 335 4 1.3`); a generic view hides what's off.
+
