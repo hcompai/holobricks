@@ -6,11 +6,10 @@ import random
 
 from brickyard.shapes import TILE_RUN, TILES, rect
 from brickyard.showcase.kit import Frame, Kit
-from brickyard.showcase.paris import tree
 
 BLACK, WHITE, BLUE, GREEN, RED, BGREEN, DGREEN, DRED = 0, 15, 1, 2, 4, 10, 288, 320
 LBG, DBG, VLBG, TAN, DTAN, PGOLD, DBLUE, SBLUE = 71, 72, 151, 19, 28, 297, 272, 379
-TBLACK, TYELLOW, TORANGE = 40, 46, 57
+TBLACK, TYELLOW, TORANGE, RBROWN = 40, 46, 57, 70
 
 W = D = 48
 GROUND = 8
@@ -289,6 +288,14 @@ def pub(kit: Kit, frame: Frame) -> None:
     kit.fill(x0, y0, w, d, z, WHITE)
     x, y, rw, rd, top = kit.hip(x0, y0, w, d, z + 1, DBG)
     kit.ridge(x, y, rw, rd, top, DBG)
+
+
+def tree(kit: Kit, x: int, y: int, leaves: tuple[int, int, int]) -> None:
+    for c in range(3):
+        kit.add("3941", x + 1, y + 1, GROUND + 1 + 3 * c, RBROWN)
+    kit.add("87081", x, y, GROUND + 10, leaves[0])
+    kit.add("6222", x, y, GROUND + 13, leaves[1])
+    kit.add("3941", x + 1, y + 1, GROUND + 16, leaves[2])
 
 
 async def street_life(kit: Kit, red_lion: Frame) -> None:
