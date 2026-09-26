@@ -8,6 +8,10 @@ Holo's lighthouse (138 pieces, 23 steps, 8 min), as Holo itself sees it through 
 
 ![Holo lighthouse](docs/holo-lighthouse.png)
 
+Shape tools (`walls`, `fill`, `roof`) versus brick-by-brick only, same Holo, same prompts ("A cozy village square with a church, a few houses, a fountain and trees"; "Tower Bridge in London over the Thames"):
+
+![Holo A/B](docs/holo-ab.jpg)
+
 Showcase dioramas, hand-scripted by Claude through the same validated workbench (`python -m brickyard.showcase paris|hogwarts|london`):
 
 | Place Saint-Germain-des-Prés (32x32, 1,832 pieces) | Hogwarts (64x64, 5,294 pieces) | Westminster (48x48, 2,771 pieces) |

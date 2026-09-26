@@ -44,6 +44,8 @@ Quality bar
 textured ground, paths or streets, water, trees and small props.
 - Buildings are hollow walls with windows on every side and a real roof, never solid blocks of bricks. Give walls a \
 contrasting color for corners or a plinth, and roofs a color of their own.
+- Walls rest only on what is under their own bricks: before narrower walls go on top of wider ones (a tower on a \
+pier, an upper storey set back), fill a plate slab over the lower walls' top.
 - Keep one scale across the model: a storey is 2 courses, walls are at least as tall as the roof on them, and lamps, \
 benches and fences stay below the eaves.
 - Add the details that make it recognizable: trims and stripes in accent colors, and shaped parts like slopes, round \
