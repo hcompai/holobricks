@@ -6,7 +6,7 @@ import json
 import os
 import re
 from dataclasses import dataclass
-from functools import cache
+from functools import cache, cached_property
 from pathlib import Path
 
 LDRAW = Path(os.environ.get("BRICKYARD_LDRAW", Path(__file__).resolve().parents[2] / "ldraw"))
@@ -119,7 +119,7 @@ class PartInfo:
     lo: Point
     hi: Point
 
-    @property
+    @cached_property
     def exact(self) -> bool:
         """Whether the geometry spans whole studs, so nothing sticks out past the body."""
         return all(abs(e - round(e)) < 0.05 for e in self._extent)
@@ -128,7 +128,7 @@ class PartInfo:
     def _extent(self) -> tuple[float, float]:
         return (self.hi[0] - self.lo[0]) / STUD, (self.hi[2] - self.lo[2]) / STUD
 
-    @property
+    @cached_property
     def footprint(self) -> tuple[int, int]:
         """Studs along x and z at rotation 0; clips, pins or leaves sticking out past the body are not counted."""
         ex, ez = self._extent
@@ -140,7 +140,7 @@ class PartInfo:
                 return w, d
         return max(1, round(ex)), max(1, round(ez))
 
-    @property
+    @cached_property
     def center(self) -> tuple[float, float]:
         """Footprint center along x and z: the origin when the body sits around it, else the geometry's center."""
         w, d = self.footprint

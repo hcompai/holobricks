@@ -65,10 +65,13 @@ def test_overhanging_parts_only_fill_their_footprint(bench):
 
 def test_window_frames_come_with_glass_and_removal_updates_the_build(bench):
     asyncio.run(bench.add("Window", [brick(part="60592", x=2, y=2, color=15)]))
+    assert "overlaps #2 60592" in asyncio.run(bench.add("Blocked", [brick(part="3005", x=2, y=2)])).text
     assert [p.part for p in bench.pieces[1:]] == ["60592.dat", "60601.dat"]
     result = asyncio.run(bench.remove([p.id for p in bench.pieces[1:]] + [999]))
     assert "Removed 2 pieces. No such pieces: [999]." == result.text
     assert [p.part for p in bench.pieces] == ["3811.dat"]
+    assert "placed 1 pieces as #2-#2" in asyncio.run(bench.add("Freed", [brick(part="3005", x=2, y=2)])).text
+    assert "overlaps #2 3005 at x=2 y=2 z=0" in asyncio.run(bench.add("Taken", [brick(part="3005", x=2, y=2)])).text
 
 
 def sse(*chunks: dict) -> bytes:

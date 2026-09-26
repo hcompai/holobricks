@@ -169,6 +169,11 @@ def _touches(a: tuple, b: tuple) -> bool:
     return any(abs(lower[0][1] + s - upper[1][1]) < 1 for upper, lower in ((a, b), (b, a)) for s in (0, STUD_HEIGHT))
 
 
+def _cells(box: tuple) -> list[tuple[int, int]]:
+    xs = range(int(box[0][0] // CELL), int(box[1][0] // CELL) + 1)
+    return [(cx, cz) for cx in xs for cz in range(int(box[0][2] // CELL), int(box[1][2] // CELL) + 1)]
+
+
 def _top(box: tuple) -> int:
     """Plate height of a box's top surface; studs, when there are any, add less than a plate."""
     return math.floor((-box[0][1] + EPS) / ldraw.PLATE)
@@ -194,16 +199,28 @@ def part_line(part: str) -> str:
 class Workbench:
     def __init__(self, session: Session):
         self.session = session
-        self._boxes: dict[int, tuple] = {}
+        self._indexed: dict[int, tuple[Piece, tuple]] = {}
+        self._cells: dict[tuple[int, int], set[int]] = {}
 
     @property
     def pieces(self) -> list[Piece]:
         return self.session.build.pieces
 
-    def _box(self, p: Piece) -> tuple:
-        if p.id not in self._boxes:
-            self._boxes[p.id] = bounds(p)
-        return self._boxes[p.id]
+    def _index(self) -> dict[int, tuple[Piece, tuple]]:
+        """Each piece id with its piece and box, keeping the cell index in step with the build."""
+        current = {p.id: p for p in self.pieces}
+        for pid, (p, box) in list(self._indexed.items()):
+            if current.get(pid) is not p:
+                del self._indexed[pid]
+                for cell in _cells(box):
+                    self._cells[cell].discard(pid)
+        for pid, p in current.items():
+            if pid not in self._indexed:
+                box = bounds(p)
+                self._indexed[pid] = (p, box)
+                for cell in _cells(box):
+                    self._cells.setdefault(cell, set()).add(pid)
+        return self._indexed
 
     def _check(
         self, bricks: list[Brick], mounted: list[Placement] = ()
@@ -213,22 +230,17 @@ class Workbench:
         Mounted placements hang on a wall, so they only have to stay in bounds and clear of other pieces.
         """
         width, depth = self.session.build.width * ldraw.STUD, self.session.build.depth * ldraw.STUD
-        grid_index: dict[tuple[int, int], list[tuple[tuple, str]]] = {}
+        indexed = self._index()
+        batch: dict[tuple[int, int], list[tuple[tuple, str]]] = {}
 
-        def cells(box: tuple) -> list[tuple[int, int]]:
-            xs = range(int(box[0][0] // CELL), int(box[1][0] // CELL) + 1)
-            return [(cx, cz) for cx in xs for cz in range(int(box[0][2] // CELL), int(box[1][2] // CELL) + 1)]
+        def near(box: tuple) -> list[tuple[tuple, int | str]]:
+            ids = sorted({pid for cell in _cells(box) for pid in self._cells.get(cell, ())})
+            own = {id(entry): entry for cell in _cells(box) for entry in batch.get(cell, [])}
+            return [(indexed[pid][1], pid) for pid in ids] + list(own.values())
 
-        def take(box: tuple, what: str) -> None:
-            for cell in cells(box):
-                grid_index.setdefault(cell, []).append((box, what))
+        def name(what: int | str) -> str:
+            return what if isinstance(what, str) else f"#{what} {_where(indexed[what][0])}"
 
-        def near(box: tuple) -> list[tuple[tuple, str]]:
-            found = {id(entry): entry for cell in cells(box) for entry in grid_index.get(cell, [])}
-            return list(found.values())
-
-        for p in self.pieces:
-            take(self._box(p), f"#{p.id} {_where(p)}")
         accepted: list[tuple[Placement, tuple]] = []
         rejected, warnings = [], []
         candidates: list[tuple[str, Placement, bool]] = []
@@ -260,12 +272,13 @@ class Workbench:
             neighbors = near(box)
             hit = next(((other, what) for other, what in neighbors if _collides(box, other)), None)
             if hit:
-                rejected.append(f"{label}: overlaps {hit[1]}, which fills up to z={_top(hit[0])}")
+                rejected.append(f"{label}: overlaps {name(hit[1])}, which fills up to z={_top(hit[0])}")
                 continue
             if needs_support and not any(_touches(box, other) for other, _ in neighbors):
                 warnings.append(f"{label}: floating, nothing directly under or above it")
             accepted.append((placement, box))
-            take(box, f"{label.split(' (')[0]} of this step")
+            for cell in _cells(box):
+                batch.setdefault(cell, []).append((box, f"{label.split(' (')[0]} of this step"))
         return [p for placement, _ in accepted for p in with_accessories(placement)], rejected, warnings
 
     async def add(self, title: str, bricks: list[dict], mounted: list[Placement] = ()) -> Result:
@@ -377,8 +390,9 @@ class Workbench:
         """The piece filling each stud cell between plate heights z and z + height."""
         lo, hi, s = z * ldraw.PLATE, (z + height) * ldraw.PLATE, ldraw.STUD
         cells = {}
+        indexed = self._index()
         for p in self.pieces:
-            box = self._box(p)
+            box = indexed[p.id][1]
             if -box[1][1] < hi - EPS and -box[0][1] - STUD_HEIGHT > lo + EPS:
                 for x in range(round(box[0][0] / s), round(box[1][0] / s)):
                     for y in range(round(box[0][2] / s), round(box[1][2] / s)):
@@ -387,8 +401,6 @@ class Workbench:
 
     async def remove(self, ids: list[int]) -> Result:
         removed = await self.session.remove(set(ids))
-        for p in removed:
-            self._boxes.pop(p.id, None)
         missing = sorted(set(ids) - {p.id for p in removed})
         text = f"Removed {len(removed)} pieces." + (f" No such pieces: {missing}." if missing else "")
         return Result(text, note=f"Removed {len(removed)} pieces")
@@ -443,7 +455,8 @@ class Workbench:
         if not pieces:
             return "The baseplate is empty."
         boxes = [grid(p) for p in pieces]
-        top = max(_top(self._box(p)) for p in pieces)
+        indexed = self._index()
+        top = max(_top(indexed[p.id][1]) for p in pieces)
         xs, ys = [b[0] for b in boxes], [b[1] for b in boxes]
         return (
             f"{len(pieces)} pieces in {len(self.session.build.steps)} steps, spanning x {min(xs)}-{max(xs)}, "

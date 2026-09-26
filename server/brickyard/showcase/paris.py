@@ -122,7 +122,7 @@ def building(kit: Kit, name: str, b: Haussmann):
     awning_corners = [p for p in corners if set(p) <= awnings]
     blocks = {p: {_out(b, p, i, j) for i in (r - 1, r) for j in (r - 1, r)} for p in awning_corners}
     covered: dict[tuple[int, int], int] = {}
-    for side in awnings:
+    for side in sorted(awnings):
         frame, face = frames[side], faces[side]
         extra: list[int] = []
         for pair in awning_corners:
