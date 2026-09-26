@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import shlex
 import signal
 import sys
 import time
@@ -15,6 +14,7 @@ from brickyard.model import baseplate
 from brickyard.session import Session
 from brickyard.workbench import Workbench
 
+AGENT = Path(__file__).resolve().parents[3] / "agent" / "holo.py"
 GREEN = 2
 EARLIER = 10
 EARLIER_CHARS = 400
@@ -32,10 +32,11 @@ class HoloBuilder:
 
     @classmethod
     def from_env(cls) -> HoloBuilder | None:
-        command = os.environ.get("HOLO_AGENT")
-        if not command:
+        """Holo needs a hai checkout with its venv, in HAI_ROOT, for sagent."""
+        python = Path(os.environ.get("HAI_ROOT", "/nonexistent")) / ".venv" / "bin" / "python"
+        if not python.exists():
             return None
-        return cls(shlex.split(command), f"http://127.0.0.1:{os.environ.get('BRICKYARD_PORT', '8000')}")
+        return cls([str(python), str(AGENT)], f"http://127.0.0.1:{os.environ.get('BRICKYARD_PORT', '8000')}")
 
     async def run(self, session: Session, request: str) -> None:
         build = session.build

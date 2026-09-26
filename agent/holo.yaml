@@ -1,0 +1,104 @@
+# Holo builds LEGO in Brickyard: it edits build.py in a workspace and runs it with the bricks CLI (see ../README.md).
+# The server runs holo.py with hai's Python and sets the BRICKYARD_* variables below.
+
+max_steps: 150
+max_time_s: 5400
+max_images: 3
+model_name: ${oc.env:HOLO_MODEL,holo4-27b}
+reasoning_effort: high
+max_completion_tokens: 16384
+compactor_trigger_tokens: 120000
+llm_timeout: 1200
+workspace: ${oc.env:BRICKYARD_WORKSPACE}
+
+llm:
+  _target_: hai_adapters.llm.LanguageModel
+  default_timeout: ${llm_timeout}
+  chat_provider:
+    _target_: hai_adapters.chat_provider_builder.build_chat_provider
+    name: ${model_name}
+  base_request:
+    _target_: hai_protocols.base.BaseRequest
+    temperature: 1.0
+    reasoning_effort: ${reasoning_effort}
+    preserve_thinking: true
+    max_completion_tokens: ${max_completion_tokens}
+
+compactor:
+  _target_: sagent.lib.callbacks.Compactor
+  trigger_tokens: ${compactor_trigger_tokens}
+  passthrough_images: ${max_images}
+  passthrough_actions: 10
+  passthrough_arg_paths: true
+  max_briefing_paths: 30
+  max_action_arg_chars: 300
+  skill:
+    _target_: sagent.lib.skills.interface.ChatMapperSkill
+    chat_mapper:
+      _target_: sagent.lib.skills.memory_summarizer.chat_mapper.MemorySummarizerChatMapper
+      prompt_path: lib/skills/memory_summarizer/prompts/compactor-2026-08-13.j2
+      events_mapper:
+        _target_: sagent.core.events.mappers.EvaluationEventMapperRegistry
+        event_transforms:
+          - _target_: sagent.core.events.transforms.ObservationWindowTransform
+            keep_last: ${max_images}
+            keep_last_images: ${max_images}
+    llm:
+      _target_: hai_adapters.llm.LanguageModel
+      default_timeout: ${llm_timeout}
+      chat_provider:
+        _target_: hai_adapters.chat_provider_builder.build_chat_provider
+        name: ${model_name}
+      base_request:
+        _target_: hai_protocols.base.BaseRequest
+        temperature: 0.6
+        reasoning_effort: medium
+        max_completion_tokens: ${max_completion_tokens}
+
+sandbox:
+  _target_: hai_drivers.code_sandbox.local.driver.LocalCodeSandbox
+  workspace_path: ${workspace}
+  timeout: 600
+  environment_variables:
+    PATH: ${oc.env:BRICKYARD_BIN}:${oc.env:PATH}
+
+agent:
+  _target_: sagent.lib.agents.forest.forest.Forest
+  name: Holo
+  max_steps: ${max_steps}
+  max_time_s: ${max_time_s}
+  max_images: ${max_images}
+  policy_llm: ${llm}
+  policy_chat_mapper:
+    _target_: sagent.lib.policy_chat_mappers.tool_calling.ToolCallingChatMapper
+    coerce_tool_args: true
+    force_answer_content_fallback: true
+    terminate_on_no_tool_call: false
+    coordinate_system: relative
+    tool_choice: auto
+    force_answer_tool_choice: false
+    prompt_path: holo.j2
+    prompt_source_module: holo
+  tools:
+    - _target_: sagent.lib.tools.planning.UpdatePlan
+    - _target_: sagent.lib.tools.sandbox.SubmitCommand
+    - _target_: sagent.lib.tools.sandbox.PollExecution
+    - _target_: sagent.lib.tools.sandbox.ReadFile
+    - _target_: sagent.lib.tools.sandbox.WriteFile
+    - _target_: sagent.lib.tools.sandbox.SearchReplace
+    - _target_: sagent.lib.tools.sandbox.ViewImage
+    - _target_: sagent.lib.tools.communication.Answer
+  callbacks:
+    - ${compactor}
+  services:
+    sandbox: ${sandbox}
+  event_bus:
+    _target_: sagent.core.events.EventBus
+    handlers:
+      - _target_: sagent.lib.events_handlers.TerminalDisplayHandler
+        interactive: false
+      - _target_: sagent.lib.events_handlers.JSONLFileEventHandler
+        dst_file: ${oc.env:BRICKYARD_TRAJECTORY}
+      - _target_: holo.Chat
+        url: ${oc.env:BRICKYARD_URL,http://127.0.0.1:8000}
+        build: ${oc.env:BRICKYARD_BUILD}
