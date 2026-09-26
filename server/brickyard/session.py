@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import uuid
 from pathlib import Path
@@ -10,6 +11,7 @@ from typing import Protocol
 
 from brickyard.model import Build, Message, Piece, Placement, Step
 
+log = logging.getLogger("brickyard")
 DATA = Path(os.environ.get("BRICKYARD_DATA", Path(__file__).resolve().parents[2] / "data"))
 
 
@@ -43,7 +45,12 @@ class Store:
         return Build.model_validate_json(path.read_text()) if path.exists() else None
 
     def all(self) -> list[Build]:
-        builds = [Build.model_validate_json(p.read_text()) for p in self.root.glob("*.json")]
+        builds = []
+        for path in self.root.glob("*.json"):
+            try:
+                builds.append(Build.model_validate_json(path.read_text()))
+            except ValueError as e:
+                log.warning("skipping unreadable build %s: %s", path.name, e)
         return sorted(builds, key=lambda b: -b.created)
 
 

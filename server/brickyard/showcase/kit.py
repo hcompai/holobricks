@@ -15,11 +15,12 @@ FACINGS = {"south": 0, "west": 90, "north": 180, "east": 270}
 
 
 class Kit:
-    """Collects bricks into validated steps of a new build, then saves it to the library."""
+    """Collects bricks into validated steps of the build `id`, replacing any earlier version in the library."""
 
-    def __init__(self, name: str, prompt: str, width: int, depth: int):
-        self.build = Build(name=name, prompt=prompt, builder="claude", width=width, depth=depth, status="done")
+    def __init__(self, id: str, name: str, prompt: str, width: int, depth: int):
+        self.build = Build(id=id, name=name, prompt=prompt, builder="claude", width=width, depth=depth, status="done")
         self.session = Session(self.build, Store())
+        self.session.store.thumbnail(id).unlink(missing_ok=True)
         self.bench = Workbench(self.session)
         self.pending: list[dict] = []
         self.mounted: list[Placement] = []
@@ -36,7 +37,7 @@ class Kit:
         if not self.pending and not self.mounted:
             return
         result = await self.bench.add(title, self.pending, self.mounted)
-        if "Rejected" in result.text or "check:" in result.text:
+        if any(flag in result.text for flag in ("Rejected", "check:", "Invalid")):
             self.problems.append(f"[{title}] {result.text}")
         self.pending, self.mounted = [], []
 

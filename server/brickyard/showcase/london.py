@@ -510,7 +510,7 @@ async def traffic(kit: Kit) -> None:
 
 
 async def build() -> Kit:
-    kit = Kit("London, Mind the Gap", PROMPT, W, D)
+    kit = Kit("london", "London, Mind the Gap", PROMPT, W, D)
     rng = random.Random(11)
     await base(kit, rng)
     await station(kit)

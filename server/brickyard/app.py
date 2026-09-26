@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
@@ -22,6 +24,7 @@ from brickyard.session import Session, Store
 WEB_DIST = Path(__file__).resolve().parents[2] / "web" / "dist"
 HEARTBEAT_S = 15
 SHUTDOWN_S = 3
+log = logging.getLogger("brickyard")
 
 
 class NewBuild(BaseModel):
@@ -62,9 +65,14 @@ def session_for(build_id: str) -> Session:
     return session
 
 
-def start(session: Session, request: str) -> None:
+def idle(session: Session) -> Session:
     if session.task and not session.task.done():
         raise HTTPException(409, "this build is still running")
+    return session
+
+
+def start(session: Session, request: str) -> None:
+    idle(session)
     if session.build.builder not in BUILDERS:
         session.build.builder = next(iter(BUILDERS))
     builder = BUILDERS[session.build.builder]
@@ -77,7 +85,8 @@ def start(session: Session, request: str) -> None:
         except asyncio.CancelledError:
             await session.say("Stopped.", role="system")
             await session.set_status("done")
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
+            log.exception("build %s failed", session.build.id)
             await session.say(f"Builder failed: {e}", role="system")
             await session.set_status("error")
 
@@ -107,20 +116,20 @@ async def create_build(body: NewBuild) -> dict:
 
 
 @app.get("/api/builds/{build_id}")
-def get_build(build_id: str) -> Build:
+async def get_build(build_id: str) -> Build:
     return session_for(build_id).build
 
 
 @app.post("/api/builds/{build_id}/messages")
 async def post_message(build_id: str, body: Say) -> dict:
-    session = session_for(build_id)
+    session = idle(session_for(build_id))
     await session.say(body.text, role="user")
     start(session, body.text)
     return session.build.summary()
 
 
 @app.post("/api/builds/{build_id}/stop")
-def stop(build_id: str) -> dict:
+async def stop(build_id: str) -> dict:
     session = session_for(build_id)
     if session.task and not session.task.done():
         session.task.cancel()
@@ -170,16 +179,15 @@ def get_thumbnail(build_id: str) -> FileResponse:
 
 
 @app.get("/api/builds/{build_id}/bom")
-def bill_of_materials(build_id: str) -> list[dict]:
+async def bill_of_materials(build_id: str) -> list[dict]:
     return session_for(build_id).build.bom()
 
 
 @app.get("/api/builds/{build_id}/download.ldr")
-def download(build_id: str) -> PlainTextResponse:
+async def download(build_id: str) -> PlainTextResponse:
     build = session_for(build_id).build
-    return PlainTextResponse(
-        build.to_ldraw(), headers={"Content-Disposition": f'attachment; filename="{build.name}.ldr"'}
-    )
+    disposition = f"attachment; filename*=UTF-8''{quote(f'{build.name}.ldr')}"
+    return PlainTextResponse(build.to_ldraw(), headers={"Content-Disposition": disposition})
 
 
 @app.get("/api/parts/{part}")
