@@ -52,6 +52,20 @@ export interface BomLine {
   count: number;
 }
 
+/** One view the builder asks for: seen from compass `angle` (0 front, 90 right), `elevation` degrees up, `zoom` times closer, centered on `at` (studs, studs, plates). */
+export interface Camera {
+  angle: number;
+  elevation: number;
+  zoom: number;
+  at: [number, number, number] | null;
+}
+
+/** A render the builder is waiting for: the four standard views, or one `camera` view. */
+export interface RenderRequest {
+  request: string;
+  camera: Camera | null;
+}
+
 export type BuildEvent =
   | { type: "hello"; build: BuildSummary }
   | { type: "build"; build: BuildSummary }
@@ -59,7 +73,7 @@ export type BuildEvent =
   | { type: "step"; step: Step; pieces: Piece[] }
   | { type: "rewind"; steps: number }
   | { type: "thinking"; text: string; reset: boolean }
-  | { type: "render"; request: string };
+  | ({ type: "render" } & RenderRequest);
 
 /** A static, read-only export of chosen builds (`vite build --mode gallery`), served without the Python server. */
 export const GALLERY = import.meta.env.MODE === "gallery";

@@ -115,10 +115,9 @@ header {
   margin-right: 16px;
 }
 
-.brand-divider {
-  width: 1px;
-  height: 18px;
-  background: var(--stroke-strong);
+.brand-icon {
+  width: 26px;
+  height: 26px;
 }
 
 .title {
@@ -261,33 +260,42 @@ aside {
   padding: 0 12px;
 }
 
-.msg.tool::before {
-  content: "▸ ";
-  color: var(--text-tertiary);
-}
-
-.msg-images {
-  display: grid;
-  gap: 4px;
-  margin-top: 6px;
-  width: 250px;
-}
-
-.msg-images.n2 {
-  grid-template-columns: 1fr 1fr;
-}
-
-.msg-images.n3 {
-  grid-template-columns: 1fr 1fr 1fr;
-}
-
-.msg-images img {
-  width: 100%;
-  aspect-ratio: 1;
-  object-fit: cover;
-  border-radius: var(--radius-medium);
-  border: 1px solid var(--stroke-default);
+.msg-render {
   display: block;
+  margin-top: 6px;
+  padding: 0;
+  overflow: hidden;
+  border-radius: var(--radius-medium);
+  cursor: zoom-in;
+  opacity: 0.8;
+  transition: opacity 0.15s;
+}
+
+.msg-render:hover {
+  opacity: 1;
+}
+
+.msg-render img {
+  display: block;
+  width: 88px;
+  aspect-ratio: 1;
+}
+
+.lightbox {
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-large);
+  background: #f6f6f9;
+  cursor: zoom-out;
+}
+
+.lightbox::backdrop {
+  background: rgb(0 0 0 / 0.6);
+}
+
+.lightbox img {
+  display: block;
+  width: min(88vw, 88vh);
 }
 
 .msg.thinking {
@@ -352,7 +360,6 @@ aside {
   line-height: 16px;
   padding: 3px 8px;
 }
-
 
 .composer textarea {
   border: none;

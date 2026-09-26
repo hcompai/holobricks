@@ -59,8 +59,6 @@ MOSAIC = {
     "plate": ((2, 2, "3022"), (2, 1, "3023b"), (1, 1, "3024"), (4, 1, "3710")),
     "brick": ((2, 2, "3003"), (2, 1, "3004"), (1, 1, "3005"), (4, 1, "3010")),
 }
-SIZES = {"plate": PLATES, "tile": TILES, "brick": BRICKS}
-HEIGHTS = {"plate": 1, "tile": 1, "brick": 3}
 
 
 def brick(part: str, x: int, y: int, z: int, color: int, rotation: int = 0) -> Brick:
@@ -190,15 +188,6 @@ def hip(
                 out += cover(rect(x0 + 2, y0 + 2, w - 4, d - 4), z + 3 * c, color, core)
         x0, y0, w, d, z = x0 + 1, y0 + 1, w - 2, d - 2, z + rise
     return out, (x0, y0, w, d, z)
-
-
-def roof(x0: int, y0: int, w: int, d: int, z: int, color: int, steep: bool = False) -> tuple[list[Brick], int]:
-    """A hipped roof on an even-sided rectangle, with a ridge or, when steep and square, a point; also returns its top z."""
-    slope, rise = ("4460b", 9) if steep else ("3040b", 3)
-    out, (x, y, rw, rd, top) = hip(x0, y0, w, d, z, color, slope, rise)
-    if steep and rw == rd == 2:
-        return [*out, brick("3688", x, y, top, color)], top + 6
-    return out + ridge(x, y, rw, rd, top, color), top + 3
 
 
 def support(plates: list[Brick], z: int, solid: set[Cell], column: list[tuple[str, int]], color: int) -> list[Brick]:

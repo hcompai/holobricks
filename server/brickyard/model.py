@@ -60,8 +60,6 @@ class Build(BaseModel):
     steps: list[Step] = []
     messages: list[Message] = []
     script: str = ""
-    reference: str = ""
-    """The chat image of the reference photo that renders are shown beside."""
 
     def summary(self) -> dict:
         return {
@@ -110,6 +108,19 @@ class Placement(BaseModel):
     color: int
     pos: tuple[float, float, float]
     rot: Matrix = IDENTITY
+
+
+class Camera(BaseModel):
+    """One view of the model, instead of the four standard ones."""
+
+    angle: float = 40
+    """The compass direction it is seen from, in degrees: 0 the front, 90 the right, 180 the back, 270 the left."""
+    elevation: float = Field(30, ge=0, le=90)
+    """Degrees above the horizon: 0 at eye level, 90 straight down."""
+    zoom: float = Field(1, ge=1, le=16)
+    """1 frames the whole model; 4 shows a quarter of its width."""
+    at: tuple[float, float, float] | None = None
+    """The point (x, y in studs, z in plates) at the center of the view; the model's center when unset."""
 
 
 def place(part: str, x: int, y: int, z: int, color: int, rotation: int = 0) -> Placement:

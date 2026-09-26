@@ -9,7 +9,7 @@ import uuid
 from pathlib import Path
 from typing import Protocol
 
-from brickyard.model import Build, Message, Piece, Placement, Step
+from brickyard.model import Build, Camera, Message, Piece, Placement, Step
 
 log = logging.getLogger("brickyard")
 DATA = Path(os.environ.get("BRICKYARD_DATA", Path(__file__).resolve().parents[2] / "data"))
@@ -74,7 +74,7 @@ class Session:
         self.store = store
         self.subscribers: set[asyncio.Queue[dict]] = set()
         self.task: asyncio.Task | None = None
-        self.renders: dict[str, asyncio.Future[bytes]] = {}
+        self.renders: dict[str, tuple[dict, asyncio.Future[bytes]]] = {}
         self.lock = asyncio.Lock()
         """Held while a tool changes the build, one tool at a time."""
 
@@ -83,7 +83,10 @@ class Session:
         return bool(self.task and not self.task.done()) or self.lock.locked()
 
     def subscribe(self) -> asyncio.Queue[dict]:
+        """A queue of every change from now on, starting with the renders still waiting for a viewer."""
         queue: asyncio.Queue[dict] = asyncio.Queue()
+        for event, _ in self.renders.values():
+            queue.put_nowait(event)
         self.subscribers.add(queue)
         return queue
 
@@ -122,13 +125,14 @@ class Session:
         for queue in self.subscribers:
             queue.put_nowait({"type": "thinking", "text": text, "reset": reset})
 
-    async def render(self, timeout: float = 30) -> bytes | None:
-        """Ask an open viewer to render the model; None when no viewer answers in time."""
+    async def render(self, camera: Camera | None = None, *, timeout: float = 30) -> bytes | None:
+        """Ask an open viewer to render the model, in the four standard views unless `camera` is set; None when no viewer answers in time."""
         request = uuid.uuid4().hex[:8]
         future: asyncio.Future[bytes] = asyncio.get_running_loop().create_future()
-        self.renders[request] = future
+        event = {"type": "render", "request": request, "camera": camera.model_dump() if camera else None}
+        self.renders[request] = (event, future)
         for queue in self.subscribers:
-            queue.put_nowait({"type": "render", "request": request})
+            queue.put_nowait(event)
         try:
             return await asyncio.wait_for(future, timeout)
         except TimeoutError:
@@ -137,8 +141,7 @@ class Session:
             self.renders.pop(request, None)
 
     def deliver_render(self, request: str, png: bytes) -> bool:
-        future = self.renders.get(request)
-        if future is None or future.done():
+        if request not in self.renders or (future := self.renders[request][1]).done():
             return False
         future.set_result(png)
         return True

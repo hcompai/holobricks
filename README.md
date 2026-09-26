@@ -1,11 +1,14 @@
-# Brickyard
+<h1 align="center">
+  <img src="docs/brick.png" alt="" width="64" align="absmiddle" hspace="8" />
+  Brickyard
+</h1>
 
-Watch Holo build LEGO models from real LDraw parts, one instruction step at a time.
+<p align="center">Watch Holo build LEGO models step by step.</p>
 
 ![Brickyard showing the Paris diorama](docs/brickyard.jpg)
 
 - **Chat** to describe a model; Holo, a sagent agent, writes a Python build script, and every run rebuilds the model, streams the new steps and shows Holo the render.
-- **Every brick is checked**: on the baseplate, no overlaps, resting on something.
+- **Every brick is checked**: inside the build area, no overlaps, resting on something.
 - **Replay** the steps, browse the parts list, download the `.ldr`.
 
 Gallery for the H team: [brickyard-h-company.vercel.app](https://brickyard-h-company.vercel.app) (Vercel login).
@@ -28,20 +31,22 @@ Hot reload: `cd web && npm run dev` (http://127.0.0.1:5173).
 | `HOLO_MODEL` | `holo4-27b` |
 | `BRICKYARD_PORT` | `8000`, on 127.0.0.1 only (no auth) |
 | `BRICKYARD_DATA`, `BRICKYARD_LDRAW` | `./data`, `./ldraw` |
+| `BRICKYARD_CHROME` | the Chrome or Chromium found on the machine, for renders |
 
 ## Holo, for now
 
 Live building runs on your machine only. The Vercel site is a read-only gallery of finished builds.
 
 ```
-browser tab  <── steps, renders ──>  brickyard server  ── starts ──>  sagent (hai venv), agent/holo.py
-(viewer)                              (FastAPI, :8000)                  │ edits build.py in data/workspaces/<build>
-                                            ▲                           │ shell: bricks run / reference / parts
-                                            └────── HTTP tools API ─────┘
+your tab + headless Chrome  <── steps, renders ──>  brickyard server  ── starts ──>  sagent (hai venv), agent/holo.py
+(viewers of web/dist)                               (FastAPI, :8000)                  │ edits build.py in data/workspaces/<build>
+                                                          ▲                           │ shell: bricks run / reference / parts
+                                                          └────── HTTP tools API ─────┘
 ```
 
-- Holo is a sagent Forest agent with the managed sandbox tools (`shell`, `write_file`, `search_replace`, `view_image`, ...). Its tool calls are shell commands and file edits: it writes `build.py` and runs `bricks run`, which rebuilds the model on the server and prints the problems by line, with the render attached.
-- Renders come from the open browser tab, so keep the build open while Holo works.
+- Holo is a sagent Forest agent with the managed sandbox tools (`shell`, `write_file`, `search_replace`, `view_image`, ...). Its tool calls are shell commands and file edits: it writes `build.py` and runs `bricks run`, which rebuilds the model on the server and prints the problems by line, with the render attached (`@@attach`).
+- Renders come from a viewer: the server opens a headless Chrome on the build for each request, so it renders whether or not your tab is open. It serves `web/dist`: rebuild it (`npm run build`) after web changes.
+- Its workspace keeps `notes.md` (its memory, fed back with each request), the reference photos, and `showcase/` (`agent/showcase`: the showcase renders and sources).
 - sagent comes from a local hai checkout: set `HAI_ROOT` to it, with its venv synced (`cd hai && uv sync`).
 
 ```bash
@@ -53,8 +58,9 @@ server/.venv/bin/brickyard
 | To change | Edit |
 | --- | --- |
 | model, reasoning effort, step and time budget, tools | `agent/holo.yaml` |
-| how Holo works: reference first, critique every render, when to stop | `agent/holo.j2` |
-| the build script API, parts, colors, recipes | `server/brickyard/guide.py`, `server/brickyard/script.py` |
+| how Holo builds: principles, workflow, the build script API, parts, colors | `agent/holo.j2` |
+| the build script functions | `server/brickyard/script.py` (document them in `agent/holo.j2`) |
+| the icon | `scripts/brick-icon.py`, rendered with `blender -b -P scripts/brick-icon.py -- /tmp/brick.png`, then resized (`sips -Z`) and compressed (`pngquant`) into `docs/brick.png` (128 px), `web/public/brick.png` (64 px) and `web/public/brick-touch.png` (180 px, on white) |
 
 Each request leaves `data/workspaces/<build>/runs/<time>.log` (what Holo did, as the terminal shows it) and `<time>.jsonl` (the full trajectory, reasoning included). Try the tools by hand from a workspace: `BRICKYARD_BUILD=<build> ../../../server/.venv/bin/bricks run`.
 
@@ -63,8 +69,9 @@ Each request leaves `data/workspaces/<build>/runs/<time>.log` (what Holo did, as
 Paris, London and Hogwarts are scripted in `server/brickyard/showcase` and pass the same checks as Holo's bricks.
 
 ```bash
-server/.venv/bin/python -m brickyard.showcase paris   # or london, hogwarts
-scripts/deploy-gallery.sh --preview                   # or --prod
+server/.venv/bin/python -m brickyard.showcase paris                            # or london, hogwarts
+curl -fo agent/showcase/paris.png localhost:8000/api/builds/paris/sheet.png     # the render Holo learns from
+scripts/deploy-gallery.sh --preview                                             # or --prod
 ```
 
 Open a regenerated showcase once in the app to refresh its thumbnail before deploying.

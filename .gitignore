@@ -2,6 +2,8 @@ ldraw/
 .ldraw.*/
 data/
 docs/*
+!docs/brickyard.jpg
+!docs/brick.png
 node_modules/
 web/dist/
 .venv/

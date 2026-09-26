@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-import io
 import json
 import math
 import sys
@@ -12,11 +11,10 @@ import tempfile
 from dataclasses import dataclass, field
 
 import httpx
-from PIL import Image
 from pydantic import BaseModel, ValidationError
 
 from brickyard import ldraw, reference
-from brickyard.model import FACINGS, ROTATIONS, Piece, Placement, bounds, grid, place, with_accessories
+from brickyard.model import FACINGS, ROTATIONS, Camera, Piece, Placement, bounds, grid, place, with_accessories
 from brickyard.session import Session
 
 STUD_HEIGHT = 4
@@ -25,66 +23,6 @@ CELL = 4 * ldraw.STUD
 PROBLEM_LIMIT = 12
 SCRIPT_TIMEOUT_S = 60
 BASEPLATE = "3811.dat"
-
-COMMON_COLORS = (0, 15, 71, 72, 4, 320, 25, 14, 19, 28, 70, 2, 288, 10, 27, 1, 272, 73, 322, 5, 47, 43, 36, 46)
-
-COMMON_PARTS = [
-    "3005",
-    "3004",
-    "3622",
-    "3010",
-    "3009",
-    "3008",
-    "3003",
-    "3002",
-    "3001",
-    "2456",
-    "3007",
-    "3024",
-    "3023b",
-    "3623",
-    "3710",
-    "3666",
-    "3460",
-    "3022",
-    "3021",
-    "3020",
-    "3795",
-    "3034",
-    "3031",
-    "3958",
-    "3070b",
-    "3069b",
-    "3068b",
-    "98138",
-    "6141",
-    "3040b",
-    "3039",
-    "3038",
-    "3037",
-    "3043",
-    "3044b",
-    "4286",
-    "3298",
-    "3300",
-    "3688",
-    "3062b",
-    "3941",
-    "87081",
-    "6222",
-    "4589",
-    "3942c",
-    "3659",
-    "3455",
-    "2877",
-    "60592",
-    "60596",
-    "3633",
-    "3742",
-    "3471",
-    "3470",
-    "2423",
-]
 
 
 class Brick(BaseModel):
@@ -99,11 +37,20 @@ class Brick(BaseModel):
 
 
 @dataclass
+class Picture:
+    data: bytes
+    mime: str
+    title: str = ""
+    url: str = ""
+    """Where the image came from, for images found on the web."""
+
+
+@dataclass
 class Result:
     text: str
     note: str | None = None
-    images: list[tuple[bytes, str]] = field(default_factory=list)
-    """(data, mime) pairs the agent should see."""
+    images: list[Picture] = field(default_factory=list)
+    """Images the agent should see."""
     kind: str | None = None
     """What the images are, like `render`; an agent keeps only the latest images of each kind in context."""
     caption: str = ""
@@ -214,7 +161,7 @@ class Workbench:
             elif brick.rotation not in ROTATIONS:
                 rejected.append(f"{label}: rotation must be 0, 90, 180 or 270")
             elif brick.z < 0:
-                rejected.append(f"{label}: below the baseplate")
+                rejected.append(f"{label}: below the ground")
             else:
                 placement = place(part, brick.x, brick.y, brick.z, brick.color, brick.rotation)
                 candidates.append((label, placement, brick.z > 0))
@@ -227,7 +174,9 @@ class Workbench:
         for label, placement, needs_support in candidates:
             box = bounds(placement)
             if box[0][0] < -EPS or box[0][2] < -EPS or box[1][0] > width + EPS or box[1][2] > depth + EPS:
-                rejected.append(f"{label}: outside the {self.session.build.width}x{self.session.build.depth} baseplate")
+                rejected.append(
+                    f"{label}: outside the {self.session.build.width}x{self.session.build.depth} build area"
+                )
                 continue
             neighbors = near(box)
             hit = next(((other, what) for other, what in neighbors if _collides(box, other)), None)
@@ -290,8 +239,6 @@ class Workbench:
             if result.problems:
                 problems += result.problems
                 reports.append(result.text)
-        problems += len(out["notes"])
-        reports += out["notes"]
         kept = (
             ""
             if not same
@@ -328,7 +275,7 @@ class Workbench:
         return "\n".join(lines)
 
     def _taken(self, steps: int) -> list[list[int]]:
-        """(x, y, w, d, z, height) on the grid of every piece in the first `steps` steps, except the baseplate."""
+        """(x, y, w, d, z, height) on the grid of every piece in the first `steps` steps, except a baseplate."""
         s, out = ldraw.STUD, []
         for p, (lo, hi) in self._index().values():
             if p.step < steps and p.part != BASEPLATE:
@@ -337,22 +284,21 @@ class Workbench:
                 out.append([x, y, max(1, w), max(1, d), z, max(1, _top((lo, hi)) - z)])
         return out
 
-    async def look(self, note: str = "Looked at the model") -> Result:
-        png = await self.session.render()
+    async def look(self, note: str = "Looked at the model", camera: dict | None = None) -> Result:
+        try:
+            view = None if camera is None else Camera.model_validate(camera)
+        except ValidationError as e:
+            return Result(f"Could not set the camera: {e}", problems=1)
+        png = await self.session.render(view)
         summary = await asyncio.to_thread(self.summary)
         if png is None:
             return Result(f"No viewer is open, so no image this time.\n{summary}", note=f"{note} (no viewer open)")
-        caption = "The render: 3/4 front-right, 3/4 back-left, front, and top (back at the top)."
-        if photo := self._reference():
-            png = await asyncio.to_thread(_beside, photo, png)
-            caption = "Left, the reference photo. Right, the render: " + caption.removeprefix("The render: ")
         await self.session.say(note, role="tool", images=[self.session.store.save_image(png, "image/png")])
-        return Result(summary, images=[(png, "image/png")], kind="render", caption=caption)
-
-    def _reference(self) -> bytes | None:
-        name = self.session.build.reference
-        path = self.session.store.image(name) if name else None
-        return path.read_bytes() if path and path.is_file() else None
+        caption = "The render: 3/4 front-right, 3/4 back-left, front, and top (back at the top)."
+        if view:
+            center = f", centered on x {view.at[0]:g}, y {view.at[1]:g}, z {view.at[2]:g}" if view.at else ""
+            caption = f"The view from {view.angle:g} degrees, {view.elevation:g} up, zoom {view.zoom:g}{center}."
+        return Result(summary, images=[Picture(png, "image/png")], kind="render", caption=caption)
 
     async def find_reference(self, query: str) -> Result:
         try:
@@ -361,16 +307,13 @@ class Workbench:
             return Result(f"Reference search failed ({e}). Build from what you know.")
         if not photos:
             return Result(f"No photos for '{query}'. Try a more common name, or build from what you know.")
-        urls = [self.session.store.save_image(p.data, p.mime) for p in photos]
-        await self.session.say(f"Reference photos for '{query}'", role="tool", images=urls)
-        self.session.build.reference = urls[0].rsplit("/", 1)[-1]
-        self.session.store.save(self.session.build)
-        titles = "; ".join(f"{i}) {p.title}" for i, p in enumerate(photos, 1))
+        titles = "; ".join(p.title for p in photos)
+        await self.session.say(f"Found reference photos for '{query}': {titles}", role="tool")
         return Result(
-            f"Found {len(photos)} photos from Wikipedia: {titles}. Every render from now on shows photo 1 beside it.",
-            images=[(p.data, p.mime) for p in photos],
+            f"Found {len(photos)} photos from Wikipedia for '{query}'.",
+            images=[Picture(p.data, p.mime, p.title, p.url) for p in photos],
             kind="reference",
-            caption=f"Reference photos for '{query}', in order: {titles}.",
+            caption=f"Reference photos for '{query}'.",
         )
 
     async def find_parts(self, query: str) -> Result:
@@ -385,7 +328,7 @@ class Workbench:
     def summary(self) -> str:
         pieces = [p for p in self.pieces if p.part != BASEPLATE]
         if not pieces:
-            return "The baseplate is empty."
+            return "Nothing is built yet."
         boxes = [grid(p) for p in pieces]
         indexed = self._index()
         top = max(_top(indexed[p.id][1]) for p in pieces)
@@ -412,19 +355,6 @@ class Workbench:
             n = len(boxes[step.index])
             lines.append(f"{step.index + 1} {step.title}: {n} piece{'s' * (n != 1)}, x {x}, y {y}, z {z}")
         return "\n".join(lines) or "No pieces yet."
-
-
-def _beside(photo: bytes, png: bytes) -> bytes:
-    """The photo, scaled to the render's height, to the left of the render."""
-    render = Image.open(io.BytesIO(png)).convert("RGB")
-    left = Image.open(io.BytesIO(photo)).convert("RGB")
-    left.thumbnail((render.width, render.height))
-    sheet = Image.new("RGB", (left.width + render.width, render.height), "white")
-    sheet.paste(left, (0, (render.height - left.height) // 2))
-    sheet.paste(render, (left.width, 0))
-    out = io.BytesIO()
-    sheet.save(out, "PNG")
-    return out.getvalue()
 
 
 def _numbered(script: str) -> str:
