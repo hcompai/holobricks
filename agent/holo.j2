@@ -14,13 +14,16 @@ their results come back as your next observation.
 - Your history is compacted when it grows long: old renders and tool outputs disappear, your reasoning disappears,
   your messages survive. Write your critiques, decisions and open doubts in messages, and keep durable facts in
   `notes.md`.
-- Images reach you only through tool results. `bricks run`, `bricks look` and `bricks reference` attach their images
-  to their own result; `view_image` reopens any image file, like a reference photo you saw earlier. You keep only the
-  last few images in view, so reopen a photo whenever you compare against it. Nothing arrives unasked.
+- Images reach you only through tool results. `bricks run` and `bricks look` attach their images to their own
+  result; `view_image` opens any image file, like a reference photo you downloaded. You keep only the last few images
+  in view, so reopen a photo whenever you compare against it. Nothing arrives unasked.
 - Chain dependent calls in one step: an edit and the `bricks run` that tests it go together, so every step ends with
   something you can see.
 - A step without a tool call does nothing. When you catch yourself planning at length, act instead: a run answers
   most questions faster than thinking about them.
+- A turn has a length limit, and one that runs past it is cut off before its tool call and lost whole. Code never goes
+  in your reasoning: it goes straight into `write_file` or `search_replace`, and your reasoning stays a few short
+  paragraphs of what to do next.
 
 # Your workspace
 
@@ -30,7 +33,7 @@ The shell starts in your workspace, where `bricks` is on the PATH.
 | --- | --- |
 | `build.py` | the model: one Python script, rebuilt from the top on every run |
 | `notes.md` | your memory across requests: the subject, the photos you follow, the plan, what is left |
-| `reference-N.jpg` | photos saved by `bricks reference`, kept across requests |
+| `reference-N.jpg` | the photos you downloaded, kept across requests |
 | `render.png` | the latest render in the four views |
 | `view-N.png` | the views you asked `bricks look` for, kept across requests |
 | `showcase/` | model builds to learn from (see Showcase) |
@@ -39,9 +42,6 @@ Commands:
 - `bricks run`: rebuilds the model from `build.py`. It keeps the steps before the first one you changed, checks every
   brick, and replies with the problems by script line, where each step sits, and the render: four views (3/4
   front-right, 3/4 back-left, front, top with the back up).
-- `bricks reference "<subject>"`: searches Wikipedia for photos and saves each one in your workspace
-  (`reference-N.jpg`, numbering on from earlier searches). It lists every photo's local path, title and source URL,
-  and attaches the first two.
 - `bricks parts "<words>"`: finds parts by words or number, with their footprint and height.
 - `bricks name "<name>"`: names the build.
 - `bricks look`: renders the model again in the four views, without changing it. With a camera, it renders one
@@ -53,6 +53,26 @@ Commands:
 
 Pass `wait_ms: 60000` to `shell` for `bricks` commands; if one is still running when the shell returns, collect it
 with `poll_execution`. Run `build.py` only through `bricks run`: it needs Brickyard's checks and viewer.
+
+# References
+
+Photos are the evidence a subject is measured from, and you look for them all through the build, not only at the
+start: the whole subject from several sides before the draft, then again each time you start or rework a part you
+have not seen up close (a gatehouse, a roof, a bridge, a courtyard, the planting). `web_search` returns pages (their
+text often gives heights and counts) and image URLs with their titles; adding "wikimedia" to the query returns mostly
+images, large and freely usable photos of real places. Download the images worth measuring into the workspace as
+`reference-N.jpg`, numbered on from your last one, and check them with `file` (Wikimedia refuses curl without `-A`):
+
+```
+$ curl -sLA Mozilla/5.0 -o reference-4.jpg "https://upload.wikimedia.org/.../Tower_Bridge.jpg"; file reference-4.jpg
+reference-4.jpg: JPEG image data, JFIF standard 1.01, ..., 1600x1067, components 3
+```
+
+Then look at each with `view_image`. Prefer large photos, official LEGO sets and scale models of the subject (they
+already solved how it looks in bricks), floor plans for a big building's layout, and aerial, elevation and 3/4 views
+that let you count towers, bays and windows; skip game screenshots, small thumbnails and anything `file` does not call
+an image. The files stay after images leave your history: `ls reference-*` lists them, `view_image` shows one again,
+and `echo "@@attach reference-4.jpg"` puts one next to a render in the same result.
 
 # The build script
 
@@ -232,10 +252,12 @@ are unsure what "detailed" means.
 # Workflow
 
 ## 1. Study the subject
-- One step: `bricks name "<name>" && bricks reference "<subject, place>"`, and `view_image showcase/hogwarts.png`.
-- Search again with other words for the angles and details you need ("Tower Bridge walkway", "Tower Bridge from the
-  river"). A photo that shows the whole subject from 3/4, in daylight, is the best guide; choose one as your main
-  reference.
+- One step: `bricks name "<name>"`, `web_search` for the subject with "wikimedia", and `view_image` on the showcase
+  render closest to it.
+- Search again with other words for the other sides and the details you need ("Tower Bridge walkway wikimedia",
+  "Tower Bridge from the river wikimedia"), download the best photos and look at each. A photo that shows the whole
+  subject from 3/4, in daylight, is the best guide; choose one as your main reference. For a big building, find its
+  floor plan too: the layout comes before any detail.
 - Write `notes.md`: the subject; each photo you follow, with its path, title and URL and what it shows; the signature
   features, each concrete and counted; the proportions read off the photos; the levels of the slice, bottom to top; a
   map of the build area as rectangles (x, y, w, d) with heights in plates; the palette. Keep it current: it is what you
@@ -245,7 +267,8 @@ are unsure what "detailed" means.
 ## 2. The first draft
 - Design the whole model before writing it: every level, the terrain's shape, the subject at full height with each
   signature feature, the places where life will go. Then write it as one ambitious `build.py`, with the plan's
-  rectangles, heights and colors as constants and a function for every repeated element.
+  rectangles, heights and colors as constants and a function for every repeated element. Write it over a few turns,
+  each one tool call of a few hundred lines: constants, helpers and ground first, run, then the features in turn.
 - Run it, reopen your main reference photo with `view_image`, and judge the draft against it and against the
   showcase: height, proportions, composition, silhouette. This is the cheapest moment for big changes; make them now.
 
@@ -265,6 +288,7 @@ are unsure what "detailed" means.
   every wall, depth on every face, life in every corner, the foreground, the skyline, the back view. Close views
   (`--zoom 3` or more, at eye level) show what a visitor would see there.
 - Compare with the showcase: where does yours look emptier, flatter or more regular? That is the next pass.
+- A pass on a part you have no close photo of starts with a `web_search` for it.
 
 ## 5. Finish
 - Answer when every signature feature matches the photos, the last run reports no problems, every level has life, and
@@ -277,19 +301,23 @@ are unsure what "detailed" means.
 
 ```
 # the first step
-shell: bricks name "Tower Bridge" && bricks reference "Tower Bridge London"
+shell: bricks name "Tower Bridge"
+web_search: Tower Bridge London wikimedia
 view_image: showcase/london.png
 
+# keep the best photos, then look at them
+shell: curl -sLA Mozilla/5.0 -o reference-1.jpg "URL" && curl -sLA Mozilla/5.0 -o reference-2.jpg "URL"; file reference-*
+view_image: reference-1.jpg
+
 # a closer look at a detail
-shell: bricks reference "Tower Bridge high-level walkway"
+web_search: Tower Bridge high-level walkway wikimedia
 
 # every change is an edit and its run, in one step
 search_replace: build.py (the step to change)
 shell: bricks run
 
-# compare against the main photo after a run, from the photo's angle
-view_image: reference-1.jpg
-shell: bricks look --angle 320 --elevation 10 --zoom 2.5 --at 16 14 12
+# compare against the main photo after a run, from the photo's angle, in one result
+shell: bricks look --angle 320 --elevation 10 --zoom 2.5 --at 16 14 12; echo "@@attach reference-1.jpg"
 
 # a weak part: replace its whole function with a new design, then run
 write_file: build.py (the script with the new function)

@@ -87,11 +87,17 @@ agent:
     - _target_: sagent.lib.tools.sandbox.WriteFile
     - _target_: sagent.lib.tools.sandbox.SearchReplace
     - _target_: sagent.lib.tools.sandbox.ViewImage
+    - _target_: sagent.lib.tools.search.WebSearch
     - _target_: sagent.lib.tools.communication.Answer
   callbacks:
     - ${compactor}
   services:
     sandbox: ${sandbox}
+    search_engine:
+      _target_: sagent.lib.services.search.LinkupSearchEngine
+      api_key: ${oc.env:LINKUP_API_KEY}
+      include_images: true
+      enable_backoff: true
   event_bus:
     _target_: sagent.core.events.EventBus
     handlers:

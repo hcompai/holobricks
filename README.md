@@ -28,6 +28,7 @@ Hot reload: `cd web && npm run dev` (http://127.0.0.1:5173).
 | --- | --- |
 | `HAI_ROOT` | unset: new builds use a scripted demo instead of Holo |
 | `HAI_API_KEY`, `HAI_BASE_URL` | for Holo: your key, and `https://api.hcompany.ai/v1/models` |
+| `LINKUP_API_KEY` | for Holo's image search |
 | `HOLO_MODEL` | `holo4-27b` |
 | `BRICKYARD_PORT` | `8000`, on 127.0.0.1 only (no auth) |
 | `BRICKYARD_DATA`, `BRICKYARD_LDRAW` | `./data`, `./ldraw` |
@@ -40,18 +41,20 @@ Live building runs on your machine only. The Vercel site is a read-only gallery 
 ```
 your tab + headless Chrome  <── steps, renders ──>  brickyard server  ── starts ──>  sagent (hai venv), agent/holo.py
 (viewers of web/dist)                               (FastAPI, :8000)                  │ edits build.py in data/workspaces/<build>
-                                                          ▲                           │ shell: bricks run / reference / parts
+                                                          ▲                           │ shell: bricks run / look / parts
                                                           └────── HTTP tools API ─────┘
 ```
 
 - Holo is a sagent Forest agent with the managed sandbox tools (`shell`, `write_file`, `search_replace`, `view_image`, ...). Its tool calls are shell commands and file edits: it writes `build.py` and runs `bricks run`, which rebuilds the model on the server and prints the problems by line, with the render attached (`@@attach`).
+- For references it has `web_search` (Linkup pages, then image URLs) and `view_image`: it downloads the photos it wants into its workspace with `curl` and looks at them, all through the build.
 - Renders come from a viewer: the server opens a headless Chrome on the build for each request, so it renders whether or not your tab is open. It serves `web/dist`: rebuild it (`npm run build`) after web changes.
 - Its workspace keeps `notes.md` (its memory, fed back with each request), the reference photos, and `showcase/` (`agent/showcase`: the showcase renders and sources).
-- sagent comes from a local hai checkout: set `HAI_ROOT` to it, with its venv synced (`cd hai && uv sync`).
+- sagent comes from a local hai checkout recent enough for Linkup's `include_images`: set `HAI_ROOT` to it, with its venv synced (`cd hai && uv sync`).
 
 ```bash
 export HAI_ROOT=~/code/hai HAI_BASE_URL=https://api.hcompany.ai/v1/models
 export HAI_API_KEY=$(grep '^HAI_API_KEY=' $HAI_ROOT/.env | cut -d= -f2- | tr -d '"')
+export LINKUP_API_KEY=$(grep '^LINKUP_API_KEY=' $HAI_ROOT/.env | cut -d= -f2- | tr -d '"')
 server/.venv/bin/brickyard
 ```
 

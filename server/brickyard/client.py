@@ -52,31 +52,27 @@ def main() -> None:
     look.add_argument("--zoom", type=float, help="1 frames the whole model, 4 a quarter of its width")
     look.add_argument("--at", type=float, nargs=3, metavar=("X", "Y", "Z"), help="center of the view, studs and plates")
     tools.add_parser("parts", help="search LDraw parts by words or number").add_argument("query")
-    tools.add_parser("reference", help="find reference photos of a subject; saves reference-N").add_argument("query")
     tools.add_parser("name", help="name the build").add_argument("name")
     args = parser.parse_args()
     camera = {k: v for k in ("angle", "elevation", "zoom", "at") if (v := getattr(args, k, None)) is not None}
 
     if args.tool == "run":
         out = call("run", code=Path(args.script).read_text())
-    elif args.tool in ("parts", "reference"):
-        out = call(args.tool, query=args.query)
+    elif args.tool == "parts":
+        out = call("parts", query=args.query)
     elif args.tool == "name":
         out = call("name", name=args.name)
     else:
         out = call("look", camera=camera) if camera else call("look")
     print(out["text"])
     if out["images"]:
-        if args.tool == "reference":
-            names = save(out["images"], "reference", numbered=True)
-        elif camera:
+        if camera:
             names = save(out["images"], "view", numbered=True)
         else:
             names = save(out["images"], "render")
         print(f"\n{out['caption']} Saved in your workspace:")
-        for name, image in zip(names, out["images"], strict=True):
-            source = f": {image['title']}, from {image['url']}" if image.get("url") else ""
-            print(f"- {Path(name).resolve()}{source}")
+        for name in names:
+            print(f"- {Path(name).resolve()}")
         for name in names[:ATTACHED]:
             print(f"@@attach {name}")
     sys.exit(1 if out["problems"] else 0)

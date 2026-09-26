@@ -10,10 +10,9 @@ import sys
 import tempfile
 from dataclasses import dataclass, field
 
-import httpx
 from pydantic import BaseModel, ValidationError
 
-from brickyard import ldraw, reference
+from brickyard import ldraw
 from brickyard.model import FACINGS, ROTATIONS, Camera, Piece, Placement, bounds, grid, place, with_accessories
 from brickyard.session import Session
 
@@ -40,9 +39,6 @@ class Brick(BaseModel):
 class Picture:
     data: bytes
     mime: str
-    title: str = ""
-    url: str = ""
-    """Where the image came from, for images found on the web."""
 
 
 @dataclass
@@ -299,22 +295,6 @@ class Workbench:
             center = f", centered on x {view.at[0]:g}, y {view.at[1]:g}, z {view.at[2]:g}" if view.at else ""
             caption = f"The view from {view.angle:g} degrees, {view.elevation:g} up, zoom {view.zoom:g}{center}."
         return Result(summary, images=[Picture(png, "image/png")], kind="render", caption=caption)
-
-    async def find_reference(self, query: str) -> Result:
-        try:
-            photos = await reference.search(query)
-        except (httpx.HTTPError, ValueError) as e:
-            return Result(f"Reference search failed ({e}). Build from what you know.")
-        if not photos:
-            return Result(f"No photos for '{query}'. Try a more common name, or build from what you know.")
-        titles = "; ".join(p.title for p in photos)
-        await self.session.say(f"Found reference photos for '{query}': {titles}", role="tool")
-        return Result(
-            f"Found {len(photos)} photos from Wikipedia for '{query}'.",
-            images=[Picture(p.data, p.mime, p.title, p.url) for p in photos],
-            kind="reference",
-            caption=f"Reference photos for '{query}'.",
-        )
 
     async def find_parts(self, query: str) -> Result:
         hits = await asyncio.to_thread(lambda: [part_line(p) for p in ldraw.search(query)])

@@ -52,7 +52,6 @@ TOOLS = {
     "run": Workbench.run_script,
     "look": Workbench.look,
     "parts": Workbench.find_parts,
-    "reference": Workbench.find_reference,
     "name": Workbench.rename,
 }
 
@@ -167,10 +166,7 @@ async def call_tool(build_id: str, tool: str, args: dict[str, Any]) -> dict:
         "text": result.text,
         "problems": result.problems,
         "caption": result.caption,
-        "images": [
-            {"mime": p.mime, "data": base64.b64encode(p.data).decode(), "title": p.title, "url": p.url}
-            for p in result.images
-        ],
+        "images": [{"mime": p.mime, "data": base64.b64encode(p.data).decode()} for p in result.images],
     }
 
 
