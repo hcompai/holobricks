@@ -201,6 +201,14 @@ def part_info(part: str) -> dict:
     return {"part": info.part, "title": info.title, "footprint": info.footprint, "plates": info.plates}
 
 
+@app.get("/api/images/{name}")
+def image(name: str) -> FileResponse:
+    path = store.images / name
+    if "/" in name or not path.is_file():
+        raise HTTPException(404, "no such image")
+    return FileResponse(path, headers={"Cache-Control": "public, max-age=86400"})
+
+
 @app.get("/api/ldconfig")
 def ldconfig() -> FileResponse:
     return FileResponse(ldraw.LDRAW / "LDConfig.ldr", media_type="text/plain")

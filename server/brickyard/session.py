@@ -27,6 +27,17 @@ class Store:
     def thumbnail(self, build_id: str) -> Path:
         return self.root.parent / "thumbnails" / f"{build_id}.png"
 
+    @property
+    def images(self) -> Path:
+        return self.root.parent / "images"
+
+    def save_image(self, data: bytes, mime: str) -> str:
+        """Keep an image shown in the chat; returns its URL."""
+        name = f"{uuid.uuid4().hex[:12]}.{mime.split('/')[-1].replace('jpeg', 'jpg')}"
+        self.images.mkdir(parents=True, exist_ok=True)
+        (self.images / name).write_bytes(data)
+        return f"/api/images/{name}"
+
     def load(self, build_id: str) -> Build | None:
         path = self.root / f"{build_id}.json"
         return Build.model_validate_json(path.read_text()) if path.exists() else None
@@ -57,8 +68,8 @@ class Session:
         for queue in self.subscribers:
             queue.put_nowait(event)
 
-    async def say(self, text: str, role: str = "assistant") -> None:
-        message = Message(role=role, text=text)  # type: ignore[arg-type]
+    async def say(self, text: str, role: str = "assistant", images: list[str] | None = None) -> None:
+        message = Message(role=role, text=text, images=images or [])  # type: ignore[arg-type]
         self.build.messages.append(message)
         self._publish({"type": "message", "message": message.model_dump()})
 

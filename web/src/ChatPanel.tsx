@@ -74,6 +74,15 @@ export function ChatPanel({ build, thinking, onCreate, onSay }: Props) {
           build.messages.map((m) => (
             <div key={`${m.at}-${m.role}`} className={`msg ${m.role}`}>
               {m.text}
+              {m.images?.length > 0 && (
+                <div className={`msg-images n${m.images.length}`}>
+                  {m.images.map((src) => (
+                    <a key={src} href={src} target="_blank" rel="noreferrer">
+                      <img src={src} alt="" />
+                    </a>
+                  ))}
+                </div>
+              )}
             </div>
           ))
         )}

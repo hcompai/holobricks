@@ -39,6 +39,7 @@ class Step(BaseModel):
 class Message(BaseModel):
     role: Literal["user", "assistant", "system", "tool"]
     text: str
+    images: list[str] = []
     at: float = Field(default_factory=time.time)
 
 

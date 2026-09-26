@@ -17,6 +17,7 @@ export interface Step {
 export interface Message {
   role: "user" | "assistant" | "system" | "tool";
   text: string;
+  images: string[];
   at: number;
 }
 

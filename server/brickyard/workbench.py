@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
+import httpx
 from pydantic import BaseModel, ValidationError
 
-from brickyard import ldraw
+from brickyard import ldraw, reference
 from brickyard.model import ROTATIONS, Piece, Placement, bounds, grid, place, with_accessories
 from brickyard.session import Session
 
@@ -87,7 +88,11 @@ class Brick(BaseModel):
 class Result:
     text: str
     note: str | None = None
-    image: bytes | None = None
+    images: list[tuple[bytes, str]] = field(default_factory=list)
+    """(data, mime) pairs the agent should see."""
+    kind: str | None = None
+    """What the images are, like `render`; an agent keeps only the latest images of each kind in context."""
+    caption: str = ""
 
 
 def _overlap(a: tuple, b: tuple) -> tuple[float, float, float]:
@@ -193,7 +198,28 @@ class Workbench:
         summary = await asyncio.to_thread(self.summary)
         if png is None:
             return Result(f"No viewer is open, so no image this time.\n{summary}", note="Looked (no viewer open)")
-        return Result(summary, note="Looked at the model", image=png)
+        await self.session.say(
+            "Looked at the model", role="tool", images=[self.session.store.save_image(png, "image/png")]
+        )
+        caption = "The render from look: 3/4 front-right, 3/4 back-left, front, and top (back at the top)."
+        return Result(summary, images=[(png, "image/png")], kind="render", caption=caption)
+
+    async def find_reference(self, query: str) -> Result:
+        try:
+            photos = await reference.search(query)
+        except (httpx.HTTPError, ValueError) as e:
+            return Result(f"Reference search failed ({e}). Build from what you know.")
+        if not photos:
+            return Result(f"No photos for '{query}'. Try a more common name, or build from what you know.")
+        urls = [self.session.store.save_image(p.data, p.mime) for p in photos]
+        await self.session.say(f"Reference photos for '{query}'", role="tool", images=urls)
+        titles = "; ".join(f"{i}) {p.title}" for i, p in enumerate(photos, 1))
+        return Result(
+            f"Found {len(photos)} photos from Wikipedia: {titles}. They follow as images.",
+            images=[(p.data, p.mime) for p in photos],
+            kind="reference",
+            caption=f"Reference photos for '{query}', in order: {titles}.",
+        )
 
     async def find_parts(self, query: str) -> Result:
         hits = await asyncio.to_thread(lambda: [part_line(p) for p in ldraw.search(query)])

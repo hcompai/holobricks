@@ -25,13 +25,22 @@ PROMPT = """You are Holo, a LEGO master builder working in Brickyard. You build 
 baseplate with real LDraw parts, one instruction-manual step at a time, while the user watches each step appear in 3D.
 
 How to work
-- Act in small steps. Do not plan the whole model up front: decide the next sub-assembly, call add_bricks, read the \
-result, continue.
-- One add_bricks call is one manual step: a meaningful sub-assembly of at most 40 bricks, like "Wall course 2".
-- Call look every 2 or 3 steps to compare the model with the request, then fix problems with remove_bricks.
-- For a new build, first call set_name with a short name.
+- For a new build: call set_name, then find_reference with a concrete name of the real thing (like "Split Point \
+Lighthouse" or "V-2 rocket"; search again if the photos are off). Then write a short design brief: overall size \
+(footprint in studs, height in plates), the sections from bottom to top with their z ranges, and the palette.
+- Then build in small steps. One add_bricks call is one manual step: a meaningful sub-assembly of at most 40 bricks, \
+like "Wall course 2". Do not plan every brick up front: place the next step, read the result, continue.
+- Call look every 2 or 3 steps. Compare the render with the reference photos and your brief: name what is off \
+(proportions, missing features, gaps, colors), fix it with remove_bricks and add_bricks, then continue.
 - Before each tool call, say in one short sentence what you are about to do.
 - When the model is finished and you have looked at it, reply with a two-sentence summary and no tool call.
+
+Quality bar
+- Match the real proportions: tall things are tall. A lighthouse is about four times taller than it is wide.
+- Aim for a rich model of 150 to 400 pieces that uses a good part of the baseplate, with a small setting around it \
+when it fits: rocks, a path, water made of blue tiles, plants.
+- Add the details that make it recognizable: windows, railings, trims and stripes in accent colors, and shaped parts \
+like slopes, round bricks, arches and grilles instead of only plain bricks.
 
 Coordinates
 - x runs 0-31 from left to right, y runs 0-31 from front to back, z is the height in plates above the baseplate. \
@@ -79,6 +88,11 @@ TOOLS = [
     _tool("remove_bricks", "Remove pieces by id.", ids={"type": "array", "items": {"type": "integer"}}),
     _tool("look", "Render the model: 3/4 front-right, 3/4 back-left, front and top views, as one image."),
     _tool("find_parts", "Search all LDraw parts by title words, e.g. 'slope 45 2 x 2'.", query={"type": "string"}),
+    _tool(
+        "find_reference",
+        "Photos of the real object from Wikipedia, up to 3, with their page titles.",
+        query={"type": "string", "description": "a concrete name, like 'Split Point Lighthouse'"},
+    ),
     _tool("list_pieces", "List every piece with its id, part, position and color."),
     _tool("set_name", "Name the build.", name={"type": "string"}),
 ]
@@ -159,8 +173,8 @@ class HoloBuilder:
                     messages.append({"role": "tool", "tool_call_id": call["id"], "content": result.text})
                     if result.note:
                         await session.say(result.note, role="tool")
-                    if result.image:
-                        self._show(messages, result.image)
+                    if result.images:
+                        self._show(messages, result)
         await session.say(f"Stopped after {self.max_turns} turns.", role="system")
 
     @staticmethod
@@ -171,16 +185,19 @@ class HoloBuilder:
         return [*earlier, {"role": "user", "content": f"{request}\n\nCurrent model:\n{state}"}]
 
     @staticmethod
-    def _show(messages: list[dict], png: bytes) -> None:
-        """Attach a render for the model to see, dropping older renders so only the latest stays in context."""
+    def _show(messages: list[dict], result: Result) -> None:
+        """Attach images for the model to see; older images of the same kind leave the context."""
         for m in messages:
-            if m.get("render"):
-                m["content"] = "(An older render was here.)"
-                del m["render"]
-        url = f"data:image/png;base64,{base64.b64encode(png).decode()}"
-        text = "The render from look: 3/4 front-right, 3/4 back-left, front, and top (back at the top)."
-        content = [{"type": "text", "text": text}, {"type": "image_url", "image_url": {"url": url}}]
-        messages.append({"role": "user", "content": content, "render": True})
+            if result.kind and m.get("kind") == result.kind:
+                m["content"] = f"(Older {result.kind} images were here.)"
+                del m["kind"]
+        images = [
+            {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{base64.b64encode(data).decode()}"}}
+            for data, mime in result.images
+        ]
+        messages.append(
+            {"role": "user", "content": [{"type": "text", "text": result.caption}, *images], "kind": result.kind}
+        )
 
     @staticmethod
     async def _call(bench: Workbench, call: dict) -> Result:
@@ -193,6 +210,7 @@ class HoloBuilder:
             "remove_bricks": lambda: bench.remove([int(i) for i in args.get("ids", [])]),
             "look": bench.look,
             "find_parts": lambda: bench.find_parts(str(args.get("query", ""))),
+            "find_reference": lambda: bench.find_reference(str(args.get("query", ""))),
             "list_pieces": bench.list_pieces,
             "set_name": lambda: bench.rename(str(args.get("name", ""))),
         }
@@ -203,7 +221,7 @@ class HoloBuilder:
     async def _complete(self, client: httpx.AsyncClient, session: Session, messages: list[dict]) -> Reply:
         body = {
             "model": self.model,
-            "messages": [{k: v for k, v in m.items() if k != "render"} for m in messages],
+            "messages": [{k: v for k, v in m.items() if k != "kind"} for m in messages],
             "tools": TOOLS,
             "stream": True,
             "max_tokens": self.max_tokens,
