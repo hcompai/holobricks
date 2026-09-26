@@ -193,3 +193,23 @@ Result: 34.4k pieces, 46 steps, 0 problems.
 ![willow](hogwarts/willow.jpg)
 
 Lesson: **when the user sends a reference image, copy it feature by feature**, then render from the same angle. A plan tells you where things are; a photo tells you what they look like.
+
+### 4.11 An organic lake, and holes beside the slopes
+
+User: "instead of a rectangular water, make the water surround the rocky cliff in an organic way". Then: "some pieces are diagonal, and they reveal underlying holes".
+
+| Before | After |
+|---|---|
+| the lake filled the 152x124 rectangle; the crag was cut off at 3 of its edges | the terrain runs past the plan's frame, so the crag's foot ends naturally; the lake is a band 4 to 23 studs wide around it (wider in front, where the boats cross), and nothing lies beyond: 188x160 |
+| a rock cell next to a bevel counted the bevel's cell as solid up to its top | a bevel's cell counts as solid only on its back side (a corner bevel on none), so the rock beside and behind it builds its face |
+
+- The castle keeps its plan coordinates; the kit moves every brick by one offset when it commits a step, so nothing in the plan changed.
+- The lake reaches out from the rock by distance plus two layers of noise, and any bay it encloses fills with water.
+- Holes of this kind show only in close views from the side: the four standard views never caught them.
+
+Result: 36.7k pieces, 46 steps, 0 problems.
+
+![hero](hogwarts/hero.jpg)
+![top](hogwarts/top.jpg)
+
+Lesson: **a hollow shell is only as tight as its idea of "solid"**. Any part that does not fill its cell (a slope, a round, a corner) must say which of its sides it closes.

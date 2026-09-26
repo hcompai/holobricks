@@ -25,6 +25,7 @@ class Kit:
         self.pending: list[dict] = []
         self.mounted: list[Placement] = []
         self.problems: list[str] = []
+        self.offset = (0, 0)
 
     def add(self, part: str, x: int, y: int, z: int, color: int, rotation: int = 0) -> None:
         self.pending.append(shapes.brick(part, x, y, z, color, rotation))
@@ -41,9 +42,16 @@ class Kit:
         self.mounted.append(mount(ldraw.resolve(part) or part, x, y, z, color, facing))
 
     async def step(self, title: str) -> None:
+        """Checks the pending bricks as one step, each moved `offset` studs along x and y."""
         if not self.pending and not self.mounted:
             return
-        result = await self.bench.add(title, self.pending, self.mounted)
+        ox, oy = self.offset
+        bricks = [b | {"x": b["x"] + ox, "y": b["y"] + oy} for b in self.pending]
+        mounted = [
+            p.model_copy(update={"pos": (p.pos[0] + ox * ldraw.STUD, p.pos[1], p.pos[2] + oy * ldraw.STUD)})
+            for p in self.mounted
+        ]
+        result = await self.bench.add(title, bricks, mounted)
         if result.problems:
             self.problems.append(f"[{title}] {result.text}")
         self.pending, self.mounted = [], []

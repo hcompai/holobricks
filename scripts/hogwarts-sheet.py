@@ -7,10 +7,10 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
 VIEWS = [
-    ("3/4 front, from the lake", "angle=20&elevation=22&zoom=1.6"),
-    ("Great Hall front, Viaduct Courtyard", "angle=105&elevation=30&zoom=3.5&at=66,40,190"),
-    ("South Courtyard garden", "angle=180&elevation=65&zoom=3.5&at=62,83,125"),
-    ("Hagrid's hut, pumpkins, boats", "angle=330&elevation=25&zoom=5&at=12,18,30"),
+    ("3/4 front, from the lake", "angle=20&elevation=22&zoom=1.3"),
+    ("Great Hall front, Viaduct Courtyard", "angle=105&elevation=30&zoom=3.5&at=82,62,190"),
+    ("South Courtyard garden", "angle=180&elevation=65&zoom=3.5&at=78,105,125"),
+    ("Hagrid's hut, pumpkins, boats", "angle=330&elevation=25&zoom=5&at=28,40,30"),
 ]
 TILE = 640
 OUT = Path(__file__).resolve().parents[1] / "agent" / "showcase" / "hogwarts.png"

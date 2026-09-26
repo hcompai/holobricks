@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import heapq
 import math
 import random
 from collections import Counter
@@ -12,6 +13,7 @@ from brickyard.showcase.kit import Kit
 from brickyard.showcase.sculpt import Color, Sculpture, circle, erode
 
 W, D = 152, 124
+"""The plan's frame: the crag and the lake spill past it on every side."""
 BLACK, TAN, DTAN, LBG, DBG, GOLD, LIT = 0, 19, 28, 71, 72, 297, 46
 GREEN, DGREEN, OLIVE = 2, 288, 330
 DBLUE, TLBLUE, TMBLUE = 272, 43, 41
@@ -42,6 +44,12 @@ YARD = PLATEAU - 2
 """The Viaduct Courtyard's floor, level with the viaduct's deck."""
 SIDES4 = ((1, 0), (-1, 0), (0, 1), (0, -1))
 """Courses the crag falls per stud away from the buildings on it."""
+LAKE = 12
+"""Studs of water from the foot of the crag to the lake's edge, on average; the shore wanders from 4 to 23."""
+FRONT = 14
+"""Studs more of lake in front, where the boats cross."""
+MARGIN = 24
+"""Cells of terrain past the plan's frame, room for the crag's foot and the lake around it."""
 
 
 def noise(x: float, y: float) -> float:
@@ -57,8 +65,8 @@ def terrain(rng: random.Random, pads: dict[Cell, tuple[int, str]]) -> tuple[dict
     """Height in courses and the kind of each 2x2 cell: the castle's pads, crags falling from them, the lake at 0."""
     height, kind = {}, {}
     reach = math.ceil(PLATEAU / CLIFF / S) + 3
-    for X in range(W // S):
-        for Y in range(D // S):
+    for X in range(-MARGIN, W // S + MARGIN):
+        for Y in range(-MARGIN, D // S + MARGIN):
             x, y = S * X + 1, S * Y + 1
             wobble = noise(x * 0.18, y * 0.18), noise(x * 0.7, y * 0.7)
             stretch = 1 + 0.35 * noise(X * 0.45 + 7, Y * 0.45) + 0.1 * (rng.random() - 0.5)
@@ -77,7 +85,40 @@ def terrain(rng: random.Random, pads: dict[Cell, tuple[int, str]]) -> tuple[dict
     for c, (h, name) in pads.items():
         if c in height and (name != "footing" or height[c] < h):
             height[c], kind[c] = h, name
-    return height, kind
+    keep = shore(height)
+    return {c: h for c, h in height.items() if c in keep}, {c: k for c, k in kind.items() if c in keep}
+
+
+def shore(height: dict[Cell, int]) -> set[Cell]:
+    """The crag and the lake around it: water reaches an uneven distance from the rock, filling any bay it encloses."""
+    far = {c: 0.0 for c, h in height.items() if h > 0}
+    queue = [(0.0, c) for c in far]
+    while queue:
+        d, (X, Y) = heapq.heappop(queue)
+        if d > far[X, Y]:
+            continue
+        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)):
+            c, step = (X + dx, Y + dy), d + S * math.hypot(dx, dy)
+            if c in height and step < far.get(c, math.inf) and step <= LAKE + FRONT + 11:
+                far[c] = step
+                heapq.heappush(queue, (step, c))
+
+    def reach(X: int, Y: int) -> float:
+        x, y = S * X, S * Y
+        front = FRONT * min(1.0, max(0.0, (12 - y) / 24))
+        return max(2.0 * S, LAKE + front + 8 * noise(x * 0.05 + 3, y * 0.05) + 3 * noise(x * 0.21, y * 0.21 + 5))
+
+    keep = {c for c, d in far.items() if d <= reach(*c)}
+    edge = [c for c in height if c not in keep and not all((c[0] + dx, c[1] + dy) in height for dx, dy in SIDES4)]
+    outside = set(edge)
+    while edge:
+        X, Y = edge.pop()
+        for dx, dy in SIDES4:
+            c = (X + dx, Y + dy)
+            if c in height and c not in keep and c not in outside:
+                outside.add(c)
+                edge.append(c)
+    return set(height) - outside
 
 
 def pads(sc: Sculpture) -> tuple[dict[Cell, tuple[int, str]], set[Cell]]:
@@ -132,10 +173,16 @@ class Ground:
         self.kit, self.rng, self.footing = kit, rng, footing
         self.height, self.kind = terrain(rng, pads)
         self.claimed: set[tuple[int, int, int]] = set()
+        self.slopes: dict[tuple[int, int, int], Cell | None] = {}
+        """The courses a bevel fills, each with the one side its slope covers to the top, None for a corner."""
+        kit.offset = (-S * min(X for X, _ in self.height), -S * min(Y for _, Y in self.height))
 
     def course(self, x: int, y: int) -> int:
         """The course a building starts on at stud (x, y)."""
         return self.height.get((x // S, y // S), 0)
+
+    def water(self, x: int, y: int) -> bool:
+        return self.height.get((x // S, y // S)) == 0
 
     def studs(self, X: int, Y: int) -> set[Cell]:
         return rect(S * X, S * Y, S, S)
@@ -146,16 +193,26 @@ class Ground:
     def grassy(self, c: Cell) -> bool:
         return False
 
+    def closed(self, X: int, Y: int, k: int, side: Cell) -> bool:
+        """Whether a cell's course fills its whole `side`: a bevel's slope leaves all but its back open."""
+        if (X, Y, k) in self.slopes:
+            return self.slopes[X, Y, k] == side
+        return self.solid(X, Y, k)
+
     def exposed(self, X: int, Y: int, k: int) -> bool:
         """A cell's course seen from outside, so built as bricks; the ones inside stay hollow."""
         return (
             self.solid(X, Y, k)
             and (X, Y, k) not in self.claimed
-            and any(not self.solid(X + dx, Y + dy, k) for (dx, dy), _ in OUTWARD if (X + dx, Y + dy) in self.height)
+            and any(
+                not self.closed(X + dx, Y + dy, k, (-dx, -dy))
+                for (dx, dy), _ in OUTWARD
+                if (X + dx, Y + dy) in self.height
+            )
         )
 
     async def lake(self) -> None:
-        self.kit.fill(0, 0, W, D, 0, DBLUE)
+        self.kit.cover({s for c in self.height for s in self.studs(*c)}, 0, DBLUE)
         await self.kit.step("The bed of the Black Lake")
         water = {s for c, h in self.height.items() if h == 0 for s in self.studs(*c)}
         self.kit.scatter(water, 1, [(TMBLUE, 14), (TLBLUE, 1)], self.rng, WATER)
@@ -176,14 +233,15 @@ class Ground:
             corner = next(((pair, turn) for pair, turn in CORNER_TURNS.items() if all(d in drops for d in pair)), None)
             if corner:
                 size = min(min(drops[d] for d in corner[0]), 3, h)
-                part, rotation = CORNERS[size], corner[1]
+                part, rotation, back = CORNERS[size], corner[1], None
             else:
                 d, drop = max(drops.items(), key=lambda item: item[1])
                 size = min(drop, 3, h)
                 if size == 3 and self.rng.random() < 0.3:
                     size = 2
-                part, rotation = BEVELS[size], dict(OUTWARD)[d]
+                part, rotation, back = BEVELS[size], dict(OUTWARD)[d], (-d[0], -d[1])
             self.claimed.update((X, Y, k) for k in range(h - size, h))
+            self.slopes.update(((X, Y, k), back) for k in range(h - size, h))
             color = grass(X, Y) if self.grassy((X, Y)) else OLIVE if self.rng.random() < 0.1 else rock(X, Y, h - 1)
             out.append((part, S * X, S * Y, 1 + 3 * (h - size), color, rotation))
         return out
@@ -667,7 +725,7 @@ async def boats(kit: Kit, ground: Ground) -> None:
     """The first years' little boats crossing the lake in a line, a lantern at each bow."""
     for i in range(12):
         x, y = 6 + 9 * i, 6 + round(3 * math.sin(i * 0.9))
-        if any(ground.course(u, v) for u in range(x - 1, x + 3) for v in range(y - 1, y + 5)):
+        if not all(ground.water(u, v) for u in range(x - 1, x + 3) for v in range(y - 1, y + 5)):
             continue
         kit.add("3020", x, y, 2, BROWN, 90)
         kit.add("3062b", x, y + 3, 3, LIT)
@@ -720,7 +778,7 @@ async def life(kit: Kit, sc: Sculpture, ground: Ground, rng: random.Random) -> N
                 kit.add("24866" if flower else "32607", x, y, 1 + 3 * h, rng.choice(FLOWERS) if flower else DGREEN)
     await kit.step("Wild flowers and ferns on the ledges")
     for x, y in ((126, 5), (131, 8), (137, 4)):
-        if any(ground.course(u, v) for u in range(x, x + 3) for v in (y, y + 1)):
+        if not all(ground.water(u, v) for u in range(x, x + 3) for v in (y, y + 1)):
             continue
         for part, dx, z in (
             ("3941", 0, 2),
