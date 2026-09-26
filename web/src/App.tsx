@@ -2,7 +2,6 @@ import { DownloadSimpleIcon } from "@phosphor-icons/react";
 import { useCallback, useEffect, useState } from "react";
 import { api, GALLERY, type BuildSummary } from "./api";
 import { ChatPanel } from "./ChatPanel";
-import { HLogo } from "./HLogo";
 import { LibraryPanel } from "./LibraryPanel";
 import { PartsPanel } from "./PartsPanel";
 import { Timeline } from "./Timeline";
@@ -87,7 +86,7 @@ export default function App() {
     <div className="app">
       <header>
         <button className="brand" onClick={home}>
-          <HLogo />
+          <img className="brand-icon" src="/favicon.png" alt="" />
           <span className="brand-divider" />
           Brickyard
         </button>

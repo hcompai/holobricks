@@ -115,6 +115,11 @@ header {
   margin-right: 16px;
 }
 
+.brand-icon {
+  width: 26px;
+  height: 26px;
+}
+
 .brand-divider {
   width: 1px;
   height: 18px;

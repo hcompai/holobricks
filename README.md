@@ -1,5 +1,7 @@
 # Brickyard
 
+<img src="docs/brick.png" alt="The Brickyard brick" width="120" align="right" />
+
 Watch Holo build LEGO models from real LDraw parts, one instruction step at a time.
 
 ![Brickyard showing the Paris diorama](docs/brickyard.jpg)
@@ -57,6 +59,7 @@ server/.venv/bin/brickyard
 | model, reasoning effort, step and time budget, tools | `agent/holo.yaml` |
 | how Holo builds: principles, workflow, the build script API, parts, colors | `agent/holo.j2` |
 | the build script functions | `server/brickyard/script.py` (document them in `agent/holo.j2`) |
+| the icon | `scripts/brick-icon.py`, rendered with `blender -b -P scripts/brick-icon.py -- docs/brick.png` |
 
 Each request leaves `data/workspaces/<build>/runs/<time>.log` (what Holo did, as the terminal shows it) and `<time>.jsonl` (the full trajectory, reasoning included). Try the tools by hand from a workspace: `BRICKYARD_BUILD=<build> ../../../server/.venv/bin/bricks run`.
 
