@@ -1,4 +1,4 @@
-"""Café de Flore by the Seine, Paris: a 32x32 microscale slice from the river up to Saint-Germain."""
+"""The Seine at Saint-Germain, Paris: a 32x32 microscale slice from the river up to the boulevard."""
 
 from __future__ import annotations
 
@@ -382,7 +382,7 @@ ROADS = rect(0, 14, W, 4) | rect(19, 18, 2, D - 18) | rect(25, 0, 4, 14)
 WATER = [(43, 4), (33, 2), (SBLUE, 1)]
 BARGE = (2, 4, 16, 3)
 
-PROMPT = "Café de Flore by the Seine, Paris: a 32x32 microscale diorama"
+PROMPT = "The Seine at Saint-Germain-des-Prés, Paris: a 32x32 microscale diorama"
 STORY = [
     (
         "Hand-scripted by Claude, as a showcase of what Brickyard's parts and checks can do. Every step went through "
@@ -764,7 +764,7 @@ async def traffic(kit: Kit) -> None:
 
 
 async def build() -> Kit:
-    kit = Kit("Café de Flore, Saint-Germain-des-Prés", PROMPT, W, D)
+    kit = Kit("Paris, the Seine at Saint-Germain", PROMPT, W, D)
     rng = random.Random(7)
     houses = blocks()
     built = set().union(*(_footprint(b) for b in houses.values()))
