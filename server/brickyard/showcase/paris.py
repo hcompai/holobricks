@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import random
 
-from brickyard.showcase.kit import TILE_RUN, TILES, Frame, Kit, rect
+from brickyard.shapes import TILE_RUN, TILES, rect
+from brickyard.showcase.kit import Frame, Kit
 
 BLACK, WHITE, LBG, DBG, TAN, DTAN, VLG, VLBG = 0, 15, 71, 72, 19, 28, 503, 151
 GREEN, BGREEN, DGREEN, DRED, RED, RBROWN, DORANGE = 2, 10, 288, 320, 4, 70, 484

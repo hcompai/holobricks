@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import random
 from dataclasses import dataclass, field
+from typing import Literal
 
 import httpx
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
-from brickyard import ldraw, reference
+from brickyard import ldraw, reference, shapes
 from brickyard.model import ROTATIONS, Piece, Placement, bounds, grid, place, with_accessories
 from brickyard.session import Session
 
@@ -17,6 +19,7 @@ EPS = 0.5
 CELL = 4 * ldraw.STUD
 DESCRIBE_LIMIT = 300
 LIST_LIMIT = 600
+PROBLEM_LIMIT = 12
 
 COMMON_COLORS = (0, 15, 71, 72, 4, 320, 25, 14, 19, 28, 70, 2, 288, 10, 27, 1, 272, 73, 322, 5, 47, 43, 36, 46)
 
@@ -62,6 +65,8 @@ COMMON_PARTS = [
     "3688",
     "3062b",
     "3941",
+    "87081",
+    "6222",
     "4589",
     "3942c",
     "3659",
@@ -84,6 +89,55 @@ class Brick(BaseModel):
     z: int
     color: int
     rotation: int = 0
+
+
+Side = Literal["south", "north", "west", "east"]
+
+
+class Area(BaseModel):
+    x: int
+    y: int
+    w: int = Field(ge=1)
+    d: int = Field(ge=1)
+    z: int = Field(ge=0)
+
+
+class Windows(BaseModel):
+    color: int
+    every: int = Field(2, ge=2)
+    width: int = Field(1, ge=1)
+    courses: list[int]
+
+
+class Opening(BaseModel):
+    side: Side
+    at: int = Field(ge=0)
+    width: int = Field(ge=1)
+    courses: int = Field(ge=1)
+    arch: bool = False
+
+
+ARCHES = {2: "3659", 4: "3455"}
+
+
+class Walls(Area):
+    courses: int = Field(ge=1, le=60)
+    color: int
+    corners: int | None = None
+    windows: Windows | None = None
+    openings: list[Opening] = []
+
+
+class Fill(Area):
+    kind: Literal["plate", "tile", "brick"] = "plate"
+    color: int | None = None
+    palette: list[tuple[int, int]] | None = None
+    skip: list[tuple[int, int, int, int]] = []
+
+
+class Roof(Area):
+    color: int
+    steep: bool = False
 
 
 @dataclass
@@ -117,6 +171,11 @@ def _touches(a: tuple, b: tuple) -> bool:
 def _where(p: Placement | Piece) -> str:
     x, y, z, rotation = grid(p)
     return f"{p.part.removesuffix('.dat')} at x={x} y={y} z={z}" + (f" rot={rotation}" if rotation else "")
+
+
+def _first(lines: list[str]) -> str:
+    extra = len(lines) - PROBLEM_LIMIT
+    return "\n".join(lines[:PROBLEM_LIMIT] + ([f"... and {extra} more like these."] if extra > 0 else []))
 
 
 def part_line(part: str) -> str:
@@ -212,11 +271,101 @@ class Workbench:
             new = [p for p in self.pieces if p.step == step.index]
             lines.append(f"Step {step.index} '{title}': placed {len(new)} pieces as #{new[0].id}-#{new[-1].id}.")
         if rejected:
-            lines.append(f"Rejected {len(rejected)}, not placed:\n" + "\n".join(rejected))
+            lines.append(f"Rejected {len(rejected)}, not placed:\n" + _first(rejected))
         if warnings:
-            lines.append("Placed but check:\n" + "\n".join(warnings))
+            lines.append("Placed but check:\n" + _first(warnings))
         note = f"Added {len(placements)} pieces: {title}" if placements else f"Rejected every brick of '{title}'"
         return Result("\n".join(lines), note=note)
+
+    async def walls(self, title: str, spec: dict) -> Result:
+        try:
+            w = Walls.model_validate(spec)
+        except ValidationError as e:
+            return Result(f"Invalid walls: {e.errors(include_url=False)}")
+        x1, y1 = w.x + w.w - 1, w.y + w.d - 1
+        if any(o.arch and (o.width not in ARCHES or o.courses >= w.courses) for o in w.openings):
+            return Result("Arched openings must be 2 or 4 studs wide and lower than the walls.")
+
+        def span(o: Opening, at: int, width: int) -> list[tuple[int, int]]:
+            if o.side in ("south", "north"):
+                y = w.y if o.side == "south" else y1
+                return [(w.x + at + i, y) for i in range(width)]
+            x = w.x if o.side == "west" else x1
+            return [(x, w.y + at + i) for i in range(width)]
+
+        holes = [(0, o.courses, set(span(o, o.at, o.width))) for o in w.openings]
+        arches = [(o.courses, o, span(o, o.at - 1, o.width + 2)) for o in w.openings if o.arch]
+        holes += [(c, c + 1, set(cells)) for c, _, cells in arches]
+
+        def glass(x: int, y: int, c: int) -> bool:
+            if w.windows is None or c not in w.windows.courses:
+                return False
+            i, n = (x - w.x, w.w) if y in (w.y, y1) else (y - w.y, w.d)
+            return 0 < i < n - 1 and i % w.windows.every >= w.windows.every - w.windows.width
+
+        def color(x: int, y: int, c: int) -> int:
+            if w.corners is not None and x in (w.x, x1) and y in (w.y, y1):
+                return w.corners
+            return w.windows.color if glass(x, y, c) else w.color
+
+        def opening(x: int, y: int, c: int) -> bool:
+            return any(lo <= c < hi and (x, y) in cells for lo, hi, cells in holes)
+
+        bricks = []
+        for c in range(w.courses):
+            bricks += shapes.ring(w.x, w.y, w.w, w.d, w.z + 3 * c, 1, color, opening, start=c)
+            for k, o, cells in arches:
+                if k == c:
+                    turn = 0 if o.side in ("south", "north") else 90
+                    bricks.append(shapes.brick(ARCHES[o.width], *cells[0], w.z + 3 * k, w.color, turn))
+        result = await self.add(title, bricks)
+        result.text += f"\nTop of the walls: z={w.z + 3 * w.courses}."
+        return result
+
+    async def fill(self, title: str, spec: dict) -> Result:
+        try:
+            f = Fill.model_validate(spec)
+        except ValidationError as e:
+            return Result(f"Invalid fill: {e.errors(include_url=False)}")
+        if (f.color is None) == (f.palette is None):
+            return Result("Give either a color or a palette, not both.")
+        cells = shapes.rect(f.x, f.y, f.w, f.d).difference(*(shapes.rect(*s) for s in f.skip))
+        taken = cells & await asyncio.to_thread(self.occupied, f.z, shapes.HEIGHTS[f.kind])
+        cells -= taken
+        if f.palette:
+            rng = random.Random(f"{f.x},{f.y},{f.z},{f.w},{f.d}")
+            bricks = shapes.scatter(cells, f.z, f.palette, rng, shapes.MOSAIC[f.kind])
+        else:
+            bricks = shapes.cover(cells, f.z, f.color, shapes.SIZES[f.kind])
+        if not bricks:
+            return Result("Nothing to fill: every cell is taken at that height.")
+        result = await self.add(title, bricks)
+        if taken:
+            result.text += f"\nLeft out {len(taken)} cells already taken at that height."
+        return result
+
+    async def roof(self, title: str, spec: dict) -> Result:
+        try:
+            r = Roof.model_validate(spec)
+        except ValidationError as e:
+            return Result(f"Invalid roof: {e.errors(include_url=False)}")
+        if r.w % 2 or r.d % 2:
+            return Result(f"A roof needs an even width and depth, not {r.w}x{r.d}.")
+        slopes, top = shapes.roof(r.x, r.y, r.w, r.d, r.z + 1, r.color, r.steep)
+        result = await self.add(title, shapes.cover(shapes.rect(r.x, r.y, r.w, r.d), r.z, r.color) + slopes)
+        result.text += f"\nTop of the roof: z={top}."
+        return result
+
+    def occupied(self, z: int, height: int) -> set[tuple[int, int]]:
+        """Stud cells some piece fills between plate heights z and z + height."""
+        lo, hi, s = z * ldraw.PLATE, (z + height) * ldraw.PLATE, ldraw.STUD
+        cells = set()
+        for p in self.pieces:
+            box = self._box(p)
+            if -box[1][1] < hi - EPS and -box[0][1] - STUD_HEIGHT > lo + EPS:
+                xs = range(round(box[0][0] / s), round(box[1][0] / s))
+                cells |= {(x, y) for x in xs for y in range(round(box[0][2] / s), round(box[1][2] / s))}
+        return cells
 
     async def remove(self, ids: list[int]) -> Result:
         removed = await self.session.remove(set(ids))

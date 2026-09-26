@@ -5,7 +5,8 @@ from __future__ import annotations
 import math
 import random
 
-from brickyard.showcase.kit import Kit, rect
+from brickyard.shapes import rect
+from brickyard.showcase.kit import Kit
 
 W = D = 64
 P = 8

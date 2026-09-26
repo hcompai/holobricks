@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import random
 
-from brickyard.showcase.kit import TILE_RUN, TILES, Frame, Kit, rect
+from brickyard.shapes import TILE_RUN, TILES, rect
+from brickyard.showcase.kit import Frame, Kit
 from brickyard.showcase.paris import tree
 
 BLACK, WHITE, BLUE, GREEN, RED, BGREEN, DGREEN, DRED = 0, 15, 1, 2, 4, 10, 288, 320
