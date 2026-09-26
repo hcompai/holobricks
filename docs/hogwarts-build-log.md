@@ -131,7 +131,7 @@ A render looked unchanged after a real change. Cause: the user's open browser ta
 | Hall lancets 3 wide, pointed, not cut by the band | the film's tall lit windows |
 | Dumbledore's turrets hug the cone | they looked like separate towers |
 | Quad as gabled wings plus a square tower | it read as one big box from the back |
-| 9 boats with lanterns on the lake | the arrival shot |
+| 6 boats with lanterns on the lake | the arrival shot |
 | darker rock palette | the cliff read as concrete |
 
 Result: 26.3k pieces, 41 steps, 0 problems.
