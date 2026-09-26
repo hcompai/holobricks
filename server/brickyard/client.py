@@ -1,0 +1,68 @@
+"""The bricks CLI: an agent's hands on a live build, from a shell in its own workspace."""
+
+from __future__ import annotations
+
+import argparse
+import base64
+import os
+import sys
+from pathlib import Path
+
+import httpx
+
+TIMEOUT_S = 300
+ATTACHED = 2
+"""Images marked `@@attach` in the output, which sagent shows the agent with the command's result."""
+
+
+def call(tool: str, **args: str) -> dict:
+    url = os.environ.get("BRICKYARD_URL", "http://127.0.0.1:8000")
+    build = os.environ.get("BRICKYARD_BUILD")
+    if not build:
+        sys.exit("Set BRICKYARD_BUILD to the id of the build to work on.")
+    response = httpx.post(f"{url}/api/builds/{build}/tools/{tool}", json=args, timeout=TIMEOUT_S)
+    if response.is_error:
+        sys.exit(f"bricks {tool} failed ({response.status_code}): {response.text}")
+    return response.json()
+
+
+def save(images: list[dict], stem: str) -> list[str]:
+    names = []
+    for n, image in enumerate(images, 1):
+        name = f"{stem}{f'-{n}' if len(images) > 1 else ''}.{image['mime'].split('/')[-1].replace('jpeg', 'jpg')}"
+        Path(name).write_bytes(base64.b64decode(image["data"]))
+        names.append(name)
+    return names
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(prog="bricks", description=__doc__)
+    tools = parser.add_subparsers(dest="tool", required=True)
+    tools.add_parser("run", help="rebuild the model from a build script; saves render.png").add_argument(
+        "script", nargs="?", default="build.py"
+    )
+    tools.add_parser("look", help="render the model again; saves render.png")
+    tools.add_parser("parts", help="search LDraw parts by words or number").add_argument("query")
+    tools.add_parser("reference", help="find reference photos of a subject; saves reference-N").add_argument("query")
+    tools.add_parser("name", help="name the build").add_argument("name")
+    args = parser.parse_args()
+
+    if args.tool == "run":
+        out = call("run", code=Path(args.script).read_text())
+    elif args.tool in ("parts", "reference"):
+        out = call(args.tool, query=args.query)
+    elif args.tool == "name":
+        out = call("name", name=args.name)
+    else:
+        out = call("look")
+    print(out["text"])
+    if out["images"]:
+        names = save(out["images"], "reference" if args.tool == "reference" else "render")
+        print(f"\nSaved {', '.join(names)}. {out['caption']}")
+        for name in names[:ATTACHED]:
+            print(f"@@attach {name}")
+    sys.exit(1 if out["problems"] else 0)
+
+
+if __name__ == "__main__":
+    main()

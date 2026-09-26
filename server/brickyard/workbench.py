@@ -1,26 +1,30 @@
-"""The stateful model an agent edits: validated brick edits, part search, and renders from the open viewer."""
+"""The stateful model an agent edits: a build script rebuilt into validated steps, part search, and renders."""
 
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import io
+import json
 import math
-import random
+import sys
+import tempfile
 from dataclasses import dataclass, field
-from typing import Literal
 
 import httpx
-from pydantic import BaseModel, Field, ValidationError
+from PIL import Image
+from pydantic import BaseModel, ValidationError
 
-from brickyard import ldraw, reference, shapes
+from brickyard import ldraw, reference
 from brickyard.model import FACINGS, ROTATIONS, Piece, Placement, bounds, grid, place, with_accessories
 from brickyard.session import Session
 
 STUD_HEIGHT = 4
 EPS = 0.5
 CELL = 4 * ldraw.STUD
-DESCRIBE_LIMIT = 300
-LIST_LIMIT = 600
 PROBLEM_LIMIT = 12
+SCRIPT_TIMEOUT_S = 60
+BASEPLATE = "3811.dat"
 
 COMMON_COLORS = (0, 15, 71, 72, 4, 320, 25, 14, 19, 28, 70, 2, 288, 10, 27, 1, 272, 73, 322, 5, 47, 43, 36, 46)
 
@@ -90,55 +94,8 @@ class Brick(BaseModel):
     z: int
     color: int
     rotation: int = 0
-
-
-Side = Literal["south", "north", "west", "east"]
-
-
-class Area(BaseModel):
-    x: int
-    y: int
-    w: int = Field(ge=1)
-    d: int = Field(ge=1)
-    z: int = Field(ge=0)
-
-
-class Windows(BaseModel):
-    color: int
-    every: int = Field(2, ge=2)
-    width: int = Field(1, ge=1)
-    courses: list[int]
-
-
-class Opening(BaseModel):
-    side: Side
-    at: int = Field(ge=0)
-    width: int = Field(ge=1)
-    courses: int = Field(ge=1)
-    arch: bool = False
-
-
-ARCHES = {2: "3659", 4: "3455"}
-
-
-class Walls(Area):
-    courses: int = Field(ge=1, le=60)
-    color: int
-    corners: int | None = None
-    windows: Windows | None = None
-    openings: list[Opening] = []
-
-
-class Fill(Area):
-    kind: Literal["plate", "tile", "brick"] = "plate"
-    color: int | None = None
-    palette: list[tuple[int, int]] | None = None
-    skip: list[tuple[int, int, int, int]] = []
-
-
-class Roof(Area):
-    color: int
-    steep: bool = False
+    label: str | None = None
+    """How problems name the brick, like the script line that made it."""
 
 
 @dataclass
@@ -150,6 +107,7 @@ class Result:
     kind: str | None = None
     """What the images are, like `render`; an agent keeps only the latest images of each kind in context."""
     caption: str = ""
+    problems: int = 0
 
 
 def _overlap(a: tuple, b: tuple) -> tuple[float, float, float]:
@@ -247,7 +205,7 @@ class Workbench:
         rejected, warnings = [], []
         candidates: list[tuple[str, Placement, bool]] = []
         for n, brick in enumerate(bricks, 1):
-            label = f"brick {n} ({brick.part} at x={brick.x} y={brick.y} z={brick.z})"
+            label = f"{brick.label or f'brick {n}'} ({brick.part} at x={brick.x} y={brick.y} z={brick.z})"
             part = ldraw.resolve(brick.part)
             if part is None:
                 rejected.append(f"{label}: unknown part; use find_parts")
@@ -280,143 +238,121 @@ class Workbench:
                 warnings.append(f"{label}: floating, nothing directly under or above it")
             accepted.append((placement, box))
             for cell in _cells(box):
-                batch.setdefault(cell, []).append((box, f"{label.split(' (')[0]} of this step"))
+                batch.setdefault(cell, []).append((box, f"{label} of this step"))
         return [p for placement, _ in accepted for p in with_accessories(placement)], rejected, warnings
 
-    async def add(self, title: str, bricks: list[dict], mounted: list[Placement] = ()) -> Result:
+    async def add(
+        self, title: str, bricks: list[dict], mounted: list[Placement] = (), key: str | None = None
+    ) -> Result:
+        """Check the bricks and place the ones that fit as one step; a keyed step with problems keeps an empty key."""
         try:
             parsed = [Brick.model_validate(b) for b in bricks]
         except ValidationError as e:
-            return Result(f"Invalid bricks: {e.errors(include_url=False)}")
+            return Result(f"Invalid bricks in '{title}': {e.errors(include_url=False)}", problems=len(bricks))
         if not parsed and not mounted:
             return Result("No bricks given.")
         placements, rejected, warnings = await asyncio.to_thread(self._check, parsed, list(mounted))
+        problems = len(rejected) + len(warnings)
         lines = []
         if placements:
-            step = await self.session.step(title, placements)
+            step = await self.session.step(title, placements, "" if key and problems else key)
             new = [p for p in self.pieces if p.step == step.index]
-            lines.append(f"Step {step.index} '{title}': placed {len(new)} pieces as #{new[0].id}-#{new[-1].id}.")
+            lines.append(f"Step {step.index + 1} '{title}': placed {len(new)} pieces as #{new[0].id}-#{new[-1].id}.")
         if rejected:
             lines.append(f"Rejected {len(rejected)}, not placed:\n" + _first(rejected))
         if warnings:
             lines.append("Placed but check:\n" + _first(warnings))
         note = f"Added {len(placements)} pieces: {title}" if placements else f"Rejected every brick of '{title}'"
-        return Result("\n".join(lines), note=note)
+        return Result("\n".join(lines), note=note, problems=problems)
 
-    async def walls(self, title: str, spec: dict) -> Result:
-        try:
-            w = Walls.model_validate(spec)
-        except ValidationError as e:
-            return Result(f"Invalid walls: {e.errors(include_url=False)}")
-        x1, y1 = w.x + w.w - 1, w.y + w.d - 1
-        if any(o.arch and (o.width not in ARCHES or o.courses >= w.courses) for o in w.openings):
-            return Result("Arched openings must be 2 or 4 studs wide and lower than the walls.")
+    async def run_script(self, code: str) -> Result:
+        """Rebuild the model from `code`: steps up to the first changed one stay, the rest are rebuilt and checked."""
+        build = self.session.build
+        build.script = code
+        fixed = self._fixed()
+        out = await _execute(code, await asyncio.to_thread(self._taken, fixed))
+        printed = f"\nThe script printed:\n{out['printed']}" if out.get("printed") else ""
+        if "error" in out:
+            self.session.store.save(build)
+            return Result(f"The script stopped, so the model did not change.\n{out['error']}{printed}", problems=1)
+        steps = out["steps"]
+        keys = [_digest(s) for s in steps]
+        old = [s.key for s in build.steps[fixed:]]
+        same = 0
+        while same < min(len(old), len(keys)) and old[same] == keys[same]:
+            same += 1
+        await self.session.rewind(fixed + same)
+        source = code.splitlines()
+        problems, reports = 0, []
+        for s, key in zip(steps[same:], keys[same:], strict=True):
+            bricks = [b | {"label": _line(source, b["line"])} for b in s["bricks"]]
+            result = await self.add(s["title"], bricks, key=key)
+            if result.problems:
+                problems += result.problems
+                reports.append(result.text)
+        problems += len(out["notes"])
+        reports += out["notes"]
+        kept = (
+            ""
+            if not same
+            else f"kept step {fixed + 1}, "
+            if same == 1
+            else f"kept steps {fixed + 1} to {fixed + same}, "
+        )
+        lines = [f"Ran the script: {kept}rebuilt {len(steps) - same} steps."]
+        lines += ["Problems, by script line:", *reports] if reports else ["No problems: every brick fits and rests."]
+        lines.append("Steps: pieces, then where they sit in studs (x, y) and plates (z, bottom to top):")
+        lines.append(await asyncio.to_thread(self.describe))
+        pieces = sum(p.part != BASEPLATE for p in self.pieces)
+        seen = await self.look(f"Ran the script: {pieces} pieces" + (f", {problems} problems" if problems else ""))
+        return Result(
+            "\n".join(lines) + printed + "\n" + seen.text,
+            note=seen.note,
+            images=seen.images,
+            kind=seen.kind,
+            caption=seen.caption,
+            problems=problems,
+        )
 
-        def span(o: Opening, at: int, width: int) -> list[tuple[int, int]]:
-            if o.side in ("south", "north"):
-                y = w.y if o.side == "south" else y1
-                return [(w.x + at + i, y) for i in range(width)]
-            x = w.x if o.side == "west" else x1
-            return [(x, w.y + at + i) for i in range(width)]
+    def _fixed(self) -> int:
+        """How many steps were built before the script; it builds on them and never changes them."""
+        return next((s.index for s in self.session.build.steps if s.key is not None), len(self.session.build.steps))
 
-        holes = [(0, o.courses, set(span(o, o.at, o.width))) for o in w.openings]
-        arches = [(o.courses, o, span(o, o.at - 1, o.width + 2)) for o in w.openings if o.arch]
-        holes += [(c, c + 1, set(cells)) for c, _, cells in arches]
+    def brief(self) -> str:
+        """The model as a new request finds it: its steps, and the script behind them."""
+        lines = ["Steps:", self.describe()]
+        fixed, script = self._fixed(), self.session.build.script
+        if fixed > 1:
+            lines.append(f"Steps 1-{fixed} were built before the script; it builds on them and cannot change them.")
+        lines += ["The build script:", _numbered(script)] if script else ["No build script yet."]
+        return "\n".join(lines)
 
-        def glass(x: int, y: int, c: int) -> bool:
-            if w.windows is None or c not in w.windows.courses:
-                return False
-            i, n = (x - w.x, w.w) if y in (w.y, y1) else (y - w.y, w.d)
-            return 0 < i < n - 1 and i % w.windows.every >= w.windows.every - w.windows.width
+    def _taken(self, steps: int) -> list[list[int]]:
+        """(x, y, w, d, z, height) on the grid of every piece in the first `steps` steps, except the baseplate."""
+        s, out = ldraw.STUD, []
+        for p, (lo, hi) in self._index().values():
+            if p.step < steps and p.part != BASEPLATE:
+                x, y, z = round(lo[0] / s), round(lo[2] / s), round(-hi[1] / ldraw.PLATE)
+                w, d = round(hi[0] / s) - x, round(hi[2] / s) - y
+                out.append([x, y, max(1, w), max(1, d), z, max(1, _top((lo, hi)) - z)])
+        return out
 
-        def color(x: int, y: int, c: int) -> int:
-            if w.corners is not None and x in (w.x, x1) and y in (w.y, y1):
-                return w.corners
-            return w.windows.color if glass(x, y, c) else w.color
-
-        def opening(x: int, y: int, c: int) -> bool:
-            return any(lo <= c < hi and (x, y) in cells for lo, hi, cells in holes)
-
-        bricks = []
-        for c in range(w.courses):
-            bricks += shapes.ring(w.x, w.y, w.w, w.d, w.z + 3 * c, 1, color, opening, start=c)
-            for k, o, cells in arches:
-                if k == c:
-                    turn = 0 if o.side in ("south", "north") else 90
-                    bricks.append(shapes.brick(ARCHES[o.width], *cells[0], w.z + 3 * k, w.color, turn))
-        result = await self.add(title, bricks)
-        result.text += f"\nTop of the walls: z={w.z + 3 * w.courses}."
-        return result
-
-    async def fill(self, title: str, spec: dict) -> Result:
-        try:
-            f = Fill.model_validate(spec)
-        except ValidationError as e:
-            return Result(f"Invalid fill: {e.errors(include_url=False)}")
-        if (f.color is None) == (f.palette is None):
-            return Result("Give either a color or a palette, not both.")
-        cells = shapes.rect(f.x, f.y, f.w, f.d).difference(*(shapes.rect(*s) for s in f.skip))
-        occupied = await asyncio.to_thread(self.occupied, f.z, shapes.HEIGHTS[f.kind])
-        taken = cells & occupied.keys()
-        cells -= taken
-        if f.palette:
-            rng = random.Random(f"{f.x},{f.y},{f.z},{f.w},{f.d}")
-            bricks = shapes.scatter(cells, f.z, f.palette, rng, shapes.MOSAIC[f.kind])
-        else:
-            bricks = shapes.cover(cells, f.z, f.color, shapes.SIZES[f.kind])
-        if not bricks:
-            return Result("Nothing to fill: every cell is taken at that height.")
-        result = await self.add(title, bricks)
-        if taken:
-            blockers = list({occupied[c].id: occupied[c] for c in sorted(taken)}.values())
-            names = ", ".join(f"#{p.id} {_where(p)}" for p in blockers[:3]) + (", ..." if len(blockers) > 3 else "")
-            result.text += (
-                f"\nLeft out {len(taken)} cells already taken at that height by {len(blockers)} pieces ({names}). "
-                "To build over them, fill above their top; to replace them, remove them first."
-            )
-        return result
-
-    async def roof(self, title: str, spec: dict) -> Result:
-        try:
-            r = Roof.model_validate(spec)
-        except ValidationError as e:
-            return Result(f"Invalid roof: {e.errors(include_url=False)}")
-        if r.w % 2 or r.d % 2:
-            return Result(f"A roof needs an even width and depth, not {r.w}x{r.d}.")
-        slopes, top = shapes.roof(r.x, r.y, r.w, r.d, r.z + 1, r.color, r.steep)
-        result = await self.add(title, shapes.cover(shapes.rect(r.x, r.y, r.w, r.d), r.z, r.color) + slopes)
-        result.text += f"\nTop of the roof: z={top}."
-        return result
-
-    def occupied(self, z: int, height: int) -> dict[tuple[int, int], Piece]:
-        """The piece filling each stud cell between plate heights z and z + height."""
-        lo, hi, s = z * ldraw.PLATE, (z + height) * ldraw.PLATE, ldraw.STUD
-        cells = {}
-        indexed = self._index()
-        for p in self.pieces:
-            box = indexed[p.id][1]
-            if -box[1][1] < hi - EPS and -box[0][1] - STUD_HEIGHT > lo + EPS:
-                for x in range(round(box[0][0] / s), round(box[1][0] / s)):
-                    for y in range(round(box[0][2] / s), round(box[1][2] / s)):
-                        cells[(x, y)] = p
-        return cells
-
-    async def remove(self, ids: list[int]) -> Result:
-        removed = await self.session.remove(set(ids))
-        missing = sorted(set(ids) - {p.id for p in removed})
-        text = f"Removed {len(removed)} pieces." + (f" No such pieces: {missing}." if missing else "")
-        return Result(text, note=f"Removed {len(removed)} pieces")
-
-    async def look(self) -> Result:
+    async def look(self, note: str = "Looked at the model") -> Result:
         png = await self.session.render()
         summary = await asyncio.to_thread(self.summary)
         if png is None:
-            return Result(f"No viewer is open, so no image this time.\n{summary}", note="Looked (no viewer open)")
-        await self.session.say(
-            "Looked at the model", role="tool", images=[self.session.store.save_image(png, "image/png")]
-        )
-        caption = "The render from look: 3/4 front-right, 3/4 back-left, front, and top (back at the top)."
+            return Result(f"No viewer is open, so no image this time.\n{summary}", note=f"{note} (no viewer open)")
+        caption = "The render: 3/4 front-right, 3/4 back-left, front, and top (back at the top)."
+        if photo := self._reference():
+            png = await asyncio.to_thread(_beside, photo, png)
+            caption = "Left, the reference photo. Right, the render: " + caption.removeprefix("The render: ")
+        await self.session.say(note, role="tool", images=[self.session.store.save_image(png, "image/png")])
         return Result(summary, images=[(png, "image/png")], kind="render", caption=caption)
+
+    def _reference(self) -> bytes | None:
+        name = self.session.build.reference
+        path = self.session.store.image(name) if name else None
+        return path.read_bytes() if path and path.is_file() else None
 
     async def find_reference(self, query: str) -> Result:
         try:
@@ -427,9 +363,11 @@ class Workbench:
             return Result(f"No photos for '{query}'. Try a more common name, or build from what you know.")
         urls = [self.session.store.save_image(p.data, p.mime) for p in photos]
         await self.session.say(f"Reference photos for '{query}'", role="tool", images=urls)
+        self.session.build.reference = urls[0].rsplit("/", 1)[-1]
+        self.session.store.save(self.session.build)
         titles = "; ".join(f"{i}) {p.title}" for i, p in enumerate(photos, 1))
         return Result(
-            f"Found {len(photos)} photos from Wikipedia: {titles}. They follow as images.",
+            f"Found {len(photos)} photos from Wikipedia: {titles}. Every render from now on shows photo 1 beside it.",
             images=[(p.data, p.mime) for p in photos],
             kind="reference",
             caption=f"Reference photos for '{query}', in order: {titles}.",
@@ -440,20 +378,12 @@ class Workbench:
         text = "\n".join(hits) if hits else f"No parts match '{query}'. Try fewer or simpler words."
         return Result(text, note=f"Searched parts for '{query}'")
 
-    async def list_pieces(self) -> Result:
-        palette = ldraw.colors()
-        shown = self.pieces[-LIST_LIMIT:]
-        lines = [f"#{p.id} {_where(p)} color={p.color} ({palette.get(p.color, ('?',))[0]})" for p in shown]
-        if len(shown) < len(self.pieces):
-            lines.insert(0, f"The latest {len(shown)} of {len(self.pieces)} pieces:")
-        return Result("\n".join(lines) or "No pieces yet.")
-
     async def rename(self, name: str) -> Result:
         await self.session.rename(name.strip()[:60] or "Untitled build")
         return Result(f"Build is now called '{self.session.build.name}'.")
 
     def summary(self) -> str:
-        pieces = [p for p in self.pieces if p.part != "3811.dat"]
+        pieces = [p for p in self.pieces if p.part != BASEPLATE]
         if not pieces:
             return "The baseplate is empty."
         boxes = [grid(p) for p in pieces]
@@ -466,22 +396,72 @@ class Workbench:
         )
 
     def describe(self) -> str:
-        if not self.pieces:
-            return "No pieces yet."
-        palette = ldraw.colors()
-        brief = len(self.pieces) > DESCRIBE_LIMIT
-        lines = (
-            [f"{len(self.pieces)} pieces; per step: ids and extents. Use list_pieces for every piece."] if brief else []
-        )
+        """One line per step: its pieces and the studs and plate heights they span."""
+        indexed = self._index()
+        boxes: dict[int, list[tuple]] = {}
+        for p in self.pieces:
+            boxes.setdefault(p.step, []).append(indexed[p.id][1])
+        s, lines = ldraw.STUD, []
         for step in self.session.build.steps:
-            pieces = [p for p in self.pieces if p.step == step.index]
-            if not pieces:
+            if step.index not in boxes:
                 continue
-            if brief:
-                spots = [grid(p) for p in pieces]
-                x, y, z = (f"{min(s[k] for s in spots)}-{max(s[k] for s in spots)}" for k in range(3))
-                lines.append(f"Step {step.index} {step.title}: #{pieces[0].id}-#{pieces[-1].id}, x {x}, y {y}, z {z}")
-                continue
-            lines.append(f"Step {step.index} {step.title}:")
-            lines += [f"  #{p.id} {_where(p)} color={p.color} ({palette.get(p.color, ('?',))[0]})" for p in pieces]
-        return "\n".join(lines)
+            los, his = [b[0] for b in boxes[step.index]], [b[1] for b in boxes[step.index]]
+            x = f"{round(min(v[0] for v in los) / s)}-{round(max(v[0] for v in his) / s) - 1}"
+            y = f"{round(min(v[2] for v in los) / s)}-{round(max(v[2] for v in his) / s) - 1}"
+            z = f"{max(0, round(min(-v[1] for v in his) / ldraw.PLATE))}-{max(map(_top, boxes[step.index]))}"
+            n = len(boxes[step.index])
+            lines.append(f"{step.index + 1} {step.title}: {n} piece{'s' * (n != 1)}, x {x}, y {y}, z {z}")
+        return "\n".join(lines) or "No pieces yet."
+
+
+def _beside(photo: bytes, png: bytes) -> bytes:
+    """The photo, scaled to the render's height, to the left of the render."""
+    render = Image.open(io.BytesIO(png)).convert("RGB")
+    left = Image.open(io.BytesIO(photo)).convert("RGB")
+    left.thumbnail((render.width, render.height))
+    sheet = Image.new("RGB", (left.width + render.width, render.height), "white")
+    sheet.paste(left, (0, (render.height - left.height) // 2))
+    sheet.paste(render, (left.width, 0))
+    out = io.BytesIO()
+    sheet.save(out, "PNG")
+    return out.getvalue()
+
+
+def _numbered(script: str) -> str:
+    return "\n".join(f"{n:>4}  {line}" for n, line in enumerate(script.splitlines(), 1))
+
+
+def _line(source: list[str], n: int) -> str | None:
+    return f"line {n} `{source[n - 1].strip()[:70]}`" if 0 < n <= len(source) else None
+
+
+def _digest(step: dict) -> str:
+    bricks = [{k: v for k, v in b.items() if k != "line"} for b in step["bricks"]]
+    return hashlib.sha256(json.dumps([step["title"], bricks], sort_keys=True).encode()).hexdigest()[:16]
+
+
+async def _execute(code: str, taken: list[list[int]]) -> dict:
+    """Run a build script in a fresh process with an empty environment and a time limit."""
+    process = await asyncio.create_subprocess_exec(
+        sys.executable,
+        "-I",
+        "-m",
+        "brickyard.script",
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        env={"BRICKYARD_LDRAW": str(ldraw.LDRAW)},
+        cwd=tempfile.gettempdir(),
+    )
+    job = json.dumps({"code": code, "taken": taken}).encode()
+    try:
+        out, err = await asyncio.wait_for(process.communicate(job), SCRIPT_TIMEOUT_S)
+    except TimeoutError:
+        return {"error": f"The script ran for over {SCRIPT_TIMEOUT_S} s; look for a loop that never ends."}
+    finally:
+        if process.returncode is None:
+            process.kill()
+            await process.wait()
+    if process.returncode:
+        return {"error": f"The script runner crashed: {err.decode(errors='replace')[-500:]}"}
+    return json.loads(out)

@@ -16,10 +16,12 @@ function apply(build: Build, event: BuildEvent): Build {
     case "step":
       if (event.step.index < build.steps.length) return build;
       return { ...build, steps: [...build.steps, event.step], pieces: [...build.pieces, ...event.pieces] };
-    case "remove": {
-      const gone = new Set(event.ids);
-      return { ...build, pieces: build.pieces.filter((p) => !gone.has(p.id)) };
-    }
+    case "rewind":
+      return {
+        ...build,
+        steps: build.steps.slice(0, event.steps),
+        pieces: build.pieces.filter((p) => p.step < event.steps),
+      };
     case "thinking":
     case "render":
       return build;

@@ -1,11 +1,16 @@
 import asyncio
-import json
+import base64
+import io
+import os
+import sys
+import time
 
-import httpx
 import pytest
+from fastapi.testclient import TestClient
+from PIL import Image
 
 from brickyard import ldraw
-from brickyard.builders.holo import RECENT, HoloBuilder, trim
+from brickyard.builders.holo import HoloBuilder
 from brickyard.model import Build, baseplate, grid
 from brickyard.session import Session, Store
 from brickyard.workbench import Workbench
@@ -15,6 +20,12 @@ pytestmark = pytest.mark.skipif(not ldraw.LDRAW.exists(), reason="LDraw library 
 
 def brick(part="3001", x=0, y=0, z=0, color=4, rotation=0):
     return {"part": part, "x": x, "y": y, "z": z, "color": color, "rotation": rotation}
+
+
+def png(width: int, height: int) -> bytes:
+    out = io.BytesIO()
+    Image.new("RGB", (width, height), "red").save(out, "PNG")
+    return out.getvalue()
 
 
 @pytest.fixture
@@ -39,7 +50,7 @@ def test_workbench_places_valid_bricks_and_explains_every_rejection(bench):
         )
     )
     assert "placed 3 pieces" in result.text
-    assert "overlaps brick 1 of this step" in result.text
+    assert "overlaps brick 1 (3001 at x=4 y=4 z=0) of this step" in result.text
     assert "outside the 32x32 baseplate" in result.text
     assert "unknown part" in result.text
     assert "brick 5 (3001 at x=10 y=10 z=6): floating" in result.text
@@ -63,117 +74,104 @@ def test_overhanging_parts_only_fill_their_footprint(bench):
     assert [grid(p)[:2] for p in bench.pieces[1:]] == [(0, 0), (1, 0), (5, 5), (5, 6)]
 
 
-def test_window_frames_come_with_glass_and_removal_updates_the_build(bench):
+def test_window_frames_come_with_glass(bench):
     asyncio.run(bench.add("Window", [brick(part="60592", x=2, y=2, color=15)]))
-    assert "overlaps #2 60592" in asyncio.run(bench.add("Blocked", [brick(part="3005", x=2, y=2)])).text
     assert [p.part for p in bench.pieces[1:]] == ["60592.dat", "60601.dat"]
-    result = asyncio.run(bench.remove([p.id for p in bench.pieces[1:]] + [999]))
-    assert "Removed 2 pieces. No such pieces: [999]." == result.text
-    assert [p.part for p in bench.pieces] == ["3811.dat"]
-    assert "placed 1 pieces as #2-#2" in asyncio.run(bench.add("Freed", [brick(part="3005", x=2, y=2)])).text
-    assert "overlaps #2 3005 at x=2 y=2 z=0" in asyncio.run(bench.add("Taken", [brick(part="3005", x=2, y=2)])).text
+    assert "overlaps #2 60592" in asyncio.run(bench.add("Blocked", [brick(part="3005", x=2, y=2)])).text
 
 
-def sse(*chunks: dict) -> bytes:
-    return b"".join(f"data: {json.dumps(c)}\n\n".encode() for c in chunks) + b"data: [DONE]\n\n"
+HOUSE = """
+step("Walls")
+top = walls(10, 10, 8, 6, 0, 5, 15, corners=19, windows={"color": 46, "every": 3, "courses": [1, 2, 4]},
+            openings=[{"side": "south", "at": 2, "width": 2, "courses": 2, "arch": True}])
+step("Roof")
+print("roof top", roof(10, 10, 8, 6, top, 320, steep=True))
+step("Paving")
+fill(0, 0, 32, 32, 0, palette=[[71, 1]], kind="tile")
+"""
 
 
-def test_holo_loop_executes_tool_calls_until_a_plain_reply(tmp_path):
-    turns = [
-        sse(
-            {"choices": [{"delta": {"reasoning": "A red brick in the middle."}}]},
-            {"choices": [{"delta": {"content": "Placing one brick."}}]},
-            {
-                "choices": [
-                    {
-                        "delta": {
-                            "tool_calls": [
-                                {
-                                    "index": 0,
-                                    "id": "call1",
-                                    "function": {
-                                        "name": "add_bricks",
-                                        "arguments": json.dumps({"title": "Core", "bricks": [brick(x=14, y=15)]}),
-                                    },
-                                }
-                            ]
-                        },
-                        "finish_reason": "tool_calls",
-                    }
-                ]
-            },
-        ),
-        sse({"choices": [{"delta": {"content": "Done: one red brick."}, "finish_reason": "stop"}]}),
-    ]
-    requests = []
+def test_a_script_rebuilds_from_its_first_changed_step_and_names_the_lines_of_its_problems(bench, monkeypatch):
+    monkeypatch.setattr(bench.session, "render", lambda: asyncio.sleep(0))
+    first = asyncio.run(bench.run_script(HOUSE))
+    assert first.problems == 0 and "roof top" in first.text, first.text
+    assert [s.title for s in bench.session.build.steps] == ["Baseplate", "Walls", "Roof", "Paving"]
+    assert any(p.part == "3659.dat" for p in bench.pieces)
+    walls = [p for p in bench.pieces if p.step == 1]
 
-    def respond(request: httpx.Request) -> httpx.Response:
-        requests.append(json.loads(request.content))
-        return httpx.Response(200, content=turns[len(requests) - 1], headers={"content-type": "text/event-stream"})
+    recolored = asyncio.run(bench.run_script(HOUSE.replace("320", "4")))
+    assert "kept step 2, rebuilt 2 steps" in recolored.text
+    assert [p for p in bench.pieces if p.step == 1] == walls
+    assert {p.color for p in bench.pieces if p.step == 2} == {4}
 
-    builder = HoloBuilder("holo", "http://holo.test/v1", "key", transport=httpx.MockTransport(respond))
-    session = Session(Build(prompt="one brick"), Store(tmp_path))
-    thoughts = session.subscribe()
-    asyncio.run(session.say("one brick", role="user"))
-    asyncio.run(builder.run(session, "one brick"))
+    stray = HOUSE.replace("320", "4") + 'brick("3001", 40, 0, 0, 4)\n'
+    for _ in range(2):
+        result = asyncio.run(bench.run_script(stray))
+        assert result.problems == 1 and "kept steps 2 to 3, rebuilt 1 steps" in result.text
+        assert 'line 9 `brick("3001", 40, 0, 0, 4)` (3001 at x=40 y=0 z=0): outside' in result.text
 
-    assert [s.title for s in session.build.steps] == ["Baseplate", "Core"]
-    assert [m.text for m in session.build.messages] == [
-        "one brick",
-        "Placing one brick.",
-        "Added 1 pieces: Core",
-        "Done: one red brick.",
-    ]
-    tool_result = requests[1]["messages"][-1]
-    assert tool_result["role"] == "tool" and tool_result["tool_call_id"] == "call1"
-    assert "placed 1 pieces as #2-#2" in tool_result["content"]
-    events = [thoughts.get_nowait() for _ in range(thoughts.qsize())]
-    assert any(e["type"] == "thinking" and "red brick" in e["text"] for e in events)
+    buried = asyncio.run(bench.run_script(stray + "fill(10, 10, 8, 6, 0, 1)\n"))
+    assert buried.problems == 2 and "line 10: fill covered only 0 of 48 cells" in buried.text, buried.text
+
+    before = list(bench.pieces)
+    broken = asyncio.run(bench.run_script(bench.session.build.script + "undefined()\n"))
+    assert "did not change" in broken.text and "line 11 `undefined()`: NameError" in broken.text
+    assert bench.pieces == before
+    assert "undefined()" in bench.session.build.script
 
 
-def test_holo_survives_rate_limits_and_bad_tool_arguments(tmp_path):
-    calls = [
-        {"index": 0, "id": "a", "function": {"name": "add_bricks", "arguments": '{"bricks": null}'}},
-        {"index": 1, "id": "b", "function": {"name": "remove_bricks", "arguments": '{"ids": ["x"]}'}},
-        {"index": 2, "id": "c", "function": {"name": "list_pieces", "arguments": "[]"}},
-    ]
-    turns = [
-        httpx.Response(429, headers={"retry-after": "0"}),
-        httpx.Response(200, content=sse({"choices": [{"delta": {"tool_calls": calls}}]})),
-        httpx.Response(200, content=sse({"choices": [{"delta": {"content": "Done."}, "finish_reason": "stop"}]})),
-    ]
-    requests = []
+def test_agents_build_through_the_tools_endpoint_and_see_the_reference_beside_each_render(tmp_path, monkeypatch):
+    from brickyard import app as app_module
 
-    def respond(request: httpx.Request) -> httpx.Response:
-        requests.append(json.loads(request.content))
-        return turns[len(requests) - 1]
-
-    builder = HoloBuilder("holo", "http://holo.test/v1", "key", transport=httpx.MockTransport(respond))
-    session = Session(Build(prompt="p"), Store(tmp_path))
-    asyncio.run(builder.run(session, "p"))
-
-    results = [m["content"] for m in requests[-1]["messages"] if m["role"] == "tool"]
-    assert "add_bricks failed" in results[0] and "remove_bricks failed" in results[1]
-    assert "must be a JSON object" in results[2]
-    assert session.build.messages[-1].text == "Done."
+    store = Store(tmp_path)
+    monkeypatch.setattr(app_module, "store", store)
+    monkeypatch.setattr(Session, "render", lambda self: asyncio.sleep(0, png(120, 90)))
+    build = Build()
+    build.reference = store.save_image(png(60, 90), "image/png").rsplit("/", 1)[-1]
+    store.save(build)
+    tools = f"/api/builds/{build.id}/tools"
+    with TestClient(app_module.app) as client:
+        ran = client.post(f"{tools}/run", json={"code": 'step("Core")\nbrick("3001", 4, 4, 0, 4)'}).json()
+        assert ran["problems"] == 0 and "1 Core: 1 piece" in ran["text"], ran["text"]
+        assert ran["caption"].startswith("Left, the reference photo.")
+        assert Image.open(io.BytesIO(base64.b64decode(ran["images"][0]["data"]))).size == (180, 90)
+        assert client.post(f"{tools}/build", json={}).status_code == 404
+        assert client.post(f"{tools}/run", json={"script": "x"}).status_code == 400
+    assert store.load(build.id).script.startswith('step("Core")')
 
 
-def test_long_runs_trim_old_turns_but_keep_recent_ones_and_every_call_paired():
-    bricks = [brick(x=i % 32, y=i // 32) for i in range(40)]
-    messages = [{"role": "system", "content": "rules"}, {"role": "user", "content": "build"}]
-    for n in range(100):
-        args = json.dumps({"title": f"Step {n}", "bricks": bricks})
-        messages.append(
-            {"role": "assistant", "content": "", "tool_calls": [{"id": str(n), "function": {"arguments": args}}]}
-        )
-        messages.append(
-            {"role": "tool", "tool_call_id": str(n), "content": f"Step {n}: placed 40 pieces. " + "x" * 2000}
-        )
-    before, recent = json.dumps(messages), json.dumps(messages[-RECENT:])
-    trim(messages, budget=100_000)
-    assert len(json.dumps(messages)) < len(before) / 4
-    assert json.dumps(messages[-RECENT:]) == recent
-    first = json.loads(messages[2]["tool_calls"][0]["function"]["arguments"])
-    assert first == {"title": "Step 0", "bricks": bricks[:2]}
-    assert messages[3]["tool_call_id"] == "0" and messages[3]["content"].startswith("Step 0: placed 40 pieces.")
-    assert messages[:2] == [{"role": "system", "content": "rules"}, {"role": "user", "content": "build"}]
+def test_holo_gets_the_task_on_stdin_and_stop_ends_its_whole_process_group(tmp_path):
+    agent = (
+        "import os, subprocess, sys, time; "
+        "open('task.txt', 'w').write(sys.stdin.read() + os.environ['BRICKYARD_BUILD']); "
+        "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)']); "
+        "open('pids', 'w').write(f'{os.getpid()} {child.pid}'); "
+        "time.sleep(60)"
+    )
+    session = Session(Build(prompt="a lighthouse"), Store(tmp_path))
+    workspace = tmp_path / "workspaces" / session.build.id
+
+    async def main() -> list[int]:
+        run = asyncio.create_task(HoloBuilder([sys.executable, "-c", agent], "http://test").run(session, "a tower"))
+        while not (workspace / "pids").exists():
+            await asyncio.sleep(0.05)
+        run.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await run
+        return [int(p) for p in (workspace / "pids").read_text().split()]
+
+    pids = asyncio.run(main())
+    task = (workspace / "task.txt").read_text()
+    assert task.startswith("# Request\na tower") and "# The build script" in task and task.endswith(session.build.id)
+    assert "1 Baseplate: 1 piece" in task and (workspace / "build.py").exists()
+    assert not any(map(alive, pids))
+
+
+def alive(pid: int) -> bool:
+    for _ in range(40):
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        time.sleep(0.05)
+    return True

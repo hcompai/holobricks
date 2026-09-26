@@ -57,7 +57,7 @@ export type BuildEvent =
   | { type: "build"; build: BuildSummary }
   | { type: "message"; message: Message }
   | { type: "step"; step: Step; pieces: Piece[] }
-  | { type: "remove"; ids: number[] }
+  | { type: "rewind"; steps: number }
   | { type: "thinking"; text: string; reset: boolean }
   | { type: "render"; request: string };
 

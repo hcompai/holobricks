@@ -37,7 +37,7 @@ class Kit:
         if not self.pending and not self.mounted:
             return
         result = await self.bench.add(title, self.pending, self.mounted)
-        if any(flag in result.text for flag in ("Rejected", "check:", "Invalid")):
+        if result.problems:
             self.problems.append(f"[{title}] {result.text}")
         self.pending, self.mounted = [], []
 
