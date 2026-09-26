@@ -4,6 +4,10 @@ Watch an agent build Lego models from real LDraw parts, step by step, in the bro
 
 ![Garden Cottage](docs/iso.jpg)
 
+Holo's lighthouse (138 pieces, 23 steps, 8 min), as Holo itself sees it through `look`:
+
+![Holo lighthouse](docs/holo-lighthouse.png)
+
 ```
 web (Vite + React + three.js)                         server (FastAPI)
 ┌ header: name · pieces · steps · Download ┐         ┌ Build = pieces (LDraw transforms) + steps + chat
