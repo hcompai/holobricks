@@ -10,8 +10,6 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 *.tsbuildinfo
-!docs/paris.jpg
-!docs/hogwarts.jpg
-!docs/london.jpg
+!docs/brickyard.jpg
 .vercel/
 .env*
