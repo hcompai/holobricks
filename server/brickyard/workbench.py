@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import math
 import random
 from dataclasses import dataclass, field
 from typing import Literal
@@ -168,6 +169,11 @@ def _touches(a: tuple, b: tuple) -> bool:
     return any(abs(lower[0][1] + s - upper[1][1]) < 1 for upper, lower in ((a, b), (b, a)) for s in (0, STUD_HEIGHT))
 
 
+def _top(box: tuple) -> int:
+    """Plate height of a box's top surface; studs, when there are any, add less than a plate."""
+    return math.floor((-box[0][1] + EPS) / ldraw.PLATE)
+
+
 def _where(p: Placement | Piece) -> str:
     x, y, z, rotation = grid(p)
     return f"{p.part.removesuffix('.dat')} at x={x} y={y} z={z}" + (f" rot={rotation}" if rotation else "")
@@ -247,9 +253,9 @@ class Workbench:
                 rejected.append(f"{label}: outside the {self.session.build.width}x{self.session.build.depth} baseplate")
                 continue
             neighbors = near(box)
-            hit = next((what for other, what in neighbors if _collides(box, other)), None)
+            hit = next(((other, what) for other, what in neighbors if _collides(box, other)), None)
             if hit:
-                rejected.append(f"{label}: overlaps {hit}")
+                rejected.append(f"{label}: overlaps {hit[1]}, which fills up to z={_top(hit[0])}")
                 continue
             if needs_support and not any(_touches(box, other) for other, _ in neighbors):
                 warnings.append(f"{label}: floating, nothing directly under or above it")
@@ -430,7 +436,7 @@ class Workbench:
         if not pieces:
             return "The baseplate is empty."
         boxes = [grid(p) for p in pieces]
-        top = max(round((-bounds(p)[0][1] - STUD_HEIGHT) / ldraw.PLATE) for p in pieces)
+        top = max(_top(self._box(p)) for p in pieces)
         xs, ys = [b[0] for b in boxes], [b[1] for b in boxes]
         return (
             f"{len(pieces)} pieces in {len(self.session.build.steps)} steps, spanning x {min(xs)}-{max(xs)}, "
