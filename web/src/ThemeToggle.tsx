@@ -1,48 +1,43 @@
-import { MonitorIcon, MoonIcon, SunIcon } from "@phosphor-icons/react";
+import { MoonIcon, SunIcon } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
 
-type Theme = "system" | "light" | "dark";
+type Theme = "light" | "dark";
 
 const KEY = "brickyard-theme";
-const THEMES = [
-  { id: "system", label: "System theme", Icon: MonitorIcon },
-  { id: "light", label: "Light theme", Icon: SunIcon },
-  { id: "dark", label: "Dark theme", Icon: MoonIcon },
-] as const;
+const systemDark = window.matchMedia("(prefers-color-scheme: dark)");
 
-function stored(): Theme {
+function stored(): Theme | null {
   const value = localStorage.getItem(KEY);
-  return value === "light" || value === "dark" ? value : "system";
+  return value === "light" || value === "dark" ? value : null;
 }
 
-/** Light, dark, or the OS setting; index.html applies the stored choice before the first paint. */
+function system(): Theme {
+  return systemDark.matches ? "dark" : "light";
+}
+
+/** Follows the OS until clicked, then keeps the chosen theme; index.html applies it before the first paint. */
 export function ThemeToggle() {
-  const [theme, setTheme] = useState<Theme>(stored);
+  const [theme, setTheme] = useState<Theme>(() => stored() ?? system());
 
   useEffect(() => {
-    const root = document.documentElement;
-    if (theme === "system") {
-      delete root.dataset.theme;
-      localStorage.removeItem(KEY);
-    } else {
-      root.dataset.theme = theme;
-      localStorage.setItem(KEY, theme);
-    }
-  }, [theme]);
+    const follow = () => {
+      if (!stored()) setTheme(system());
+    };
+    systemDark.addEventListener("change", follow);
+    return () => systemDark.removeEventListener("change", follow);
+  }, []);
 
+  const toggle = () => {
+    const next = theme === "dark" ? "light" : "dark";
+    localStorage.setItem(KEY, next);
+    document.documentElement.dataset.theme = next;
+    setTheme(next);
+  };
+
+  const label = theme === "dark" ? "Switch to light theme" : "Switch to dark theme";
   return (
-    <div className="tabs theme-toggle">
-      {THEMES.map(({ id, label, Icon }) => (
-        <button
-          key={id}
-          className={theme === id ? "active" : ""}
-          onClick={() => setTheme(id)}
-          title={label}
-          aria-label={label}
-        >
-          <Icon size={14} weight="bold" />
-        </button>
-      ))}
-    </div>
+    <button className="theme-toggle" onClick={toggle} title={label} aria-label={label}>
+      {theme === "dark" ? <SunIcon size={16} weight="bold" /> : <MoonIcon size={16} weight="bold" />}
+    </button>
   );
 }

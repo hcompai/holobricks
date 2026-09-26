@@ -102,13 +102,13 @@ export default function App() {
           </>
         )}
         <span className="spacer" />
+        <ThemeToggle />
         {build && (
           <a className="button primary" href={api.downloadUrl(build.id)} download={`${build.name}.ldr`}>
             <DownloadSimpleIcon size={16} weight="bold" />
             Download .ldr
           </a>
         )}
-        <ThemeToggle />
       </header>
       <aside>
         <div className="tabs">

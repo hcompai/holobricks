@@ -88,11 +88,11 @@ class Batch {
     }
   }
 
-  /** Grow `target` by the visible pieces, in the root's local space. */
+  /** Grow `target` by every piece, in the root's local space. */
   expand(target: THREE.Box3) {
     const matrix = new THREE.Matrix4();
     const box = new THREE.Box3();
-    for (const p of this.pieces.slice(0, this.visible)) target.union(box.copy(this.bounds).applyMatrix4(pieceMatrix(p, matrix)));
+    for (const p of this.pieces) target.union(box.copy(this.bounds).applyMatrix4(pieceMatrix(p, matrix)));
   }
 
   dispose() {
@@ -273,7 +273,7 @@ export class BrickScene {
     this.controls.autoRotate = spin;
   }
 
-  /** Point the camera along `view` so the visible pieces (or the empty baseplate) fill the frame. */
+  /** Point the camera along `view` so the whole model (or the empty baseplate) fills the frame. */
   frameView(view: View, width: number, depth: number) {
     this.framing = { view, width, depth };
     this.root.updateMatrixWorld(true);
