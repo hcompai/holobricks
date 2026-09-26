@@ -9,7 +9,8 @@ import uuid
 from pathlib import Path
 from typing import Protocol
 
-from brickyard.model import Build, Camera, Message, Piece, Placement, Step
+from brickyard.model import Box, Build, Camera, Message, Piece, Placement, Step
+from brickyard.viewer import Viewers
 
 log = logging.getLogger("brickyard")
 DATA = Path(os.environ.get("BRICKYARD_DATA", Path(__file__).resolve().parents[2] / "data"))
@@ -69,9 +70,10 @@ class Store:
 
 
 class Session:
-    def __init__(self, build: Build, store: Store):
+    def __init__(self, build: Build, store: Store, viewers: Viewers | None = None):
         self.build = build
         self.store = store
+        self.viewers = viewers
         self.subscribers: set[asyncio.Queue[dict]] = set()
         self.task: asyncio.Task | None = None
         self.renders: dict[str, tuple[dict, asyncio.Future[bytes]]] = {}
@@ -131,14 +133,19 @@ class Session:
         for queue in self.subscribers:
             queue.put_nowait({"type": "thinking", "text": text, "reset": reset})
 
-    async def render(self, camera: Camera | None = None, *, timeout: float = 30) -> bytes | None:
-        """Ask an open viewer to render the model, in the four standard views unless `camera` is set; None when no viewer answers in time."""
+    async def render(
+        self, camera: Camera | None = None, box: Box | None = None, *, timeout: float = 30
+    ) -> bytes | None:
+        """Ask an open viewer to render the model, or only the pieces in `box`, in the four standard views unless `camera` is set; None when no viewer answers in time."""
+        if self.viewers:
+            await self.viewers.watch(self.build.id)
         request = uuid.uuid4().hex[:8]
         future: asyncio.Future[bytes] = asyncio.get_running_loop().create_future()
         event = {
             "type": "render",
             "request": request,
             "camera": camera.model_dump() if camera else None,
+            "box": box.model_dump() if box else None,
             "pieces": len(self.build.pieces),
         }
         self.renders[request] = (event, future)

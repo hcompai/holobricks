@@ -3,7 +3,7 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { LDrawLoader } from "three/examples/jsm/loaders/LDrawLoader.js";
 import { LDrawConditionalLineMaterial } from "three/examples/jsm/materials/LDrawConditionalLineMaterial.js";
-import { api, type Camera, type Piece } from "./api";
+import { api, type Box, type Camera, type Piece } from "./api";
 
 export type View = "iso" | "isoBack" | "front" | "top";
 
@@ -32,6 +32,26 @@ function towardCamera(angle: number, elevation: number): THREE.Vector3 {
   return new THREE.Vector3(Math.sin(a) * Math.cos(e), Math.sin(e), Math.cos(a) * Math.cos(e));
 }
 
+/** The world-space volume of `box`, whose studs and plates are whole cells. */
+function worldBox(box: Box): THREE.Box3 {
+  return new THREE.Box3(
+    new THREE.Vector3(box.x0 * STUD, box.z0 * PLATE, -(box.y1 + 1) * STUD),
+    new THREE.Vector3((box.x1 + 1) * STUD, (box.z1 + 1) * PLATE, -box.y0 * STUD),
+  );
+}
+
+/** Planes that keep only what lies inside `box`. */
+function clippingPlanes(box: THREE.Box3): THREE.Plane[] {
+  return [
+    new THREE.Plane(new THREE.Vector3(1, 0, 0), -box.min.x),
+    new THREE.Plane(new THREE.Vector3(-1, 0, 0), box.max.x),
+    new THREE.Plane(new THREE.Vector3(0, 1, 0), -box.min.y),
+    new THREE.Plane(new THREE.Vector3(0, -1, 0), box.max.y),
+    new THREE.Plane(new THREE.Vector3(0, 0, 1), -box.min.z),
+    new THREE.Plane(new THREE.Vector3(0, 0, -1), box.max.z),
+  ];
+}
+
 const lineMaterials = new WeakMap<THREE.Material, THREE.Material>();
 
 /** A copy of an edge material that reads each instance's transform from the instanceMatrix attribute. */
@@ -41,6 +61,7 @@ function instancedLine(material: THREE.Material): THREE.Material {
     copy = material.clone();
     copy.defines = { ...copy.defines, USE_INSTANCING: "" };
     if (copy instanceof THREE.ShaderMaterial) {
+      copy.clipping = true;
       copy.vertexShader = copy.vertexShader.replace(/vec4\( (position|control0|control1|position \+ direction), 1\.0 \)/g, "instanceMatrix * $&");
     }
     lineMaterials.set(material, copy);
@@ -287,12 +308,15 @@ export class BrickScene {
     this.aim(VIEW_DIRECTIONS[view], width, depth);
   }
 
-  /** Point the camera along `direction` so the whole model (or the empty baseplate) fills the frame, then close in `zoom` times on `at`. */
-  private aim(direction: THREE.Vector3, width: number, depth: number, zoom = 1, at?: THREE.Vector3) {
+  /** Point the camera along `direction` so the whole model (or the empty baseplate, or `focus`) fills the frame, then close in `zoom` times on `at`. */
+  private aim(direction: THREE.Vector3, width: number, depth: number, zoom = 1, at?: THREE.Vector3, focus?: THREE.Box3) {
     this.root.updateMatrixWorld(true);
     const box = new THREE.Box3();
-    for (const batch of this.batches.values()) batch.expand(box);
-    box.applyMatrix4(this.root.matrixWorld);
+    if (focus) box.copy(focus);
+    else {
+      for (const batch of this.batches.values()) batch.expand(box);
+      box.applyMatrix4(this.root.matrixWorld);
+    }
     if (box.isEmpty()) {
       box.set(new THREE.Vector3(0, 0, -depth * 20), new THREE.Vector3(width * 20, 40, 0));
     }
@@ -321,12 +345,14 @@ export class BrickScene {
     this.controls.update();
   }
 
-  /** Square renders of the whole model into a 2D canvas, leaving the user's camera and timeline untouched. */
+  /** Square renders of the whole model, or only of what lies in `box`, into a 2D canvas, leaving the user's camera and timeline untouched. */
   private offscreen(
     size: number,
     tiles: { direction: THREE.Vector3; zoom?: number; at?: THREE.Vector3; x: number; y: number; label?: string }[],
     columns = 1,
+    box: Box | null = null,
   ) {
+    const focus = box ? worldBox(box) : undefined;
     const { position, near, far } = this.camera;
     const saved = { position: position.clone(), target: this.controls.target.clone(), near, far };
     const pixelRatio = this.renderer.getPixelRatio();
@@ -337,11 +363,12 @@ export class BrickScene {
     const ctx = canvas.getContext("2d")!;
 
     this.setVisibleStep(Infinity);
+    this.renderer.clippingPlanes = focus ? clippingPlanes(focus) : [];
     this.renderer.setPixelRatio(1);
     this.renderer.setSize(size * 2, size * 2, false);
     this.camera.aspect = 1;
     for (const tile of tiles) {
-      this.aim(tile.direction, 32, 32, tile.zoom, tile.at);
+      this.aim(tile.direction, 32, 32, tile.zoom, tile.at, focus);
       this.renderer.render(this.scene, this.camera);
       ctx.fillStyle = BACKDROP;
       ctx.fillRect(tile.x, tile.y, size, size);
@@ -356,6 +383,7 @@ export class BrickScene {
     }
 
     this.setVisibleStep(visibleStep);
+    this.renderer.clippingPlanes = [];
     this.renderer.setPixelRatio(pixelRatio);
     this.resize();
     Object.assign(this.camera, { near: saved.near, far: saved.far });
@@ -371,20 +399,21 @@ export class BrickScene {
     return this.offscreen(size, [{ direction: VIEW_DIRECTIONS.iso, x: 0, y: 0 }]);
   }
 
-  /** The four labelled views a builder looks at to check its work. */
-  sheet(size = 384): Promise<Blob | null> {
+  /** The four labelled views a builder looks at to check its work, of the model or only of `box`. */
+  sheet(box: Box | null = null, size = 384): Promise<Blob | null> {
     const tiles = SHEET.map((s, i) => ({
       direction: VIEW_DIRECTIONS[s.view],
       label: s.label,
       x: (i % 2) * size,
       y: Math.floor(i / 2) * size,
     }));
-    return this.offscreen(size, tiles, 2);
+    return this.offscreen(size, tiles, 2, box);
   }
 
   /** The one view a builder asks for, with the build's x and y in studs and z in plates. */
-  view(camera: Camera, size = 768): Promise<Blob | null> {
+  view(camera: Camera, box: Box | null = null, size = 768): Promise<Blob | null> {
     const at = camera.at ? new THREE.Vector3(camera.at[0] * STUD, camera.at[2] * PLATE, -camera.at[1] * STUD) : undefined;
-    return this.offscreen(size, [{ direction: towardCamera(camera.angle, camera.elevation), zoom: camera.zoom, at, x: 0, y: 0 }]);
+    const tile = { direction: towardCamera(camera.angle, camera.elevation), zoom: camera.zoom, at, x: 0, y: 0 };
+    return this.offscreen(size, [tile], 1, box);
   }
 }

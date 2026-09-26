@@ -87,7 +87,7 @@ export function useBuild(id: string | null): LiveBuild {
         return;
       }
       if (event.type === "render") {
-        setRenderRequest({ request: event.request, camera: event.camera, pieces: event.pieces });
+        setRenderRequest({ request: event.request, camera: event.camera, box: event.box, pieces: event.pieces });
         return;
       }
       if (pending) pending.push(event);

@@ -10,7 +10,6 @@ import time
 from pathlib import Path
 
 from brickyard.session import Session
-from brickyard.viewer import headless
 from brickyard.workbench import Workbench
 
 AGENT = Path(__file__).resolve().parents[3] / "agent" / "holo.py"
@@ -53,22 +52,21 @@ class HoloBuilder:
             "BRICKYARD_BIN": str(Path(sys.executable).parent),
         }
         log = await asyncio.to_thread(open, f"{run}.log", "wb")
-        async with headless(self.url, build.id):
-            with log:
-                process = await asyncio.create_subprocess_exec(
-                    *self.command,
-                    stdin=asyncio.subprocess.PIPE,
-                    stdout=log,
-                    stderr=asyncio.subprocess.STDOUT,
-                    env=env,
-                    cwd=workspace,
-                    start_new_session=True,
-                )
-                try:
-                    await process.communicate(task.encode())
-                finally:
-                    if process.returncode is None:
-                        await _stop(process)
+        with log:
+            process = await asyncio.create_subprocess_exec(
+                *self.command,
+                stdin=asyncio.subprocess.PIPE,
+                stdout=log,
+                stderr=asyncio.subprocess.STDOUT,
+                env=env,
+                cwd=workspace,
+                start_new_session=True,
+            )
+            try:
+                await process.communicate(task.encode())
+            finally:
+                if process.returncode is None:
+                    await _stop(process)
         if process.returncode:
             raise RuntimeError(f"Holo exited with code {process.returncode}; its log is {run}.log")
 

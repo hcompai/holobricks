@@ -47,7 +47,7 @@ your tab + headless Chrome  <── steps, renders ──>  brickyard server  �
 
 - Holo is a sagent Forest agent with the managed sandbox tools (`shell`, `write_file`, `search_replace`, `view_image`, ...). Its tool calls are shell commands and file edits: it writes `build.py` and runs `bricks run`, which rebuilds the model on the server and prints the problems by line, with the render attached (`@@attach`).
 - For references it has `web_search` (Linkup pages, then image URLs) and `view_image`: it downloads the photos it wants into its workspace with `curl` and looks at them, all through the build.
-- Renders come from a viewer: the server opens a headless Chrome on the build for each request, so it renders whether or not your tab is open. It serves `web/dist`: rebuild it (`npm run build`) after web changes.
+- Renders come from a viewer: the server keeps a hidden Chrome on each build that asks for renders (until its run ends, or 10 idle minutes), so it renders whether or not your tab is open. It serves `web/dist`: rebuild it (`npm run build`) after web changes.
 - Its workspace keeps `notes.md` (its memory, fed back with each request), the reference photos, and `showcase/` (`agent/showcase`: the showcase renders and sources).
 - sagent comes from a local hai checkout recent enough for Linkup's `include_images`: set `HAI_ROOT` to it, with its venv synced (`cd hai && uv sync`).
 

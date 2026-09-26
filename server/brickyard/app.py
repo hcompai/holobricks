@@ -20,9 +20,9 @@ from pydantic import BaseModel, ValidationError
 
 from brickyard import ldraw
 from brickyard.builders import BUILDERS
-from brickyard.model import Build, Camera
+from brickyard.model import Box, Build, Camera
 from brickyard.session import Session, Store
-from brickyard.viewer import headless
+from brickyard.viewer import Viewers
 from brickyard.workbench import Workbench
 
 WEB_DIST = Path(__file__).resolve().parents[2] / "web" / "dist"
@@ -48,6 +48,7 @@ class AgentSay(BaseModel):
 
 store = Store()
 sessions: dict[str, Session] = {}
+viewers = Viewers(f"http://127.0.0.1:{os.environ.get('BRICKYARD_PORT', '8000')}")
 TOOLS = {
     "run": Workbench.run_script,
     "look": Workbench.look,
@@ -61,6 +62,7 @@ async def lifespan(_: FastAPI):
     warm = asyncio.create_task(asyncio.to_thread(lambda: (ldraw.catalog(), ldraw.colors())))
     yield
     warm.cancel()
+    await viewers.stop()
 
 
 app = FastAPI(title="Brickyard", lifespan=lifespan)
@@ -80,7 +82,7 @@ def session_for(build_id: str) -> Session:
         else:
             session.build = build
     else:
-        session = sessions[build_id] = Session(build, store)
+        session = sessions[build_id] = Session(build, store, viewers)
     return session
 
 
@@ -108,6 +110,8 @@ def start(session: Session, request: str) -> None:
             log.exception("build %s failed", session.build.id)
             await session.say(f"Builder failed: {e}", role="system")
             await session.set_status("error")
+        finally:
+            await viewers.release(session.build.id)
 
     session.task = asyncio.create_task(run())
 
@@ -184,20 +188,19 @@ async def agent_say(build_id: str, body: AgentSay) -> dict:
 @app.get("/api/builds/{build_id}/sheet.png")
 async def get_sheet(
     build_id: str,
-    request: Request,
     angle: float | None = None,
     elevation: float = 30,
     zoom: float = 1,
     at: str | None = None,
+    box: str | None = None,
 ) -> Response:
-    """The four views a builder checks its work on, or one view when `angle` is set; `at` is "x,y,z"."""
+    """The four views a builder checks its work on, or one view when `angle` is set; `at` is "x,y,z", `box` "x0,y0,z0,x1,y1,z1"."""
     try:
         camera = None if angle is None else Camera(angle=angle, elevation=elevation, zoom=zoom, at=at and at.split(","))
-    except ValidationError as e:
+        inside = None if box is None else Box.of([int(v) for v in box.split(",")])
+    except (ValidationError, ValueError) as e:
         raise HTTPException(400, str(e)) from e
-    session = session_for(build_id)
-    async with headless(str(request.base_url).rstrip("/"), build_id):
-        png = await session.render(camera, timeout=SHEET_TIMEOUT_S)
+    png = await session_for(build_id).render(camera, inside, timeout=SHEET_TIMEOUT_S)
     if png is None:
         raise HTTPException(503, "no viewer rendered the build; build the web app and install Chrome")
     return Response(png, media_type="image/png")

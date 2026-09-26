@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from pydantic import BaseModel, ValidationError
 
 from brickyard import ldraw
-from brickyard.model import FACINGS, ROTATIONS, Camera, Piece, Placement, bounds, grid, place, with_accessories
+from brickyard.model import FACINGS, ROTATIONS, Box, Camera, Piece, Placement, bounds, grid, place, with_accessories
 from brickyard.session import Session
 
 STUD_HEIGHT = 4
@@ -280,12 +280,17 @@ class Workbench:
                 out.append([x, y, max(1, w), max(1, d), z, max(1, _top((lo, hi)) - z)])
         return out
 
-    async def look(self, note: str = "Looked at the model", camera: dict | None = None) -> Result:
+    async def look(
+        self, note: str = "Looked at the model", camera: dict | None = None, box: list[int] | None = None
+    ) -> Result:
         try:
             view = None if camera is None else Camera.model_validate(camera)
-        except ValidationError as e:
-            return Result(f"Could not set the camera: {e}", problems=1)
-        png = await self.session.render(view)
+            inside = None if box is None else Box.of(box)
+        except (ValidationError, ValueError, TypeError) as e:
+            return Result(f"Could not set the view: {e}", problems=1)
+        if inside and not any(inside.holds(p) for p in self.pieces):
+            return Result(f"No pieces in the box {inside}.", problems=1)
+        png = await self.session.render(view, inside)
         summary = await asyncio.to_thread(self.summary)
         if png is None:
             return Result(f"No viewer is open, so no image this time.\n{summary}", note=f"{note} (no viewer open)")
@@ -294,6 +299,9 @@ class Workbench:
         if view:
             center = f", centered on x {view.at[0]:g}, y {view.at[1]:g}, z {view.at[2]:g}" if view.at else ""
             caption = f"The view from {view.angle:g} degrees, {view.elevation:g} up, zoom {view.zoom:g}{center}."
+        if inside:
+            n = sum(inside.holds(p) for p in self.pieces)
+            caption = f"Only the {n} pieces in the box {inside}. {caption}"
         return Result(summary, images=[Picture(png, "image/png")], kind="render", caption=caption)
 
     async def find_parts(self, query: str) -> Result:

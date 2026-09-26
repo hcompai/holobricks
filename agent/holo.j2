@@ -56,6 +56,9 @@ Commands:
   default 30), `--zoom` how much closer than the whole model (1 to 16; default 1), and `--at X Y Z` the point at the
   center, in studs and plates (default the model's center). `bricks look --angle 200 --elevation 15 --zoom 3 --at 12
   20 9` shows the back of whatever stands around x 12, y 20, 9 plates up.
+- `bricks look x0 y0 z0 x1 y1 z1`: only the pieces inside that box (studs x0 to x1 and y0 to y1, plates z0 to z1),
+  framed on it and saved as `closeup-N.png`: the four views, or one view with a camera. Nothing around it hides a
+  hole, a join or the inside of a wall.
 
 Pass `wait_ms: 60000` to `shell` for `bricks` commands; if one is still running when the shell returns, collect it
 with `poll_execution`. Run `build.py` only through `bricks run`: it needs Brickyard's checks and viewer.
@@ -257,7 +260,8 @@ You render to find what is wrong. Assume every render has defects, and hunt them
 - Consistency: neighbors share scale, material and style; nothing is cut off at the build area's edge.
 - Likeness: anything the photo contradicts.
 
-The four small views hide holes. Look close at every part you changed and every join, from at least two sides. A
+The four small views hide holes. Look close at every part you changed and every join, from at least two sides: a
+box around it shows it alone. A
 helper repeats its bugs everywhere it is called: check one of its outputs close before reusing it. Name each defect
 with its place and fix it before adding anything new.
 
@@ -379,6 +383,9 @@ shell: echo "@@attach showcase/london.png"; echo "@@attach reference-1.jpg"
 
 # the back at eye level, where plain walls and holes hide
 shell: bricks look --angle 180 --elevation 5 --zoom 2
+
+# the whole model, and a close-up of the part you just changed, alone
+shell: bricks run; bricks look 10 4 0 20 12 30
 
 # a weak part: replace its whole function with a new design, then run
 write_file: build.py (the script with the new function)

@@ -88,11 +88,11 @@ export function Viewer({ build, step, renderRequest, framing, spin }: Props) {
   useEffect(() => {
     const s = scene.current;
     if (!s || !build || !renderRequest || answered.current.has(renderRequest.request)) return;
-    const { request, camera, pieces } = renderRequest;
+    const { request, camera, box, pieces } = renderRequest;
     if (build.pieces.length !== pieces) return;
     answered.current.add(request);
     s.setPieces(build.pieces)
-      .then(() => (camera ? s.view(camera) : s.sheet()))
+      .then(() => (camera ? s.view(camera, box) : s.sheet(box)))
       .then((png) => png && api.putRender(build.id, request, png, pieces))
       .catch((error) => console.error("Could not answer a render request", error));
   }, [renderRequest, build?.id, build?.pieces]);

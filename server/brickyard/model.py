@@ -123,6 +123,37 @@ class Camera(BaseModel):
     """The point (x, y in studs, z in plates) at the center of the view; the model's center when unset."""
 
 
+class Box(BaseModel):
+    """Studs x0 to x1 and y0 to y1, plates z0 to z1, all included."""
+
+    x0: int
+    y0: int
+    z0: int
+    x1: int
+    y1: int
+    z1: int
+
+    @classmethod
+    def of(cls, values: list[int]) -> Box:
+        if len(values) != 6:
+            raise ValueError("a box is six numbers: x0 y0 z0 x1 y1 z1")
+        x0, y0, z0, x1, y1, z1 = values
+        return cls(x0=min(x0, x1), y0=min(y0, y1), z0=min(z0, z1), x1=max(x0, x1), y1=max(y0, y1), z1=max(z0, z1))
+
+    def holds(self, p: Placement | Piece) -> bool:
+        """Whether any of the piece lies inside the box."""
+        lo, hi = bounds(p)
+        near = (
+            (self.x0 * ldraw.STUD, (self.x1 + 1) * ldraw.STUD),
+            (-(self.z1 + 1) * ldraw.PLATE, -self.z0 * ldraw.PLATE),
+            (self.y0 * ldraw.STUD, (self.y1 + 1) * ldraw.STUD),
+        )
+        return all(lo[k] < b - 0.5 and hi[k] > a + 0.5 for k, (a, b) in enumerate(near))
+
+    def __str__(self) -> str:
+        return f"x {self.x0}-{self.x1}, y {self.y0}-{self.y1}, z {self.z0}-{self.z1}"
+
+
 def place(part: str, x: int, y: int, z: int, color: int, rotation: int = 0) -> Placement:
     """Center `part` on the footprint starting at stud (x, y), bottom at plate z, turned `rotation` degrees."""
     info = ldraw.info(part)

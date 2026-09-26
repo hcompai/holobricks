@@ -60,10 +60,21 @@ export interface Camera {
   at: [number, number, number] | null;
 }
 
-/** A render the builder is waiting for: the four standard views, or one `camera` view. */
+/** Studs x0 to x1 and y0 to y1, plates z0 to z1, all included. */
+export interface Box {
+  x0: number;
+  y0: number;
+  z0: number;
+  x1: number;
+  y1: number;
+  z1: number;
+}
+
+/** A render the builder is waiting for: the four standard views, or one `camera` view, of the model or only of `box`. */
 export interface RenderRequest {
   request: string;
   camera: Camera | null;
+  box: Box | null;
   /** How many pieces the model had when asked; only a viewer showing that many may answer. */
   pieces: number;
 }

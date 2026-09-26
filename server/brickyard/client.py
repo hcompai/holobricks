@@ -45,8 +45,10 @@ def main() -> None:
         "script", nargs="?", default="build.py"
     )
     look = tools.add_parser(
-        "look", help="render the model in the four views, saved as render.png, or from one camera, saved as view-N.png"
+        "look",
+        help="render the model in the four views (render.png), from one camera (view-N.png), or only a box (closeup-N.png)",
     )
+    look.add_argument("box", nargs="*", type=int, metavar="x0 y0 z0 x1 y1 z1", help="only the pieces in this box")
     look.add_argument("--angle", type=float, help="seen from: 0 the front, 90 the right, 180 the back, 270 the left")
     look.add_argument("--elevation", type=float, help="degrees above the horizon: 0 eye level, 90 straight down")
     look.add_argument("--zoom", type=float, help="1 frames the whole model, 4 a quarter of its width")
@@ -63,10 +65,14 @@ def main() -> None:
     elif args.tool == "name":
         out = call("name", name=args.name)
     else:
-        out = call("look", camera=camera) if camera else call("look")
+        if args.box and len(args.box) != 6:
+            sys.exit("bricks look takes no box, or six numbers: x0 y0 z0 x1 y1 z1")
+        out = call("look", **({"camera": camera} if camera else {}), **({"box": args.box} if args.box else {}))
     print(out["text"])
     if out["images"]:
-        if camera:
+        if args.tool == "look" and args.box:
+            names = save(out["images"], "closeup", numbered=True)
+        elif camera:
             names = save(out["images"], "view", numbered=True)
         else:
             names = save(out["images"], "render")

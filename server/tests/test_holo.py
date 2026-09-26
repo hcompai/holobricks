@@ -1,6 +1,5 @@
 import asyncio
 import base64
-import contextlib
 import io
 import os
 import re
@@ -14,7 +13,7 @@ from PIL import Image
 
 from brickyard import ldraw, script
 from brickyard.builders.holo import HoloBuilder
-from brickyard.model import Build, Camera, grid
+from brickyard.model import Box, Build, Camera, grid
 from brickyard.session import Session, Store
 from brickyard.workbench import Workbench, part_line
 
@@ -96,7 +95,7 @@ for x in range(0, 32, 2):
 
 
 def test_a_script_rebuilds_from_its_first_changed_step_and_names_the_lines_of_its_problems(bench, monkeypatch):
-    monkeypatch.setattr(bench.session, "render", lambda camera=None: asyncio.sleep(0))
+    monkeypatch.setattr(bench.session, "render", lambda camera=None, box=None: asyncio.sleep(0))
     first = asyncio.run(bench.run_script(HOUSE))
     assert first.problems == 0 and "roof top 18" in first.text, first.text
     assert [s.title for s in bench.session.build.steps] == ["Walls", "Roof", "Paving"]
@@ -137,10 +136,11 @@ def test_agents_build_through_the_tools_endpoint_and_see_the_model_from_any_came
 
     store = Store(tmp_path)
     monkeypatch.setattr(app_module, "store", store)
-    cameras = []
+    cameras, boxes = [], []
 
-    async def render(self, camera=None):
+    async def render(self, camera=None, box=None):
         cameras.append(camera)
+        boxes.append(box)
         return png(120, 90)
 
     monkeypatch.setattr(Session, "render", render)
@@ -158,6 +158,10 @@ def test_agents_build_through_the_tools_endpoint_and_see_the_model_from_any_came
         assert closer["caption"] == "The view from 200 degrees, 30 up, zoom 3, centered on x 4, y 4, z 3."
         assert cameras[-1] == Camera(angle=200, zoom=3, at=(4, 4, 3))
         assert client.post(f"{tools}/look", json={"camera": {"zoom": 0}}).json()["problems"] == 1
+        closeup = client.post(f"{tools}/look", json={"box": [0, 0, 0, 12, 8, 2]}).json()
+        assert closeup["caption"].startswith("Only the 1 pieces in the box x 0-12, y 0-8, z 0-2.")
+        assert boxes[-1] == Box(x0=0, y0=0, z0=0, x1=12, y1=8, z1=2)
+        assert client.post(f"{tools}/look", json={"box": [20, 20, 0, 25, 25, 9]}).json()["problems"] == 1
         shown = store.load(build.id).messages[-1].images
         assert len(shown) == 1 and client.get(shown[0]).content == png(120, 90)
         assert client.post(f"{tools}/build", json={}).status_code == 404
@@ -191,14 +195,13 @@ def test_the_prompt_names_only_real_parts_and_colors_and_its_example_builds_clea
         code, name = entry.split(" ", 1)
         assert palette[int(code)][0].lower() == name, entry
 
-    monkeypatch.setattr(bench.session, "render", lambda camera=None: asyncio.sleep(0))
+    monkeypatch.setattr(bench.session, "render", lambda camera=None, box=None: asyncio.sleep(0))
     example = re.search(r"```python\n(.*?)```", prompt, re.DOTALL).group(1)
     result = asyncio.run(bench.run_script(example))
     assert result.problems == 0, result.text
 
 
 def test_holo_gets_the_task_on_stdin_and_stop_ends_its_whole_process_group(tmp_path, monkeypatch):
-    monkeypatch.setattr(sys.modules[HoloBuilder.__module__], "headless", lambda url, build_id: contextlib.nullcontext())
     agent = (
         "import os, subprocess, sys, time; "
         "open('task.txt', 'w').write(sys.stdin.read() + os.environ['BRICKYARD_BUILD']); "
