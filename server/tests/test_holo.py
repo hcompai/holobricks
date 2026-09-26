@@ -12,7 +12,7 @@ import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 
-from brickyard import ldraw
+from brickyard import ldraw, script
 from brickyard.builders.holo import HoloBuilder
 from brickyard.model import Build, Camera, grid
 from brickyard.session import Session, Store
@@ -118,6 +118,16 @@ def test_a_script_rebuilds_from_its_first_changed_step_and_names_the_lines_of_it
     assert "did not change" in broken.text and "line 13 `undefined()`: NameError" in broken.text
     assert bench.pieces == before
     assert "undefined()" in bench.session.build.script
+
+
+def test_a_step_builds_the_same_bricks_whatever_randomness_the_steps_before_it_use():
+    trees = 'step("Trees")\nfor x in range(0, 30, 3):\n    brick("3062b", x, random.randint(0, 31), 0, 2)\n'
+
+    def trees_after(draws: int) -> list:
+        code = f'import random\nstep("Paving")\nfor _ in range({draws}):\n    random.random()\n{trees}'
+        return script.run(code, [])["steps"][-1]["bricks"]
+
+    assert trees_after(1) == trees_after(50)
 
 
 def test_agents_build_through_the_tools_endpoint_and_see_the_model_from_any_camera_as_the_chat_does(

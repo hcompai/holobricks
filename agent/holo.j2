@@ -87,13 +87,12 @@ vary it with seeded randomness so no two copies are the same. Stack parts on the
   plate height z, turned 0, 90, 180 or 270 degrees.
 - `top(x, y, w=1, d=1) -> z`: the highest plate height filled over the rectangle so far, 0 on bare ground.
 - `print()` output comes back with the run: print a height or a count when you need to check it.
-- `import random` works; seed it (`rng = random.Random(7)`) so every run builds the same model and unchanged steps
-  are kept.
+- `random` is seeded from each step's title as the step starts, so a step builds the same bricks whatever changes
+  in the others, and unchanged steps are kept. Use it directly (`random.choice`), not a `random.Random` of your own.
 
 ```python
 import random
 
-rng = random.Random(7)
 STONE = [19, 19, 19, 28, 78]
 RUNS = {1: "3005", 2: "3004", 3: "3622", 4: "3010"}
 
@@ -101,8 +100,8 @@ def course(x, y, z, length, axis="x", glass=()):
     """One course of 1-wide bricks in random lengths and shades, so joints never line up; `glass` spots are windows."""
     i = 0
     while i < length:
-        n = 1 if i in glass else min([rng.choice([1, 2, 2, 3, 4]), length - i] + [g - i for g in glass if g > i])
-        color = rng.choice([46, 46, 40]) if i in glass else rng.choice(STONE)
+        n = 1 if i in glass else min([random.choice([1, 2, 2, 3, 4]), length - i] + [g - i for g in glass if g > i])
+        color = random.choice([46, 46, 40]) if i in glass else random.choice(STONE)
         at, turn = ((x + i, y), 0) if axis == "x" else ((x, y + i), 90)
         brick(RUNS[n], *at, z, color, turn)
         i += n
@@ -120,13 +119,13 @@ def tower(x, y, w, d, z, courses):
 
 def tree(x, y, z):
     """A trunk of round bricks and a crown of leaves, each tree its own height and turn."""
-    trunk = rng.randint(3, 5)
+    trunk = random.randint(3, 5)
     for k in range(trunk):
         brick("3062b", x, y, z + 3 * k, 70)
     crown = z + 3 * trunk
-    brick("2417", x - 2, y - 2, crown, rng.choice([2, 288, 10]), rng.choice([0, 90]))
-    brick("2423", x - 1, y - 1, crown + 1, rng.choice([2, 288, 10]), rng.choice([0, 90]))
-    brick("15470", x, y, crown + 2, rng.choice([10, 27]))
+    brick("2417", x - 2, y - 2, crown, random.choice([2, 288, 10]), random.choice([0, 90]))
+    brick("2423", x - 1, y - 1, crown + 1, random.choice([2, 288, 10]), random.choice([0, 90]))
+    brick("15470", x, y, crown + 2, random.choice([10, 27]))
 
 step("Watchtower in weathered stone, lit windows on every other storey")
 roof = tower(4, 18, 6, 6, 0, 8)
@@ -141,8 +140,8 @@ for x, y in ((22, 20), (26, 9), (14, 26)):
 step("A winding path of mixed stone")
 x = 16
 for y in range(0, 17):
-    x = max(8, min(20, x + rng.choice([-1, 0, 0, 1])))
-    brick("3069b", x, y, 0, rng.choice([71, 72, 19]))
+    x = max(8, min(20, x + random.choice([-1, 0, 0, 1])))
+    brick("3069b", x, y, 0, random.choice([71, 72, 19]))
 ```
 
 ## Coordinates and rules

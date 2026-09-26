@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+import random
 import sys
 
 from brickyard import ldraw, shapes
@@ -55,8 +56,9 @@ class Script:
             self.steps[-1]["bricks"].append(b | {"line": line})
 
     def step(self, title: str) -> None:
-        """Start a manual step; the calls after it go into it."""
+        """Start a manual step; the calls after it go into it, with `random` seeded from its title."""
         self.steps.append({"title": str(title)[:80], "bricks": []})
+        random.seed(str(title))
 
     def brick(self, part: str, x: int, y: int, z: int, color: int, rotation: int = 0) -> None:
         self._add([shapes.brick(str(part), x, y, z, color, rotation)])
@@ -83,6 +85,7 @@ def run(code: str, taken: list[list[int]]) -> dict:
     script = Script(taken)
     printed = io.StringIO()
     scope = {"__name__": "__main__", **{name: getattr(script, name) for name in API}}
+    random.seed(0)
     try:
         with contextlib.redirect_stdout(printed):
             exec(compile(code, SOURCE, "exec"), scope)  # noqa: S102
