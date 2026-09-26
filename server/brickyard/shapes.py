@@ -194,11 +194,11 @@ def hip(
 
 
 def roof(x0: int, y0: int, w: int, d: int, z: int, color: int, steep: bool = False) -> tuple[list[Brick], int]:
-    """A hipped roof with a ridge on an even-sided rectangle; also returns the z of its top."""
+    """A hipped roof on an even-sided rectangle, with a ridge or, when steep and square, a point; also returns its top z."""
     slope, rise = ("4460b", 9) if steep else ("3040b", 3)
     out, (x, y, rw, rd, top) = hip(x0, y0, w, d, z, color, slope, rise)
-    if rw == rd == 2:
-        return out, top
+    if steep and rw == rd == 2:
+        return [*out, brick("3688", x, y, top, color)], top + 6
     return out + ridge(x, y, rw, rd, top, color), top + 3
 
 

@@ -44,6 +44,8 @@ Quality bar
 textured ground, paths or streets, water, trees and small props.
 - Buildings are hollow walls with windows on every side and a real roof, never solid blocks of bricks. Give walls a \
 contrasting color for corners or a plinth, and roofs a color of their own.
+- Keep one scale across the model: a storey is 2 courses, walls are at least as tall as the roof on them, and lamps, \
+benches and fences stay below the eaves.
 - Add the details that make it recognizable: trims and stripes in accent colors, and shaped parts like slopes, round \
 bricks, cones, arches and fences instead of only plain bricks.
 
@@ -62,14 +64,14 @@ Recipes that work (shift z up by the ground height if the spot is paved)
 - Ground: build the buildings first, then fill the whole baseplate at z=0 with tiles and a palette; fill leaves out \
 the cells buildings take. Paving [[71, 5], [72, 2], [19, 1]], grass [[2, 4], [10, 2], [288, 1]], water [[272, 5], \
 [1, 2], [73, 1]].
-- House: walls with windows (trans black 40, or trans yellow 46 for lit rooms) and a door opening, then a roof on the \
-walls' top z, with steep true for tall Gothic or Nordic roofs.
-- Tower: square walls with narrow windows, or stacked round bricks (3941 is 2x2, 3062b is 1x1); a 3942c cone or a \
-steep roof on top, and 4589 cones on the corners as pinnacles.
+- House: walls of 2 courses per storey with windows on courses 1, 3, 5 (trans black 40, or trans yellow 46 for lit \
+rooms) and a door opening, then a roof on the walls' top z, with steep true for tall Gothic or Nordic roofs.
+- Tower and spire: square walls with narrow windows, or stacked round bricks (3941 is 2x2, 3062b is 1x1). A steep \
+roof on a square tower ends in a point, a spire; 4589 cones on the corners make pinnacles.
 - Tree on a free 4x4 spot at (x, y): 3941 in reddish brown 70 at (x+1, y+1) for z 0, 3 and 6; then a 4x4 round \
 brick 87081 at (x, y, z=9) in green 2, another 6222 at (x, y, z=12) in dark green 288, and a 3941 in bright green 10 at \
 (x+1, y+1, z=15).
-- Street lamp: three 3062b in black stacked, a 3062b in trans yellow 46, a 4589 cone in black.
+- Street lamp: a 3062b in black, a 3062b in trans yellow 46 on it, and a 4589 cone in black on top.
 - Doors and gates: an opening 2 or 4 wide and 2 courses high with arch true.
 - Window 60592 gets its glass automatically; put it in a wall opening with a black brick behind it.
 
@@ -174,7 +176,8 @@ TOOLS = [
     _tool(
         "roof",
         "One step of a plate ceiling over the rectangle at z, then a hipped roof of slopes on it; w and d must be "
-        "even. Put it on the walls' top z. Returns the top z.",
+        "even. Put it on the walls' top z. It rises about 1.5 plates per stud of its shorter side, 4.5 when steep. "
+        "Returns the top z.",
         optional=("steep",),
         title=TITLE,
         **AREA,
