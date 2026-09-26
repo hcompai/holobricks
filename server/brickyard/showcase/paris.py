@@ -511,8 +511,9 @@ def _piers() -> set[tuple[int, int]]:
 async def bridge(kit: Kit) -> None:
     x0, _, w, d = BRIDGE
     east = x0 + w - 1
+    passage = {(x0, 6), (east, 6)}
     for z in range(1, 25, 3):
-        cells = _piers() if z < 13 else rect(x0, 5, w, 2) - {(x0, 5), (east, 5)}
+        cells = _piers() if z < 13 else rect(x0, 5, w, 2) - {(x0, 5), (east, 5)} - (passage if z >= 19 else set())
         kit.cover(cells, z, LBG, BRICKS)
     kit.add("3039", *min(CUTWATER), 13, LBG, 90)
     await kit.step("Bridge pier with its cutwater")
@@ -520,11 +521,14 @@ async def bridge(kit: Kit) -> None:
         kit.add("15254", x, 0, 13, LBG, 90)
         for z in (19, 22):
             kit.run(x, 0, z, 6, LBG, "y", EMBOSSED, stagger=z == 22)
-        kit.add("6182", x, RIVER, DOCK, LBG, 90)
-        for z in range(DOCK + 6, 26, 3):
-            kit.run(x, RIVER, z, 4, LBG, "y", EMBOSSED)
-    await kit.step("Arches over the river and the towpath")
-    kit.cover(rect(x0, 0, w, RIVER), 25, LBG)
+        for z in range(DOCK, 26, 3):
+            kit.add("3005", x, 10, z, LBG)
+            if z < 20:
+                kit.add("3005", x, 9, z, LBG)
+        kit.add("3024", x, 6, 19, LBG)
+        kit.add("6182", x, 6, 20, LBG, 90)
+    await kit.step("Arches over the river and a passage under the bridge")
+    kit.cover(rect(x0, 0, w, RIVER) - passage, 25, LBG)
     for y, color in ((0, LBG), (2, DBG), (4, DBG)):
         kit.add("15254", x0 + 1, y, 19, color)
     await kit.step("Vault ribs under the deck")
@@ -536,7 +540,9 @@ async def bridge(kit: Kit) -> None:
             kit.add("3024", x, y, 25, LBG)
         kit.run(x, 0, GROUND, 9, VLBG, "y", TILE_RUN)
     kit.mount("14769", x0 - 1, 2, 19, PGOLD, "west")
-    await kit.step("Corbels under the cornice and a gilded medallion")
+    kit.add("3024", x0 + 3, 8, 25, BLACK)
+    kit.add("3062b", x0 + 3, 8, 22, TYELLOW)
+    await kit.step("Corbels, a gilded medallion and a lantern in the passage")
     for x in (x0 + 1, east - 1):
         kit.run(x, 0, GROUND, d, LBG, "y", TILE_RUN)
     for x in (x0, east):
@@ -574,7 +580,7 @@ async def streets(kit: Kit, built: set[tuple[int, int]]) -> None:
 
 async def dock(kit: Kit) -> None:
     stair_cells = {(x, y) for x, _ in STAIRS for y in (9, 10)} | {(STAIRS[0][0] - 1, 9)}
-    sides = {(x, y) for x in (BRIDGE[0], BRIDGE[0] + BRIDGE[2] - 1) for y in range(RIVER, QUAY)}
+    sides = {(x, y) for x in (BRIDGE[0], BRIDGE[0] + BRIDGE[2] - 1) for y in (9, 10)}
     picnic = rect(4, 7, 2, 2)
     cells = rect(0, RIVER, W, QUAY - RIVER) - stair_cells - sides - picnic
     kit.cover(cells, DOCK, LBG, TILES)
@@ -589,8 +595,9 @@ async def dock(kit: Kit) -> None:
         kit.add("3062b", x, RIVER, z, BLACK)
     bench(kit, 5, 10, "x", DOCK)
     bench(kit, 16, 7, "x", DOCK)
-    lamp(kit, 22, 8, DOCK)
-    await kit.step("Life on the dock: bollards, benches, a lamp")
+    await kit.step("Life on the dock: bollards and benches")
+    plane(kit, 8, 8, DOCK, YOUNG, 4)
+    await kit.step("A young plane tree on the dock")
 
 
 async def barge(kit: Kit) -> None:
@@ -603,15 +610,15 @@ async def barge(kit: Kit) -> None:
     kit.ring(*cabin, 5, 1, WHITE, lambda x, y, c: (x, y) in glass)
     for x, y in glass:
         kit.add("3005", x, y, 5, 43)
-    kit.fill(*cabin, 8, DRED)
+    kit.fill(*cabin, 8, DBG)
     await kit.step("Péniche cabin")
-    for i, x in enumerate(range(x0 + 1, x0 + 7, 2)):
-        kit.add("3062b", x, y0, 5, DORANGE)
-        kit.add("6141", x, y0, 8, [RED, YELLOW, 5][i])
+    for x in range(x0 + 1, x0 + 7, 2):
+        kit.add("3062b", x, y0, 5, DBG)
+        kit.add("6141", x, y0, 8, GREEN)
     table(kit, x0 + 4, y0 + 1, [(x0 + 3, y0 + 1), (x0 + 5, y0 + 1)], WHITE, 4)
-    for x, y, color in ((x0 + 9, y0 + 1, GREEN), (x0 + 12, y0 + 1, BGREEN)):
-        kit.add("3062b", x, y, 9, DORANGE)
-        kit.add("4589", x, y, 12, color)
+    for x, y in ((x0 + 9, y0 + 1), (x0 + 12, y0 + 1)):
+        kit.add("3062b", x, y, 9, DBG)
+        kit.add("4589", x, y, 12, GREEN)
     await kit.step("Flower pots and a deck table")
 
 
@@ -649,6 +656,10 @@ PLANE = [
     [("2417", 0, 0, -1, BGREEN), ("2417", 180, 0, 1, GREEN)],
     [("2423", 90, 0, 0, GREEN), ("2423", 270, 0, 0, BGREEN)],
 ]
+YOUNG = [
+    [("2417", 90, -1, 0, GREEN), ("2417", 270, 1, 0, BGREEN)],
+    [("2423", 90, 0, 0, BGREEN), ("2423", 270, 0, 0, GREEN)],
+]
 CHESTNUT = [("2417", 0, DGREEN), ("2417", 90, GREEN), ("2417", 180, DGREEN), ("2417", 270, GREEN)]
 
 
@@ -660,13 +671,14 @@ def leaf(kit: Kit, part: str, x: int, y: int, z: int, color: int, rotation: int,
         kit.add(bloom[0], x + r[0] * sx + r[2] * sy, y + r[6] * sx + r[8] * sy, z + 1, bloom[1])
 
 
-def plane(kit: Kit, x: int, y: int) -> None:
-    z = GROUND + 1
-    for c, color in enumerate((DTAN, TAN, DTAN, TAN, DTAN)):
-        kit.add("3062b", x, y, z + 3 * c, color)
-    kit.add("11212", x - 1, y - 1, z + 15, DGREEN)
-    z += 16
-    for n, tier in enumerate(PLANE):
+def plane(kit: Kit, x: int, y: int, ground: int = GROUND, tiers=PLANE, trunk: int = 5) -> None:
+    z = ground + 1
+    for c in range(trunk):
+        kit.add("3062b", x, y, z + 3 * c, (DTAN, TAN)[c % 2])
+    z += 3 * trunk
+    kit.add("11212", x - 1, y - 1, z, DGREEN)
+    z += 1
+    for n, tier in enumerate(tiers):
         if n:
             kit.add("3062b", x, y, z, GREEN)
             z += 3
