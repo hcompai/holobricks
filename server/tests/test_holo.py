@@ -110,3 +110,30 @@ def test_holo_loop_executes_tool_calls_until_a_plain_reply(tmp_path):
     assert "placed 1 pieces as #2-#2" in tool_result["content"]
     events = [thoughts.get_nowait() for _ in range(thoughts.qsize())]
     assert any(e["type"] == "thinking" and "red brick" in e["text"] for e in events)
+
+
+def test_holo_survives_rate_limits_and_bad_tool_arguments(tmp_path):
+    calls = [
+        {"index": 0, "id": "a", "function": {"name": "add_bricks", "arguments": '{"bricks": null}'}},
+        {"index": 1, "id": "b", "function": {"name": "remove_bricks", "arguments": '{"ids": ["x"]}'}},
+        {"index": 2, "id": "c", "function": {"name": "list_pieces", "arguments": "[]"}},
+    ]
+    turns = [
+        httpx.Response(429, headers={"retry-after": "0"}),
+        httpx.Response(200, content=sse({"choices": [{"delta": {"tool_calls": calls}}]})),
+        httpx.Response(200, content=sse({"choices": [{"delta": {"content": "Done."}, "finish_reason": "stop"}]})),
+    ]
+    requests = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        requests.append(json.loads(request.content))
+        return turns[len(requests) - 1]
+
+    builder = HoloBuilder("holo", "http://holo.test/v1", "key", transport=httpx.MockTransport(respond))
+    session = Session(Build(prompt="p"), Store(tmp_path))
+    asyncio.run(builder.run(session, "p"))
+
+    results = [m["content"] for m in requests[-1]["messages"] if m["role"] == "tool"]
+    assert "add_bricks failed" in results[0] and "remove_bricks failed" in results[1]
+    assert "must be a JSON object" in results[2]
+    assert session.build.messages[-1].text == "Done."

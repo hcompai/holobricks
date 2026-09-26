@@ -20,6 +20,7 @@ from brickyard.workbench import COMMON_COLORS, COMMON_PARTS, Result, Workbench, 
 GREEN = 2
 THINK_FLUSH_S = 0.25
 RETRIES = 3
+RETRY_CAP_S = 60
 
 PROMPT = """You are Holo, a LEGO master builder working in Brickyard. You build what the user asks on a {width}x{depth} stud \
 baseplate with real LDraw parts, one instruction-manual step at a time, while the user watches each step appear in 3D.
@@ -285,13 +286,16 @@ class HoloBuilder:
                         )
                         continue
                     return
+                shown = []
                 for call in reply.calls.values():
                     result = await self._call(bench, call)
                     messages.append({"role": "tool", "tool_call_id": call["id"], "content": result.text})
                     if result.note:
                         await session.say(result.note, role="tool")
                     if result.images:
-                        self._show(messages, result)
+                        shown.append(result)
+                for result in shown:
+                    self._show(messages, result)
         await session.say(f"Stopped after {self.max_turns} turns.", role="system")
 
     @staticmethod
@@ -322,6 +326,8 @@ class HoloBuilder:
             args = json.loads(call["arguments"] or "{}")
         except json.JSONDecodeError as e:
             return Result(f"Arguments are not valid JSON ({e}). Resend the call.")
+        if not isinstance(args, dict):
+            return Result("Arguments must be a JSON object. Resend the call.")
         tools = {
             "add_bricks": lambda: bench.add(str(args.get("title", "Step")), list(args.get("bricks", []))),
             "walls": lambda: bench.walls(str(args.pop("title", "Walls")), args),
@@ -336,7 +342,10 @@ class HoloBuilder:
         }
         if call["name"] not in tools:
             return Result(f"Unknown tool {call['name']}. Available: {', '.join(tools)}.")
-        return await tools[call["name"]]()
+        try:
+            return await tools[call["name"]]()
+        except (TypeError, ValueError, LookupError, AttributeError) as e:
+            return Result(f"{call['name']} failed on these arguments ({type(e).__name__}: {e}). Fix them and resend.")
 
     async def _complete(self, client: httpx.AsyncClient, session: Session, messages: list[dict]) -> Reply:
         body = {
@@ -351,8 +360,9 @@ class HoloBuilder:
             session.think("", reset=True)
             try:
                 async with client.stream("POST", self.url, json=body, headers=headers) as response:
-                    if response.status_code >= 500 and attempt < RETRIES - 1:
-                        await asyncio.sleep(2**attempt)
+                    if (response.status_code == 429 or response.status_code >= 500) and attempt < RETRIES - 1:
+                        wait = response.headers.get("retry-after", "")
+                        await asyncio.sleep(min(int(wait), RETRY_CAP_S) if wait.isdigit() else 2**attempt)
                         continue
                     if response.status_code != 200:
                         size = len(json.dumps(body["messages"]))
