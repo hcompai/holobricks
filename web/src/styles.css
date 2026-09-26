@@ -250,13 +250,13 @@ aside {
 
 .msg.user {
   align-self: flex-end;
-  background: var(--background-primary);
-  color: var(--text-on-primary);
+  background: var(--background-muted);
 }
 
 .msg.assistant {
-  align-self: flex-start;
-  background: var(--background-muted);
+  align-self: stretch;
+  max-width: none;
+  padding: 0 2px;
 }
 
 .msg.system {
@@ -271,7 +271,7 @@ aside {
   color: var(--text-tertiary);
   font-size: 12px;
   line-height: 16px;
-  padding: 0 12px;
+  padding: 0 2px;
 }
 
 .msg-render {
@@ -313,9 +313,6 @@ aside {
 }
 
 .msg.thinking {
-  width: 88%;
-  background: none;
-  padding-left: 2px;
   display: flex;
   flex-direction: column;
   gap: 6px;
