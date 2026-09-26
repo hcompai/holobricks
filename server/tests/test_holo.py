@@ -155,14 +155,15 @@ def test_agents_build_through_the_tools_endpoint_and_see_the_model_from_any_came
     assert store.load(build.id).script == code
 
 
-def test_a_viewer_that_connects_after_a_render_request_still_answers_it(tmp_path):
+def test_a_render_is_answered_by_a_late_viewer_but_never_by_a_stale_one(tmp_path):
     async def main() -> bytes | None:
         session = Session(Build(), Store(tmp_path))
         waiting = asyncio.create_task(session.render(Camera(angle=90), timeout=5))
         await asyncio.sleep(0)
         event = session.subscribe().get_nowait()
         assert event["type"] == "render" and event["camera"]["angle"] == 90
-        session.deliver_render(event["request"], b"png")
+        assert not session.deliver_render(event["request"], b"stale", event["pieces"] + 1)
+        assert session.deliver_render(event["request"], b"png", event["pieces"])
         return await waiting
 
     assert asyncio.run(main()) == b"png"

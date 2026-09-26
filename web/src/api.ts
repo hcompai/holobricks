@@ -64,6 +64,8 @@ export interface Camera {
 export interface RenderRequest {
   request: string;
   camera: Camera | null;
+  /** How many pieces the model had when asked; only a viewer showing that many may answer. */
+  pieces: number;
 }
 
 export type BuildEvent =
@@ -129,7 +131,7 @@ export const api = {
   say: (id: string, text: string) => json<BuildSummary>(post(`/api/builds/${id}/messages`, { text })),
   stop: (id: string) => post(`/api/builds/${id}/stop`, {}),
   events: (id: string) => new EventSource(`/api/builds/${id}/events`),
-  putRender: (id: string, request: string, png: Blob) =>
-    fetch(`/api/builds/${id}/renders/${request}`, { method: "PUT", body: png }),
+  putRender: (id: string, request: string, png: Blob, pieces: number) =>
+    fetch(`/api/builds/${id}/renders/${request}`, { method: "PUT", body: png, headers: { "X-Pieces": String(pieces) } }),
   putThumbnail: (id: string, png: Blob) => fetch(`/api/builds/${id}/thumbnail.png`, { method: "PUT", body: png }),
 };

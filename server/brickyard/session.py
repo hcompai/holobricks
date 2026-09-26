@@ -93,6 +93,12 @@ class Session:
     def unsubscribe(self, queue: asyncio.Queue[dict]) -> None:
         self.subscribers.discard(queue)
 
+    def reload(self, build: Build) -> None:
+        """Swaps in the build as saved on disk and has every open viewer resync to it."""
+        self.build = build
+        for queue in self.subscribers:
+            queue.put_nowait({"type": "hello", "build": build.summary()})
+
     def _publish(self, event: dict) -> None:
         self.store.save(self.build)
         for queue in self.subscribers:
@@ -129,7 +135,12 @@ class Session:
         """Ask an open viewer to render the model, in the four standard views unless `camera` is set; None when no viewer answers in time."""
         request = uuid.uuid4().hex[:8]
         future: asyncio.Future[bytes] = asyncio.get_running_loop().create_future()
-        event = {"type": "render", "request": request, "camera": camera.model_dump() if camera else None}
+        event = {
+            "type": "render",
+            "request": request,
+            "camera": camera.model_dump() if camera else None,
+            "pieces": len(self.build.pieces),
+        }
         self.renders[request] = (event, future)
         for queue in self.subscribers:
             queue.put_nowait(event)
@@ -140,8 +151,11 @@ class Session:
         finally:
             self.renders.pop(request, None)
 
-    def deliver_render(self, request: str, png: bytes) -> bool:
+    def deliver_render(self, request: str, png: bytes, pieces: int | None) -> bool:
+        """Takes a viewer's render if it shows the model as it was when asked, so a stale tab can't answer."""
         if request not in self.renders or (future := self.renders[request][1]).done():
+            return False
+        if pieces != self.renders[request][0]["pieces"]:
             return False
         future.set_result(png)
         return True

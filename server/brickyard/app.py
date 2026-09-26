@@ -76,7 +76,10 @@ def session_for(build_id: str) -> Session:
     if build is None:
         raise HTTPException(404, f"no build {build_id}")
     if session:
-        session.build = build
+        if len(build.pieces) != len(session.build.pieces) or len(build.steps) != len(session.build.steps):
+            session.reload(build)
+        else:
+            session.build = build
     else:
         session = sessions[build_id] = Session(build, store)
     return session
@@ -206,7 +209,9 @@ async def get_sheet(
 
 @app.put("/api/builds/{build_id}/renders/{request}")
 async def put_render(build_id: str, request: str, body: Request) -> dict:
-    return {"accepted": session_for(build_id).deliver_render(request, await body.body())}
+    pieces = body.headers.get("x-pieces")
+    png = await body.body()
+    return {"accepted": session_for(build_id).deliver_render(request, png, int(pieces) if pieces else None)}
 
 
 @app.get("/api/builds/{build_id}/events")
