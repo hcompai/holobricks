@@ -5,11 +5,8 @@ cd "$(dirname "$0")/.."
 
 builds=(
   38cbc874d1 # Hogwarts
-  dc236772ca # London in layers
+  8adddc265f # London, Mind the Gap
   359bdac621 # Paris, the Seine at Saint-Germain
-  2022dadb04 # Holo: Tower Bridge
-  4b297daed0 # Holo: Cozy Village Square
-  a176bde93b # Holo: Red and White Lighthouse
 )
 
 [[ -f web/.vercel/project.json ]] || (cd web && vercel link --yes --scope h-company --project brickyard)

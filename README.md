@@ -16,7 +16,7 @@ Shape tools (`walls`, `fill`, `roof`) versus brick-by-brick only, same Holo, sam
 
 Showcase dioramas, hand-scripted by Claude through the same validated workbench (`python -m brickyard.showcase paris|hogwarts|london`):
 
-| Paris, the Seine at Saint-Germain (32x32, 2,169 pieces) | Hogwarts (64x64, 5,294 pieces) | London in layers (32x32, 1,555 pieces) |
+| Paris, the Seine at Saint-Germain (32x32, 2,169 pieces) | Hogwarts (64x64, 5,294 pieces) | London, Mind the Gap (32x32, 1,555 pieces) |
 | --- | --- | --- |
 | ![Paris](docs/paris.jpg) | ![Hogwarts](docs/hogwarts.jpg) | ![London](docs/london.jpg) |
 

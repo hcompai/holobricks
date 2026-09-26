@@ -1,4 +1,4 @@
-"""London in layers: a 32x32 microscale slice from a Tube platform up to Big Ben, with Tower Bridge on the Thames."""
+"""London, Mind the Gap: a 32x32 microscale slice from a Tube platform up to Big Ben, with Tower Bridge on the Thames."""
 
 from __future__ import annotations
 
@@ -44,18 +44,18 @@ GHERKIN = (1, 25)
 EMBANKMENT = {(QUAY, y) for y in (*range(6, 10), *range(22, D))}
 WATER = [(DBLUE, 4), (SBLUE, 3), (33, 1)]
 
-PROMPT = "London in layers: a 32x32 microscale diorama from a Tube platform up to Big Ben, with Tower Bridge"
+PROMPT = "London, Mind the Gap: a 32x32 microscale diorama from a Tube platform up to Big Ben, with Tower Bridge"
 STORY = [
     (
         "Hand-scripted by Claude, as a showcase of what Brickyard's parts and checks can do. Every step went through "
         "the same validation Holo uses; ask for a change and Holo takes over."
     ),
     (
-        "London in layers: under the street, a Tube train waits at a platform behind Victorian brick arches, with a "
-        "roundel on the tiled wall and stairs up to the pavement. Above, a Routemaster rolls under Tower Bridge's "
-        "twin Gothic towers and blue walkway; a zebra crossing with Belisha beacons, red phone boxes, a pillar box, a "
-        "corner pub and pastel terraces over lit basement areas; Parliament and Big Ben on the Thames, a tour boat and "
-        "a red-sailed barge, a London plane in a railed garden square and the Gherkin behind."
+        "A slice of London in three levels: under the street, a Tube train waits at a platform behind Victorian brick "
+        "arches, with a roundel on the tiled wall and stairs up to the pavement. Above, a Routemaster rolls under "
+        "Tower Bridge's twin Gothic towers and blue walkway; a zebra crossing with Belisha beacons, red phone boxes, a "
+        "pillar box, a corner pub and pastel terraces over lit basement areas; Parliament and Big Ben on the Thames, a "
+        "tour boat and a red-sailed barge, a London plane in a railed garden square and the Gherkin behind."
     ),
 ]
 
@@ -510,7 +510,7 @@ async def traffic(kit: Kit) -> None:
 
 
 async def build() -> Kit:
-    kit = Kit("London in layers", PROMPT, W, D)
+    kit = Kit("London, Mind the Gap", PROMPT, W, D)
     rng = random.Random(11)
     await base(kit, rng)
     await station(kit)
