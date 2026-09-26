@@ -19,6 +19,7 @@ ROTATIONS: dict[int, Matrix] = {
     180: (-1, 0, 0, 0, 1, 0, 0, 0, -1),
     270: (0, 0, -1, 0, 1, 0, 1, 0, 0),
 }
+YAWS = set(ROTATIONS.values())
 
 
 class Piece(BaseModel):
@@ -110,21 +111,21 @@ def place(part: str, x: int, y: int, z: int, color: int, rotation: int = 0) -> P
     """Center `part` on the footprint starting at stud (x, y), bottom at plate z, turned `rotation` degrees."""
     info = ldraw.info(part)
     rot = ROTATIONS[rotation]
-    corners = [(cx, cz) for cx in (info.lo[0], info.hi[0]) for cz in (info.lo[2], info.hi[2])]
-    turned = [(rot[0] * cx + rot[2] * cz, rot[6] * cx + rot[8] * cz) for cx, cz in corners]
-    lo_x, hi_x = min(c[0] for c in turned), max(c[0] for c in turned)
-    lo_z, hi_z = min(c[1] for c in turned), max(c[1] for c in turned)
-    width, depth = round((hi_x - lo_x) / ldraw.STUD), round((hi_z - lo_z) / ldraw.STUD)
+    (width, depth), (cx, cz) = _footprint(info, rot)
     return Placement(
         part=info.part,
         color=color,
-        pos=(
-            (x + width / 2) * ldraw.STUD - (lo_x + hi_x) / 2,
-            -z * ldraw.PLATE - info.hi[1],
-            (y + depth / 2) * ldraw.STUD - (lo_z + hi_z) / 2,
-        ),
+        pos=((x + width / 2) * ldraw.STUD - cx, -z * ldraw.PLATE - info.hi[1], (y + depth / 2) * ldraw.STUD - cz),
         rot=rot,
     )
+
+
+def _footprint(info: ldraw.PartInfo, rot: Matrix) -> tuple[tuple[int, int], tuple[float, float]]:
+    """Footprint size in studs and center in LDU along world x and z, for a part turned by the yaw `rot`."""
+    w, d = info.footprint
+    cx, cz = info.center
+    turned = (w, d) if rot[0] else (d, w)
+    return turned, (rot[0] * cx + rot[2] * cz, rot[6] * cx + rot[8] * cz)
 
 
 FACINGS: dict[str, Matrix] = {
@@ -169,7 +170,7 @@ Vec = tuple[float, float, float]
 
 
 def bounds(p: Placement | Piece) -> tuple[Vec, Vec]:
-    """World-space bounding box in LDU, studs included."""
+    """World-space box in LDU that the piece fills, studs included; for turned pieces, only within the footprint."""
     info = ldraw.info(p.part)
     r = p.rot
     corners = [
@@ -179,9 +180,13 @@ def bounds(p: Placement | Piece) -> tuple[Vec, Vec]:
         (r[0] * x + r[1] * y + r[2] * z, r[3] * x + r[4] * y + r[5] * z, r[6] * x + r[7] * y + r[8] * z)
         for x, y, z in corners
     ]
-    lo = tuple(min(c[k] for c in world) + p.pos[k] for k in range(3))
-    hi = tuple(max(c[k] for c in world) + p.pos[k] for k in range(3))
-    return lo, hi  # type: ignore[return-value]
+    lo = [min(c[k] for c in world) + p.pos[k] for k in range(3)]
+    hi = [max(c[k] for c in world) + p.pos[k] for k in range(3)]
+    if tuple(r) in YAWS:
+        (w, d), (cx, cz) = _footprint(info, tuple(r))
+        for k, center, half in ((0, cx + p.pos[0], w * ldraw.STUD / 2), (2, cz + p.pos[2], d * ldraw.STUD / 2)):
+            lo[k], hi[k] = max(lo[k], center - half), min(hi[k], center + half)
+    return tuple(lo), tuple(hi)  # type: ignore[return-value]
 
 
 def grid(p: Placement | Piece) -> tuple[int, int, int, int | None]:

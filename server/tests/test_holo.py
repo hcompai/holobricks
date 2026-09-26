@@ -47,6 +47,22 @@ def test_workbench_places_valid_bricks_and_explains_every_rejection(bench):
     assert placed == [(4, 4, 0, 0), (10, 10, 6, 0), (4, 4, 3, 90)]
 
 
+def test_overhanging_parts_only_fill_their_footprint(bench):
+    result = asyncio.run(
+        bench.add(
+            "Garden",
+            [
+                brick(part="3742", x=0, y=0, color=4),
+                brick(part="3005", x=1, y=0),
+                brick(part="4085c", x=5, y=5),
+                brick(part="3005", x=5, y=6),
+            ],
+        )
+    )
+    assert "placed 4 pieces" in result.text, result.text
+    assert [grid(p)[:2] for p in bench.pieces[1:]] == [(0, 0), (1, 0), (5, 5), (5, 6)]
+
+
 def test_window_frames_come_with_glass_and_removal_updates_the_build(bench):
     asyncio.run(bench.add("Window", [brick(part="60592", x=2, y=2, color=15)]))
     assert [p.part for p in bench.pieces[1:]] == ["60592.dat", "60601.dat"]

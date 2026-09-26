@@ -14,6 +14,7 @@ STUD = 20
 PLATE = 8
 
 Point = tuple[float, float, float]
+DIMS = re.compile(r"(?<![\d.])(\d+) x (\d+)(?![\d.])")
 
 
 def normalize(name: str) -> str:
@@ -119,9 +120,34 @@ class PartInfo:
     hi: Point
 
     @property
+    def exact(self) -> bool:
+        """Whether the geometry spans whole studs, so nothing sticks out past the body."""
+        return all(abs(e - round(e)) < 0.05 for e in self._extent)
+
+    @property
+    def _extent(self) -> tuple[float, float]:
+        return (self.hi[0] - self.lo[0]) / STUD, (self.hi[2] - self.lo[2]) / STUD
+
+    @property
     def footprint(self) -> tuple[int, int]:
-        """Studs along x and z at rotation 0."""
-        return round((self.hi[0] - self.lo[0]) / STUD), round((self.hi[2] - self.lo[2]) / STUD)
+        """Studs along x and z at rotation 0; clips, pins or leaves sticking out past the body are not counted."""
+        ex, ez = self._extent
+        match = None if self.exact else DIMS.search(self.title)
+        if match:
+            small, large = sorted(int(v) for v in match.groups())
+            w, d = (large, small) if ex >= ez else (small, large)
+            if w <= ex + 0.5 and d <= ez + 0.5:
+                return w, d
+        return max(1, round(ex)), max(1, round(ez))
+
+    @property
+    def center(self) -> tuple[float, float]:
+        """Footprint center along x and z: the origin when the body sits around it, else the geometry's center."""
+        w, d = self.footprint
+        spans = ((self.lo[0], self.hi[0], w), (self.lo[2], self.hi[2], d))
+        if not self.exact and all(lo <= 0.5 - n * STUD / 2 and hi >= n * STUD / 2 - 0.5 for lo, hi, n in spans):
+            return 0.0, 0.0
+        return (self.lo[0] + self.hi[0]) / 2, (self.lo[2] + self.hi[2]) / 2
 
     @property
     def plates(self) -> int:
