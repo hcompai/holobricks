@@ -1,88 +1,478 @@
-"""Westminster, London: a 48x48 microscale diorama."""
+"""London, Mind the Gap: a 32x32 microscale slice from a Tube platform up to Big Ben, with Tower Bridge on the Thames."""
 
 from __future__ import annotations
 
 import random
 
-from brickyard.shapes import TILE_RUN, TILES, rect
-from brickyard.showcase.kit import Frame, Kit
-from brickyard.showcase.paris import tree
+from brickyard.shapes import BRICKS, PLATES, TILE_RUN, TILES, rect
+from brickyard.showcase.kit import Kit
+from brickyard.showcase.paris import EMBOSSED, bench, lamp, plane
 
 BLACK, WHITE, BLUE, GREEN, RED, BGREEN, DGREEN, DRED = 0, 15, 1, 2, 4, 10, 288, 320
 LBG, DBG, VLBG, TAN, DTAN, PGOLD, DBLUE, SBLUE = 71, 72, 151, 19, 28, 297, 272, 379
-TBLACK, TYELLOW, TORANGE = 40, 46, 57
+TBLACK, TYELLOW, TORANGE, RBROWN, DORANGE, YELLOW = 40, 46, 57, 70, 484, 14
+PINK, LBLUE, LYELLOW, MBLUE, ORANGE, AZURE = 13, 212, 226, 73, 191, 322
 
-W = D = 48
-GROUND = 8
-RIVER = 14
-PAVILIONS = [(2, 16, 6, 8, 6, True), (8, 16, 14, 8, 5, False), (22, 16, 6, 8, 6, True)]
-BACK = (8, 28, 20, 6)
-VICTORIA = (1, 24, 6, 6)
-LANTERN = (13, 24, 4, 4)
-CLOCK = (30, 16, 4, 4)
-RIBS = [*range(2, 28, 2), 27]
-ROADS = rect(37, RIVER, 4, D - RIVER) | rect(0, 34, 41, 4)
-ZEBRA = rect(37, 24, 4, 4)
-GRASS = rect(2, 39, 30, 8)
-PATHS = rect(16, 39, 2, 8) | rect(2, 42, 30, 2)
-WATER = [(DBLUE, 6), (SBLUE, 3), (BLUE, 1)]
+W = D = 32
+GROUND = 14
+PLATFORM = 4
+QUAY = 19
+RIVER = rect(QUAY + 1, 0, W - QUAY - 1, D)
+TOWERS = (20, 28)
+BOAT = (26, 12, 2, 8)
+BARGE = (21, 21, 2, 7)
+STATION = rect(0, 0, QUAY, 9)
+PIERS = (1, 6, 7, 12, 13, 18)
+TRAIN = (6, 1, 12, 2)
+CAB = 17
+DOORS = {8, 9, 13, 14}
+STAIRS = [(7, 13), (8, 11), (9, 9), (10, 7)]
+OPENING = rect(7, 6, 4, 2)
+PIT = rect(1, 9, 8, 2)
+BASEMENT = rect(1, 11, 8, 1)
+ROADS = rect(0, 1, W, 4) | rect(12, 5, 2, D - 5)
+ZEBRA = rect(14, 1, 4, 4)
+PALACE = (14, 10, 6, 12)
+YARD = rect(14, 22, 6, 10)
+CLOCK = (15, 25, 4, 4)
+TERRACE = (0, 11, 12, 7)
+PUB = 9
+HOUSES = [(6, PINK, RED), (3, LBLUE, BLACK), (0, LYELLOW, DBLUE)]
+GARDEN = rect(5, 19, 7, 13)
+PLAZA = rect(0, 18, 5, 14)
+GHERKIN = (1, 25)
+EMBANKMENT = {(QUAY, y) for y in (*range(6, 10), *range(22, D))}
+WATER = [(DBLUE, 4), (SBLUE, 3), (33, 1)]
 
-PROMPT = "Westminster in London, microscale diorama with Big Ben, the Houses of Parliament and the Thames"
+PROMPT = "London, Mind the Gap: a 32x32 microscale diorama from a Tube platform up to Big Ben, with Tower Bridge"
 STORY = [
     (
         "Hand-scripted by Claude, as a showcase of what Brickyard's parts and checks can do. Every step went through "
         "the same validation Holo uses; ask for a change and Holo takes over."
     ),
     (
-        "Nods: Elizabeth Tower with its four clock faces, the Houses of Parliament's Gothic river front and Victoria "
-        "Tower, the green Westminster Bridge with a Routemaster and a black cab, a Thames tour boat, a zebra crossing "
-        "with Belisha beacons, red phone boxes, a pillar box, the Red Lion pub and Churchill in Parliament Square."
+        "A slice of London in three levels: under the street, a Tube train waits at a platform behind Victorian brick "
+        "arches, with a roundel on the tiled wall and stairs up to the pavement. Above, a Routemaster rolls under "
+        "Tower Bridge's twin Gothic towers and blue walkway; a zebra crossing with Belisha beacons, red phone boxes, a "
+        "pillar box, a corner pub and pastel terraces over lit basement areas; Parliament and Big Ben on the Thames, a "
+        "tour boat and a red-sailed barge, a London plane in a railed garden square and the Gherkin behind."
     ),
 ]
 
 
-def column(kit: Kit, x: int, y: int, z: int, courses: int, color: int) -> int:
-    for _ in range(courses // 3):
-        kit.add("14716", x, y, z, color)
-        z += 9
-    for _ in range(courses % 3):
-        kit.add("3005", x, y, z, color)
-        z += 3
-    return z
+def _block(x: int, y: int, c: int) -> int:
+    if x == QUAY:
+        return DBG if c == 0 or (3 * y + 5 * c) % 7 == 0 else LBG
+    return RBROWN if y == 0 else DBG
 
 
-async def base(kit: Kit) -> None:
+def _tiles(x: int, z: int) -> int:
+    r = z - 6
+    if r == 3 and 12 <= x <= 17:
+        return BLUE
+    if r in (0, 6) and x in (14, 15):
+        return RED
+    if r in (1, 2, 4, 5) and x in (13, 16):
+        return RED
+    if r in (1, 2, 4, 5) and x in (14, 15):
+        return WHITE
+    if 6 <= z <= 10 and 3 <= x <= 5:
+        return ORANGE
+    if 6 <= z <= 10 and 1 <= x <= 2:
+        return AZURE
+    return DBG if z == PLATFORM else TAN
+
+
+def _paint(kit: Kit, cells: set[tuple[int, int]], z: int, shade, sizes=BRICKS) -> None:
+    """Covers cells in groups of the same `shade(x, y)` so no part spans two colors."""
+    groups: dict[int, set[tuple[int, int]]] = {}
+    for x, y in cells:
+        groups.setdefault(shade(x, y), set()).add((x, y))
+    for color, group in sorted(groups.items()):
+        kit.cover(group, z, color, sizes)
+
+
+async def base(kit: Kit, rng: random.Random) -> None:
     kit.fill(0, 0, W, D, 0, BLACK)
     await kit.step("Base plate")
-    kit.ring(0, RIVER, W, D - RIVER, 1, 2, lambda x, y, c: LBG if y == RIVER else DBG)
-    await kit.step("Embankment and base walls")
-    kit.fill(0, RIVER, W, D - RIVER, 7, DBG)
-    walls = {c for c in rect(0, RIVER, W, D - RIVER) if c[0] in (0, W - 1) or c[1] in (RIVER, D - 1)}
-    plates = kit.support(7, walls, [("3005", 3), ("3005", 3)], DBG)
-    await kit.step("Hidden base pillars")
-    kit.pending = plates
-    await kit.step("Top plates")
-
-
-async def thames(kit: Kit, rng: random.Random) -> None:
-    piers = {(x, y) for x in range(36, 42) for y in (4, 9)}
-    sides = {(x, y) for x in (36, 41) for y in range(RIVER)}
-    kit.mosaic(0, 0, W, RIVER, 1, WATER, rng, piers | sides)
+    river = RIVER - rect(20, 0, 4, 6) - rect(28, 0, 4, 6) - rect(*BOAT) - rect(*BARGE)
+    kit.cover(river, 1, DBLUE)
+    kit.scatter(river, 2, WATER, rng)
     await kit.step("The Thames")
-    for x, y in ((6, 7), (22, 2)):
-        kit.add("3034", x, y, 2, WHITE)
-        kit.add("3034", x, y, 3, BLUE)
-        kit.add("2456", x, y, 4, TBLACK)
-        kit.add("3039", x + 6, y, 4, WHITE, 270)
-        kit.add("3795", x, y, 7, WHITE)
-    await kit.step("Tour boats")
+    kit.ring(0, 0, QUAY + 1, D, 1, 4, _block, lambda x, y, c: y == 0 and 1 <= x < QUAY, EMBOSSED)
+    for x in PIERS:
+        for z in (1, 4):
+            kit.add("3005", x, 0, z, RBROWN)
+    for x in PIERS[::2]:
+        kit.add("15254", x, 0, 7, RBROWN)
+    for y in range(8, D, 4):
+        kit.mount("98138", QUAY + 1, y, 6, PGOLD, "east")
+    await kit.step("Granite Embankment with bronze lion heads, brick arches over the station")
 
 
-def lamp(kit: Kit, x: int, y: int, color: int) -> None:
+async def station(kit: Kit) -> None:
+    piers = {(x, 0) for x in PIERS}
+    kit.cover(rect(1, 0, 18, 4) - piers, 1, DBG)
+    for y in (1, 2):
+        kit.run(1, y, 2, 18, LBG, "x", TILE_RUN)
+    kit.cover(rect(1, 0, 18, 1) - piers | rect(1, 3, 18, 1), 2, DBG, TILES)
+    kit.cover(rect(1, 4, 18, 5), 1, DBG, BRICKS)
+    await kit.step("Track bed, rails and the platform")
+    stairs = {(x, y) for x, _ in STAIRS for y in (6, 7)}
+    kit.cover(rect(1, 4, 18, 1), PLATFORM, YELLOW, TILES)
+    kit.cover(rect(1, 5, 18, 3) - stairs, PLATFORM, LBG, TILES)
+    for z in range(PLATFORM, 13):
+        _paint(kit, {(x, 8) for x in range(1, QUAY)}, z, lambda x, y, z=z: _tiles(x, z), PLATES)
+    await kit.step("Mind the gap, and a tiled wall with the roundel and posters")
+    for x, top in STAIRS:
+        body = top - 1 - PLATFORM
+        for c in range(body // 3):
+            kit.add("3004", x, 6, PLATFORM + 3 * c, LBG, 90)
+        for p in range(body % 3):
+            kit.add("3023b", x, 6, PLATFORM + 3 * (body // 3) + p, LBG, 90)
+        kit.add("3069b", x, 6, top - 1, DBG, 90)
+    bench(kit, 2, 6, "x", PLATFORM)
+    await kit.step("Stairs up to the street and a platform bench")
+    cells = rect(*TRAIN)
+    kit.cover(cells, 3, BLUE)
+    _paint(kit, cells, 4, lambda x, y: RED if x == CAB or x in DOORS else WHITE)
+    _paint(
+        kit,
+        cells,
+        7,
+        lambda x, y: RED if x in DOORS else TBLACK if x == CAB else WHITE if x in (6, 11, 16) else TBLACK,
+    )
+    kit.cover(cells, 10, LBG)
+    await kit.step("A Tube train with red doors")
+    for x in range(1, QUAY, 2):
+        kit.add("3795" if x in (7, 9) else "3034", x, 0, 13, DBG, 90)
+    kit.add("3460", 0, 0, 13, DBG, 90)
+    kit.cover(rect(0, 8, QUAY, 1), 13, DBG)
+    await kit.step("Station ceiling")
+
+
+async def street_plates(kit: Kit) -> None:
+    for y in (9, 10):
+        for z in range(1, 13, 3):
+            kit.add("3005", 9, y, z, WHITE)
+    await kit.step("Area wall")
+    kit.cover(PIT | BASEMENT, 7, DBG)
+    plates = kit.support(7, set(), [("3005", 3)] * 2, DBG)
+    await kit.step("Hidden basement pillars")
+    kit.pending = plates
+    await kit.step("Basement area floor")
+    kit.cover(PIT, 8, DBG, TILES)
+    lit = {(h + i, 11) for h, _, _ in HOUSES for i in (1, 2)}
+    kit.cover(lit & BASEMENT, 8, TYELLOW, BRICKS)
+    kit.cover(BASEMENT - lit, 8, WHITE, BRICKS)
+    for z in (11, 12):
+        kit.cover(BASEMENT, z, WHITE)
+    await kit.step("Lit basement windows below the terraces")
+    kit.cover(rect(0, 0, QUAY + 1, D) - STATION - PIT, 13, DBG)
+    solid = {c for c in rect(0, 0, QUAY + 1, D) if c[0] in (0, QUAY) or c[1] in (0, D - 1)}
+    solid |= {(9, 9), (9, 10)} | BASEMENT
+    plates = kit.support(13, solid, [("3005", 3)] * 4, DBG)
+    await kit.step("Hidden street pillars")
+    kit.pending = plates
+    await kit.step("Street plates")
+
+
+async def tower_bridge(kit: Kit) -> None:
+    towers = [rect(x0, 0, 4, 6) for x0 in TOWERS]
+    piers = set().union(*towers)
+    for z in range(1, 13, 3):
+        kit.cover(piers, z, DBG if z == 1 else VLBG, BRICKS)
+    kit.cover(rect(QUAY + 1, 0, W - QUAY - 1, 6), 13, LBG)
+    await kit.step("Tower Bridge piers and deck")
+    legs = {(x, y) for x, y in piers if y in (0, 5)}
+    springs = {(x, y) for x0 in TOWERS for x in (x0, x0 + 3) for y in (0, 5)}
+    glass = {(x, y) for x, y in legs if (x, y) not in springs}
+    for z in range(GROUND, GROUND + 9, 3):
+        lit = glass if z > GROUND else set()
+        kit.cover(legs - lit, z, VLBG, BRICKS)
+        kit.cover(legs & lit, z, TBLACK, BRICKS)
+    for x0 in TOWERS:
+        for x in (x0, x0 + 3):
+            kit.add("15254", x, 0, GROUND + 9, LBG, 90)
+    for z in (GROUND + 9, GROUND + 12):
+        kit.cover(legs - springs, z, VLBG, BRICKS)
+    kit.cover(piers, GROUND + 15, LBG)
+    await kit.step("Tower legs astride the road, Gothic arches")
+
+    def stone(x: int, y: int, c: int) -> int:
+        if (x, y) in springs:
+            return LBG
+        return TBLACK if (y in (0, 5) or y in (2, 3)) and c % 3 else VLBG
+
+    z = GROUND + 16
+    for x0 in TOWERS:
+        kit.ring(x0, 0, 4, 6, z, 1, stone)
+    await kit.step("Two towers with lancet windows")
+    z += 3
+    walkway = rect(TOWERS[0] + 3, 1, 6, 4)
+    kit.cover(walkway, z, MBLUE)
+    kit.cover(piers - walkway, z, LBG)
+    walls = {(x, y) for x, y in piers if x in (TOWERS[0], TOWERS[0] + 3, TOWERS[1], TOWERS[1] + 3) or y in (0, 5)}
+    plates = kit.support(z, walls, [("3005", 3)], VLBG)
+    await kit.step("Hidden tower cores")
+    kit.pending = plates
+    for y in (1, 4):
+        kit.add("3185", TOWERS[0] + 4, y, z + 1, MBLUE)
+    kit.cover(rect(TOWERS[0] + 4, 1, 4, 4), z + 7, MBLUE)
+    for x0 in TOWERS:
+        kit.ring(x0, 0, 4, 6, z + 1, 3, stone, start=3)
+    z += 10
+    kit.cover(piers, z, LBG)
+    await kit.step("High-level walkways in blue lattice")
+    z += 1
+    spires = {(x0 + i, 2 + j) for x0 in TOWERS for i in (1, 2) for j in (0, 1)}
+    for x, y in sorted(springs):
+        kit.add("3062b", x, y, z, VLBG)
+        kit.add("3062b", x, y, z + 3, VLBG)
+        kit.add("4589", x, y, z + 6, DBG)
+    for x0 in TOWERS:
+        kit.add("3003", x0 + 1, 2, z, VLBG)
+        kit.add("3003", x0 + 1, 2, z + 3, VLBG)
+        kit.add("3688", x0 + 1, 2, z + 6, DBG)
+    kit.cover(piers - springs - spires, z, LBG, TILES)
+    await kit.step("Corner turrets and slate spires")
+    for y in (0, 5):
+        kit.add("3633", TOWERS[0] + 4, y, GROUND, MBLUE)
+        kit.run(TOWERS[0] + 4, y, GROUND + 3, 4, WHITE, "x", TILE_RUN)
+    await kit.step("Bascule parapets")
+
+
+async def barge(kit: Kit) -> None:
+    x0, y0, w, d = BARGE
+    kit.fill(x0, y0, w, d, 1, BLACK, BRICKS)
+    kit.fill(x0, y0, w, d, 4, RBROWN)
+    await kit.step("Thames sailing barge hull")
+    x = x0 + 1
+    for z, y, n in ((5, y0 + 1, 4), (8, y0 + 1, 4), (11, y0 + 2, 3), (14, y0 + 2, 3), (17, y0 + 3, 2), (20, y0 + 4, 1)):
+        kit.run(x, y, z, n, RBROWN, "y")
+    kit.add("3957a", x, y0 + 5, 5, BLACK)
+    await kit.step("Red-brown sails")
+
+
+async def boat(kit: Kit) -> None:
+    x0, y0, w, d = BOAT
+    kit.fill(x0, y0, w, d, 1, DBLUE, BRICKS)
+    kit.fill(x0, y0, w, d, 4, WHITE)
+    await kit.step("Tour boat hull")
+    kit.add("2456", x0, y0, 5, TBLACK, 90)
+    kit.add("3039", x0, y0 + 6, 5, WHITE, 180)
+    kit.add("3795", x0, y0, 8, WHITE, 90)
+    await kit.step("Tour boat cabin")
+
+
+async def streets(kit: Kit) -> None:
+    kit.cover(ROADS - ZEBRA, GROUND, DBG, TILES)
+    for y in (1, 3):
+        kit.add("2431", 14, y, GROUND, WHITE)
+    kit.cover(rect(14, 2, 4, 1) | rect(14, 4, 4, 1), GROUND, DBG, TILES)
+    await kit.step("Tower Bridge Road, a side street and a zebra crossing")
+    railings = rect(11, 6, 1, 2) | rect(7, 5, 4, 1) | rect(7, 8, 4, 1) | rect(4, 8, 2, 1) | rect(1, 8, 2, 1)
+    steps = {(h, 8) for h, _, _ in HOUSES}
+    over = {(x, y) for x, _ in steps for y in (8, 9, 10)}
+    built = rect(*PALACE) | YARD | rect(*TERRACE) | GARDEN | PLAZA
+    street = rect(0, 0, QUAY + 1, D) - ROADS - built - OPENING - PIT - EMBANKMENT - railings - over
+    kerb = {(x, y) for x, y in street if {(x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)} & ROADS}
+    kit.cover(kerb, GROUND, LBG, TILES)
+    kit.cover(street - kerb, GROUND, VLBG, TILES)
+    await kit.step("Pavements")
+    kit.cover(EMBANKMENT, GROUND, LBG, BRICKS)
+    lamps = {(QUAY, 7), (QUAY, 26)}
+    kit.cover(EMBANKMENT - lamps, GROUND + 3, LBG, TILES)
+    for x, y in sorted(lamps):
+        for i, color in enumerate((DGREEN, BLACK, TYELLOW)):
+            kit.add("3062b", x, y, GROUND + 3 + 3 * i, color)
+        kit.add("4589", x, y, GROUND + 12, BLACK)
+    await kit.step("Embankment parapet with dolphin lamps")
+    for x, y in ((11, 6), (11, 7)):
+        kit.add("3062b", x, y, GROUND, BLACK)
+    for y in (5, 8):
+        kit.add("3633", 7, y, GROUND, BLACK)
+    for x in (1, 4):
+        kit.add("2877", x, 8, GROUND, BLACK)
+    for x, y in sorted(steps):
+        kit.add("3623", x, y, GROUND, WHITE, 90)
+    await kit.step("Railings round the Tube stairs and the basement areas, front steps over them")
+
+
+def gothic(kit: Kit, x0: int, y0: int, w: int, d: int, courses: int) -> None:
+    """A Parliament block: plinth, walls with a tight grid of lancet windows, a slab and a steep slate roof."""
+
+    def glass(x, y, c):
+        side = x in (x0, x0 + w - 1) and y not in (y0, y0 + d - 1)
+        i, n = (y - y0, d) if side else (x - x0, w)
+        return 0 < i < n - 1 and i % 2 == 1 and c % 3 != 0
+
+    z = kit.ring(x0, y0, w, d, GROUND, 1, DTAN)
+    z = kit.ring(x0, y0, w, d, z, courses, lambda x, y, c: TBLACK if glass(x, y, c) else TAN, start=1)
+    kit.fill(x0, y0, w, d, z, TAN)
+    x, y, rw, rd, top = kit.hip(x0, y0, w, d, z + 1, DBG, slope="4460b", rise=9)
+    kit.ridge(x, y, rw, rd, top, DBG)
+
+
+async def westminster(kit: Kit, rng: random.Random) -> None:
+    gothic(kit, *PALACE, 4)
+    await kit.step("The Palace of Westminster on the river")
+    shaft = rect(*CLOCK)
+    path = rect(15, 22, 4, 3)
+    kit.cover(path, GROUND, TAN, TILES)
+    kit.scatter(YARD - EMBANKMENT - shaft - path, GROUND, [(GREEN, 4), (BGREEN, 2), (DGREEN, 1)], rng)
+    await kit.step("New Palace Yard")
+    x0, y0, w, d = CLOCK
+
+    def face(x, y, c):
+        if x in (x0, x0 + w - 1) and y in (y0, y0 + d - 1):
+            return DTAN
+        return TBLACK if c % 4 in (1, 2) else TAN
+
+    z = kit.ring(x0, y0, w, d, GROUND, 1, DTAN)
+    z = kit.ring(x0, y0, w, d, z, 18, face, start=1)
+    await kit.step("Elizabeth Tower shaft")
+    kit.fill(x0 - 1, y0 - 1, w + 2, d + 2, z, DTAN)
+    z += 1
+    kit.ring(x0 - 1, y0 - 1, w + 2, d + 2, z, 2, TAN)
+    kit.mount("4150p03", x0 + 1, y0 - 2, z, WHITE, "south")
+    kit.mount("4150p03", x0 + 1, y0 + d + 1, z, WHITE, "north")
+    kit.mount("4150p03", x0 - 2, y0 + 1, z, WHITE, "west")
+    kit.mount("4150p03", x0 + w + 1, y0 + 1, z, WHITE, "east")
+    z += 6
+    await kit.step("Clock stage with four faces")
+    kit.fill(x0 - 1, y0 - 1, w + 2, d + 2, z, DTAN)
+    z += 1
+    for x, y in ((x0 - 1, y0 - 1), (x0 + w, y0 - 1), (x0 - 1, y0 + d), (x0 + w, y0 + d)):
+        kit.add("3062b", x, y, z, TAN)
+        kit.add("4589", x, y, z + 3, PGOLD)
+    corner = {(x0, y0), (x0 + w - 1, y0), (x0, y0 + d - 1), (x0 + w - 1, y0 + d - 1)}
+    z = kit.ring(x0, y0, w, d, z, 2, lambda x, y, c: TAN if (x, y) in corner else BLACK)
+    kit.fill(x0, y0, w, d, z, PGOLD)
+    await kit.step("Belfry and gilded pinnacles")
+    x, y, _, _, top = kit.hip(x0, y0, w, d, z + 1, DBG, slope="4460b", rise=9)
+    kit.add("3688", x, y, top, DBG)
+    await kit.step("Big Ben's spire")
+
+
+def _unit(x: int) -> int | None:
+    """Index of the house at column x, None for the pub."""
+    return None if x >= PUB else next(i for i, (h, _, _) in enumerate(HOUSES) if h <= x < h + 3)
+
+
+async def terrace(kit: Kit) -> None:
+    x0, y0, w, d = TERRACE
+    frames = [(PUB, 11, 0), (11, 12, 270), (11, 15, 270)] + [(h + 1, 11, 0) for h, _, _ in HOUSES]
+    glass = {(9, 11), (10, 11), (11, 12), (11, 13), (11, 15), (11, 16)}
+    glass |= {(h + i, 11) for h, _, _ in HOUSES for i in (1, 2)}
+    doors = {(h, 11) for h, _, _ in HOUSES}
+    backs = {(9, 12), (10, 12), (10, 13), (10, 15), (10, 16)} | {(h + i, 12) for h, _, _ in HOUSES for i in (1, 2)}
+    floors = [(GROUND, 3, "60593"), (GROUND + 10, 3, "60593"), (GROUND + 20, 2, "60592")]
+    for n, (z, courses, window) in enumerate(floors):
+
+        def stucco(x, y, c, n=n):
+            i = _unit(x)
+            return (DGREEN if n == 0 else DRED) if i is None else HOUSES[i][1]
+
+        opening = glass | doors if n == 0 else glass
+        kit.ring(x0, y0, w, d, z, courses, stucco, lambda x, y, c, o=opening: (x, y) in o, start=n)
+        for x, y, turn in frames:
+            kit.add(window, x, y, z, DGREEN if n == 0 and x >= PUB else WHITE, turn)
+        for c in range(courses):
+            _paint(
+                kit,
+                backs,
+                z + 3 * c,
+                lambda x, y, n=n: TYELLOW if _unit(x) is None or (_unit(x) + n) % 2 == 0 else TBLACK,
+            )
+        if n == 0:
+            for h, _, door in HOUSES:
+                kit.add("14716", h, 11, z, door)
+        top = z + 3 * courses
+        if n < 2:
+            kit.cover(rect(PUB, 11, 3, 7), top, PGOLD if n == 0 else DRED)
+            kit.cover(rect(0, 11, PUB, 7), top, WHITE)
+        await kit.step(f"Corner pub and pastel terraces, floor {n + 1}")
+    z = GROUND + 26
+    kit.cover(rect(0, 10, 12, 8), z, WHITE)
+    z += 1
+    kit.cover(rect(0, 10, 12, 1), z, WHITE, TILES)
+    kit.ring(x0, y0, w, d, z, 1, lambda x, y, c: DRED if _unit(x) is None else HOUSES[_unit(x)][1])
+    stacks = {(x + i, 14) for x in (2, 5, 8) for i in (0, 1)}
+    kit.cover(rect(1, 12, 10, 5) - stacks, z, DBG, TILES)
+    for x in (2, 5, 8):
+        kit.add("3004", x, 14, z, DRED)
+        kit.add("3004", x, 14, z + 3, DRED)
+        for i in (0, 1):
+            kit.add("3062b", x + i, 14, z + 6, DORANGE)
+    perimeter = {c for c in rect(*TERRACE) if c[0] in (x0, x0 + w - 1) or c[1] in (y0, y0 + d - 1)}
+    kit.cover(perimeter, z + 3, WHITE, TILES)
+    await kit.step("Cornice, parapets and terracotta chimney pots")
+
+
+async def square(kit: Kit, rng: random.Random) -> None:
+    fences = rect(8, 19, 4, 1) | rect(5, 19, 2, 1) | rect(11, 20, 1, 12) | rect(5, 20, 1, 12)
+    path = {(7, y) for y in range(19, D)}
+    kit.cover(path, GROUND, TAN, TILES)
+    kit.scatter(GARDEN - fences - path, GROUND, [(GREEN, 4), (BGREEN, 2), (DGREEN, 1)], rng)
+    gx, gy = GHERKIN
+    kit.cover(PLAZA - rect(gx, gy, 4, 4), GROUND, VLBG, TILES)
+    kit.add("3633", 8, 19, GROUND, BLACK)
+    kit.add("2877", 5, 19, GROUND, BLACK)
+    for x in (5, 11):
+        for y in (20, 24, 28):
+            kit.add("3633", x, y, GROUND, BLACK, 90)
+    await kit.step("A railed garden square and a plaza")
+    plane(kit, 9, 24, GROUND)
+    bench(kit, 7, 29, "x", GROUND)
+    await kit.step("A London plane and a bench")
+    for c in range(12):
+        kit.add("87081", gx, gy, GROUND + 3 * c, (DBLUE, DBLUE, SBLUE)[c % 3])
+    kit.add("3943b", gx, gy, GROUND + 36, DBLUE)
+    kit.add("3942c", gx + 1, gy + 1, GROUND + 42, TBLACK)
+    await kit.step("The Gherkin")
+
+
+def roundel(kit: Kit, x: int, y: int) -> None:
+    """A Tube roundel on a post: red ring over x..x+3, blue bar over x-1..x+4, facing south."""
+    z = GROUND + 1
     for c in range(3):
-        kit.add("3062b", x, y, GROUND + 1 + 3 * c, color)
-    kit.add("3062b", x, y, GROUND + 10, TYELLOW)
-    kit.add("4589", x, y, GROUND + 13, color)
+        kit.add("3062b", x + 1, y, z + 3 * c, BLACK)
+    z += 9
+    kit.add("3004", x + 1, y, z, RED)
+    kit.add("3023b", x + 1, y, z + 3, WHITE)
+    kit.add("3666", x - 1, y, z + 4, BLUE)
+    for sx in (x, x + 3):
+        kit.add("3024", sx, y, z + 3, RED)
+        kit.add("3024", sx, y, z + 5, RED)
+    kit.add("3023b", x + 1, y, z + 5, WHITE)
+    kit.add("3004", x + 1, y, z + 6, RED)
+
+
+async def street_life(kit: Kit) -> None:
+    z = GROUND + 1
+    roundel(kit, 4, 5)
+    await kit.step("Underground roundel at the station entrance")
+    for x, y in ((13, 0), (18, 0), (18, 5)):
+        for c, color in enumerate((BLACK, WHITE, BLACK)):
+            kit.add("3062b", x, y, z + 3 * c, color)
+        kit.add("3062b", x, y, z + 9, TORANGE)
+    await kit.step("Belisha beacons")
+    for x in (16, 17):
+        kit.add("14716", x, 7, z, RED)
+        kit.add("3024", x, 7, z + 9, RED)
+        kit.add("98138", x, 7, z + 10, RED)
+    kit.add("6141", 14, 7, z, BLACK)
+    kit.add("3062b", 14, 7, z + 1, RED)
+    kit.add("3062b", 14, 7, z + 4, RED)
+    kit.add("98138", 14, 7, z + 7, BLACK)
+    await kit.step("Red phone boxes and a pillar box")
+    kit.add("3941", 10, 9, z, RBROWN)
+    kit.add("3941", 10, 9, z + 3, RBROWN)
+    kit.add("14769", 10, 9, z + 6, RBROWN)
+    for x, y in ((9, 0), (3, 0), (1, 5)):
+        lamp(kit, x, y, GROUND)
+    await kit.step("A barrel table outside the pub and street lamps")
 
 
 def bus(kit: Kit, x: int, y: int, axis: str = "y") -> None:
@@ -111,242 +501,28 @@ def cab(kit: Kit, x: int, y: int, axis: str = "y") -> None:
         kit.add("3004", x + 3, y, z + 2, BLACK, 90)
 
 
-async def bridge(kit: Kit) -> None:
-    for y in (4, 9):
-        for c in range(2):
-            kit.run(36, y, 1 + 3 * c, 6, LBG)
-    for y in (0, 5, 10):
-        for x in (36, 41):
-            kit.add("6182", x, y, 1, GREEN, 90)
-    await kit.step("Westminster Bridge piers and arches")
-    kit.fill(36, 0, 6, RIVER, 7, GREEN)
-    await kit.step("Bridge deck")
-    kit.fill(37, 0, 4, RIVER, GROUND, DBG, TILES)
-    for x in (36, 41):
-        kit.run(x, 0, GROUND, RIVER, LBG, "y", TILE_RUN)
-    await kit.step("Bridge road and pavements")
-    for x in (36, 41):
-        for y in (0, 5, 10):
-            kit.add("3633", x, y, GROUND + 1, GREEN, 90)
-        for y in (4, 9):
-            lamp(kit, x, y, GREEN)
-    await kit.step("Parapets and lamps")
-    bus(kit, 37, 2)
-    cab(kit, 39, 8)
-    await kit.step("A Routemaster and a black cab on the bridge")
-
-
-async def streets(kit: Kit, rng: random.Random, footprints: set[tuple[int, int]]) -> None:
-    kit.cover(ROADS - ZEBRA, GROUND, DBG, TILES)
-    for x in (37, 39):
-        kit.add("2431", x, 24, GROUND, WHITE, 90)
-    kit.cover(ZEBRA - rect(37, 24, 1, 4) - rect(39, 24, 1, 4), GROUND, DBG, TILES)
-    await kit.step("Bridge Street and Parliament Square roads, zebra crossing")
-    kit.cover(PATHS & GRASS, GROUND, TAN, TILES)
-    kit.scatter(GRASS - PATHS, GROUND, [(GREEN, 4), (BGREEN, 2), (DGREEN, 1)], rng)
-    await kit.step("Parliament Square lawn")
-    land = rect(0, RIVER, W, D - RIVER) - ROADS - GRASS - footprints
-    kit.scatter(land, GROUND, [(VLBG, 5), (LBG, 4), (TAN, 1)], rng)
-    await kit.step("Paving")
-
-
-def gothic(kit: Kit, x0: int, y0: int, w: int, d: int, courses: int, steep: bool) -> None:
-    """A Parliament block: plinth, walls with a tight grid of lancet windows, a slab and a slate roof."""
-
-    def glass(x, y, c):
-        side = x in (x0, x0 + w - 1) and y not in (y0, y0 + d - 1)
-        i, n = (y - y0, d) if side else (x - x0, w)
-        return 0 < i < n - 1 and i % 2 == 1 and c % 3 != 0
-
-    z = kit.ring(x0, y0, w, d, GROUND, 1, DTAN)
-    z = kit.ring(x0, y0, w, d, z, courses, lambda x, y, c: TBLACK if glass(x, y, c) else TAN, start=1)
-    kit.fill(x0, y0, w, d, z, TAN)
-    slope, rise = ("4460b", 9) if steep else ("3040b", 3)
-    x, y, rw, rd, top = kit.hip(x0, y0, w, d, z + 1, DBG, slope=slope, rise=rise)
-    kit.ridge(x, y, rw, rd, top, DBG)
-
-
-async def parliament(kit: Kit) -> None:
-    for n, (x0, y0, w, d, courses, steep) in enumerate(PAVILIONS, 1):
-        gothic(kit, x0, y0, w, d, courses, steep)
-        await kit.step(f"Houses of Parliament, river front block {n}")
-    for x in RIBS:
-        courses = 1 + next(c for x0, _, w, _, c, _ in PAVILIONS if x0 <= x < x0 + w)
-        top = column(kit, x, 15, GROUND, courses, DTAN)
-        kit.add("4589", x, 15, top, DTAN)
-    await kit.step("Buttresses and pinnacles along the river front")
-    gothic(kit, *BACK, 4, False)
-    await kit.step("Back range")
-    for x in (5, 13, 21):
-        lamp(kit, x, 14, BLACK)
-    await kit.step("Embankment lamps")
-
-
-async def victoria_tower(kit: Kit) -> None:
-    x0, y0, w, d = VICTORIA
-    arch = {(x, y0) for x in range(x0 + 1, x0 + 5)}
-
-    def color(x, y, c):
-        if x in (x0, x0 + w - 1) and y in (y0, y0 + d - 1):
-            return DTAN
-        i = x - x0 if y in (y0, y0 + d - 1) else y - y0
-        return TBLACK if i in (2, 3) and c % 3 != 0 and c > 2 else TAN
-
-    kit.add("6182", x0 + 1, y0, GROUND, DTAN)
-    kit.add("3004", x0 + 2, y0 + 1, GROUND, BLACK)
-    kit.add("3004", x0 + 2, y0 + 1, GROUND + 3, BLACK)
-    z = kit.ring(x0, y0, w, d, GROUND, 1, DTAN, lambda x, y, c: (x, y) in arch)
-    z = kit.ring(x0, y0, w, d, z, 28, color, lambda x, y, c: c == 1 and (x, y) in arch, start=1)
-    await kit.step("Victoria Tower and the Sovereign's Entrance")
-    kit.fill(x0, y0, w, d, z, TAN)
-    z += 1
-    corners = {(x0, y0), (x0 + w - 1, y0), (x0, y0 + d - 1), (x0 + w - 1, y0 + d - 1)}
-    kit.ring(x0, y0, w, d, z, 1, TAN, lambda x, y, c: (x + y) % 2 == 1 or (x, y) in corners)
-    for x, y in corners:
-        top = column(kit, x, y, z, 2, TAN)
-        kit.add("4589", x, y, top, DTAN)
-    kit.add("3957a", x0 + 2, y0 + 2, z, BLACK)
-    await kit.step("Victoria Tower battlements, corner pinnacles and flagpole")
-
-
-async def central_spire(kit: Kit) -> None:
-    x, y, _, _ = LANTERN
-    sides = [(x + 1, y, 0), (x + 3, y + 1, 90), (x + 1, y + 3, 0), (x, y + 1, 90)]
-    z = GROUND
-    for c in range(16):
-        for px, py, turn in sides:
-            kit.add("3004", px, py, z, TBLACK if c > 9 and c % 3 != 0 else TAN, turn)
-        kit.add("3003", x + 1, y + 1, z, DTAN)
-        z += 3
-    kit.add("272", x, y, z, DBG)
-    kit.add("3942c", x + 1, y + 1, z + 9, DBG)
-    await kit.step("Central octagonal tower and spire")
-
-
-async def elizabeth_tower(kit: Kit) -> None:
-    x0, y0, w, d = CLOCK
-
-    def shaft(x, y, c):
-        if x in (x0, x0 + w - 1) and y in (y0, y0 + d - 1):
-            return DTAN
-        return TBLACK if c % 4 in (1, 2) else TAN
-
-    z = kit.ring(x0, y0, w, d, GROUND, 1, DTAN)
-    z = kit.ring(x0, y0, w, d, z, 21, shaft, start=1)
-    await kit.step("Elizabeth Tower shaft")
-    kit.fill(x0 - 1, y0 - 1, w + 2, d + 2, z, DTAN)
-    z += 1
-    kit.ring(x0 - 1, y0 - 1, w + 2, d + 2, z, 2, TAN)
-    kit.mount("4150p03", x0 + 1, y0 - 2, z, WHITE, "south")
-    kit.mount("4150p03", x0 + 1, y0 + d + 1, z, WHITE, "north")
-    kit.mount("4150p03", x0 - 2, y0 + 1, z, WHITE, "west")
-    kit.mount("4150p03", x0 + w + 1, y0 + 1, z, WHITE, "east")
-    z += 6
-    await kit.step("Clock stage with four faces")
-    kit.fill(x0 - 1, y0 - 1, w + 2, d + 2, z, DTAN)
-    z += 1
-    for x, y in ((x0 - 1, y0 - 1), (x0 + w, y0 - 1), (x0 - 1, y0 + d), (x0 + w, y0 + d)):
-        kit.add("3062b", x, y, z, TAN)
-        kit.add("4589", x, y, z + 3, PGOLD)
-    corner = {(x0, y0), (x0 + w - 1, y0), (x0, y0 + d - 1), (x0 + w - 1, y0 + d - 1)}
-    z = kit.ring(x0, y0, w, d, z, 2, lambda x, y, c: TAN if (x, y) in corner else BLACK)
-    kit.fill(x0, y0, w, d, z, PGOLD)
-    await kit.step("Belfry and gilded pinnacles")
-    x, y, _, _, top = kit.hip(x0, y0, w, d, z + 1, DBG, slope="4460b", rise=9)
-    kit.add("3688", x, y, top, DBG)
-    await kit.step("Spire")
-
-
-def pub(kit: Kit, frame: Frame) -> None:
-    """The Red Lion: green pub front with lit windows, two red-brick floors, a slate roof."""
-    x0, y0, w, d = frame.rect
-    L = frame.length
-    facade = {frame.cell(u, 0) for u in range(L)}
-    windows = [1, 5, 9]
-    z = GROUND
-    kit.ring(x0, y0, w, d, z, 3, DGREEN, lambda x, y, c: (x, y) in facade)
-    frame.put("14716", 0, 0, z, DGREEN)
-    frame.put("14716", L - 1, 0, z, DGREEN)
-    for u in range(1, L - 1, 2):
-        frame.put("60593", u, 0, z, DGREEN)
-        for c in range(3):
-            frame.run(u, 1, z + 3 * c, 2, TYELLOW)
-    z += 9
-    z = kit.ring(x0, y0, w, d, z, 1, lambda x, y, c: PGOLD if (x, y) in facade else DGREEN, start=1)
-    for floor in range(2):
-        kit.fill(x0, y0, w, d, z, DRED)
-        z += 1
-        glass = {frame.cell(u + i, 0) for u in windows for i in (0, 1)} | {frame.cell(L - 1, v) for v in (2, 3)}
-        for c in range(2):
-            for u in windows:
-                frame.put("3004", u, 1, z + 3 * c, BLACK)
-            frame.put("3004", L - 2, 2, z + 3 * c, BLACK, 90)
-        kit.ring(x0, y0, w, d, z, 2, DRED, lambda x, y, c, glass=glass: (x, y) in glass, start=floor)
-        for u in windows:
-            frame.put("60592", u, 0, z, WHITE)
-        frame.put("60592", L - 1, 2, z, WHITE, 270)
-        z += 6
-    kit.fill(x0, y0, w, d, z, WHITE)
-    x, y, rw, rd, top = kit.hip(x0, y0, w, d, z + 1, DBG)
-    kit.ridge(x, y, rw, rd, top, DBG)
-
-
-async def street_life(kit: Kit, red_lion: Frame) -> None:
-    pub(kit, red_lion)
-    await kit.step("The Red Lion pub")
-    z = GROUND + 1
-    for x in (35, 42):
-        for c, color in enumerate((BLACK, WHITE, BLACK)):
-            kit.add("3062b", x, 24, z + 3 * c, color)
-        kit.add("3062b", x, 24, z + 9, TORANGE)
-    await kit.step("Belisha beacons")
-    for x in (44, 45):
-        kit.add("14716", x, 27, z, RED)
-        kit.add("3024", x, 27, z + 9, RED)
-        kit.add("98138", x, 27, z + 10, RED)
-    kit.add("6141", 42, 28, z, BLACK)
-    kit.add("3062b", 42, 28, z + 1, RED)
-    kit.add("3062b", 42, 28, z + 4, RED)
-    kit.add("98138", 42, 28, z + 7, BLACK)
-    await kit.step("Phone boxes and a pillar box")
-    for x, y in ((43, 15), (43, 21), (29, 23), (29, 28)):
-        tree(kit, x, y, (GREEN, DGREEN, GREEN))
-    for x, y in ((3, 39), (8, 44), (26, 44), (27, 38)):
-        tree(kit, x, y, (BGREEN, GREEN, BGREEN))
-    await kit.step("Plane trees")
-    kit.add("3003", 22, 40, z, LBG)
-    kit.add("3003", 22, 40, z + 3, LBG)
-    kit.add("3005", 22, 40, z + 6, DBG)
-    kit.add("3062b", 22, 40, z + 9, DBG)
-    await kit.step("Churchill statue")
-    bus(kit, 39, 29)
-    cab(kit, 37, 17)
-    bus(kit, 8, 34, "x")
-    cab(kit, 24, 36, "x")
-    await kit.step("Traffic")
+async def traffic(kit: Kit) -> None:
+    bus(kit, 22, 1, "x")
+    bus(kit, 6, 3, "x")
+    cab(kit, 26, 3, "x")
+    cab(kit, 12, 14)
+    await kit.step("Routemasters and black cabs")
 
 
 async def build() -> Kit:
-    kit = Kit("Westminster", PROMPT, W, D)
+    kit = Kit("london", "London, Mind the Gap", PROMPT, W, D)
     rng = random.Random(11)
-    red_lion = Frame(kit, 42, 30, 12, 6, "west")
-    footprints = (
-        set().union(*(rect(x0, y0, w, d) for x0, y0, w, d, _, _ in PAVILIONS))
-        | rect(*BACK)
-        | rect(*VICTORIA)
-        | rect(*LANTERN)
-        | rect(*CLOCK)
-        | rect(*red_lion.rect)
-        | {(x, 15) for x in RIBS}
-    )
-    await base(kit)
-    await thames(kit, rng)
-    await bridge(kit)
-    await streets(kit, rng, footprints)
-    await parliament(kit)
-    await victoria_tower(kit)
-    await central_spire(kit)
-    await elizabeth_tower(kit)
-    await street_life(kit, red_lion)
+    await base(kit, rng)
+    await station(kit)
+    await street_plates(kit)
+    await tower_bridge(kit)
+    await boat(kit)
+    await barge(kit)
+    await streets(kit)
+    await westminster(kit, rng)
+    await terrace(kit)
+    await square(kit, rng)
+    await street_life(kit)
+    await traffic(kit)
     kit.save(STORY)
     return kit

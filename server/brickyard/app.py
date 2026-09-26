@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
-from collections import Counter
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
@@ -22,6 +23,8 @@ from brickyard.session import Session, Store
 
 WEB_DIST = Path(__file__).resolve().parents[2] / "web" / "dist"
 HEARTBEAT_S = 15
+SHUTDOWN_S = 3
+log = logging.getLogger("brickyard")
 
 
 class NewBuild(BaseModel):
@@ -48,17 +51,28 @@ app = FastAPI(title="Brickyard", lifespan=lifespan)
 
 
 def session_for(build_id: str) -> Session:
-    if build_id not in sessions:
-        build = store.load(build_id)
-        if build is None:
-            raise HTTPException(404, f"no build {build_id}")
-        sessions[build_id] = Session(build, store)
-    return sessions[build_id]
+    """The live session of a build; idle ones re-read the build so edits made on disk show up."""
+    session = sessions.get(build_id)
+    if session and session.task and not session.task.done():
+        return session
+    build = store.load(build_id)
+    if build is None:
+        raise HTTPException(404, f"no build {build_id}")
+    if session:
+        session.build = build
+    else:
+        session = sessions[build_id] = Session(build, store)
+    return session
+
+
+def idle(session: Session) -> Session:
+    if session.task and not session.task.done():
+        raise HTTPException(409, "this build is still running")
+    return session
 
 
 def start(session: Session, request: str) -> None:
-    if session.task and not session.task.done():
-        raise HTTPException(409, "this build is still running")
+    idle(session)
     if session.build.builder not in BUILDERS:
         session.build.builder = next(iter(BUILDERS))
     builder = BUILDERS[session.build.builder]
@@ -71,16 +85,12 @@ def start(session: Session, request: str) -> None:
         except asyncio.CancelledError:
             await session.say("Stopped.", role="system")
             await session.set_status("done")
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
+            log.exception("build %s failed", session.build.id)
             await session.say(f"Builder failed: {e}", role="system")
             await session.set_status("error")
 
     session.task = asyncio.create_task(run())
-
-
-@app.get("/api/builders")
-def builders() -> list[str]:
-    return list(BUILDERS)
 
 
 @app.get("/api/builds")
@@ -101,20 +111,20 @@ async def create_build(body: NewBuild) -> dict:
 
 
 @app.get("/api/builds/{build_id}")
-def get_build(build_id: str) -> Build:
+async def get_build(build_id: str) -> Build:
     return session_for(build_id).build
 
 
 @app.post("/api/builds/{build_id}/messages")
 async def post_message(build_id: str, body: Say) -> dict:
-    session = session_for(build_id)
+    session = idle(session_for(build_id))
     await session.say(body.text, role="user")
     start(session, body.text)
     return session.build.summary()
 
 
 @app.post("/api/builds/{build_id}/stop")
-def stop(build_id: str) -> dict:
+async def stop(build_id: str) -> dict:
     session = session_for(build_id)
     if session.task and not session.task.done():
         session.task.cancel()
@@ -157,56 +167,41 @@ async def put_thumbnail(build_id: str, request: Request) -> dict:
 
 @app.get("/api/builds/{build_id}/thumbnail.png")
 def get_thumbnail(build_id: str) -> FileResponse:
-    path = store.thumbnail(build_id)
-    if not path.exists():
+    try:
+        path = store.thumbnail(build_id)
+    except ValueError:
+        path = None
+    if path is None or not path.exists():
         raise HTTPException(404, "no thumbnail yet")
     return FileResponse(path, media_type="image/png", headers={"Cache-Control": "no-cache"})
 
 
 @app.get("/api/builds/{build_id}/bom")
-def bill_of_materials(build_id: str) -> list[dict]:
-    counts = Counter((p.part, p.color) for p in session_for(build_id).build.pieces)
-    palette = ldraw.colors()
-    return [
-        {
-            "part": part,
-            "title": ldraw.info(part).title,
-            "color": color,
-            "colorName": palette.get(color, (str(color), "#888888"))[0],
-            "hex": palette.get(color, (str(color), "#888888"))[1],
-            "count": n,
-        }
-        for (part, color), n in counts.most_common()
-    ]
+async def bill_of_materials(build_id: str) -> list[dict]:
+    return session_for(build_id).build.bom()
 
 
 @app.get("/api/builds/{build_id}/download.ldr")
-def download(build_id: str) -> PlainTextResponse:
+async def download(build_id: str) -> PlainTextResponse:
     build = session_for(build_id).build
-    return PlainTextResponse(
-        build.to_ldraw(), headers={"Content-Disposition": f'attachment; filename="{build.name}.ldr"'}
-    )
+    disposition = f"attachment; filename*=UTF-8''{quote(f'{build.name}.ldr')}"
+    return PlainTextResponse(build.to_ldraw(), headers={"Content-Disposition": disposition})
 
 
 @app.get("/api/parts/{part}")
-def part(part: str, color: int = 16) -> PlainTextResponse:
+def part(part: str) -> PlainTextResponse:
     if not ldraw.exists(part):
         raise HTTPException(404, f"unknown part {part}")
-    return PlainTextResponse(ldraw.pack(part, color), headers={"Cache-Control": "public, max-age=86400"})
-
-
-@app.get("/api/parts/{part}/info")
-def part_info(part: str) -> dict:
-    if not ldraw.exists(part):
-        raise HTTPException(404, f"unknown part {part}")
-    info = ldraw.info(part)
-    return {"part": info.part, "title": info.title, "footprint": info.footprint, "plates": info.plates}
+    return PlainTextResponse(ldraw.pack(part), headers={"Cache-Control": "public, max-age=86400"})
 
 
 @app.get("/api/images/{name}")
 def image(name: str) -> FileResponse:
-    path = store.images / name
-    if "/" in name or not path.is_file():
+    try:
+        path = store.image(name)
+    except ValueError:
+        path = None
+    if path is None or not path.is_file():
         raise HTTPException(404, "no such image")
     return FileResponse(path, headers={"Cache-Control": "public, max-age=86400"})
 
@@ -224,4 +219,9 @@ def main() -> None:
     import uvicorn
 
     with suppress(KeyboardInterrupt):
-        uvicorn.run(app, host="127.0.0.1", port=int(os.environ.get("BRICKYARD_PORT", "8000")))
+        uvicorn.run(
+            app,
+            host="127.0.0.1",
+            port=int(os.environ.get("BRICKYARD_PORT", "8000")),
+            timeout_graceful_shutdown=SHUTDOWN_S,
+        )

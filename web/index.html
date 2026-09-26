@@ -3,7 +3,16 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Brickyard</title>
+    <meta name="description" content="LEGO models built step by step from real LDraw parts, by Holo and by script." />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <title>Brickyard · H Company</title>
+    <script>
+      {
+        const theme = localStorage.getItem("brickyard-theme");
+        if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

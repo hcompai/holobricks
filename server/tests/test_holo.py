@@ -5,7 +5,7 @@ import httpx
 import pytest
 
 from brickyard import ldraw
-from brickyard.builders.holo import HoloBuilder
+from brickyard.builders.holo import RECENT, HoloBuilder, trim
 from brickyard.model import Build, baseplate, grid
 from brickyard.session import Session, Store
 from brickyard.workbench import Workbench
@@ -47,12 +47,31 @@ def test_workbench_places_valid_bricks_and_explains_every_rejection(bench):
     assert placed == [(4, 4, 0, 0), (10, 10, 6, 0), (4, 4, 3, 90)]
 
 
+def test_overhanging_parts_only_fill_their_footprint(bench):
+    result = asyncio.run(
+        bench.add(
+            "Garden",
+            [
+                brick(part="3742", x=0, y=0, color=4),
+                brick(part="3005", x=1, y=0),
+                brick(part="4085c", x=5, y=5),
+                brick(part="3005", x=5, y=6),
+            ],
+        )
+    )
+    assert "placed 4 pieces" in result.text, result.text
+    assert [grid(p)[:2] for p in bench.pieces[1:]] == [(0, 0), (1, 0), (5, 5), (5, 6)]
+
+
 def test_window_frames_come_with_glass_and_removal_updates_the_build(bench):
     asyncio.run(bench.add("Window", [brick(part="60592", x=2, y=2, color=15)]))
+    assert "overlaps #2 60592" in asyncio.run(bench.add("Blocked", [brick(part="3005", x=2, y=2)])).text
     assert [p.part for p in bench.pieces[1:]] == ["60592.dat", "60601.dat"]
     result = asyncio.run(bench.remove([p.id for p in bench.pieces[1:]] + [999]))
     assert "Removed 2 pieces. No such pieces: [999]." == result.text
     assert [p.part for p in bench.pieces] == ["3811.dat"]
+    assert "placed 1 pieces as #2-#2" in asyncio.run(bench.add("Freed", [brick(part="3005", x=2, y=2)])).text
+    assert "overlaps #2 3005 at x=2 y=2 z=0" in asyncio.run(bench.add("Taken", [brick(part="3005", x=2, y=2)])).text
 
 
 def sse(*chunks: dict) -> bytes:
@@ -110,3 +129,51 @@ def test_holo_loop_executes_tool_calls_until_a_plain_reply(tmp_path):
     assert "placed 1 pieces as #2-#2" in tool_result["content"]
     events = [thoughts.get_nowait() for _ in range(thoughts.qsize())]
     assert any(e["type"] == "thinking" and "red brick" in e["text"] for e in events)
+
+
+def test_holo_survives_rate_limits_and_bad_tool_arguments(tmp_path):
+    calls = [
+        {"index": 0, "id": "a", "function": {"name": "add_bricks", "arguments": '{"bricks": null}'}},
+        {"index": 1, "id": "b", "function": {"name": "remove_bricks", "arguments": '{"ids": ["x"]}'}},
+        {"index": 2, "id": "c", "function": {"name": "list_pieces", "arguments": "[]"}},
+    ]
+    turns = [
+        httpx.Response(429, headers={"retry-after": "0"}),
+        httpx.Response(200, content=sse({"choices": [{"delta": {"tool_calls": calls}}]})),
+        httpx.Response(200, content=sse({"choices": [{"delta": {"content": "Done."}, "finish_reason": "stop"}]})),
+    ]
+    requests = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        requests.append(json.loads(request.content))
+        return turns[len(requests) - 1]
+
+    builder = HoloBuilder("holo", "http://holo.test/v1", "key", transport=httpx.MockTransport(respond))
+    session = Session(Build(prompt="p"), Store(tmp_path))
+    asyncio.run(builder.run(session, "p"))
+
+    results = [m["content"] for m in requests[-1]["messages"] if m["role"] == "tool"]
+    assert "add_bricks failed" in results[0] and "remove_bricks failed" in results[1]
+    assert "must be a JSON object" in results[2]
+    assert session.build.messages[-1].text == "Done."
+
+
+def test_long_runs_trim_old_turns_but_keep_recent_ones_and_every_call_paired():
+    bricks = [brick(x=i % 32, y=i // 32) for i in range(40)]
+    messages = [{"role": "system", "content": "rules"}, {"role": "user", "content": "build"}]
+    for n in range(100):
+        args = json.dumps({"title": f"Step {n}", "bricks": bricks})
+        messages.append(
+            {"role": "assistant", "content": "", "tool_calls": [{"id": str(n), "function": {"arguments": args}}]}
+        )
+        messages.append(
+            {"role": "tool", "tool_call_id": str(n), "content": f"Step {n}: placed 40 pieces. " + "x" * 2000}
+        )
+    before, recent = json.dumps(messages), json.dumps(messages[-RECENT:])
+    trim(messages, budget=100_000)
+    assert len(json.dumps(messages)) < len(before) / 4
+    assert json.dumps(messages[-RECENT:]) == recent
+    first = json.loads(messages[2]["tool_calls"][0]["function"]["arguments"])
+    assert first == {"title": "Step 0", "bricks": bricks[:2]}
+    assert messages[3]["tool_call_id"] == "0" and messages[3]["content"].startswith("Step 0: placed 40 pieces.")
+    assert messages[:2] == [{"role": "system", "content": "rules"}, {"role": "user", "content": "build"}]

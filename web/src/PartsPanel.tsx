@@ -6,7 +6,11 @@ export function PartsPanel({ build }: { build: Build }) {
   const pieces = build.pieces.length;
 
   useEffect(() => {
-    api.bom(build.id).then(setLines);
+    let active = true;
+    api.bom(build.id).then((bom) => active && setLines(bom), console.error);
+    return () => {
+      active = false;
+    };
   }, [build.id, pieces]);
 
   return (
@@ -33,7 +37,7 @@ export function PartsPanel({ build }: { build: Build }) {
                 <span className="swatch" style={{ background: l.hex }} />
                 {l.colorName}
               </td>
-              <td className="muted">{l.part.replace(".dat", "")}</td>
+              <td className="id">{l.part.replace(".dat", "")}</td>
             </tr>
           ))}
         </tbody>

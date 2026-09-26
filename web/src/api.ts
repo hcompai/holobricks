@@ -61,9 +61,42 @@ export type BuildEvent =
   | { type: "thinking"; text: string; reset: boolean }
   | { type: "render"; request: string };
 
+/** A static, read-only export of chosen builds (`vite build --mode gallery`), served without the Python server. */
+export const GALLERY = import.meta.env.MODE === "gallery";
+
+const LIVE_URLS = {
+  builds: "/api/builds",
+  build: (id: string) => `/api/builds/${id}`,
+  bom: (id: string) => `/api/builds/${id}/bom`,
+  thumbnail: (id: string) => `/api/builds/${id}/thumbnail.png`,
+  download: (id: string) => `/api/builds/${id}/download.ldr`,
+  part: (part: string) => `/api/parts/${encodeURIComponent(part)}`,
+  ldconfig: "/api/ldconfig",
+};
+
+const GALLERY_URLS: typeof LIVE_URLS = {
+  builds: "/gallery/builds.json",
+  build: (id) => `/gallery/builds/${id}.json`,
+  bom: (id) => `/gallery/builds/${id}.bom.json`,
+  thumbnail: (id) => `/gallery/thumbnails/${id}.png`,
+  download: (id) => `/gallery/builds/${id}.ldr`,
+  part: (part) => `/gallery/parts/${encodeURIComponent(part)}`,
+  ldconfig: "/gallery/LDConfig.ldr",
+};
+
+const urls = GALLERY ? GALLERY_URLS : LIVE_URLS;
+
 async function json<T>(response: Promise<Response>): Promise<T> {
   const r = await response;
-  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  if (!r.ok) {
+    const body = await r.text();
+    let detail = body;
+    try {
+      const parsed = JSON.parse(body).detail;
+      if (parsed) detail = typeof parsed === "string" ? parsed : JSON.stringify(parsed);
+    } catch {}
+    throw new Error(`${r.status}: ${detail}`);
+  }
   return r.json() as Promise<T>;
 }
 
@@ -71,18 +104,18 @@ const post = (url: string, body: unknown) =>
   fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 
 export const api = {
-  builds: () => json<BuildSummary[]>(fetch("/api/builds")),
-  build: (id: string) => json<Build>(fetch(`/api/builds/${id}`)),
-  bom: (id: string) => json<BomLine[]>(fetch(`/api/builds/${id}/bom`)),
-  builders: () => json<string[]>(fetch("/api/builders")),
-  create: (prompt: string, builder: string) => json<BuildSummary>(post("/api/builds", { prompt, builder })),
+  builds: () => json<BuildSummary[]>(fetch(urls.builds)),
+  build: (id: string) => json<Build>(fetch(urls.build(id))),
+  bom: (id: string) => json<BomLine[]>(fetch(urls.bom(id))),
+  thumbnailUrl: urls.thumbnail,
+  downloadUrl: urls.download,
+  partUrl: urls.part,
+  ldconfigUrl: urls.ldconfig,
+  create: (prompt: string) => json<BuildSummary>(post("/api/builds", { prompt })),
   say: (id: string, text: string) => json<BuildSummary>(post(`/api/builds/${id}/messages`, { text })),
   stop: (id: string) => post(`/api/builds/${id}/stop`, {}),
   events: (id: string) => new EventSource(`/api/builds/${id}/events`),
   putRender: (id: string, request: string, png: Blob) =>
     fetch(`/api/builds/${id}/renders/${request}`, { method: "PUT", body: png }),
   putThumbnail: (id: string, png: Blob) => fetch(`/api/builds/${id}/thumbnail.png`, { method: "PUT", body: png }),
-  thumbnailUrl: (id: string) => `/api/builds/${id}/thumbnail.png`,
-  downloadUrl: (id: string) => `/api/builds/${id}/download.ldr`,
-  partUrl: (part: string, color: number) => `/api/parts/${encodeURIComponent(part)}?color=${color}`,
 };

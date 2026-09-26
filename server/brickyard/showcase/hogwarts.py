@@ -311,7 +311,7 @@ async def grounds(kit: Kit, rng: random.Random) -> None:
 
 
 async def build() -> Kit:
-    kit = Kit("Hogwarts", PROMPT, W, D)
+    kit = Kit("hogwarts", "Hogwarts", PROMPT, W, D)
     rng = random.Random(11)
     await terrain(kit, rng)
     await shores(kit, rng, rect(36, 16, 6, 4) | {(49, 36), (49, 37)})

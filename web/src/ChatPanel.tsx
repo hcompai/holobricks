@@ -1,5 +1,6 @@
+import { ArrowUpIcon, StopIcon } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
-import { api, type Build } from "./api";
+import { api, GALLERY, type Build } from "./api";
 
 const SUGGESTIONS = [
   "A red-and-white lighthouse",
@@ -14,26 +15,19 @@ const BUILDER_LABELS: Record<string, string> = { holo: "Holo", demo: "Scripted d
 interface Props {
   build: Build | null;
   thinking: string;
-  onCreate: (prompt: string, builder: string) => void;
-  onSay: (text: string) => void;
+  onCreate: (prompt: string) => Promise<void>;
+  onSay: (text: string) => Promise<void>;
 }
 
 export function ChatPanel({ build, thinking, onCreate, onSay }: Props) {
   const [text, setText] = useState("");
   const [mode, setMode] = useState<"change" | "new">("change");
-  const [builders, setBuilders] = useState<string[]>([]);
-  const [builder, setBuilder] = useState("");
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState("");
   const log = useRef<HTMLDivElement>(null);
   const thought = useRef<HTMLDivElement>(null);
   const busy = build?.status === "building";
   const target = build && mode === "change" ? "change" : "new";
-
-  useEffect(() => {
-    api.builders().then((list) => {
-      setBuilders(list);
-      setBuilder((b) => b || list[0] || "");
-    });
-  }, []);
 
   useEffect(() => {
     log.current?.scrollTo({ top: log.current.scrollHeight, behavior: "smooth" });
@@ -43,16 +37,23 @@ export function ChatPanel({ build, thinking, onCreate, onSay }: Props) {
     thought.current?.scrollTo({ top: thought.current.scrollHeight });
   }, [thinking]);
 
-  const send = (value = text) => {
+  const send = async (value = text) => {
     const prompt = value.trim();
-    if (!prompt || (busy && target === "change")) return;
-    if (target === "change") onSay(prompt);
-    else onCreate(prompt, builder);
-    setText("");
-    setMode("change");
+    if (!prompt || sending || (busy && target === "change")) return;
+    setSending(true);
+    setError("");
+    try {
+      await (target === "change" ? onSay(prompt) : onCreate(prompt));
+      setText("");
+      setMode("change");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSending(false);
+    }
   };
 
-  const who = BUILDER_LABELS[build?.builder ?? builder] ?? build?.builder ?? "Builder";
+  const who = (build && BUILDER_LABELS[build.builder]) ?? build?.builder ?? "Builder";
 
   return (
     <div className="chat">
@@ -100,49 +101,45 @@ export function ChatPanel({ build, thinking, onCreate, onSay }: Props) {
           </div>
         )}
       </div>
-      <div className="composer">
-        <div className="modes">
+      {GALLERY ? (
+        <p className="gallery-note">Read-only gallery. New builds run in the local app with Holo.</p>
+      ) : (
+        <div className="composer">
           {build && (
-            <>
+            <div className="modes">
               <button className={mode === "change" ? "active" : ""} onClick={() => setMode("change")}>
                 Change this build
               </button>
               <button className={mode === "new" ? "active" : ""} onClick={() => setMode("new")}>
                 Start a new build
               </button>
-            </>
+            </div>
           )}
-          {target === "new" && builders.length > 1 && (
-            <select className="builder-select" value={builder} onChange={(e) => setBuilder(e.target.value)}>
-              {builders.map((b) => (
-                <option key={b} value={b}>
-                  {BUILDER_LABELS[b] ?? b}
-                </option>
-              ))}
-            </select>
+          <textarea
+            value={text}
+            placeholder={target === "change" ? "Describe how to change it…" : "Describe what to build…"}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                send();
+              }
+            }}
+          />
+          {busy && build && target === "change" ? (
+            <button className="send stop" onClick={() => api.stop(build.id)}>
+              <StopIcon size={14} weight="fill" />
+              Stop
+            </button>
+          ) : (
+            <button className="send" disabled={!text.trim() || sending} onClick={() => send()}>
+              Send
+              <ArrowUpIcon size={14} weight="bold" />
+            </button>
           )}
+          {error && <p className="composer-error">{error}</p>}
         </div>
-        <textarea
-          value={text}
-          placeholder={target === "change" ? "Describe how to change it…" : "Describe what to build…"}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              send();
-            }
-          }}
-        />
-        {busy && build && target === "change" ? (
-          <button className="send stop" onClick={() => api.stop(build.id)}>
-            Stop
-          </button>
-        ) : (
-          <button className="send" disabled={!text.trim()} onClick={() => send()}>
-            Send →
-          </button>
-        )}
-      </div>
+      )}
     </div>
   );
 }

@@ -21,7 +21,119 @@ const SHEET: { view: View; label: string }[] = [
   { view: "top", label: "Top (back is up)" },
 ];
 
-/** Three.js scene holding LDraw pieces; each part+color is fetched and parsed once, then cloned per piece. */
+const BACKDROP = "#f6f6f9";
+
+const lineMaterials = new WeakMap<THREE.Material, THREE.Material>();
+
+/** A copy of an edge material that reads each instance's transform from the instanceMatrix attribute. */
+function instancedLine(material: THREE.Material): THREE.Material {
+  let copy = lineMaterials.get(material);
+  if (!copy) {
+    copy = material.clone();
+    copy.defines = { ...copy.defines, USE_INSTANCING: "" };
+    if (copy instanceof THREE.ShaderMaterial) {
+      copy.vertexShader = copy.vertexShader.replace(/vec4\( (position|control0|control1|position \+ direction), 1\.0 \)/g, "instanceMatrix * $&");
+    }
+    lineMaterials.set(material, copy);
+  }
+  return copy;
+}
+
+function pieceMatrix(p: Piece, target: THREE.Matrix4): THREE.Matrix4 {
+  const [a, b, c, d, e, f, g, h, i] = p.rot;
+  return target.set(a, b, c, p.pos[0], d, e, f, p.pos[1], g, h, i, p.pos[2], 0, 0, 0, 1);
+}
+
+interface Instanced {
+  object: THREE.Mesh | THREE.LineSegments;
+  local: THREE.Matrix4;
+  matrices: THREE.InstancedBufferAttribute;
+}
+
+/** Every piece of one part+color, one instanced draw per template sub-mesh, ordered by step so a count hides later steps. */
+class Batch {
+  private pieces: Piece[] = [];
+  private objects: Instanced[] = [];
+  private capacity = 0;
+  private visible = 0;
+  private bounds: THREE.Box3;
+
+  constructor(
+    private template: THREE.Group,
+    private root: THREE.Group,
+  ) {
+    template.updateMatrixWorld(true);
+    this.bounds = new THREE.Box3().setFromObject(template);
+  }
+
+  set(pieces: Piece[], step: number) {
+    this.pieces = [...pieces].sort((a, b) => a.step - b.step || a.id - b.id);
+    if (this.pieces.length > this.capacity) this.allocate(2 ** Math.ceil(Math.log2(this.pieces.length)));
+    const matrix = new THREE.Matrix4();
+    const world = new THREE.Matrix4();
+    this.pieces.forEach((p, i) => {
+      pieceMatrix(p, matrix);
+      for (const o of this.objects) world.multiplyMatrices(matrix, o.local).toArray(o.matrices.array, i * 16);
+    });
+    for (const o of this.objects) o.matrices.needsUpdate = true;
+    this.show(step);
+  }
+
+  show(step: number) {
+    this.visible = this.pieces.findIndex((p) => p.step > step);
+    if (this.visible < 0) this.visible = this.pieces.length;
+    for (const { object } of this.objects) {
+      if (object instanceof THREE.InstancedMesh) object.count = this.visible;
+      else (object.geometry as THREE.InstancedBufferGeometry).instanceCount = this.visible;
+    }
+  }
+
+  /** Grow `target` by the visible pieces, in the root's local space. */
+  expand(target: THREE.Box3) {
+    const matrix = new THREE.Matrix4();
+    const box = new THREE.Box3();
+    for (const p of this.pieces.slice(0, this.visible)) target.union(box.copy(this.bounds).applyMatrix4(pieceMatrix(p, matrix)));
+  }
+
+  dispose() {
+    for (const { object } of this.objects) {
+      this.root.remove(object);
+      if (object instanceof THREE.InstancedMesh) object.dispose();
+      else object.geometry.dispose();
+    }
+    this.objects = [];
+  }
+
+  private allocate(capacity: number) {
+    this.dispose();
+    this.capacity = capacity;
+    this.template.traverse((source) => {
+      if (!(source instanceof THREE.Mesh || source instanceof THREE.LineSegments)) return;
+      let object: THREE.Mesh | THREE.LineSegments;
+      let matrices: THREE.InstancedBufferAttribute;
+      if (source instanceof THREE.Mesh) {
+        const mesh = new THREE.InstancedMesh(source.geometry, source.material, capacity);
+        object = mesh;
+        matrices = mesh.instanceMatrix;
+      } else {
+        const geometry = new THREE.InstancedBufferGeometry();
+        geometry.index = source.geometry.index;
+        for (const name in source.geometry.attributes) geometry.setAttribute(name, source.geometry.getAttribute(name));
+        for (const group of source.geometry.groups) geometry.addGroup(group.start, group.count, group.materialIndex);
+        matrices = new THREE.InstancedBufferAttribute(new Float32Array(capacity * 16), 16);
+        geometry.setAttribute("instanceMatrix", matrices);
+        const material = Array.isArray(source.material) ? source.material.map(instancedLine) : instancedLine(source.material);
+        object = new THREE.LineSegments(geometry, material);
+      }
+      object.frustumCulled = false;
+      object.matrixAutoUpdate = false;
+      this.objects.push({ object, local: source.matrixWorld.clone(), matrices });
+      this.root.add(object);
+    });
+  }
+}
+
+/** Three.js scene holding LDraw pieces; each part+color is fetched and parsed once, then drawn instanced. */
 export class BrickScene {
   private renderer: THREE.WebGLRenderer;
   private scene = new THREE.Scene();
@@ -29,8 +141,8 @@ export class BrickScene {
   private controls: OrbitControls;
   private loader = new LDrawLoader();
   private root = new THREE.Group();
-  private objects = new Map<number, THREE.Object3D>();
-  private steps = new Map<number, number>();
+  private batches = new Map<string, Batch>();
+  private parts = new Map<string, Promise<string>>();
   private templates = new Map<string, Promise<THREE.Group>>();
   private materials: Promise<void>;
   private visibleStep = Infinity;
@@ -39,14 +151,14 @@ export class BrickScene {
   userMoved = false;
   private resizeObserver: ResizeObserver;
   private frame = 0;
+  private framing: { view: View; width: number; depth: number } = { view: "iso", width: 32, depth: 32 };
 
   constructor(private container: HTMLElement) {
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.toneMapping = THREE.NeutralToneMapping;
     container.appendChild(this.renderer.domElement);
 
-    this.scene.background = new THREE.Color(0xf3f3f1);
     const pmrem = new THREE.PMREMGenerator(this.renderer);
     this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
     this.scene.environmentIntensity = 0.55;
@@ -64,7 +176,7 @@ export class BrickScene {
 
     this.loader.smoothNormals = true;
     this.loader.setConditionalLineMaterial(LDrawConditionalLineMaterial);
-    this.materials = this.loader.preloadMaterials("/api/ldconfig");
+    this.materials = this.loader.preloadMaterials(api.ldconfigUrl);
 
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(container);
@@ -92,53 +204,69 @@ export class BrickScene {
     this.renderer.setSize(w, h);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
+    if (!this.userMoved) this.frameView(this.framing.view, this.framing.width, this.framing.depth);
   }
 
+  /** The packed part places it in main color 16 on its second line; each color gets its own parsed copy. */
   private template(part: string, color: number): Promise<THREE.Group> {
     const key = `${part}:${color}`;
     let template = this.templates.get(key);
     if (!template) {
-      template = this.materials
-        .then(() => fetch(api.partUrl(part, color)))
-        .then((r) => r.text())
-        .then((text) => new Promise<THREE.Group>((resolve, reject) => this.loader.parse(text, resolve, reject)));
+      let text = this.parts.get(part);
+      if (!text) {
+        text = fetch(api.partUrl(part)).then((r) => r.text());
+        this.parts.set(part, text);
+      }
+      template = Promise.all([text, this.materials]).then(
+        ([packed]) =>
+          new Promise<THREE.Group>((resolve, reject) =>
+            this.loader.parse(packed.replace("\n1 16 ", `\n1 ${color} `), resolve, reject),
+          ),
+      );
       this.templates.set(key, template);
     }
     return template;
   }
 
-  /** Show exactly these pieces: new ones are loaded and added, missing ones removed. */
-  async setPieces(pieces: Piece[]): Promise<void> {
-    const wanted = new Set(pieces.map((p) => p.id));
-    for (const id of [...this.steps.keys()]) {
-      if (wanted.has(id)) continue;
-      const object = this.objects.get(id);
-      if (object) this.root.remove(object);
-      this.objects.delete(id);
-      this.steps.delete(id);
+  /** Show exactly these pieces; calls apply in order, and each resolves once its pieces are drawn. */
+  setPieces(pieces: Piece[]): Promise<void> {
+    this.loading = this.loading.catch(() => undefined).then(() => this.apply(pieces));
+    return this.loading;
+  }
+
+  private async apply(pieces: Piece[]) {
+    const groups = new Map<string, Piece[]>();
+    for (const p of pieces) {
+      const key = `${p.part}:${p.color}`;
+      const group = groups.get(key);
+      if (group) group.push(p);
+      else groups.set(key, [p]);
     }
-    const fresh = pieces.filter((p) => !this.steps.has(p.id));
-    for (const p of fresh) this.steps.set(p.id, p.step);
-    const loading = Promise.all(
-      fresh.map(async (p) => {
-        const object = (await this.template(p.part, p.color)).clone();
-        const [a, b, c, d, e, f, g, h, i] = p.rot;
-        object.matrixAutoUpdate = false;
-        object.matrix.set(a, b, c, p.pos[0], d, e, f, p.pos[1], g, h, i, p.pos[2], 0, 0, 0, 1);
-        object.visible = p.step <= this.visibleStep;
-        if (this.steps.has(p.id)) {
-          this.objects.set(p.id, object);
-          this.root.add(object);
-        }
-      }),
+    const templates = await Promise.all(
+      [...groups.values()].map(([p]) =>
+        this.template(p.part, p.color).catch((error) => {
+          console.error(`Could not load ${p.part} in color ${p.color}`, error);
+          return null;
+        }),
+      ),
     );
-    this.loading = Promise.all([this.loading, loading]).then(() => undefined);
-    await this.loading;
+    for (const [key, batch] of this.batches) {
+      if (groups.has(key)) continue;
+      batch.dispose();
+      this.batches.delete(key);
+    }
+    [...groups].forEach(([key, group], i) => {
+      const template = templates[i];
+      if (!template) return;
+      let batch = this.batches.get(key);
+      if (!batch) this.batches.set(key, (batch = new Batch(template, this.root)));
+      batch.set(group, this.visibleStep);
+    });
   }
 
   setVisibleStep(step: number) {
     this.visibleStep = step;
-    for (const [id, object] of this.objects) object.visible = (this.steps.get(id) ?? 0) <= step;
+    for (const batch of this.batches.values()) batch.show(step);
   }
 
   setSpin(spin: boolean) {
@@ -147,18 +275,31 @@ export class BrickScene {
 
   /** Point the camera along `view` so the visible pieces (or the empty baseplate) fill the frame. */
   frameView(view: View, width: number, depth: number) {
+    this.framing = { view, width, depth };
+    this.root.updateMatrixWorld(true);
     const box = new THREE.Box3();
-    for (const object of this.objects.values()) if (object.visible) box.expandByObject(object);
+    for (const batch of this.batches.values()) batch.expand(box);
+    box.applyMatrix4(this.root.matrixWorld);
     if (box.isEmpty()) {
       box.set(new THREE.Vector3(0, 0, -depth * 20), new THREE.Vector3(width * 20, 40, 0));
     }
     const center = box.getCenter(new THREE.Vector3());
-    const radius = box.getSize(new THREE.Vector3()).length() / 2;
-    const halfFov = THREE.MathUtils.degToRad(this.camera.fov / 2);
-    const fitHeight = radius / Math.tan(halfFov);
-    const fitWidth = radius / (Math.tan(halfFov) * this.camera.aspect);
-    const distance = Math.max(fitHeight, fitWidth) * 0.72;
-    this.camera.position.copy(center).addScaledVector(VIEW_DIRECTIONS[view], distance);
+    const direction = VIEW_DIRECTIONS[view].clone().normalize();
+    this.camera.position.copy(center).add(direction);
+    this.camera.lookAt(center);
+    this.camera.updateMatrixWorld();
+    const tanY = Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2));
+    const tanX = tanY * this.camera.aspect;
+    let distance = 0;
+    for (const x of [box.min.x, box.max.x])
+      for (const y of [box.min.y, box.max.y])
+        for (const z of [box.min.z, box.max.z]) {
+          const p = new THREE.Vector3(x, y, z).applyMatrix4(this.camera.matrixWorldInverse);
+          const depth = p.z + 1;
+          distance = Math.max(distance, depth + Math.abs(p.x) / tanX, depth + Math.abs(p.y) / tanY);
+        }
+    distance *= 1.04;
+    this.camera.position.copy(center).addScaledVector(direction, distance);
     this.camera.near = distance / 100;
     this.camera.far = distance * 100;
     this.camera.updateProjectionMatrix();
@@ -184,12 +325,14 @@ export class BrickScene {
     for (const tile of tiles) {
       this.frameView(tile.view, 32, 32);
       this.renderer.render(this.scene, this.camera);
+      ctx.fillStyle = BACKDROP;
+      ctx.fillRect(tile.x, tile.y, size, size);
       ctx.drawImage(this.renderer.domElement, tile.x, tile.y, size, size);
       if (tile.label) {
         ctx.font = "600 15px system-ui, sans-serif";
-        ctx.fillStyle = "#333";
+        ctx.fillStyle = "#1c1c26";
         ctx.fillText(tile.label, tile.x + 10, tile.y + 22);
-        ctx.strokeStyle = "#d0d0cc";
+        ctx.strokeStyle = "#d8d8e2";
         ctx.strokeRect(tile.x + 0.5, tile.y + 0.5, size - 1, size - 1);
       }
     }

@@ -1,295 +1,727 @@
-"""Place Saint-Germain-des-Prés, Paris: a 32x32 microscale diorama."""
+"""The Seine at Saint-Germain, Paris: a 32x32 microscale slice from the river up to the boulevard."""
 
 from __future__ import annotations
 
 import random
+from dataclasses import dataclass, field
 
-from brickyard.shapes import TILE_RUN, TILES, rect
+from brickyard import ldraw
+from brickyard.model import ROTATIONS, place
+from brickyard.shapes import BRICKS, PLATES, TILE_RUN, TILES, rect
 from brickyard.showcase.kit import Frame, Kit
 
 BLACK, WHITE, LBG, DBG, TAN, DTAN, VLG, VLBG = 0, 15, 71, 72, 19, 28, 503, 151
 GREEN, BGREEN, DGREEN, DRED, RED, RBROWN, DORANGE = 2, 10, 288, 320, 4, 70, 484
-TYELLOW, TORANGE, TBLACK, NOUGAT, LNOUGAT, YELLOW, DBLUE = 46, 57, 40, 84, 78, 14, 272
-PLATE_2DEEP = {8: "3034", 6: "3795", 4: "3020", 3: "3021", 2: "3022"}
+TYELLOW, TORANGE, TBLACK, NOUGAT, LNOUGAT, YELLOW, DBLUE, SBLUE = 46, 57, 40, 84, 78, 14, 272, 379
+BLUE, PGOLD = 1, 297
+
+GROUND = 27
+DOCK = 8
+BAND = [p for p in PLATES if 2 in p[:2] and max(p[:2]) <= 8] + [(1, 1, "3024")]
+CORNERS = {("south", "east"), ("south", "west"), ("north", "east"), ("north", "west")}
+
+
+@dataclass
+class Face:
+    """One street front of a building: windows start at these u offsets and are 2 studs wide."""
+
+    side: str
+    windows: list[int]
+    shop: int | None = None
+    lit: int = TYELLOW
+    awning: int | None = None
+    trim: int | None = None
+
+
+@dataclass
+class Haussmann:
+    x0: int
+    y0: int
+    w: int
+    d: int
+    stone: int
+    faces: list[Face]
+    floors: int = 5
+    balconies: tuple[int, ...] = (2, 5)
+    garden: bool = False
+    reach: int = 1
+    frames: dict[str, Frame] = field(default_factory=dict)
+
+
+def _frame(kit: Kit, b: Haussmann, side: str) -> Frame:
+    length, depth = (b.w, b.d) if side in ("south", "north") else (b.d, b.w)
+    return Frame(kit, b.x0, b.y0, length, depth, side)
+
+
+def _corners(b: Haussmann) -> list[tuple[str, str]]:
+    sides = {f.side for f in b.faces}
+    return [pair for pair in CORNERS if set(pair) <= sides]
+
+
+def _corner_cells(b: Haussmann, pair: tuple[str, str]) -> tuple[tuple[int, int], tuple[int, int]]:
+    """The facade corner cell and the diagonal cell just outside it."""
+    x = b.x0 + b.w - 1 if "east" in pair else b.x0
+    y = b.y0 if "south" in pair else b.y0 + b.d - 1
+    dx = 1 if "east" in pair else -1
+    dy = -1 if "south" in pair else 1
+    return (x, y), (x + dx, y + dy)
+
+
+def _row(frame: Frame, v: int) -> list[tuple[int, int]]:
+    return [frame.cell(u, v) for u in range(frame.length)]
+
+
+def building(kit: Kit, name: str, b: Haussmann):
+    """Yields step titles while adding a corner-aware Haussmann block: shopfronts, awnings, balconies, mansard."""
+    for face in b.faces:
+        b.frames[face.side] = _frame(kit, b, face.side)
+    faces = {f.side: f for f in b.faces}
+    frames = b.frames
+    corners = _corners(b)
+    facade = {c for f in frames.values() for c in _row(f, 0)}
+    outside = {c for f in frames.values() for c in _row(f, -1)} | {_corner_cells(b, p)[1] for p in corners}
+    shopfront = {c for s, f in frames.items() if faces[s].shop is not None for c in _row(f, 0)}
+    x0, y0, w, d = b.x0, b.y0, b.w, b.d
+
+    z = GROUND
+    kit.ring(x0, y0, w, d, z, 3, b.stone, lambda x, y, c: (x, y) in shopfront)
+    ends = {frames[s].cell(u, 0) for s in frames if faces[s].shop is not None for u in (0, frames[s].length - 1)}
+    for x, y in sorted(ends):
+        kit.add("14716", x, y, z, b.stone)
+    lit: dict[tuple[int, int], int] = {}
+    for side, frame in frames.items():
+        face = faces[side]
+        if face.shop is None:
+            continue
+        u = 1
+        while u < frame.length - 1:
+            size = 4 if frame.length - 1 - u >= 4 and (u == 1 or frame.length - 1 - u > 4) else 2
+            if frame.length - 1 - u == 1:
+                size = 1
+            if size == 1:
+                frame.put("14716", u, 0, z, b.stone)
+            else:
+                frame.put("60594" if size == 4 else "60593", u, 0, z, face.shop)
+                for i in range(size):
+                    lit.setdefault(frame.cell(u + i, 1), face.lit)
+            u += size
+    for c in range(3):
+        for color in set(lit.values()):
+            kit.cover({cell for cell, col in lit.items() if col == color}, z + 3 * c, color, BRICKS)
+    z += 9
+    below, solid = GROUND, _perimeter(b) | set(lit)
+    yield "shopfront"
+
+    r = b.reach
+    ledge = _deep(kit, b, z, b.stone) if r == 3 else _perimeter(b)
+    if r != 3:
+        kit.cover(ledge, z, b.stone)
+    _interior(kit, b, z, below, solid)
+    below, solid, z = z + 1, _perimeter(b), z + 1
+    awnings = {s for s in frames if faces[s].awning is not None}
+    awning_corners = [p for p in corners if set(p) <= awnings]
+    blocks = {p: {_out(b, p, i, j) for i in (r - 1, r) for j in (r - 1, r)} for p in awning_corners}
+    covered: dict[tuple[int, int], int] = {}
+    for side in sorted(awnings):
+        frame, face = frames[side], faces[side]
+        extra: list[int] = []
+        for pair in awning_corners:
+            if side in pair:
+                extra += (
+                    list(range(-(r - 2), 0))
+                    if frame.cell(0, 0) == _corner_cells(b, pair)[0]
+                    else list(range(frame.length, frame.length + r - 2))
+                )
+        for u in list(range(frame.length)) + extra:
+            cells = {frame.cell(u, -r), frame.cell(u, 1 - r)}
+            if not any(cells & block for block in blocks.values()):
+                frame.put("3040b", u, -r, z, face.awning)
+                covered.update(dict.fromkeys(cells, face.trim or face.awning))
+    for pair, block in blocks.items():
+        x, y = min(block)
+        kit.add(
+            "3045",
+            x,
+            y,
+            z,
+            faces[pair[0]].awning,
+            {("south", "west"): 0, ("south", "east"): 270, ("north", "east"): 180, ("north", "west"): 90}[pair],
+        )
+        covered.update(dict.fromkeys(block, faces[pair[0]].trim or faces[pair[0]].awning))
+    kit.ring(x0, y0, w, d, z, 1, b.stone, lambda x, y, c: (x, y) in covered)
+    for color in set(covered.values()):
+        kit.cover({c for c, col in covered.items() if col == color} - ledge, z - 1, color)
+    z += 3
+    yield "awning"
+
+    band = facade | outside
+    for floor in range(1, b.floors + 1):
+        balcony = floor in b.balconies
+        garden = b.garden and floor == 1
+        if garden:
+            _deep(kit, b, z, BLACK)
+        else:
+            _slab(kit, b, z, band, band if balcony else set())
+        _interior(kit, b, z, below, solid)
+        z += 1
+        glass = {f.cell(u + i, 0) for s, f in frames.items() for u in faces[s].windows for i in (0, 1)}
+        backs = {f.cell(u + i, 1) for s, f in frames.items() for u in faces[s].windows for i in (0, 1)}
+        below, solid = z, _perimeter(b) | backs
+        for c in range(2):
+            kit.cover(backs, z + 3 * c, BLACK, BRICKS)
+        top = kit.ring(x0, y0, w, d, z, 2, b.stone, lambda x, y, c, glass=glass: (x, y) in glass, start=floor)
+        for side, frame in frames.items():
+            for u in faces[side].windows:
+                frame.put("60592", u, 0, z, WHITE)
+        if garden:
+            _planted_balcony(kit, b, z)
+        elif balcony:
+            _railing(kit, b, z, -1)
+        else:
+            for side, frame in frames.items():
+                for u in faces[side].windows:
+                    frame.put("2412b", u, -1, z, BLACK)
+        z = top
+        yield f"floor {floor}"
+
+    _slab(kit, b, z, band, set())
+    _interior(kit, b, z, below, solid)
+    z += 1
+    for side, frame in frames.items():
+        frame.run(0, -1, z, frame.length, WHITE, TILE_RUN)
+    for pair in corners:
+        kit.add("3070b", *_corner_cells(b, pair)[1], z, WHITE)
+    yield "cornice"
+
+    yield from _mansard(kit, b, z)
+
+
+def _footprint(b: Haussmann) -> set[tuple[int, int]]:
+    return {(x, y) for x in range(b.x0, b.x0 + b.w) for y in range(b.y0, b.y0 + b.d)}
+
+
+def _perimeter(b: Haussmann) -> set[tuple[int, int]]:
+    return {(x, y) for x, y in _footprint(b) if x in (b.x0, b.x0 + b.w - 1) or y in (b.y0, b.y0 + b.d - 1)}
+
+
+def _interior(
+    kit: Kit, b: Haussmann, z: int, below: int, solid: set[tuple[int, int]], color: int | None = None
+) -> None:
+    """Plates filling the inside at `z`, each on a hidden column from `below` unless it already rests on `solid`."""
+    held, kit.pending = kit.pending, []
+    kit.cover(_footprint(b) - _perimeter(b), z, b.stone if color is None else color)
+    plates = kit.support(z, solid, [("3005", 3)] * ((z - below) // 3), b.stone)
+    kit.pending = held + kit.pending + plates
+
+
+def _corner_block(b: Haussmann, pair: tuple[str, str]) -> tuple[int, int]:
+    """Min corner of the 2x2 made of the facade corner cell and the three outside cells around it."""
+    corner, diagonal = _corner_cells(b, pair)
+    return min(corner[0], diagonal[0]), min(corner[1], diagonal[1])
+
+
+def _slab(kit: Kit, b: Haussmann, z: int, band: set[tuple[int, int]], black: set[tuple[int, int]]) -> None:
+    """A floor plate whose facade band sticks out one stud; corners first so every outside plate also sits on wall."""
+    taken: set[tuple[int, int]] = set()
+    for pair in _corners(b):
+        x, y = _corner_block(b, pair)
+        block = {(x + i, y + j) for i in (0, 1) for j in (0, 1)}
+        kit.add("3022", x, y, z, BLACK if block & black else b.stone)
+        taken |= block
+    kit.cover(black - taken, z, BLACK, BAND)
+    kit.cover(band - black - taken, z, b.stone, BAND)
+    kit.cover(_perimeter(b) - band, z, b.stone)
+
+
+def _out(b: Haussmann, pair: tuple[str, str], i: int, j: int) -> tuple[int, int]:
+    """The cell i studs sideways and j studs out from the facade corner, diagonally away from the building."""
+    (cx, cy), _ = _corner_cells(b, pair)
+    return cx + (i if "east" in pair else -i), cy + (-j if "south" in pair else j)
+
+
+def _deep(kit: Kit, b: Haussmann, z: int, color: int) -> set[tuple[int, int]]:
+    """A 3-deep ledge of 2x3 plates reaching out from the facade, a 3x3 plate at each corner; returns its cells."""
+    taken: set[tuple[int, int]] = set()
+    for pair in _corners(b):
+        block = {_out(b, pair, i, j) for i in range(3) for j in range(3)}
+        kit.add("11212", *min(block), z, color)
+        taken |= block
+    for frame in b.frames.values():
+        u = 0
+        while u < frame.length:
+            cells = {frame.cell(u + i, v) for i in (0, 1) for v in (-2, -1, 0)}
+            if u + 2 <= frame.length and not cells & taken:
+                frame.put("3021", u, -2, z, color, 90)
+                taken |= cells
+                u += 2
+                continue
+            cells = {frame.cell(u, v) for v in (-2, -1, 0)}
+            if not cells & taken:
+                frame.put("3623", u, -2, z, color, 90)
+                taken |= cells
+            u += 1
+    kit.cover(_perimeter(b) - taken, z, b.stone)
+    return taken | _perimeter(b)
+
+
+def _railing(kit: Kit, b: Haussmann, z: int, v: int, skip: tuple[int, int] | None = None) -> None:
+    for frame in b.frames.values():
+        u = 0
+        while u < frame.length:
+            if u + 4 <= frame.length:
+                frame.put("3633", u, v, z, BLACK)
+                u += 4
+            else:
+                frame.put("3062b", u, v, z, BLACK)
+                u += 1
+    for pair in _corners(b):
+        for x, y in _outer_corner(b, pair, -v) - {skip}:
+            kit.add("3062b", x, y, z, BLACK)
+
+
+def _outer_corner(b: Haussmann, pair: tuple[str, str], depth: int) -> set[tuple[int, int]]:
+    (cx, cy), _ = _corner_cells(b, pair)
+    dx = 1 if "east" in pair else -1
+    dy = -1 if "south" in pair else 1
+    return {(cx + i * dx, cy + j * dy) for i in range(1, depth + 1) for j in range(1, depth + 1) if depth in (i, j)}
+
+
+def _planted_balcony(kit: Kit, b: Haussmann, z: int) -> None:
+    """Railing at the slab edge, a hedge of shrubs behind it and a palm on the street corner."""
+    palm = None
+    if _corners(b):
+        pair = _corners(b)[0]
+        (cx, cy), _ = _corner_cells(b, pair)
+        dx, dy = (1 if "east" in pair else -1), (-1 if "south" in pair else 1)
+        palm = (cx + 2 * dx, cy + 2 * dy)
+    _railing(kit, b, z, -2, palm)
+    greens = [GREEN, DGREEN, BGREEN]
+    cells = [f.cell(u, -1) for f in b.frames.values() for u in range(f.length)]
+    cells += [c for p in _corners(b) for c in _outer_corner(b, p, 1)]
+    for n, (x, y) in enumerate(cells):
+        kit.add("3062b", x, y, z, greens[n % 3])
+        kit.add("6141" if n % 2 else "4589", x, y, z + 3, greens[(n + 1) % 3])
+    if palm:
+        x, y = palm
+        for c in range(3):
+            kit.add("3062b", x, y, z + 3 * c, RBROWN)
+        kit.add("2423", x - 1, y - 3 if dy < 0 else y, z + 9, GREEN)
+        kit.add("2423", x - 2 if dx > 0 else x - 1, y - 2 if dy < 0 else y - 1, z + 10, BGREEN, 90)
+
+
+def _mansard(kit: Kit, b: Haussmann, z: int):
+    frames, faces = b.frames, {f.side: f for f in b.faces}
+    corners = _corners(b)
+    slopes = {c for f in frames.values() for v in (0, 1) for c in _row(f, v)}
+    kit.ring(b.x0, b.y0, b.w, b.d, z, 3, b.stone, lambda x, y, c: (x, y) in slopes)
+    claimed: set[tuple[int, int]] = set()
+    for pair in corners:
+        (cx, cy), _ = _corner_cells(b, pair)
+        x = cx - 1 if "east" in pair else cx
+        y = cy if "south" in pair else cy - 1
+        kit.add(
+            "3685",
+            x,
+            y,
+            z,
+            DBG,
+            {("south", "west"): 0, ("south", "east"): 270, ("north", "east"): 180, ("north", "west"): 90}[pair],
+        )
+        claimed |= {(x + i, y + j) for i in (0, 1) for j in (0, 1)}
+    for side, frame in frames.items():
+        free = [u for u in faces[side].windows if not {frame.cell(u + i, 0) for i in (0, 1)} & claimed]
+        dormers = {u + i for u in free for i in (0, 1)}
+        for u in range(frame.length):
+            if frame.cell(u, 0) not in claimed and u not in dormers:
+                frame.put("4460b", u, 0, z, DBG)
+        for u in free:
+            frame.put("60592", u, 0, z, WHITE)
+            frame.put("3004", u, 1, z, DBG)
+            frame.put("3004", u, 1, z + 3, DBG)
+            frame.put("3039", u, 0, z + 6, DBG)
+    yield "mansard"
+    below, z = z, z + 9
+    facade = {c for f in frames.values() for c in _row(f, 0)}
+    kit.cover(_perimeter(b) - facade, z, DBG)
+    _interior(kit, b, z, below, _perimeter(b) | slopes, DBG)
+    z += 1
+    for x, y in _chimneys(b):
+        kit.add("3004", x, y, z, b.stone, 90)
+        kit.add("3004", x, y, z + 3, b.stone, 90)
+        kit.add("3062b", x, y, z + 6, DORANGE)
+        kit.add("3062b", x, y + 1, z + 6, DORANGE)
+    yield "roof and chimneys"
+
+
+def _chimneys(b: Haussmann) -> list[tuple[int, int]]:
+    sides = {f.side for f in b.faces}
+    out = []
+    if "west" not in sides:
+        out.append((b.x0, b.y0 + b.d // 2 - 1))
+    if "east" not in sides:
+        out.append((b.x0 + b.w - 1, b.y0 + b.d // 2 - 1))
+    if "north" not in sides:
+        out.append((b.x0 + b.w // 2, b.y0 + b.d - 3))
+    return out
+
+
+async def build_building(kit: Kit, name: str, b: Haussmann) -> None:
+    for title in building(kit, name, b):
+        await kit.step(f"{name}: {title}")
+
 
 W = D = 32
-GROUND = 8
-TOWER = (1, 24, 6, 6)
-GARDEN = (0, 15, 9, 8)
-METRO_HOLE = {(x, y) for x in (2, 3) for y in range(5, 9)}
+RIVER = 7
+QUAY = 11
+BRIDGE = (23, 0, 8, 11)
+STAIRS = [(13 + k, 10 + 2 * k) for k in range(10)]
+VAULTS = (2, 8)
+CUTWATER = rect(21, 5, 2, 2)
+EMBOSSED = {4: "15533", 2: "98283", 1: "3005"}
+ROADS = rect(0, 14, W, 4) | rect(19, 18, 2, D - 18) | rect(25, 0, 4, 14)
+WATER = [(43, 4), (33, 2), (SBLUE, 1)]
+BARGE = (2, 4, 16, 3)
 
-PROMPT = "Place Saint-Germain-des-Prés in Paris, microscale diorama with Haussmann buildings"
+PROMPT = "The Seine at Saint-Germain-des-Prés, Paris: a 32x32 microscale diorama"
 STORY = [
     (
         "Hand-scripted by Claude, as a showcase of what Brickyard's parts and checks can do. Every step went through "
         "the same validation Holo uses; ask for a change and Holo takes over."
     ),
     (
-        "Nods: the Saint-Germain-des-Prés bell tower with its slate spire, Les Deux Magots (green awning) facing the "
-        "church, the Café de Flore terrace on the boulevard, a Guimard metro entrance, a Wallace fountain, a Morris "
-        "column, plane trees, and a zebra crossing on Boulevard Saint-Germain."
+        "A slice of Paris in three levels: the Seine with a moored péniche, the low dock with a picnic and a buvette "
+        "in the vaults of the quay wall, balustraded stairs climbing beside a stone bridge with a cutwater, ribbed "
+        "vault and gilded medallion, then the quai with a plane tree and a chestnut in bloom, "
+        "bouquinistes' green boxes on the parapet, "
+        "and on top Café de Flore on its corner, Les Deux Magots and a bookshop."
     ),
 ]
 
 
-async def base(kit: Kit) -> None:
+def windows(length: int) -> list[int]:
+    return list(range(1, length - 2, 3))
+
+
+def blocks() -> dict[str, Haussmann]:
+    def face(side: str, length: int, **kwargs) -> Face:
+        return Face(side, windows(length), **kwargs)
+
+    return {
+        "Café de Flore": Haussmann(
+            4,
+            22,
+            12,
+            10,
+            TAN,
+            [
+                face("south", 12, shop=DGREEN, awning=WHITE, trim=DGREEN),
+                face("east", 10, shop=DGREEN, awning=WHITE, trim=DGREEN),
+            ],
+            balconies=(5,),
+            garden=True,
+            reach=3,
+        ),
+        "Les Deux Magots": Haussmann(
+            22,
+            22,
+            10,
+            10,
+            VLG,
+            [face("south", 10, shop=DGREEN, awning=DGREEN), face("west", 10, shop=DGREEN, awning=DGREEN)],
+        ),
+        "Bookshop": Haussmann(
+            0, 22, 4, 10, LNOUGAT, [face("south", 4, shop=DBLUE, lit=TORANGE)], floors=6, balconies=(2, 6)
+        ),
+    }
+
+
+def _vaulted(x: int, y: int, c: int) -> bool:
+    if y != QUAY:
+        return False
+    if c >= 4:
+        return 1 <= x <= 12
+    return any(n <= x < n + 4 for n in VAULTS)
+
+
+def _stone(x: int, y: int, c: int) -> int:
+    if y != QUAY:
+        return DBG
+    return DTAN if c == 0 or (3 * x + 5 * c) % 7 == 0 else TAN
+
+
+async def base(kit: Kit, rng: random.Random) -> None:
     kit.fill(0, 0, W, D, 0, BLACK)
     await kit.step("Base plate")
-    kit.ring(0, 0, W, D, 1, 2, DBG)
-    for x in range(2, W - 3, 4):
-        for y in range(2, D - 3, 4):
-            if not rect(x, y, 2, 2) & rect(1, 4, 4, 6):
-                kit.add("3003", x, y, 1, DBG)
-                kit.add("3003", x, y, 4, DBG)
-    await kit.step("Base walls and pillars")
-    for y, courses in ((5, 2), (6, 1), (7, 1)):
-        for c in range(courses):
-            kit.add("3004", 2, y, 1 + 3 * c, DBG)
-    kit.add("3023b", 2, 5, 7, DBG)
-    kit.add("3023b", 2, 6, 4, DBG)
-    kit.add("3023b", 2, 6, 5, DBG)
-    kit.add("3023b", 2, 8, 1, DBG)
-    for x, y, part in ((1, 5, "3005"), (4, 5, "3005"), (5, 4, "3004"), (4, 29, "3004")):
-        kit.add(part, x, y, 1, DBG)
-        kit.add(part, x, y, 4, DBG)
-    await kit.step("Metro stairs")
-    kit.fill(0, 0, W, D, 7, DBG, skip=METRO_HOLE)
-    await kit.step("Top plates")
+    river = rect(0, 0, W, RIVER) - rect(*BARGE) - _piers()
+    kit.cover(river, 1, DBLUE)
+    kit.scatter(river, 2, WATER, rng)
+    await kit.step("The Seine")
+    kit.ring(
+        0, RIVER, W, D - RIVER, 1, 2, lambda x, y, c: (DBG if c == 0 else LBG) if y == RIVER else DBG, kind=EMBOSSED
+    )
+    kit.fill(0, RIVER, W, D - RIVER, 7, DBG)
+    walls = {c for c in rect(0, RIVER, W, D - RIVER) if c[0] in (0, W - 1) or c[1] in (RIVER, D - 1)}
+    plates = kit.support(7, walls, [("3005", 3), ("3005", 3)], DBG)
+    await kit.step("Dock wall and hidden pillars")
+    kit.pending = plates
+    await kit.step("Dock plates")
+    kit.ring(0, QUAY, W, D - QUAY, DOCK, 6, _stone, _vaulted, EMBOSSED)
+    await kit.step("Quay wall in dressed stone")
+    for n in VAULTS:
+        kit.add("15254", n - 1, QUAY, DOCK + 12, TAN)
+        for z in range(DOCK, 26, 3):
+            kit.run(n, QUAY + 1, z, 4, TYELLOW if n == VAULTS[0] and z < DOCK + 12 else DBG)
+    bar, gate = VAULTS
+    kit.add("3010", bar, QUAY, DOCK, DRED)
+    kit.add("2431", bar, QUAY, DOCK + 3, TAN)
+    for z in (DOCK, DOCK + 6):
+        kit.add("3185", gate, QUAY, z, BLACK)
+    await kit.step("Vaults under the quai: a lit buvette and an iron gate")
+    kit.cover(rect(0, QUAY - 1, 12, 2), 26, TAN)
+    kit.cover(rect(0, QUAY, W, D - QUAY) - rect(0, QUAY, 12, 1), 26, DBG)
+    walls = {c for c in rect(0, QUAY, W, D - QUAY) if c[0] in (0, W - 1) or c[1] in (QUAY, D - 1)}
+    walls |= {(x, QUAY + 1) for n in VAULTS for x in range(n, n + 4)}
+    plates = kit.support(26, walls, [("3005", 3)] * 6, DBG)
+    await kit.step("Hidden street pillars")
+    kit.pending = plates
+    await kit.step("Street plates")
 
 
-async def streets(kit: Kit, rng: random.Random, buildings: set[tuple[int, int]]) -> None:
-    zebra = {(x, y) for x in range(12, 19, 2) for y in range(4)}
-    kit.fill(0, 0, W, 4, GROUND, DBG, TILES, skip=zebra)
-    for x in range(12, 19, 2):
-        kit.add("2431", x, 0, GROUND, WHITE, 90)
-    await kit.step("Boulevard Saint-Germain with a zebra crossing")
-    kit.run(0, 4, GROUND, W, VLBG, kind=TILE_RUN)
-    await kit.step("Kerb")
-    skip = buildings | rect(*TOWER) | METRO_HOLE | rect(*GARDEN) | {(x, 4) for x in range(W)}
-    palette = [(VLBG, 5), (LBG, 4), (TAN, 2), (DTAN, 1)]
-    kit.mosaic(0, 5, W, 12, GROUND, palette, rng, skip)
-    await kit.step("Paving, front")
-    kit.mosaic(0, 17, W, D - 17, GROUND, palette, rng, skip)
-    await kit.step("Paving, back")
-    kit.mosaic(*GARDEN, GROUND, [(GREEN, 4), (BGREEN, 2), (DGREEN, 1)], rng)
-    await kit.step("Square Laurent-Prache lawn")
+async def stairs(kit: Kit) -> None:
+    for x, top in STAIRS:
+        body = top - 1 - DOCK
+        for c in range(body // 3):
+            kit.add("3004", x, 9, DOCK + 3 * c, TAN, 90)
+        for p in range(body % 3):
+            kit.add("3023b", x, 9, DOCK + 3 * (body // 3) + p, TAN, 90)
+        kit.add("3070b", x, 10, top - 1, LBG)
+        kit.add("3062b", x, 9, top - 1, VLBG)
+        kit.add("3070b", x, 9, top + 2, LBG)
+    x, _ = STAIRS[0]
+    kit.add("3005", x - 1, 9, DOCK, LBG)
+    kit.add("98138", x - 1, 9, DOCK + 3, LBG)
+    await kit.step("Stairs up the quay wall with a stepped balustrade")
 
 
-async def tower(kit: Kit) -> None:
-    x0, y0, w, d = TOWER
-    faces = [Frame(kit, x0, y0, w, d, f) for f in ("south", "west", "north", "east")]
-    z = GROUND
-    door = {faces[0].cell(u, 0) for u in (2, 3)}
-    arch = {faces[0].cell(u, 0) for u in range(1, 5)}
-    z = kit.ring(x0, y0, w, d, z, 5, LBG, lambda x, y, c: (x, y) in (door if c < 3 else arch))
-    faces[0].put("6182", 1, 0, GROUND + 9, VLBG)
-    faces[0].run(2, 1, GROUND, 2, RBROWN)
-    faces[0].run(2, 1, GROUND + 3, 2, RBROWN)
-    faces[0].run(2, 1, GROUND + 6, 2, RBROWN)
-    await kit.step("Tower porch")
-    stages = [(5, "3659", 4, 1), (5, "6182", 3, 2), (5, "6182", 3, 2), (4, "3659", 3, 1)]
-    for n, (courses, part, arch_course, arch_height) in enumerate(stages, 1):
-        kit.fill(x0 - 1, y0 - 1, w + 2, d + 2, z, VLBG)
-        z += 1
-        windows = {f.cell(u, 0) for f in faces for u in (2, 3)}
-        arches = {f.cell(u, 0) for f in faces for u in range(1, 5)}
-
-        def opening(x, y, c, windows=windows, arches=arches, arch_course=arch_course, arch_height=arch_height):
-            if arch_course <= c < arch_course + arch_height:
-                return (x, y) in arches
-            return (x, y) in windows and c >= 1
-
-        top = kit.ring(x0, y0, w, d, z, courses, LBG, opening)
-        for f in faces:
-            f.put(part, 1, 0, z + 3 * arch_course, VLBG)
-            for c in range(arch_course + arch_height):
-                f.run(2, 1, z + 3 * c, 2, BLACK)
-        z = top
-        await kit.step(f"Tower stage {n}")
-    kit.fill(x0 - 1, y0 - 1, w + 2, d + 2, z, VLBG)
-    kit.fill(x0, y0, w, d, z + 1, DBG)
-    z += 2
-    await kit.step("Tower cornice")
-    x, y, _, _, z = kit.hip(x0, y0, w, d, z, DBG, slope="4460b", rise=9)
-    kit.add("3688", x, y, z, DBG)
-    await kit.step("Slate spire")
+def _piers() -> set[tuple[int, int]]:
+    x0, _, w, _ = BRIDGE
+    return rect(x0, 5, w, 2) | {(x0, 0), (x0 + w - 1, 0)} | CUTWATER
 
 
-def haussmann(
-    kit: Kit,
-    frame: Frame,
-    wall: int,
-    shop: int,
-    awning: tuple[int, int],
-    windows: list[int],
-    floors: int = 5,
-    sides: tuple[str, ...] = (),
-):
-    """Yields step titles as it adds a Haussmann building facing `frame.facing`, with windows on the given `sides`."""
-    x0, y0, w, d = frame.rect
-    L, Dp = frame.length, frame.depth
-    facade = {frame.cell(u, 0) for u in range(L)}
-    side_windows = [
-        (u, v, turn, inner)
-        for side, u, turn, inner in (("left", 0, 90, 1), ("right", L - 1, 270, L - 2))
-        if side in sides
-        for v in ([2, Dp - 4] if Dp >= 10 else [(Dp - 2) // 2])
-    ]
-    z = GROUND
-    kit.ring(x0, y0, w, d, z, 3, wall, lambda x, y, c: (x, y) in facade)
-    frame.put("14716", 0, 0, z, shop)
-    frame.put("14716", L - 1, 0, z, shop)
-    u = 1
-    while u < L - 1:
-        size = 4 if L - 1 - u >= 4 and (u == 1 or L - 1 - u > 4) else 2
-        frame.put("60594" if size == 4 else "60593", u, 0, z, shop)
-        for c in range(3):
-            frame.run(u, 1, z + 3 * c, size, NOUGAT)
-        u += size
-    z += 9
-    yield "shopfront"
-    kit.ring(x0, y0, w, d, z, 1, wall, lambda x, y, c: (x, y) in facade, start=1)
-    frame.put("3005", 0, 0, z, wall)
-    frame.put("3005", L - 1, 0, z, wall)
-    for u in range(1, L - 1):
-        frame.put("3040b", u, -1, z, awning[u % 2])
-    z += 3
-    yield "awning"
-    for floor in range(1, floors + 1):
-        balcony = floor in (2, floors)
-        frame.run(0, -1, z, L, BLACK if balcony else WHITE, PLATE_2DEEP)
-        kit.fill(*frame.area(0, 1, L, Dp - 1), z, wall)
-        z += 1
-        if balcony:
-            frame.put("3062b", 0, -1, z, BLACK)
-            frame.put("3062b", L - 1, -1, z, BLACK)
-            u = 1
-            while u + 4 <= L - 1:
-                frame.put("3633", u, -1, z, BLACK)
-                u += 4
-            for post in range(u, L - 1):
-                frame.put("3062b", post, -1, z, BLACK)
-        glass = {frame.cell(u + i, 0) for u in windows for i in (0, 1)}
-        glass |= {frame.cell(u, v + i) for u, v, _, _ in side_windows for i in (0, 1)}
-        for c in range(2):
-            for u in windows:
-                frame.put("3004", u, 1, z + 3 * c, BLACK)
-            for _, v, turn, inner in side_windows:
-                frame.put("3004", inner, v, z + 3 * c, BLACK, 90)
-        z = kit.ring(x0, y0, w, d, z, 2, wall, lambda x, y, c, glass=glass: (x, y) in glass, start=floor)
-        for u in windows:
-            frame.put("60592", u, 0, z - 6, WHITE)
-        for u, v, turn, _ in side_windows:
-            frame.put("60592", u, v, z - 6, WHITE, turn)
-        yield f"floor {floor}"
-    frame.run(0, -1, z, L, WHITE, PLATE_2DEEP)
-    kit.fill(*frame.area(0, 1, L, Dp - 1), z, wall)
-    z += 1
-    frame.run(0, -1, z, L, WHITE, TILE_RUN)
-    yield "cornice"
-    roof_rows = {frame.cell(u, v) for u in range(L) for v in (0, 1, Dp - 2, Dp - 1)}
-    kit.ring(x0, y0, w, d, z, 3, wall, lambda x, y, c: (x, y) in roof_rows)
-    dormers = {u + i for u in windows for i in (0, 1)}
-    for u in range(L):
-        frame.put("4460b", u, Dp - 2, z, DBG, 180)
-        if u not in dormers:
-            frame.put("4460b", u, 0, z, DBG)
-    for u in windows:
-        frame.put("60592", u, 0, z, WHITE)
-        frame.put("3004", u, 1, z, DBG)
-        frame.put("3004", u, 1, z + 3, DBG)
-        frame.put("3039", u, 0, z + 6, DBG)
-    z += 9
-    yield "mansard roof"
-    kit.fill(*frame.area(0, 1, L, Dp - 2), z, DBG)
-    z += 1
-    for u in (0, L - 1):
-        v = Dp // 2 - 1
-        frame.put("3004", u, v, z, wall, 90)
-        frame.put("3004", u, v, z + 3, wall, 90)
-        frame.put("3062b", u, v, z + 6, DORANGE)
-        frame.put("3062b", u, v + 1, z + 6, DORANGE)
-    yield "roof and chimneys"
+async def bridge(kit: Kit) -> None:
+    x0, _, w, d = BRIDGE
+    east = x0 + w - 1
+    passage = {(x0, 6), (east, 6)}
+    for z in range(1, 25, 3):
+        cells = _piers() if z < 13 else rect(x0, 5, w, 2) - {(x0, 5), (east, 5)} - (passage if z >= 19 else set())
+        kit.cover(cells, z, LBG, BRICKS)
+    kit.add("3039", *min(CUTWATER), 13, LBG, 90)
+    await kit.step("Bridge pier with its cutwater")
+    for x in (x0, east):
+        kit.add("15254", x, 0, 13, LBG, 90)
+        for z in (19, 22):
+            kit.run(x, 0, z, 6, LBG, "y", EMBOSSED, stagger=z == 22)
+        for z in range(DOCK, 26, 3):
+            kit.add("3005", x, 10, z, LBG)
+            if z < 20:
+                kit.add("3005", x, 9, z, LBG)
+        kit.add("3024", x, 6, 19, LBG)
+        kit.add("6182", x, 6, 20, LBG, 90)
+    await kit.step("Arches over the river and a passage under the bridge")
+    kit.cover(rect(x0, 0, w, RIVER) - passage, 25, LBG)
+    for y, color in ((0, LBG), (2, DBG), (4, DBG)):
+        kit.add("15254", x0 + 1, y, 19, color)
+    await kit.step("Vault ribs under the deck")
+    kit.fill(x0 - 1, 0, w + 2, 9, 26, LBG)
+    kit.fill(x0, 9, w, 2, 26, LBG)
+    await kit.step("Bridge deck with an overhanging cornice")
+    for x in (x0 - 1, east + 1):
+        for y in range(0, 9, 2):
+            kit.add("3024", x, y, 25, LBG)
+        kit.run(x, 0, GROUND, 9, VLBG, "y", TILE_RUN)
+    kit.mount("14769", x0 - 1, 2, 19, PGOLD, "west")
+    kit.add("3024", x0 + 3, 8, 25, BLACK)
+    kit.add("3062b", x0 + 3, 8, 22, TYELLOW)
+    await kit.step("Corbels, a gilded medallion and a lantern in the passage")
+    for x in (x0 + 1, east - 1):
+        kit.run(x, 0, GROUND, d, LBG, "y", TILE_RUN)
+    for x in (x0, east):
+        for y in range(d):
+            kit.add("3005" if y in (0, 5, d - 1) else "3062b", x, y, GROUND, LBG if y in (0, 5, d - 1) else VLBG)
+        kit.run(x, 0, GROUND + 3, d, LBG, "y", TILE_RUN)
+    for x, y in ((x0 + 1, 2), (x0 + w - 2, 2), (x0 + 1, 8), (x0 + w - 2, 8)):
+        lamp(kit, x, y)
+    await kit.step("Bridge pavements, parapets and lamps")
 
 
-async def building(kit: Kit, name: str, frame: Frame, *args, **kwargs) -> None:
-    for title in haussmann(kit, frame, *args, **kwargs):
-        await kit.step(f"{name}: {title}")
+async def streets(kit: Kit, built: set[tuple[int, int]]) -> None:
+    zebra = {(x, y) for x in range(15, 19) for y in (14, 16)}
+    dashes = {(x + i, 15) for x in range(0, W, 4) for i in (0, 1)} - rect(13, 15, 8, 1) - rect(24, 15, 6, 1)
+    kit.cover(ROADS - zebra - dashes, GROUND, DBG, TILES)
+    for y in (14, 16):
+        kit.add("2431", 15, y, GROUND, WHITE)
+    kit.cover(dashes, GROUND, WHITE, TILES)
+    await kit.step("Quai, rue Saint-Benoît and the bridge road")
+    parapet = {(x, QUAY) for x in range(W)} - rect(21, QUAY, 2, 1) - rect(24, QUAY, 6, 1)
+    street = rect(0, QUAY, W, D - QUAY) - ROADS - built - parapet
+    kerb = {(x, y) for x, y in street if {(x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)} & ROADS}
+    kit.cover(kerb, GROUND, LBG, TILES)
+    kit.cover(street - kerb, GROUND, VLBG, TILES)
+    await kit.step("Pavements")
+    kit.cover(parapet, GROUND, TAN, BRICKS)
+    stalls = [x for x in (1, 7, 13) if all((x + i, QUAY) in parapet for i in range(4))]
+    boxes = {(x + i, QUAY) for x in stalls for i in range(4)}
+    kit.cover(parapet - boxes, GROUND + 3, LBG, TILES)
+    for x in stalls:
+        kit.add("3010", x, QUAY, GROUND + 3, DGREEN)
+        kit.add("3710", x, QUAY, GROUND + 6, DGREEN)
+    await kit.step("Parapet with the bouquinistes' green boxes")
 
 
-def tree(kit: Kit, x: int, y: int, leaves: tuple[int, int, int]) -> None:
-    for c in range(3):
-        kit.add("3941", x + 1, y + 1, GROUND + 1 + 3 * c, RBROWN)
-    kit.add("87081", x, y, GROUND + 10, leaves[0])
-    kit.add("6222", x, y, GROUND + 13, leaves[1])
-    kit.add("3941", x + 1, y + 1, GROUND + 16, leaves[2])
+async def dock(kit: Kit) -> None:
+    stair_cells = {(x, y) for x, _ in STAIRS for y in (9, 10)} | {(STAIRS[0][0] - 1, 9)}
+    sides = {(x, y) for x in (BRIDGE[0], BRIDGE[0] + BRIDGE[2] - 1) for y in (9, 10)}
+    picnic = rect(4, 7, 2, 2)
+    cells = rect(0, RIVER, W, QUAY - RIVER) - stair_cells - sides - picnic
+    kit.cover(cells, DOCK, LBG, TILES)
+    for i, (x, y) in enumerate(sorted(picnic)):
+        kit.add("3070b", x, y, DOCK, RED if i % 3 == 0 else WHITE)
+    await kit.step("Dock paving and a picnic blanket")
+    z = DOCK + 1
+    kit.add("3062b", 6, 8, z, DGREEN)
+    kit.add("6141", 6, 8, z + 3, DGREEN)
+    kit.add("3069b", 6, 7, z, TAN)
+    for x in (1, 8, 15, 21, 31):
+        kit.add("3062b", x, RIVER, z, BLACK)
+    bench(kit, 5, 10, "x", DOCK)
+    bench(kit, 16, 7, "x", DOCK)
+    await kit.step("Life on the dock: bollards and benches")
+    plane(kit, 8, 8, DOCK, YOUNG, 4)
+    await kit.step("A young plane tree on the dock")
 
 
-def lamp(kit: Kit, x: int, y: int) -> None:
-    for c in range(3):
-        kit.add("3062b", x, y, GROUND + 1 + 3 * c, BLACK)
-    kit.add("3062b", x, y, GROUND + 10, TYELLOW)
-    kit.add("4589", x, y, GROUND + 13, BLACK)
+async def barge(kit: Kit) -> None:
+    x0, y0, w, d = BARGE
+    kit.fill(x0, y0, w, d, 1, BLACK, BRICKS)
+    kit.fill(x0, y0, w, d, 4, RBROWN)
+    await kit.step("Péniche hull and deck")
+    cabin = (x0 + 8, y0, 7, d)
+    glass = {(x0 + 9, y0), (x0 + 11, y0), (x0 + 13, y0)}
+    kit.ring(*cabin, 5, 1, WHITE, lambda x, y, c: (x, y) in glass)
+    for x, y in glass:
+        kit.add("3005", x, y, 5, 43)
+    kit.fill(*cabin, 8, DBG)
+    await kit.step("Péniche cabin")
+    for x in range(x0 + 1, x0 + 7, 2):
+        kit.add("3062b", x, y0, 5, DBG)
+        kit.add("6141", x, y0, 8, GREEN)
+    table(kit, x0 + 4, y0 + 1, [(x0 + 3, y0 + 1), (x0 + 5, y0 + 1)], WHITE, 4)
+    for x, y in ((x0 + 9, y0 + 1), (x0 + 12, y0 + 1)):
+        kit.add("3062b", x, y, 9, DBG)
+        kit.add("4589", x, y, 12, GREEN)
+    await kit.step("Flower pots and a deck table")
 
 
-def table(kit: Kit, x: int, y: int, chairs: list[tuple[int, int]]) -> None:
-    kit.add("3062b", x, y, GROUND + 1, BLACK)
-    kit.add("98138", x, y, GROUND + 4, WHITE)
-    for cx, cy in chairs:
-        kit.add("3024", cx, cy, GROUND + 1, NOUGAT)
-        kit.add("3070b", cx, cy, GROUND + 2, NOUGAT)
-
-
-async def details(kit: Kit) -> None:
+async def square(kit: Kit) -> None:
     z = GROUND + 1
-    kit.add("3633", 1, 5, z, DGREEN, 90)
-    kit.add("3633", 4, 5, z, DGREEN, 90)
-    kit.add("3633", 1, 9, z, DGREEN)
-    for x in (1, 4):
-        for c in range(3):
-            kit.add("3062b", x, 4, z + 3 * c, DGREEN)
-    kit.add("3710", 1, 4, z + 9, DGREEN)
-    for x in (1, 4):
-        kit.add("3062b", x, 4, z + 10, TORANGE)
-        kit.add("4589", x, 4, z + 13, DGREEN)
-    kit.add("3069b", 2, 4, z + 10, YELLOW)
-    await kit.step("Guimard metro entrance")
-    kit.add("3941", 11, 11, z, DGREEN)
+    kit.add("3941", 7, 12, z, DGREEN)
     for dx in (0, 1):
         for dy in (0, 1):
-            kit.add("3062b", 11 + dx, 11 + dy, z + 3, DGREEN)
-    kit.add("2654a", 11, 11, z + 6, DGREEN)
+            kit.add("3062b", 7 + dx, 12 + dy, z + 3, DGREEN)
+    kit.add("2654a", 7, 12, z + 6, DGREEN)
     await kit.step("Wallace fountain")
     for c, color in enumerate((DGREEN, WHITE, YELLOW, WHITE, DGREEN)):
-        kit.add("3941", 14, 6, z + 3 * c, color)
-    kit.add("2654a", 14, 6, z + 15, DGREEN)
+        kit.add("3941", 17, 12, z + 3 * c, color)
+    kit.add("2654a", 17, 12, z + 15, DGREEN)
     await kit.step("Morris column")
-    kit.add("3003", 16, 13, z, DGREEN)
-    kit.add("3003", 16, 13, z + 3, DGREEN)
-    kit.add("3942c", 16, 13, z + 6, DGREEN)
-    await kit.step("Newspaper kiosk")
-    for x, y in ((6, 5), (16, 5)):
-        tree(kit, x, y, (BGREEN, GREEN, BGREEN))
-    for x, y in ((0, 16), (4, 18)):
-        tree(kit, x, y, (GREEN, DGREEN, GREEN))
-    await kit.step("Plane trees")
-    for x in (0, 4):
-        kit.add("3633", x, 14, z, BLACK)
-    kit.add("3024", 8, 20, z, BLACK)
-    kit.add("3024", 8, 17, z, BLACK)
-    kit.add("3710", 8, 17, z + 1, DGREEN, 90)
-    await kit.step("Garden railing and bench")
-    for x, y in ((11, 4), (21, 4), (20, 17)):
+    for x, y in ((16, 13), (1, 19), (18, 18), (21, 18)):
         lamp(kit, x, y)
     await kit.step("Street lamps")
-    for x in (23, 26, 29):
-        table(kit, x, 5, [(x - 1, 5), (x + 1, 5)])
-    for x in (12, 15, 18):
-        table(kit, x, 19, [(x - 1, 19), (x + 1, 19)])
-    await kit.step("Café terraces")
-    for x, y, color in ((3, 1, LBG), (24, 1, DBLUE)):
-        car(kit, x, y, color)
-    await kit.step("Traffic on the boulevard")
+    plane(kit, 4, 13)
+    await kit.step("A plane tree on the quai")
+    chestnut(kit, 13, 13)
+    await kit.step("A horse chestnut in bloom")
+
+
+def centered(kit: Kit, part: str, x: int, y: int, z: int, color: int, rotation: int = 0) -> None:
+    """`part` with its origin stud on (x, y), for parts whose stud is off their footprint's center."""
+    pos = place(ldraw.resolve(part), 0, 0, z, color, rotation).pos
+    kit.add(part, x - round(pos[0] / ldraw.STUD - 0.5), y - round(pos[2] / ldraw.STUD - 0.5), z, color, rotation)
+
+
+LEAF_TIPS = [(2, 2), (-2, 0), (0, -3)]
+FAR_TIP = [(0, -3)]
+PLANE = [
+    [("2417", 90, -1, 0, DGREEN), ("2417", 270, 1, 0, GREEN)],
+    [("2417", 0, 0, -1, BGREEN), ("2417", 180, 0, 1, GREEN)],
+    [("2423", 90, 0, 0, GREEN), ("2423", 270, 0, 0, BGREEN)],
+]
+YOUNG = [
+    [("2417", 90, -1, 0, GREEN), ("2417", 270, 1, 0, BGREEN)],
+    [("2423", 90, 0, 0, BGREEN), ("2423", 270, 0, 0, GREEN)],
+]
+CHESTNUT = [("2417", 0, DGREEN), ("2417", 90, GREEN), ("2417", 180, DGREEN), ("2417", 270, GREEN)]
+
+
+def leaf(kit: Kit, part: str, x: int, y: int, z: int, color: int, rotation: int, tips, bloom: tuple[str, int]) -> None:
+    """A leaf plate stud-centered on (x, y), with `bloom` parts on the given tip studs."""
+    centered(kit, part, x, y, z, color, rotation)
+    r = ROTATIONS[rotation]
+    for sx, sy in tips:
+        kit.add(bloom[0], x + r[0] * sx + r[2] * sy, y + r[6] * sx + r[8] * sy, z + 1, bloom[1])
+
+
+def plane(kit: Kit, x: int, y: int, ground: int = GROUND, tiers=PLANE, trunk: int = 5) -> None:
+    z = ground + 1
+    for c in range(trunk):
+        kit.add("3062b", x, y, z + 3 * c, (DTAN, TAN)[c % 2])
+    z += 3 * trunk
+    kit.add("11212", x - 1, y - 1, z, DGREEN)
+    z += 1
+    for n, tier in enumerate(tiers):
+        if n:
+            kit.add("3062b", x, y, z, GREEN)
+            z += 3
+        for i, (part, rotation, dx, dy, color) in enumerate(tier):
+            leaf(kit, part, x + dx, y + dy, z + i, color, rotation, FAR_TIP, ("15470", BGREEN))
+        z += len(tier)
+    kit.add("15470", x, y, z, BGREEN)
+
+
+def chestnut(kit: Kit, x: int, y: int) -> None:
+    z = GROUND + 1
+    for c in range(5):
+        kit.add("3062b", x, y, z + 3 * c, RBROWN)
+    z += 15
+    for part, rotation, color in CHESTNUT:
+        leaf(kit, part, x, y, z, color, rotation, LEAF_TIPS, ("24866", WHITE))
+        kit.add("3062b", x, y, z + 1, DGREEN)
+        z += 4
+    leaf(kit, "2423", x, y, z, DGREEN, 0, FAR_TIP, ("24866", WHITE))
+    leaf(kit, "2423", x, y, z + 1, GREEN, 180, FAR_TIP, ("24866", WHITE))
+    kit.add("24866", x, y, z + 2, WHITE)
+
+
+def lamp(kit: Kit, x: int, y: int, ground: int = GROUND) -> None:
+    for c in range(3):
+        kit.add("3062b", x, y, ground + 1 + 3 * c, BLACK)
+    kit.add("3062b", x, y, ground + 10, TYELLOW)
+    kit.add("4589", x, y, ground + 13, BLACK)
+
+
+def table(kit: Kit, x: int, y: int, chairs: list[tuple[int, int]], color: int, ground: int = GROUND) -> None:
+    kit.add("3062b", x, y, ground + 1, BLACK)
+    kit.add("98138", x, y, ground + 4, WHITE)
+    for cx, cy in chairs:
+        kit.add("3024", cx, cy, ground + 1, color)
+        kit.add("3070b", cx, cy, ground + 2, color)
+
+
+def bench(kit: Kit, x: int, y: int, axis: str = "x", ground: int = GROUND) -> None:
+    far = (x + 3, y) if axis == "x" else (x, y + 3)
+    kit.add("3024", x, y, ground + 1, BLACK)
+    kit.add("3024", *far, ground + 1, BLACK)
+    kit.add("3710", x, y, ground + 2, DGREEN, 0 if axis == "x" else 90)
 
 
 def car(kit: Kit, x: int, y: int, color: int) -> None:
@@ -299,19 +731,53 @@ def car(kit: Kit, x: int, y: int, color: int) -> None:
     kit.add("3004", x + 3, y, GROUND + 5, color, 90)
 
 
+def bus(kit: Kit, x: int, y: int) -> None:
+    z = GROUND + 1
+    kit.add("3795", x, y, z, BLACK)
+    kit.add("2456", x, y, z + 1, DGREEN)
+    for level in (z + 4, z + 5):
+        for sy in (y, y + 1):
+            kit.add("3666", x, sy, level, TBLACK)
+    kit.add("3795", x, y, z + 6, WHITE)
+
+
+async def terraces(kit: Kit) -> None:
+    for x in (5, 8, 11, 14):
+        table(kit, x, 19, [(x - 1, 19), (x + 1, 19)], NOUGAT)
+    for y in (23, 26, 29):
+        table(kit, 17, y, [(17, y - 1), (17, y + 1)], NOUGAT)
+    await kit.step("Café de Flore terrace")
+    for x in (23, 26, 29):
+        table(kit, x, 19, [(x - 1, 19), (x + 1, 19)], DGREEN)
+    await kit.step("Les Deux Magots terrace")
+
+
+async def traffic(kit: Kit) -> None:
+    bus(kit, 2, 14)
+    car(kit, 24, 14, BLACK)
+    car(kit, 10, 16, RED)
+    kit.add("3020", 26, 3, GROUND + 1, BLACK, 90)
+    kit.add("3001", 26, 3, GROUND + 2, SBLUE, 90)
+    kit.add("3039", 26, 4, GROUND + 5, TBLACK)
+    kit.add("3004", 26, 6, GROUND + 5, SBLUE)
+    await kit.step("Traffic")
+
+
 async def build() -> Kit:
-    kit = Kit("Place Saint-Germain-des-Prés", PROMPT, W, D)
+    kit = Kit("paris", "Paris, the Seine at Saint-Germain", PROMPT, W, D)
     rng = random.Random(7)
-    magots = Frame(kit, 10, 22, 10, 10, "south")
-    boulangerie = Frame(kit, 20, 22, 12, 10, "south")
-    flore = Frame(kit, 22, 8, 10, 8, "south")
-    buildings = set().union(*(rect(*f.rect) for f in (magots, boulangerie, flore)))
-    await base(kit)
-    await streets(kit, rng, buildings)
-    await tower(kit)
-    await building(kit, "Les Deux Magots", magots, TAN, DGREEN, (DGREEN, DGREEN), [1, 4, 7], sides=("left",))
-    await building(kit, "Boulangerie", boulangerie, VLG, DRED, (RED, WHITE), [1, 5, 9], sides=("right",))
-    await building(kit, "Café de Flore", flore, LNOUGAT, WHITE, (WHITE, WHITE), [1, 4, 7], 4, ("left", "right"))
-    await details(kit)
+    houses = blocks()
+    built = set().union(*(_footprint(b) for b in houses.values()))
+    await base(kit, rng)
+    await barge(kit)
+    await stairs(kit)
+    await dock(kit)
+    await bridge(kit)
+    await streets(kit, built)
+    for name, b in houses.items():
+        await build_building(kit, name, b)
+    await square(kit)
+    await terraces(kit)
+    await traffic(kit)
     kit.save(STORY)
     return kit

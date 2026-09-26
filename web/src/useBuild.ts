@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, type Build, type BuildEvent } from "./api";
+import { api, GALLERY, type Build, type BuildEvent } from "./api";
 
 const THINKING_CHARS = 1500;
 
@@ -34,7 +34,7 @@ export interface LiveBuild {
   renderRequest: string | null;
 }
 
-/** The open build, kept live by its event stream; events that arrive before the first fetch are replayed on it. */
+/** The open build, kept live by its event stream; every (re)connect resyncs from a snapshot and replays what arrived meanwhile. */
 export function useBuild(id: string | null): LiveBuild {
   const [build, setBuild] = useState<Build | null>(null);
   const [thinking, setThinking] = useState("");
@@ -45,11 +45,41 @@ export function useBuild(id: string | null): LiveBuild {
     setThinking("");
     setRenderRequest(null);
     if (!id) return;
-    let pending: BuildEvent[] | null = [];
+    let active = true;
+    if (GALLERY) {
+      api.build(id).then((fetched) => active && setBuild(fetched), console.error);
+      return () => {
+        active = false;
+      };
+    }
+    let pending: BuildEvent[] | null = null;
     let current: Build | null = null;
+    let sync = 0;
+    const resync = () => {
+      const mine = ++sync;
+      pending = [];
+      api.build(id).then(
+        (fetched) => {
+          if (!active || mine !== sync) return;
+          current = (pending ?? []).reduce(apply, fetched);
+          pending = null;
+          setBuild(current);
+        },
+        (error) => {
+          if (mine === sync) pending = null;
+          console.error(error);
+        },
+      );
+    };
     const source = api.events(id);
     source.onmessage = (e) => {
+      if (!active) return;
       const event = JSON.parse(e.data) as BuildEvent;
+      if (event.type === "hello") {
+        resync();
+        return;
+      }
+      if (event.type === "build" && event.build.status === "building") setThinking("");
       if (event.type === "thinking") {
         setThinking((t) => (event.reset ? "" : t + event.text).slice(-THINKING_CHARS));
         return;
@@ -61,12 +91,10 @@ export function useBuild(id: string | null): LiveBuild {
       if (pending) pending.push(event);
       else if (current) setBuild((current = apply(current, event)));
     };
-    api.build(id).then((fetched) => {
-      current = (pending ?? []).reduce(apply, fetched);
-      pending = null;
-      setBuild(current);
-    });
-    return () => source.close();
+    return () => {
+      active = false;
+      source.close();
+    };
   }, [id]);
 
   return { build, thinking, renderRequest };

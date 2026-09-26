@@ -1,7 +1,8 @@
+import { PauseIcon, PlayIcon, SkipBackIcon, SkipForwardIcon } from "@phosphor-icons/react";
 import type { CSSProperties } from "react";
 import type { Build } from "./api";
 
-export const SPEEDS = [0.5, 1, 2, 4];
+const SPEEDS = [0.5, 1, 2, 4];
 
 interface Props {
   build: Build | null;
@@ -17,18 +18,21 @@ export function Timeline({ build, step, playing, speed, onStep, onPlay, onSpeed 
   const steps = build?.steps ?? [];
   const last = steps.length - 1;
   const current = Math.min(step, last);
+  const failed = build?.status === "error" && current === last;
   const finished = build?.status !== "building" && current === last;
   const visiblePieces = build?.pieces.filter((p) => p.step <= current).length ?? 0;
   const label = !steps.length
     ? "No steps yet"
-    : finished
-      ? "Finished model"
+    : failed
+      ? "Stopped with an error"
+      : finished
+        ? "Finished model"
       : `Step ${current + 1} of ${steps.length}: ${steps[current]?.title ?? ""}`;
 
   return (
     <div className="timeline">
       <button className="icon" disabled={!steps.length} onClick={() => onStep(0)} title="First step">
-        ⏮
+        <SkipBackIcon size={16} weight="fill" />
       </button>
       <button
         className="play"
@@ -39,10 +43,10 @@ export function Timeline({ build, step, playing, speed, onStep, onPlay, onSpeed 
         }}
         title={playing ? "Pause" : "Play"}
       >
-        {playing ? "❚❚" : "▶"}
+        {playing ? <PauseIcon size={14} weight="fill" /> : <PlayIcon size={14} weight="fill" />}
       </button>
       <button className="icon" disabled={current >= last} onClick={() => onStep(last)} title="Last step">
-        ⏭
+        <SkipForwardIcon size={16} weight="fill" />
       </button>
       <div className="speeds">
         {SPEEDS.map((s) => (
@@ -68,7 +72,7 @@ export function Timeline({ build, step, playing, speed, onStep, onPlay, onSpeed 
           style={{ "--fill": `${last > 0 ? (current / last) * 100 : 0}%` } as CSSProperties}
         />
       </div>
-      <span className={`status ${build?.status ?? "idle"}`}>{build?.status === "building" ? "Building…" : finished ? "Finished" : ""}</span>
+      <span className={`status ${build?.status ?? "idle"}`}>{build?.status === "building" ? "Building…" : failed ? "Failed" : finished ? "Finished" : ""}</span>
     </div>
   );
 }
