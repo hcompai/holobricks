@@ -12,7 +12,7 @@ import httpx
 from pydantic import BaseModel, Field, ValidationError
 
 from brickyard import ldraw, reference, shapes
-from brickyard.model import ROTATIONS, Piece, Placement, bounds, grid, place, with_accessories
+from brickyard.model import FACINGS, ROTATIONS, Piece, Placement, bounds, grid, place, with_accessories
 from brickyard.session import Session
 
 STUD_HEIGHT = 4
@@ -181,7 +181,9 @@ def _top(box: tuple) -> int:
 
 def _where(p: Placement | Piece) -> str:
     x, y, z, rotation = grid(p)
-    return f"{p.part.removesuffix('.dat')} at x={x} y={y} z={z}" + (f" rot={rotation}" if rotation else "")
+    facing = next((f for f, m in FACINGS.items() if m == tuple(p.rot)), None)
+    turn = f" facing={facing}" if facing else f" rot={rotation}" if rotation else ""
+    return f"{p.part.removesuffix('.dat')} at x={x} y={y} z={z}{turn}"
 
 
 def _first(lines: list[str]) -> str:
