@@ -11,6 +11,8 @@ from pathlib import Path
 import httpx
 
 TIMEOUT_S = 300
+ATTACHED = 2
+"""Images marked `@@attach` in the output, which sagent shows the agent with the command's result."""
 
 
 def call(tool: str, **args: str) -> dict:
@@ -57,6 +59,8 @@ def main() -> None:
     if out["images"]:
         names = save(out["images"], "reference" if args.tool == "reference" else "render")
         print(f"\nSaved {', '.join(names)}. {out['caption']}")
+        for name in names[:ATTACHED]:
+            print(f"@@attach {name}")
     sys.exit(1 if out["problems"] else 0)
 
 
