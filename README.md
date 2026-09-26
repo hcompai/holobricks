@@ -71,6 +71,7 @@ Paris, London and Hogwarts are scripted in `server/brickyard/showcase` and pass 
 ```bash
 server/.venv/bin/python -m brickyard.showcase paris                            # or london, hogwarts
 curl -fo agent/showcase/paris.png localhost:8000/api/builds/paris/sheet.png     # the render Holo learns from
+server/.venv/bin/python scripts/hogwarts-sheet.py                              # Hogwarts' render: four close-ups
 scripts/deploy-gallery.sh --preview                                             # or --prod
 ```
 

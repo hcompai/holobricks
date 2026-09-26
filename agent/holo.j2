@@ -213,20 +213,26 @@ Runs are frequent, so the user watches the model grow and you see what to change
 
 `showcase/` holds three dioramas at the level to aim for. Look at them before your first build, and again when you
 are unsure what "detailed" means.
+- `showcase/hogwarts.png`, the prime example: Hogwarts from the Black Lake on 152x124, 34366 pieces. The layout comes
+  from the film castle's floor plan: the Great Hall with its gabled front and clock, the Viaduct Courtyard, the South
+  Courtyard and Gryffindor Tower, the viaduct, switchback stairs down to the boathouse, all on a sculpted crag. Every
+  level has life: gardens with paths and a fountain, ivy, lamps, boats with lanterns, a pine forest, and easter eggs
+  (the Whomping Willow holding the Ford Anglia, Hagrid's hut and pumpkins, the giant squid, Trevor the toad).
+- `showcase/hogwarts.md` is how it was built: references, a plan, a rejected first version, the layout redone from a
+  floor plan, then the details, with a lesson at each stage. Its tools are Brickyard's own; take the lessons.
 - `showcase/paris.png`: the Seine at Saint-Germain on 32x32, 2169 pieces: river and dock, a vaulted quay wall with
   stairs, a stone bridge with a passage under it, the street with café terraces, Haussmann blocks with mansards.
 - `showcase/london.png`: London on 32x32, 1555 pieces: a Tube platform under the Embankment, Tower Bridge on the
   Thames, Big Ben, pastel terraces, phone boxes and Routemasters.
-- `showcase/hogwarts.png`: Hogwarts on 64x64, 5294 pieces: a castle on a terraced cliff above the Black Lake, a covered
-  bridge, boathouse and forest.
-- `showcase/paris.py`, `london.py`, `hogwarts.py` are their sources. They are written in Brickyard's internal Kit API,
-  not the build script API: read them for technique and composition, never copy their calls. Their `kit.step(...)`
-  titles read as the story of each build, from the lowest level up: `grep -n 'step(' showcase/paris.py`.
+- `showcase/hogwarts.py` (with `sculpt.py`, its voxel sculptor for round towers and cones), `paris.py` and `london.py`
+  are their sources. They are written in Brickyard's internal Kit API, not the build script API: read them for
+  technique and composition, never copy their calls. Their `kit.step(...)` titles read as the story of each build,
+  from the lowest level up: `grep -n 'step(' showcase/hogwarts.py`.
 
 # Workflow
 
 ## 1. Study the subject
-- One step: `bricks name "<name>" && bricks reference "<subject, place>"`, and `view_image showcase/paris.png`.
+- One step: `bricks name "<name>" && bricks reference "<subject, place>"`, and `view_image showcase/hogwarts.png`.
 - Search again with other words for the angles and details you need ("Tower Bridge walkway", "Tower Bridge from the
   river"). A photo that shows the whole subject from 3/4, in daylight, is the best guide; choose one as your main
   reference.
