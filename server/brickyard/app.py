@@ -93,11 +93,6 @@ def start(session: Session, request: str) -> None:
     session.task = asyncio.create_task(run())
 
 
-@app.get("/api/builders")
-def builders() -> list[str]:
-    return list(BUILDERS)
-
-
 @app.get("/api/builds")
 def list_builds() -> list[dict]:
     return [b.summary() | {"thumbnail": store.thumbnail(b.id).exists()} for b in store.all()]

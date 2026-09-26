@@ -15,29 +15,19 @@ const BUILDER_LABELS: Record<string, string> = { holo: "Holo", demo: "Scripted d
 interface Props {
   build: Build | null;
   thinking: string;
-  onCreate: (prompt: string, builder: string) => Promise<void>;
+  onCreate: (prompt: string) => Promise<void>;
   onSay: (text: string) => Promise<void>;
 }
 
 export function ChatPanel({ build, thinking, onCreate, onSay }: Props) {
   const [text, setText] = useState("");
   const [mode, setMode] = useState<"change" | "new">("change");
-  const [builders, setBuilders] = useState<string[]>([]);
-  const [builder, setBuilder] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const log = useRef<HTMLDivElement>(null);
   const thought = useRef<HTMLDivElement>(null);
   const busy = build?.status === "building";
   const target = build && mode === "change" ? "change" : "new";
-
-  useEffect(() => {
-    if (GALLERY) return;
-    api.builders().then((list) => {
-      setBuilders(list);
-      setBuilder((b) => b || list[0] || "");
-    }, console.error);
-  }, []);
 
   useEffect(() => {
     log.current?.scrollTo({ top: log.current.scrollHeight, behavior: "smooth" });
@@ -53,7 +43,7 @@ export function ChatPanel({ build, thinking, onCreate, onSay }: Props) {
     setSending(true);
     setError("");
     try {
-      await (target === "change" ? onSay(prompt) : onCreate(prompt, builder));
+      await (target === "change" ? onSay(prompt) : onCreate(prompt));
       setText("");
       setMode("change");
     } catch (e) {
@@ -63,7 +53,7 @@ export function ChatPanel({ build, thinking, onCreate, onSay }: Props) {
     }
   };
 
-  const who = BUILDER_LABELS[build?.builder ?? builder] ?? build?.builder ?? "Builder";
+  const who = (build && BUILDER_LABELS[build.builder]) ?? build?.builder ?? "Builder";
 
   return (
     <div className="chat">
@@ -115,27 +105,16 @@ export function ChatPanel({ build, thinking, onCreate, onSay }: Props) {
         <p className="gallery-note">Read-only gallery. New builds run in the local app with Holo.</p>
       ) : (
         <div className="composer">
-          <div className="modes">
-            {build && (
-              <>
-                <button className={mode === "change" ? "active" : ""} onClick={() => setMode("change")}>
-                  Change this build
-                </button>
-                <button className={mode === "new" ? "active" : ""} onClick={() => setMode("new")}>
-                  Start a new build
-                </button>
-              </>
-            )}
-            {target === "new" && builders.length > 1 && (
-              <select className="builder-select" value={builder} onChange={(e) => setBuilder(e.target.value)}>
-                {builders.map((b) => (
-                  <option key={b} value={b}>
-                    {BUILDER_LABELS[b] ?? b}
-                  </option>
-                ))}
-              </select>
-            )}
-          </div>
+          {build && (
+            <div className="modes">
+              <button className={mode === "change" ? "active" : ""} onClick={() => setMode("change")}>
+                Change this build
+              </button>
+              <button className={mode === "new" ? "active" : ""} onClick={() => setMode("new")}>
+                Start a new build
+              </button>
+            </div>
+          )}
           <textarea
             value={text}
             placeholder={target === "change" ? "Describe how to change it…" : "Describe what to build…"}

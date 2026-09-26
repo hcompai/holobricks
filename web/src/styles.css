@@ -1,26 +1,21 @@
 :root {
-  --grey-100: #f9f9fb;
-  --grey-200: #f2f2f5;
-  --grey-250: #ebebf1;
-  --grey-300: #d8d8e2;
-  --grey-400: #adadbc;
-  --grey-500: #7a7a8a;
-  --grey-600: #4a4a58;
-  --grey-750: #1c1c26;
-  --orange: #f76808;
-  --orange-100: #fff6f0;
-  --red-600: #c0404a;
-
-  --background-page: var(--grey-100);
-  --background-card: #ffffff;
-  --background-muted: var(--grey-200);
-  --background-primary: var(--grey-750);
-  --text-default: var(--grey-750);
-  --text-secondary: var(--grey-600);
-  --text-tertiary: var(--grey-500);
-  --stroke-default: var(--grey-250);
-  --stroke-strong: var(--grey-300);
-  --accent: var(--orange);
+  color-scheme: light dark;
+  --background-page: light-dark(#f9f9fb, #0f0f14);
+  --background-card: light-dark(#ffffff, #17171e);
+  --background-muted: light-dark(#f2f2f5, #24242d);
+  --background-selected: light-dark(#ffffff, #373742);
+  --background-viewer: light-dark(#f6f6f9, #121218);
+  --background-primary: light-dark(#1c1c26, #ececf1);
+  --background-building: light-dark(#fff6f0, #3a2210);
+  --text-default: light-dark(#1c1c26, #ececf1);
+  --text-secondary: light-dark(#4a4a58, #b4b4c2);
+  --text-tertiary: light-dark(#7a7a8a, #80808f);
+  --text-on-primary: light-dark(#ffffff, #1c1c26);
+  --text-error: light-dark(#c0404a, #ef7078);
+  --stroke-default: light-dark(#ebebf1, #2a2a34);
+  --stroke-strong: light-dark(#d8d8e2, #3b3b48);
+  --stroke-focus: light-dark(#adadbc, #5a5a6a);
+  --accent: #f76808;
 
   --radius-small: 4px;
   --radius-medium: 6px;
@@ -33,6 +28,14 @@
   line-height: 20px;
   color: var(--text-default);
   -webkit-font-smoothing: antialiased;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
 }
 
 * {
@@ -151,7 +154,7 @@ header {
 
 .button.primary {
   background: var(--background-primary);
-  color: white;
+  color: var(--text-on-primary);
 }
 
 aside {
@@ -180,7 +183,7 @@ aside {
 }
 
 .tabs button.active {
-  background: var(--background-card);
+  background: var(--background-selected);
   color: var(--text-default);
   box-shadow: var(--elevation-1);
 }
@@ -235,7 +238,7 @@ aside {
 .msg.user {
   align-self: flex-end;
   background: var(--background-primary);
-  color: white;
+  color: var(--text-on-primary);
 }
 
 .msg.assistant {
@@ -245,7 +248,7 @@ aside {
 
 .msg.system {
   align-self: center;
-  color: var(--red-600);
+  color: var(--text-error);
   font-size: 12px;
   line-height: 16px;
 }
@@ -336,7 +339,7 @@ aside {
 }
 
 .composer:focus-within {
-  border-color: var(--grey-400);
+  border-color: var(--stroke-focus);
 }
 
 .modes {
@@ -350,15 +353,6 @@ aside {
   padding: 3px 8px;
 }
 
-.builder-select {
-  margin-left: auto;
-  font: inherit;
-  font-size: 12px;
-  border: 1px solid var(--stroke-default);
-  border-radius: var(--radius-medium);
-  padding: 2px 6px;
-  background: var(--background-card);
-}
 
 .composer textarea {
   border: none;
@@ -366,6 +360,7 @@ aside {
   resize: none;
   font: inherit;
   color: inherit;
+  background: transparent;
   height: 56px;
 }
 
@@ -373,13 +368,13 @@ aside {
   align-self: flex-end;
   background: var(--background-primary);
   border: none;
-  color: white;
+  color: var(--text-on-primary);
   font-weight: 600;
   padding: 6px 12px;
 }
 
 .send.stop {
-  background: var(--red-600);
+  background: var(--text-error);
 }
 
 .gallery-note {
@@ -460,8 +455,21 @@ main {
   background: var(--background-page);
 }
 
-.center-tabs {
+.center-bar {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
   margin: 12px 16px;
+}
+
+.tabs-sep {
+  width: 1px;
+  background: var(--stroke-strong);
+  margin: 4px 3px;
+}
+
+.theme-toggle button {
+  padding: 5px 8px;
 }
 
 .stage {
@@ -490,37 +498,8 @@ main {
   inset: 0;
 }
 
-.toolbar {
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  display: flex;
-  gap: 2px;
-  background: var(--background-card);
-  border: 1px solid var(--stroke-default);
-  border-radius: var(--radius-button);
-  padding: 3px;
-  box-shadow: var(--elevation-1);
-}
-
-.toolbar button {
-  border: none;
-  background: transparent;
-  border-radius: var(--radius-medium);
-  font-size: 13px;
-  padding: 4px 10px;
-  color: var(--text-secondary);
-}
-
-.toolbar button.active {
-  background: var(--background-muted);
-  color: var(--text-default);
-}
-
-.toolbar-sep {
-  width: 1px;
-  background: var(--stroke-default);
-  margin: 3px 4px;
+.viewer-canvas {
+  background: var(--background-viewer);
 }
 
 .viewer-empty {
@@ -556,7 +535,7 @@ main {
   border-radius: 50%;
   border: none;
   background: var(--background-primary);
-  color: white;
+  color: var(--text-on-primary);
 }
 
 .speeds {
@@ -578,7 +557,7 @@ main {
 }
 
 .speeds button.active {
-  background: var(--background-card);
+  background: var(--background-selected);
   color: var(--text-default);
   box-shadow: var(--elevation-1);
 }
@@ -611,7 +590,7 @@ main {
   appearance: none;
   height: 4px;
   border-radius: 2px;
-  background: linear-gradient(to right, var(--background-primary) var(--fill), var(--grey-250) var(--fill));
+  background: linear-gradient(to right, var(--background-primary) var(--fill), var(--stroke-strong) var(--fill));
 }
 
 .scrub input::-webkit-slider-thumb {
@@ -619,7 +598,7 @@ main {
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: white;
+  background: var(--background-card);
   border: 2px solid var(--background-primary);
 }
 
@@ -639,18 +618,18 @@ main {
 
 .status.error {
   background: var(--background-muted);
-  color: var(--red-600);
+  color: var(--text-error);
 }
 
 .composer-error {
   margin: 0;
   padding: 0 4px;
-  color: var(--red-600);
+  color: var(--text-error);
   font-size: 12px;
 }
 
 .status.building {
-  background: var(--orange-100);
+  background: var(--background-building);
   color: var(--accent);
 }
 
@@ -685,7 +664,7 @@ main {
 
 .parts td {
   padding: 8px;
-  border-bottom: 1px solid var(--grey-200);
+  border-bottom: 1px solid var(--stroke-default);
 }
 
 .parts td.id {
@@ -706,5 +685,5 @@ main {
   border-radius: var(--radius-small);
   margin-right: 8px;
   vertical-align: -1px;
-  border: 1px solid rgba(28, 28, 38, 0.15);
+  border: 1px solid var(--stroke-strong);
 }

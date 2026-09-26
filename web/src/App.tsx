@@ -7,7 +7,8 @@ import { LibraryPanel } from "./LibraryPanel";
 import { PartsPanel } from "./PartsPanel";
 import { Timeline } from "./Timeline";
 import { useBuild } from "./useBuild";
-import { Viewer } from "./Viewer";
+import { ThemeToggle } from "./ThemeToggle";
+import { type Framing, ViewControls, Viewer } from "./Viewer";
 
 const STEP_MS = 700;
 
@@ -25,6 +26,8 @@ export default function App() {
   const [following, setFollowing] = useState(true);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
+  const [framing, setFraming] = useState<Framing>({ view: "iso" });
+  const [spin, setSpin] = useState(false);
   const last = (build?.steps.length ?? 0) - 1;
 
   const refreshBuilds = useCallback(() => {
@@ -71,8 +74,8 @@ export default function App() {
     setFollowing(s >= last);
   };
 
-  const create = async (prompt: string, builder: string) => {
-    const created = await api.create(prompt, builder);
+  const create = async (prompt: string) => {
+    const created = await api.create(prompt);
     open(created.id);
     setLeft("chat");
     refreshBuilds();
@@ -96,13 +99,16 @@ export default function App() {
             <span className="chip">
               {build.width}×{build.depth} studs
             </span>
-            <span className="spacer" />
-            <a className="button primary" href={api.downloadUrl(build.id)} download={`${build.name}.ldr`}>
-              <DownloadSimpleIcon size={16} weight="bold" />
-              Download .ldr
-            </a>
           </>
         )}
+        <span className="spacer" />
+        {build && (
+          <a className="button primary" href={api.downloadUrl(build.id)} download={`${build.name}.ldr`}>
+            <DownloadSimpleIcon size={16} weight="bold" />
+            Download .ldr
+          </a>
+        )}
+        <ThemeToggle />
       </header>
       <aside>
         <div className="tabs">
@@ -134,21 +140,26 @@ export default function App() {
         )}
       </aside>
       <main>
-        <div className="tabs center-tabs">
-          <button className={center === "model" ? "active" : ""} onClick={() => setCenter("model")}>
-            Model
-          </button>
-          <button
-            className={center === "parts" ? "active" : ""}
-            disabled={!build}
-            onClick={() => setCenter("parts")}
-          >
-            Parts
-          </button>
+        <div className="center-bar">
+          <div className="tabs">
+            <button className={center === "model" ? "active" : ""} onClick={() => setCenter("model")}>
+              Model
+            </button>
+            <button
+              className={center === "parts" ? "active" : ""}
+              disabled={!build}
+              onClick={() => setCenter("parts")}
+            >
+              Parts
+            </button>
+          </div>
+          {center === "model" && (
+            <ViewControls framing={framing} spin={spin} onFrame={setFraming} onSpin={setSpin} />
+          )}
         </div>
         <div className="stage">
           <div className={center === "model" ? "pane" : "pane hidden"}>
-            <Viewer build={build} step={visibleStep} renderRequest={renderRequest} />
+            <Viewer build={build} step={visibleStep} renderRequest={renderRequest} framing={framing} spin={spin} />
           </div>
           {center === "parts" && build && (
             <div className="pane">

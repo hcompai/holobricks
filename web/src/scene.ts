@@ -21,6 +21,8 @@ const SHEET: { view: View; label: string }[] = [
   { view: "top", label: "Top (back is up)" },
 ];
 
+const BACKDROP = "#f6f6f9";
+
 const lineMaterials = new WeakMap<THREE.Material, THREE.Material>();
 
 /** A copy of an edge material that reads each instance's transform from the instanceMatrix attribute. */
@@ -152,12 +154,11 @@ export class BrickScene {
   private framing: { view: View; width: number; depth: number } = { view: "iso", width: 32, depth: 32 };
 
   constructor(private container: HTMLElement) {
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.toneMapping = THREE.NeutralToneMapping;
     container.appendChild(this.renderer.domElement);
 
-    this.scene.background = new THREE.Color(0xf6f6f9);
     const pmrem = new THREE.PMREMGenerator(this.renderer);
     this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
     this.scene.environmentIntensity = 0.55;
@@ -324,6 +325,8 @@ export class BrickScene {
     for (const tile of tiles) {
       this.frameView(tile.view, 32, 32);
       this.renderer.render(this.scene, this.camera);
+      ctx.fillStyle = BACKDROP;
+      ctx.fillRect(tile.x, tile.y, size, size);
       ctx.drawImage(this.renderer.domElement, tile.x, tile.y, size, size);
       if (tile.label) {
         ctx.font = "600 15px system-ui, sans-serif";
