@@ -83,21 +83,23 @@ def test_window_frames_come_with_glass(bench):
 
 HOUSE = """
 step("Walls")
-top = walls(10, 10, 8, 6, 0, 5, 15, corners=19, windows={"color": 46, "every": 3, "courses": [1, 2, 4]},
-            openings=[{"side": "south", "at": 2, "width": 2, "courses": 2, "arch": True}])
+for z in range(0, 15, 3):
+    for x in range(10, 18, 2):
+        brick("3004", x, 10, z, 15)
 step("Roof")
-print("roof top", roof(10, 10, 8, 6, top, 320, steep=True))
+brick("3039", 10, 10, 15, 320)
+print("roof top", top(10, 10))
 step("Paving")
-fill(0, 0, 32, 32, 0, palette=[[71, 1]], kind="tile")
+for x in range(0, 32, 2):
+    brick("3069b", x, 0, 0, 71)
 """
 
 
 def test_a_script_rebuilds_from_its_first_changed_step_and_names_the_lines_of_its_problems(bench, monkeypatch):
     monkeypatch.setattr(bench.session, "render", lambda camera=None: asyncio.sleep(0))
     first = asyncio.run(bench.run_script(HOUSE))
-    assert first.problems == 0 and "roof top" in first.text, first.text
+    assert first.problems == 0 and "roof top 18" in first.text, first.text
     assert [s.title for s in bench.session.build.steps] == ["Walls", "Roof", "Paving"]
-    assert any(p.part == "3659.dat" for p in bench.pieces)
     walls = [p for p in bench.pieces if p.step == 0]
 
     recolored = asyncio.run(bench.run_script(HOUSE.replace("320", "4")))
@@ -109,14 +111,11 @@ def test_a_script_rebuilds_from_its_first_changed_step_and_names_the_lines_of_it
     for _ in range(2):
         result = asyncio.run(bench.run_script(stray))
         assert result.problems == 1 and "kept steps 1 to 2, rebuilt 1 steps" in result.text
-        assert 'line 9 `brick("3001", 40, 0, 0, 4)` (3001 at x=40 y=0 z=0): outside' in result.text
-
-    buried = asyncio.run(bench.run_script(stray + "fill(10, 10, 8, 6, 0, 1)\n"))
-    assert buried.problems == 2 and "line 10: fill covered only 0 of 48 cells" in buried.text, buried.text
+        assert 'line 12 `brick("3001", 40, 0, 0, 4)` (3001 at x=40 y=0 z=0): outside' in result.text
 
     before = list(bench.pieces)
     broken = asyncio.run(bench.run_script(bench.session.build.script + "undefined()\n"))
-    assert "did not change" in broken.text and "line 11 `undefined()`: NameError" in broken.text
+    assert "did not change" in broken.text and "line 13 `undefined()`: NameError" in broken.text
     assert bench.pieces == before
     assert "undefined()" in bench.session.build.script
 

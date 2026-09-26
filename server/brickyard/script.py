@@ -5,11 +5,7 @@ from __future__ import annotations
 import contextlib
 import io
 import json
-import random
 import sys
-from typing import Literal
-
-from pydantic import BaseModel, Field
 
 from brickyard import ldraw, shapes
 from brickyard.shapes import Brick, Cell
@@ -17,31 +13,14 @@ from brickyard.shapes import Brick, Cell
 SOURCE = "<script>"
 MAX_BRICKS = 20_000
 PRINT_LIMIT = 2000
-ARCHES = {2: "3659", 4: "3455"}
-API = ("step", "brick", "walls", "fill", "roof", "top")
-
-
-class Windows(BaseModel):
-    color: int
-    every: int = Field(2, ge=2)
-    width: int = Field(1, ge=1)
-    courses: list[int]
-
-
-class Opening(BaseModel):
-    side: Literal["south", "north", "west", "east"]
-    at: int = Field(ge=0)
-    width: int = Field(ge=1)
-    courses: int = Field(ge=1)
-    arch: bool = False
+API = ("step", "brick", "top")
 
 
 class Script:
-    """The functions a script calls; tracks what fills each stud column so `fill` and `top` see earlier calls."""
+    """The functions a script calls; tracks what fills each stud column so `top` sees earlier calls."""
 
     def __init__(self, taken: list[list[int]]):
         self.steps: list[dict] = []
-        self.notes: list[str] = []
         self.columns: dict[Cell, list[tuple[int, int]]] = {}
         self.count = 0
         for x, y, w, d, z, height in taken:
@@ -50,9 +29,6 @@ class Script:
     def _occupy(self, cells: set[Cell], lo: int, hi: int) -> None:
         for cell in cells:
             self.columns.setdefault(cell, []).append((lo, hi))
-
-    def _free(self, cell: Cell, lo: int, hi: int) -> bool:
-        return all(hi <= a or b <= lo for a, b in self.columns.get(cell, ()))
 
     @staticmethod
     def _line() -> int:
@@ -85,102 +61,6 @@ class Script:
     def brick(self, part: str, x: int, y: int, z: int, color: int, rotation: int = 0) -> None:
         self._add([shapes.brick(str(part), x, y, z, color, rotation)])
 
-    def walls(
-        self,
-        x: int,
-        y: int,
-        w: int,
-        d: int,
-        z: int,
-        courses: int,
-        color: int,
-        corners: int | None = None,
-        windows: dict | None = None,
-        openings: list[dict] = (),  # type: ignore[assignment]
-    ) -> int:
-        """Hollow bonded walls around x..x+w-1, y..y+d-1 with windows and openings; returns the top z."""
-        if w < 2 or d < 2 or courses < 1:
-            raise ValueError("walls need w and d of at least 2 and at least 1 course")
-        glazing = Windows.model_validate(windows) if windows else None
-        gaps = [Opening.model_validate(o) for o in openings]
-        if any(o.arch and (o.width not in ARCHES or o.courses >= courses) for o in gaps):
-            raise ValueError("arched openings must be 2 or 4 studs wide and lower than the walls")
-        x1, y1 = x + w - 1, y + d - 1
-
-        def span(o: Opening, at: int, width: int) -> list[Cell]:
-            if o.side in ("south", "north"):
-                row = y if o.side == "south" else y1
-                return [(x + at + i, row) for i in range(width)]
-            column = x if o.side == "west" else x1
-            return [(column, y + at + i) for i in range(width)]
-
-        holes = [(0, o.courses, set(span(o, o.at, o.width))) for o in gaps]
-        arches = [(o.courses, o, span(o, o.at - 1, o.width + 2)) for o in gaps if o.arch]
-        holes += [(c, c + 1, set(cells)) for c, _, cells in arches]
-
-        def glass(cx: int, cy: int, c: int) -> bool:
-            if glazing is None or c not in glazing.courses:
-                return False
-            i, n = (cx - x, w) if cy in (y, y1) else (cy - y, d)
-            return 0 < i < n - 1 and i % glazing.every >= glazing.every - glazing.width
-
-        def shade(cx: int, cy: int, c: int) -> int:
-            if corners is not None and cx in (x, x1) and cy in (y, y1):
-                return corners
-            return glazing.color if glazing and glass(cx, cy, c) else color
-
-        def opening(cx: int, cy: int, c: int) -> bool:
-            return any(lo <= c < hi and (cx, cy) in cells for lo, hi, cells in holes)
-
-        bricks = []
-        for c in range(courses):
-            bricks += shapes.ring(x, y, w, d, z + 3 * c, 1, shade, opening, start=c)
-            for k, o, cells in arches:
-                if k == c:
-                    turn = 0 if o.side in ("south", "north") else 90
-                    bricks.append(shapes.brick(ARCHES[o.width], *cells[0], z + 3 * k, color, turn))
-        self._add(bricks)
-        return z + 3 * courses
-
-    def fill(
-        self,
-        x: int,
-        y: int,
-        w: int,
-        d: int,
-        z: int,
-        color: int | None = None,
-        palette: list[list[int]] | None = None,
-        kind: str = "plate",
-        skip: list[list[int]] = (),  # type: ignore[assignment]
-    ) -> None:
-        """Cover the rectangle's free cells at height z, largest parts first, or in random `palette` colors."""
-        if kind not in shapes.SIZES:
-            raise ValueError(f"kind must be one of {list(shapes.SIZES)}")
-        if (color is None) == (palette is None):
-            raise ValueError("give fill either a color or a palette")
-        cells = shapes.rect(x, y, w, d).difference(*(shapes.rect(*s) for s in skip))
-        free = {c for c in cells if self._free(c, z, z + shapes.HEIGHTS[kind])}
-        if len(free) < len(cells) / 2:
-            self.notes.append(
-                f"line {self._line()}: fill covered only {len(free)} of {len(cells)} cells; the rest are already "
-                f"filled at z={z}. To lay it on top of them, use z={self.top(x, y, w, d)}."
-            )
-        if palette:
-            rng = random.Random(f"{x},{y},{z},{w},{d}")
-            pairs = [(int(c), int(n)) for c, n in palette]
-            self._add(shapes.scatter(free, z, pairs, rng, shapes.MOSAIC[kind]))
-        else:
-            self._add(shapes.cover(free, z, color, shapes.SIZES[kind]))
-
-    def roof(self, x: int, y: int, w: int, d: int, z: int, color: int, steep: bool = False) -> int:
-        """A plate ceiling at z with a hipped roof on it, or a spire when steep and square; returns the top z."""
-        if w % 2 or d % 2:
-            raise ValueError(f"a roof needs an even width and depth, not {w}x{d}")
-        slopes, top = shapes.roof(x, y, w, d, z + 1, color, steep)
-        self._add(shapes.cover(shapes.rect(x, y, w, d), z, color) + slopes)
-        return top
-
     def top(self, x: int, y: int, w: int = 1, d: int = 1) -> int:
         """The highest plate height filled over the rectangle, 0 on bare ground."""
         return max((b for cell in shapes.rect(x, y, w, d) for _, b in self.columns.get(cell, ())), default=0)
@@ -209,7 +89,7 @@ def run(code: str, taken: list[list[int]]) -> dict:
     except (Exception, SystemExit) as e:  # noqa: BLE001
         return {"error": _explain(e, code), "printed": printed.getvalue()[-PRINT_LIMIT:]}
     steps = [s for s in script.steps if s["bricks"]]
-    return {"steps": steps, "notes": script.notes, "printed": printed.getvalue()[-PRINT_LIMIT:]}
+    return {"steps": steps, "printed": printed.getvalue()[-PRINT_LIMIT:]}
 
 
 def main() -> None:

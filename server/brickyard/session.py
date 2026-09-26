@@ -125,7 +125,7 @@ class Session:
         for queue in self.subscribers:
             queue.put_nowait({"type": "thinking", "text": text, "reset": reset})
 
-    async def render(self, camera: Camera | None = None, timeout: float = 30) -> bytes | None:
+    async def render(self, camera: Camera | None = None, *, timeout: float = 30) -> bytes | None:
         """Ask an open viewer to render the model, in the four standard views unless `camera` is set; None when no viewer answers in time."""
         request = uuid.uuid4().hex[:8]
         future: asyncio.Future[bytes] = asyncio.get_running_loop().create_future()

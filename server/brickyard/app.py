@@ -187,7 +187,7 @@ async def get_sheet(build_id: str, request: Request) -> Response:
     """The four views a builder checks its work on, from a headless viewer when no tab has the build open."""
     session = session_for(build_id)
     async with headless(str(request.base_url).rstrip("/"), build_id):
-        png = await session.render(SHEET_TIMEOUT_S)
+        png = await session.render(timeout=SHEET_TIMEOUT_S)
     if png is None:
         raise HTTPException(503, "no viewer rendered the build; build the web app and install Chrome")
     return Response(png, media_type="image/png")

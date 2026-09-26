@@ -239,8 +239,6 @@ class Workbench:
             if result.problems:
                 problems += result.problems
                 reports.append(result.text)
-        problems += len(out["notes"])
-        reports += out["notes"]
         kept = (
             ""
             if not same
