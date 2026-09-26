@@ -9,7 +9,7 @@ const SUGGESTIONS = [
   "A pine tree",
 ];
 
-const BUILDER_LABELS: Record<string, string> = { holo: "Holo", demo: "Scripted demo" };
+const BUILDER_LABELS: Record<string, string> = { holo: "Holo", demo: "Scripted demo", claude: "Claude" };
 
 interface Props {
   build: Build | null;

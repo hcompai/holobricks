@@ -46,3 +46,19 @@ def test_demo_build_streams_to_completion_and_exports_steps(tmp_path, monkeypatc
         assert {p["step"] for p in build["pieces"]} == set(range(len(build["steps"])))
         ldr = client.get(f"/api/builds/{created['id']}/download.ldr").text
         assert ldr.count("0 STEP") == len(build["steps"])
+
+
+def test_changing_a_hand_scripted_build_hands_it_to_a_live_builder(tmp_path, monkeypatch):
+    from brickyard import app as app_module
+    from brickyard.builders import BUILDERS
+    from brickyard.model import Build
+    from brickyard.session import Store
+
+    store = Store(tmp_path)
+    monkeypatch.setattr(app_module, "store", store)
+    monkeypatch.setattr(BUILDERS["demo"], "delay", 0)
+    build = Build(prompt="Paris", builder="claude", status="done")
+    store.save(build)
+    with TestClient(app_module.app) as client:
+        changed = client.post(f"/api/builds/{build.id}/messages", json={"text": "add a tree"}).json()
+    assert changed["builder"] == next(iter(BUILDERS))

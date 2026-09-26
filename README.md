@@ -8,6 +8,12 @@ Holo's lighthouse (138 pieces, 23 steps, 8 min), as Holo itself sees it through 
 
 ![Holo lighthouse](docs/holo-lighthouse.png)
 
+Showcase dioramas, hand-scripted by Claude through the same validated workbench (`python -m brickyard.showcase paris|hogwarts`):
+
+| Place Saint-Germain-des-Prés (32x32, 1,832 pieces) | Hogwarts (64x64, 5,294 pieces) |
+| --- | --- |
+| ![Paris](docs/paris.jpg) | ![Hogwarts](docs/hogwarts.jpg) |
+
 ```
 web (Vite + React + three.js)                         server (FastAPI)
 ┌ header: name · pieces · steps · Download ┐         ┌ Build = pieces (LDraw transforms) + steps + chat
@@ -49,6 +55,7 @@ heights come from the part geometry, so all ~25k parts work without a catalog. R
 | --- | --- |
 | `holo` | Holo (`holo4-27b`) in a tool loop: `add_bricks`, `remove_bricks`, `look`, `find_parts`, `list_pieces`, `set_name`. Bricks are validated (bounds, overlaps, floating); `look` returns a 4-view render from the open viewer. Reasoning streams live into the chat. |
 | `demo` | Scripted cottage, no model needed. |
+| `claude` | Showcase builds from `server/brickyard/showcase`; asking to change one hands it to Holo. |
 
 Holo needs a key: `HOLO_API_KEY=... server/.venv/bin/brickyard` (`HAI_API_KEY` also works). Optional: `HOLO_MODEL`,
 `HOLO_BASE_URL`.
