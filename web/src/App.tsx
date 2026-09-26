@@ -109,33 +109,37 @@ export default function App() {
         )}
       </header>
       <aside>
-        <div className="tabs">
-          <button className={left === "chat" ? "active" : ""} onClick={() => setLeft("chat")}>
-            Chat
-          </button>
-          <button className={left === "library" ? "active" : ""} onClick={() => setLeft("library")}>
-            Library
-          </button>
+        <div className="aside-bar">
+          <div className="tabs">
+            <button className={left === "chat" ? "active" : ""} onClick={() => setLeft("chat")}>
+              Chat
+            </button>
+            <button className={left === "library" ? "active" : ""} onClick={() => setLeft("library")}>
+              Library
+            </button>
+          </div>
         </div>
-        {left === "chat" ? (
-          <ChatPanel
-            build={build}
-            thinking={thinking}
-            onCreate={create}
-            onSay={async (text) => {
-              if (build) await api.say(build.id, text);
-            }}
-          />
-        ) : (
-          <LibraryPanel
-            builds={builds}
-            activeId={buildId}
-            onOpen={(id) => {
-              open(id);
-              if (!GALLERY) setLeft("chat");
-            }}
-          />
-        )}
+        <div className="aside-body">
+          {left === "chat" ? (
+            <ChatPanel
+              build={build}
+              thinking={thinking}
+              onCreate={create}
+              onSay={async (text) => {
+                if (build) await api.say(build.id, text);
+              }}
+            />
+          ) : (
+            <LibraryPanel
+              builds={builds}
+              activeId={buildId}
+              onOpen={(id) => {
+                open(id);
+                if (!GALLERY) setLeft("chat");
+              }}
+            />
+          )}
+        </div>
       </aside>
       <main>
         <div className="center-bar">

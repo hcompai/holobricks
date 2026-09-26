@@ -10,7 +10,6 @@ export function LibraryPanel({ builds, activeId, onOpen }: Props) {
   if (!builds.length) return <div className="empty">No builds yet. Start one from the chat.</div>;
   return (
     <div className="library">
-      <div className="label">Builds</div>
       {builds.map((b) => (
         <button key={b.id} className={`card ${b.id === activeId ? "active" : ""}`} onClick={() => onOpen(b.id)}>
           {b.thumbnail ? (
