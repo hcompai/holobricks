@@ -1,8 +1,9 @@
-# Brickyard
+<h1 align="center">
+  <img src="docs/brick.png" alt="" width="64" align="middle" />
+  Brickyard
+</h1>
 
-<img src="docs/brick.png" alt="The Brickyard brick" width="120" align="right" />
-
-Watch Holo build LEGO models from real LDraw parts, one instruction step at a time.
+<p align="center">Watch Holo build LEGO models from real LDraw parts, one instruction step at a time.</p>
 
 ![Brickyard showing the Paris diorama](docs/brickyard.jpg)
 
