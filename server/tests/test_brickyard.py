@@ -48,40 +48,12 @@ def test_demo_build_streams_to_completion_and_exports_steps(tmp_path, monkeypatc
         assert ldr.count("0 STEP") == len(build["steps"])
 
 
-def test_shape_tools_build_a_sound_house_and_pave_around_it(tmp_path):
-    import asyncio
-
-    from brickyard.model import Build
-    from brickyard.session import Session, Store
-    from brickyard.workbench import Workbench
-
-    bench = Workbench(Session(Build(prompt="house"), Store(tmp_path)))
-    door = {"side": "south", "at": 2, "width": 2, "courses": 2, "arch": True}
-    windows = {"color": 46, "every": 3, "courses": [1, 2, 4]}
-    walls = {"x": 10, "y": 10, "w": 8, "d": 6, "z": 0, "courses": 5, "color": 15, "corners": 19}
-
-    async def build():
-        return [
-            await bench.walls("Walls", walls | {"windows": windows, "openings": [door]}),
-            await bench.roof("Roof", {"x": 10, "y": 10, "w": 8, "d": 6, "z": 15, "color": 320, "steep": True}),
-            await bench.fill(
-                "Paving", {"x": 0, "y": 0, "w": 32, "d": 32, "z": 0, "kind": "tile", "palette": [[71, 1]]}
-            ),
-        ]
-
-    results = asyncio.run(build())
-    assert all("Rejected" not in r.text and "check:" not in r.text for r in results), [r.text for r in results]
-    assert "Top of the walls: z=15." in results[0].text
-    assert any(p.part == "3659.dat" for p in bench.pieces)
-    assert f"Left out {2 * (8 + 6) - 4 - 2} cells already taken" in results[2].text
-
-
 def test_a_truncated_tool_call_leaves_a_history_the_api_accepts():
     import json
 
     from brickyard.builders.holo import Reply
 
-    reply = Reply(calls={0: {"id": "a", "name": "add_bricks", "arguments": '{"title": "Wall", "bricks": [{"pa'}})
+    reply = Reply(calls={0: {"id": "a", "name": "write_script", "arguments": '{"code": "step(\\"Wa'}})
     assert json.loads(reply.message()["tool_calls"][0]["function"]["arguments"]) == {}
 
 

@@ -27,21 +27,68 @@ TRIMMED_RESULT = 300
 TRIMMED_LIST = 2
 
 PROMPT = """You are Holo, a LEGO master builder working in Brickyard. You build what the user asks on a {width}x{depth} stud \
-baseplate with real LDraw parts, one instruction-manual step at a time, while the user watches each step appear in 3D.
+baseplate with real LDraw parts. The model is a Python build script: each time you write or edit it, Brickyard runs \
+it from the top, checks every brick, shows each manual step to the user in 3D, and sends you a render.
 
 How to work
 - For a new build: call set_name, then find_reference with a concrete name of the real thing (like "Split Point \
 Lighthouse" or "V-2 rocket"; search again if the photos are off). Then write a short plan: a map of the baseplate as \
 rectangles (x, y, w, d) for each building, tower, street, garden or water, the height of each in plates, whether \
 each long thing (a bridge, street, river, wall) runs along x or along y, and the palette.
-- Build the big shapes with the shape tools, one manual step per call: walls for hollow buildings and towers, fill for \
-floors, ceilings, streets, water, grass and paving, roof for roofs. They return the top z to build on next.
-- Add the details with add_bricks, at most 40 bricks per step: doors and arches, window frames, chimneys, round \
-towers, spires, pinnacles, trees, lamps, fences, boats, benches.
-- Call look every 3 or 4 steps. Compare the render with the reference photos and your plan: name what is off \
-(proportions, missing features, gaps, floating parts, colors), fix it with remove_bricks and new steps, then continue.
+- Start with write_script: the plan's rectangles and colors as constants, then the big shapes. Keep this first script \
+under 60 lines.
+- Grow it with edit_script, one or two elements per call, added at the end. Steps before the first changed one stay \
+as they are, so the user sees only the new work appear.
+- Every run returns the problems by script line, where each step sits, and a render. Compare the render with the \
+reference photos and your plan: name what is off (proportions, missing features, gaps, floating parts, colors), then \
+fix those lines.
+- Fix every problem before adding more: a rejected brick is missing from the model, a floating one has nothing under \
+it.
 - Before each tool call, say in one short sentence what you are about to do.
-- When the model is finished and you have looked at it, reply with a two-sentence summary and no tool call.
+- When the model is finished and the last render looks right, reply with a two-sentence summary and no tool call.
+
+The script
+- Plain Python: constants, loops, and your own functions for anything that repeats (a window bay, a tree, a lamp). \
+Stack things on the heights the calls return, never on hand-counted ones.
+- step(title): starts a manual step; the calls after it go into it.
+- walls(x, y, w, d, z, courses, color, corners=None, windows=None, openings=[]) -> top z: hollow walls of bonded \
+bricks around the rectangle x to x+w-1, y to y+d-1, each course 3 plates tall. corners is the color of the four \
+corner columns. windows={{"color": 40, "courses": [1, 3], "every": 2, "width": 1}} sets glass into every side, every \
+N studs, on the courses listed (from 0); corners stay solid. openings=[{{"side": "south", "at": 3, "width": 2, \
+"courses": 2, "arch": True}}] cuts doors, gates and shopfronts from the bottom; at counts studs from the side's west \
+or south end; arches need a width of 2 or 4.
+- fill(x, y, w, d, z, color=None, palette=None, kind="plate", skip=[]): covers the rectangle at height z with plates, \
+tiles or bricks, largest parts first: floors, ceilings, streets, water, lawns. Cells already filled at that height \
+are left out, so it paves around what stands there. A palette of [color, weight] pairs uses small parts in random \
+colors, for textured ground. skip lists [x, y, w, d] rectangles to leave out.
+- roof(x, y, w, d, z, color, steep=False) -> top z: a plate ceiling at z, then a hipped roof of slopes; w and d must \
+be even. It rises about 1.5 plates per stud of its shorter side, 4.5 when steep; steep on a square ends in a spire.
+- brick(part, x, y, z, color, rotation=0): one part, for details.
+- top(x, y, w=1, d=1) -> z: the highest plate height filled over the rectangle so far, 0 on the bare baseplate.
+- print() output comes back with the run.
+
+Example
+```python
+PAVING = [[71, 5], [72, 2], [19, 1]]
+
+def tree(x, y):
+    for z in (0, 3, 6):
+        brick("3941", x + 1, y + 1, z, 70)
+    brick("87081", x, y, 9, 2)
+    brick("6222", x, y, 12, 288)
+    brick("3941", x + 1, y + 1, 15, 10)
+
+step("Town hall walls")
+eaves = walls(10, 12, 12, 8, 0, 6, 15, corners=71, windows={{"color": 40, "courses": [1, 3, 5]}},
+              openings=[{{"side": "south", "at": 5, "width": 2, "courses": 2, "arch": True}}])
+step("Town hall roof")
+roof(10, 12, 12, 8, eaves, 320)
+step("Trees")
+for x in (2, 26):
+    tree(x, 2)
+step("Paving")
+fill(0, 0, 32, 32, 0, palette=PAVING, kind="tile")
+```
 
 Quality bar
 - Match the real proportions: tall things are tall. A lighthouse is about four times taller than it is wide.
@@ -64,22 +111,18 @@ Bricks are 3 plates tall; plates and tiles are 1.
 270 swaps W and D.
 - Parts on the baseplate use z=0. To stack, put the upper part at z = lower z + lower height.
 - Slopes at rotation 0 descend toward the front (-y), at 180 toward the back (+y), at 90 toward -x, at 270 toward +x.
-- Parts must stay on the baseplate, must not overlap other pieces, and should rest on something. Tools reject bad \
-bricks and say why; fix and resend only those.
+- Parts must stay on the baseplate, must not overlap other pieces, and should rest on something. Runs name every \
+brick that does not, with the script line that made it.
 
-Recipes that work (shift z up by the ground height if the spot is paved)
-- Ground and water: first build everything that stands on the baseplate (buildings, piers, tree trunks), then fill \
-the ground and the water at z=0 with tiles and a palette; fill leaves out the cells already taken. Paving [[71, 5], [72, 2], [19, 1]], grass [[2, 4], [10, 2], [288, 1]], water [[272, 5], \
-[1, 2], [73, 1]].
+Recipes that work
+- Ground and water: build everything that stands on the baseplate first (buildings, piers, tree trunks), then fill \
+the ground and the water at z=0 with tiles and a palette, as the last steps. Paving [[71, 5], [72, 2], [19, 1]], \
+grass [[2, 4], [10, 2], [288, 1]], water [[272, 5], [1, 2], [73, 1]].
 - House: walls of 2 courses per storey with windows on courses 1, 3, 5 (trans black 40, or trans yellow 46 for lit \
-rooms) and a door opening, then a roof on the walls' top z, with steep true for tall Gothic or Nordic roofs.
+rooms) and a door opening, then a roof on the walls' top z, with steep=True for tall Gothic or Nordic roofs.
 - Tower and spire: square walls with narrow windows, or stacked round bricks (3941 is 2x2, 3062b is 1x1). A steep \
-roof on a square tower ends in a point, a spire; 4589 cones on the corners make pinnacles.
-- Tree on a free 4x4 spot at (x, y): 3941 in reddish brown 70 at (x+1, y+1) for z 0, 3 and 6; then a 4x4 round \
-brick 87081 at (x, y, z=9) in green 2, another 6222 at (x, y, z=12) in dark green 288, and a 3941 in bright green 10 at \
-(x+1, y+1, z=15).
+roof on a square tower ends in a spire; 4589 cones on the corners make pinnacles.
 - Street lamp: a 3062b in black, a 3062b in trans yellow 46 on it, and a 4589 cone in black on top.
-- Doors and gates: an opening 2 or 4 wide and 2 courses high with arch true.
 - Window 60592 gets its glass automatically; put it in a wall opening with a black brick behind it.
 
 Common parts at rotation 0. Use find_parts for anything else.
@@ -88,118 +131,38 @@ Common parts at rotation 0. Use find_parts for anything else.
 Colors (LDraw code: name)
 {colors}"""
 
-BRICK = {
-    "type": "object",
-    "properties": {
-        "part": {"type": "string", "description": "LDraw part id, e.g. 3001"},
-        "x": {"type": "integer"},
-        "y": {"type": "integer"},
-        "z": {"type": "integer", "description": "height in plates"},
-        "color": {"type": "integer", "description": "LDraw color code"},
-        "rotation": {"type": "integer", "enum": [0, 90, 180, 270]},
-    },
-    "required": ["part", "x", "y", "z", "color"],
-}
 
-
-INT = {"type": "integer"}
-TITLE = {"type": "string", "description": "manual step title"}
-AREA = {
-    "x": INT,
-    "y": INT,
-    "w": {"type": "integer", "description": "width in studs along x"},
-    "d": {"type": "integer", "description": "depth in studs along y"},
-    "z": {"type": "integer", "description": "height in plates of the bottom"},
-}
-SIDE = {"type": "string", "enum": ["south", "north", "west", "east"]}
-WINDOWS = {
-    "type": "object",
-    "description": "glass bricks set into every side; corners stay solid",
-    "properties": {
-        "color": {"type": "integer", "description": "glass color, like 40 trans black or 46 trans yellow"},
-        "every": {"type": "integer", "description": "one window group every N studs along each side, default 2"},
-        "width": {"type": "integer", "description": "studs of glass per group, default 1"},
-        "courses": {"type": "array", "items": INT, "description": "which courses get glass, counted from 0"},
-    },
-    "required": ["color", "courses"],
-}
-OPENING = {
-    "type": "object",
-    "description": "a gap from the bottom of the walls, for doors, gates and shopfronts",
-    "properties": {
-        "side": SIDE,
-        "at": {"type": "integer", "description": "studs from the side's west or south end"},
-        "width": INT,
-        "courses": {"type": "integer", "description": "height in courses"},
-        "arch": {"type": "boolean", "description": "put an arch over it; width 2 or 4"},
-    },
-    "required": ["side", "at", "width", "courses"],
-}
-PALETTE = {
-    "type": "array",
-    "items": {"type": "array", "items": INT, "minItems": 2, "maxItems": 2},
-    "description": "[color, weight] pairs for a random texture, like [[2, 4], [10, 2], [288, 1]] for grass",
-}
-
-
-def _tool(name: str, description: str, /, optional: tuple[str, ...] = (), **properties: dict) -> dict:
-    schema = {"type": "object", "properties": properties, "required": [p for p in properties if p not in optional]}
+def _tool(name: str, description: str, /, **properties: dict) -> dict:
+    schema = {"type": "object", "properties": properties, "required": list(properties)}
     return {"type": "function", "function": {"name": name, "description": description, "parameters": schema}}
 
 
+EDIT = {
+    "type": "object",
+    "properties": {
+        "old": {"type": "string", "description": "text that appears exactly once in the script"},
+        "new": {"type": "string", "description": "what replaces it"},
+    },
+    "required": ["old", "new"],
+}
 TOOLS = [
     _tool(
-        "add_bricks",
-        "Add one build step. Returns the new piece ids, plus any bricks rejected and why.",
-        title=TITLE,
-        bricks={"type": "array", "items": BRICK},
+        "write_script",
+        "Replace the whole build script and run it. Returns the problems by line, the steps, and a render.",
+        code={"type": "string", "description": "the Python build script"},
     ),
     _tool(
-        "walls",
-        "One step of hollow walls of bonded bricks around the rectangle x to x+w-1, y to y+d-1, with optional "
-        "windows and openings. Returns the top z.",
-        optional=("corners", "windows", "openings"),
-        title=TITLE,
-        **AREA,
-        courses={"type": "integer", "description": "height in brick courses of 3 plates"},
-        color=INT,
-        corners={"type": "integer", "description": "color of the four corner columns"},
-        windows=WINDOWS,
-        openings={"type": "array", "items": OPENING},
+        "edit_script",
+        "Apply exact text replacements to the build script, in order, then run it like write_script.",
+        edits={"type": "array", "items": EDIT},
     ),
-    _tool(
-        "fill",
-        "One step covering the rectangle at height z with plates, tiles or bricks, largest parts first: floors, "
-        "ceilings, streets, water, lawns. Cells already taken at that height are left out, so it paves around "
-        "buildings. With a palette it uses small parts in random colors, for textured ground.",
-        optional=("kind", "color", "palette", "skip"),
-        title=TITLE,
-        **AREA,
-        kind={"type": "string", "enum": ["plate", "tile", "brick"], "description": "default plate"},
-        color={"type": "integer", "description": "one color, or give a palette instead"},
-        palette=PALETTE,
-        skip={"type": "array", "items": {"type": "array", "items": INT}, "description": "[x, y, w, d] to leave out"},
-    ),
-    _tool(
-        "roof",
-        "One step of a plate ceiling over the rectangle at z, then a hipped roof of slopes on it; w and d must be "
-        "even. Put it on the walls' top z. It rises about 1.5 plates per stud of its shorter side, 4.5 when steep. "
-        "Returns the top z.",
-        optional=("steep",),
-        title=TITLE,
-        **AREA,
-        color=INT,
-        steep={"type": "boolean", "description": "75 degree slopes, three times taller, for spires and Gothic roofs"},
-    ),
-    _tool("remove_bricks", "Remove pieces by id.", ids={"type": "array", "items": {"type": "integer"}}),
-    _tool("look", "Render the model: 3/4 front-right, 3/4 back-left, front and top views, as one image."),
+    _tool("read_script", "The current build script, with line numbers."),
     _tool("find_parts", "Search all LDraw parts by title words, e.g. 'slope 45 2 x 2'.", query={"type": "string"}),
     _tool(
         "find_reference",
         "Photos of the real object from Wikipedia, up to 3, with their page titles.",
         query={"type": "string", "description": "a concrete name, like 'Split Point Lighthouse'"},
     ),
-    _tool("list_pieces", "List every piece with its id, part, position and color."),
     _tool("set_name", "Name the build.", name={"type": "string"}),
 ]
 
@@ -251,13 +214,22 @@ def trim(messages: list[dict], budget: int = CONTEXT_CHARS) -> None:
             return
         before = _size(m)
         if m["role"] == "tool" and len(m["content"]) > TRIMMED_RESULT:
-            m["content"] = m["content"][:TRIMMED_RESULT] + "... (trimmed; list_pieces shows the current pieces)"
+            m["content"] = m["content"][:TRIMMED_RESULT] + "... (trimmed; read_script shows the current script)"
         for c in m.get("tool_calls", []):
             args = json.loads(c["function"]["arguments"])
             if isinstance(args, dict):
-                short = {k: v[:TRIMMED_LIST] if isinstance(v, list) else v for k, v in args.items()}
-                c["function"]["arguments"] = json.dumps(short)
+                c["function"]["arguments"] = json.dumps({k: _shorten(v) for k, v in args.items()})
         total -= before - _size(m)
+
+
+def _shorten(value: object) -> object:
+    if isinstance(value, list):
+        return [_shorten(v) for v in value[:TRIMMED_LIST]]
+    if isinstance(value, dict):
+        return {k: _shorten(v) for k, v in value.items()}
+    if isinstance(value, str) and len(value) > TRIMMED_RESULT:
+        return value[:TRIMMED_RESULT] + "..."
+    return value
 
 
 class HoloBuilder:
@@ -296,7 +268,7 @@ class HoloBuilder:
                 "role": "system",
                 "content": await asyncio.to_thread(system_prompt, session.build.width, session.build.depth),
             },
-            *self._history(session, request, await asyncio.to_thread(bench.describe)),
+            *self._history(session, request, await asyncio.to_thread(bench.brief)),
         ]
         async with httpx.AsyncClient(timeout=httpx.Timeout(600, connect=30), transport=self.transport) as client:
             for _ in range(self.max_turns):
@@ -357,15 +329,11 @@ class HoloBuilder:
         if not isinstance(args, dict):
             return Result("Arguments must be a JSON object. Resend the call.")
         tools = {
-            "add_bricks": lambda: bench.add(str(args.get("title", "Step")), list(args.get("bricks", []))),
-            "walls": lambda: bench.walls(str(args.pop("title", "Walls")), args),
-            "fill": lambda: bench.fill(str(args.pop("title", "Fill")), args),
-            "roof": lambda: bench.roof(str(args.pop("title", "Roof")), args),
-            "remove_bricks": lambda: bench.remove([int(i) for i in args.get("ids", [])]),
-            "look": bench.look,
+            "write_script": lambda: bench.write_script(args["code"]),
+            "edit_script": lambda: bench.edit_script(list(args["edits"])),
+            "read_script": bench.read_script,
             "find_parts": lambda: bench.find_parts(str(args.get("query", ""))),
             "find_reference": lambda: bench.find_reference(str(args.get("query", ""))),
-            "list_pieces": bench.list_pieces,
             "set_name": lambda: bench.rename(str(args.get("name", ""))),
         }
         if call["name"] not in tools:

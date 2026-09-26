@@ -36,6 +36,8 @@ class Piece(BaseModel):
 class Step(BaseModel):
     index: int
     title: str
+    key: str | None = None
+    """Digest of the script step that made it, empty if that step had problems; None when no script made it."""
 
 
 class Message(BaseModel):
@@ -57,6 +59,7 @@ class Build(BaseModel):
     pieces: list[Piece] = []
     steps: list[Step] = []
     messages: list[Message] = []
+    script: str = ""
 
     def summary(self) -> dict:
         return {

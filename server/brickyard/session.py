@@ -94,9 +94,9 @@ class Session:
         self.build.messages.append(message)
         self._publish({"type": "message", "message": message.model_dump()})
 
-    async def step(self, title: str, placements: list[Placement]) -> Step:
+    async def step(self, title: str, placements: list[Placement], key: str | None = None) -> Step:
         """Add placements as one step of the build."""
-        step = Step(index=len(self.build.steps), title=title)
+        step = Step(index=len(self.build.steps), title=title, key=key)
         next_id = max((p.id for p in self.build.pieces), default=0) + 1
         pieces = [Piece(id=next_id + i, step=step.index, **pl.model_dump()) for i, pl in enumerate(placements)]
         self.build.steps.append(step)
@@ -105,11 +105,11 @@ class Session:
         await asyncio.sleep(0)
         return step
 
-    async def remove(self, ids: set[int]) -> list[Piece]:
-        removed = [p for p in self.build.pieces if p.id in ids]
-        self.build.pieces = [p for p in self.build.pieces if p.id not in ids]
-        self._publish({"type": "remove", "ids": [p.id for p in removed]})
-        return removed
+    async def rewind(self, steps: int) -> None:
+        """Keep only the first `steps` steps and their pieces."""
+        self.build.steps = self.build.steps[:steps]
+        self.build.pieces = [p for p in self.build.pieces if p.step < steps]
+        self._publish({"type": "rewind", "steps": steps})
 
     def think(self, text: str, reset: bool = False) -> None:
         """Stream the builder's live reasoning; ephemeral, never persisted."""

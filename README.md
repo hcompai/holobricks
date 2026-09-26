@@ -4,7 +4,7 @@ Watch Holo build LEGO models from real LDraw parts, one instruction step at a ti
 
 ![Brickyard showing the Paris diorama](docs/brickyard.jpg)
 
-- **Chat** to describe a model; Holo plans, builds, looks at its renders and fixes what is off.
+- **Chat** to describe a model; Holo writes a Python build script, and every edit reruns it, streams the new steps and shows Holo the render.
 - **Every brick is checked**: on the baseplate, no overlaps, resting on something.
 - **Replay** the steps, browse the parts list, download the `.ldr`.
 
@@ -30,7 +30,7 @@ Hot reload: `cd web && npm run dev` (http://127.0.0.1:5173).
 
 ## Showcases and gallery
 
-Paris, London and Hogwarts are scripted in `server/brickyard/showcase` with the same checked tools Holo uses.
+Paris, London and Hogwarts are scripted in `server/brickyard/showcase` and pass the same checks as Holo's bricks.
 
 ```bash
 server/.venv/bin/python -m brickyard.showcase paris   # or london, hogwarts
