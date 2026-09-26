@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 import random
 
-from brickyard.showcase.kit import Kit, footprint, rect
+from brickyard.showcase.kit import Kit, rect
 
 W = D = 64
 P = 8
@@ -69,21 +69,6 @@ EDGE = {
 """Terrain columns seen from outside; they are built solid, the rest of the terrain is hollow."""
 
 
-def support(kit: Kit, z: int, solid: set[tuple[int, int]], column: list[tuple[str, int]]) -> list[dict]:
-    """Takes the pending plates at height `z`; props up with a hidden `column` of (part, plates) each one missing `solid`."""
-    plates, kit.pending = kit.pending, []
-    for plate in plates:
-        w, d = footprint(plate["part"], plate["rotation"])
-        spot = rect(plate["x"], plate["y"], w, d)
-        if not spot & solid:
-            x, y = min(spot)
-            at = z - sum(h for _, h in column)
-            for part, h in column:
-                kit.add(part, x, y, at, DARK)
-                at += h
-    return plates
-
-
 def column(courses: int) -> list[tuple[str, int]]:
     return [("14716", 9)] * (courses // 3) + [("3005", 3)] * (courses % 3)
 
@@ -95,7 +80,7 @@ async def terrain(kit: Kit, rng: random.Random) -> None:
     await kit.step("Base walls")
     kit.cover(set(H), 7, lambda x, y: WATER_BLUE if y < 20 or x in RAVINE else DARK)
     walls = {c for c in H if c[0] in (0, W - 1) or c[1] in (0, D - 1)}
-    plates = support(kit, 7, walls, [("3005", 3), ("3005", 3)])
+    plates = kit.support(7, walls, [("3005", 3), ("3005", 3)], DARK)
     await kit.step("Hidden base pillars")
     kit.pending = plates
     await kit.step("Top plates")
@@ -112,7 +97,7 @@ async def terrain(kit: Kit, rng: random.Random) -> None:
             kit.cover(cells, 8 + 3 * k, lambda x, y: BGREEN if (x * 7 + y * 13) % 5 == 0 else GREEN)
         else:
             kit.cover(cells, 8 + 3 * k, lambda x, y: rng.choice((GREEN, DGREEN, DARK)))
-        plates = support(kit, 8 + 3 * k, EDGE, column(k))
+        plates = kit.support(8 + 3 * k, EDGE, column(k), DARK)
         await kit.step(f"Hidden pillars, level {k}")
         kit.pending = plates
         await kit.step(f"Grass and ledges, level {k}")
@@ -152,15 +137,6 @@ def turret(kit: Kit, x: int, y: int, z: int, courses: int) -> None:
     kit.add("3942c", x, y, z + 3 * courses, ROOF)
 
 
-def ridge(kit: Kit, x: int, y: int, w: int, d: int, z: int, color: int = ROOF) -> None:
-    if d == 2:
-        for i in range(w):
-            kit.add("3044b", x + i, y, z, color)
-    else:
-        for j in range(d):
-            kit.add("3044b", x, y + j, z, color, 90)
-
-
 def curtain(kit: Kit, x: int, y: int, length: int, z: int, axis: str = "x", courses: int = 3) -> None:
     for c in range(courses):
         kit.run(x, y, z + 3 * c, length, DARK if c == 0 else STONE, axis, stagger=c % 2 == 1)
@@ -182,7 +158,7 @@ def wing(kit: Kit, x0: int, y0: int, w: int, d: int, courses: int, steep: bool =
     x, y, rw, rd, top = kit.hip(x0, y0, w, d, z + 1, ROOF, slope=slope, rise=rise)
     if rw == rd == 2:
         return x, y, top
-    ridge(kit, x, y, rw, rd, top)
+    kit.ridge(x, y, rw, rd, top, ROOF)
     return x, y, top + 3
 
 
@@ -237,7 +213,7 @@ async def castle(kit: Kit) -> None:
     for x0, y0 in ((2, 52), (2, 58)):
         kit.ring(x0, y0, 6, 4, GROUND, 1, DARK)
         x, y, rw, rd, z = kit.hip(x0, y0, 6, 4, GROUND + 3, 47)
-        ridge(kit, x, y, rw, rd, z, 47)
+        kit.ridge(x, y, rw, rd, z, 47)
     await kit.step("Greenhouses")
 
 
@@ -277,7 +253,7 @@ async def lakeside(kit: Kit) -> None:
     )
     kit.add("3659", 37, y0, 11, STONE)
     x, y, rw, rd, z = kit.hip(x0, y0, w, d, top, ROOF)
-    ridge(kit, x, y, rw, rd, z)
+    kit.ridge(x, y, rw, rd, z, ROOF)
     await kit.step("Boathouse")
     kit.add("3020", 38, 11, 9, RBROWN, 90)
     for x, y in ((38, 8), (36, 7), (40, 7), (34, 5), (42, 5), (32, 3), (44, 3)):

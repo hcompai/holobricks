@@ -140,8 +140,13 @@ class Workbench:
             self._boxes[p.id] = bounds(p)
         return self._boxes[p.id]
 
-    def _check(self, bricks: list[Brick]) -> tuple[list[Placement], list[str], list[str]]:
-        """Placements that fit, plus rejection and warning lines, for a batch checked against itself and the build."""
+    def _check(
+        self, bricks: list[Brick], mounted: list[Placement] = ()
+    ) -> tuple[list[Placement], list[str], list[str]]:
+        """Placements that fit, plus rejection and warning lines, for a batch checked against itself and the build.
+
+        Mounted placements hang on a wall, so they only have to stay in bounds and clear of other pieces.
+        """
         width, depth = self.session.build.width * ldraw.STUD, self.session.build.depth * ldraw.STUD
         grid_index: dict[tuple[int, int], list[tuple[tuple, str]]] = {}
 
@@ -161,45 +166,46 @@ class Workbench:
             take(self._box(p), f"#{p.id} {_where(p)}")
         accepted: list[tuple[Placement, tuple]] = []
         rejected, warnings = [], []
+        candidates: list[tuple[str, Placement, bool]] = []
         for n, brick in enumerate(bricks, 1):
             label = f"brick {n} ({brick.part} at x={brick.x} y={brick.y} z={brick.z})"
             part = ldraw.resolve(brick.part)
             if part is None:
                 rejected.append(f"{label}: unknown part; use find_parts")
-                continue
-            if brick.color not in ldraw.colors():
+            elif brick.color not in ldraw.colors():
                 rejected.append(f"{label}: unknown color {brick.color}")
-                continue
-            if brick.rotation not in ROTATIONS:
+            elif brick.rotation not in ROTATIONS:
                 rejected.append(f"{label}: rotation must be 0, 90, 180 or 270")
-                continue
-            placement = place(part, brick.x, brick.y, brick.z, brick.color, brick.rotation)
+            elif brick.z < 0:
+                rejected.append(f"{label}: below the baseplate")
+            else:
+                placement = place(part, brick.x, brick.y, brick.z, brick.color, brick.rotation)
+                candidates.append((label, placement, brick.z > 0))
+        candidates += [(f"mounted {p.part.removesuffix('.dat')}", p, False) for p in mounted]
+        for label, placement, needs_support in candidates:
             box = bounds(placement)
             if box[0][0] < -EPS or box[0][2] < -EPS or box[1][0] > width + EPS or box[1][2] > depth + EPS:
                 rejected.append(f"{label}: outside the {self.session.build.width}x{self.session.build.depth} baseplate")
-                continue
-            if brick.z < 0:
-                rejected.append(f"{label}: below the baseplate")
                 continue
             neighbors = near(box)
             hit = next((what for other, what in neighbors if _collides(box, other)), None)
             if hit:
                 rejected.append(f"{label}: overlaps {hit}")
                 continue
-            if brick.z > 0 and not any(_touches(box, other) for other, _ in neighbors):
+            if needs_support and not any(_touches(box, other) for other, _ in neighbors):
                 warnings.append(f"{label}: floating, nothing directly under or above it")
             accepted.append((placement, box))
-            take(box, f"brick {n} of this step")
+            take(box, f"{label.split(' (')[0]} of this step")
         return [p for placement, _ in accepted for p in with_accessories(placement)], rejected, warnings
 
-    async def add(self, title: str, bricks: list[dict]) -> Result:
+    async def add(self, title: str, bricks: list[dict], mounted: list[Placement] = ()) -> Result:
         try:
             parsed = [Brick.model_validate(b) for b in bricks]
         except ValidationError as e:
             return Result(f"Invalid bricks: {e.errors(include_url=False)}")
-        if not parsed:
+        if not parsed and not mounted:
             return Result("No bricks given.")
-        placements, rejected, warnings = await asyncio.to_thread(self._check, parsed)
+        placements, rejected, warnings = await asyncio.to_thread(self._check, parsed, list(mounted))
         lines = []
         if placements:
             step = await self.session.step(title, placements)

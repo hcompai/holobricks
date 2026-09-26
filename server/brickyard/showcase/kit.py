@@ -6,7 +6,7 @@ import random
 from collections.abc import Callable, Iterable
 
 from brickyard import ldraw
-from brickyard.model import Build, Message
+from brickyard.model import Build, Message, Placement, mount
 from brickyard.session import Session, Store
 from brickyard.workbench import Workbench
 
@@ -84,18 +84,23 @@ class Kit:
         self.session = Session(self.build, Store())
         self.bench = Workbench(self.session)
         self.pending: list[dict] = []
+        self.mounted: list[Placement] = []
         self.problems: list[str] = []
 
     def add(self, part: str, x: int, y: int, z: int, color: int, rotation: int = 0) -> None:
         self.pending.append({"part": part, "x": x, "y": y, "z": z, "color": color, "rotation": rotation % 360})
 
+    def mount(self, part: str, x: int, y: int, z: int, color: int, facing: str) -> None:
+        """A part hung on the wall behind stud (x, y), its top facing `facing`."""
+        self.mounted.append(mount(ldraw.resolve(part) or part, x, y, z, color, facing))
+
     async def step(self, title: str) -> None:
-        if not self.pending:
+        if not self.pending and not self.mounted:
             return
-        result = await self.bench.add(title, self.pending)
+        result = await self.bench.add(title, self.pending, self.mounted)
         if "Rejected" in result.text or "check:" in result.text:
             self.problems.append(f"[{title}] {result.text}")
-        self.pending = []
+        self.pending, self.mounted = [], []
 
     def save(self, story: list[str]) -> Build:
         self.build.messages = [
@@ -194,6 +199,29 @@ class Kit:
     def mosaic(self, x0, y0, w, d, z, palette, rng, skip: Iterable[Cell] = (), **kwargs) -> None:
         """Random paving of a rectangle, around `skip` cells."""
         self.scatter(rect(x0, y0, w, d) - set(skip), z, palette, rng, **kwargs)
+
+    def support(self, z: int, solid: set[Cell], column: list[tuple[str, int]], color: int) -> list[dict]:
+        """Takes the pending plates at height `z`; props up with a hidden `column` of (part, plates) each one missing `solid`."""
+        plates, self.pending = self.pending, []
+        for plate in plates:
+            w, d = footprint(plate["part"], plate["rotation"])
+            spot = rect(plate["x"], plate["y"], w, d)
+            if not spot & solid:
+                x, y = min(spot)
+                at = z - sum(h for _, h in column)
+                for part, h in column:
+                    self.add(part, x, y, at, color)
+                    at += h
+        return plates
+
+    def ridge(self, x: int, y: int, w: int, d: int, z: int, color: int) -> None:
+        """Ridge slopes along the long side of a 2-wide roof top."""
+        if d == 2:
+            for i in range(w):
+                self.add("3044b", x + i, y, z, color)
+        else:
+            for j in range(d):
+                self.add("3044b", x, y + j, z, color, 90)
 
     def hip(self, x0: int, y0: int, w: int, d: int, z: int, color: int, slope="3040b", rise=3, core=BRICKS):
         """Rings of 1x2 slopes stepping in one stud per ring; returns the (x, y, w, d, z) left on top."""

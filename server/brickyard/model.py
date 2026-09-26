@@ -110,6 +110,25 @@ def place(part: str, x: int, y: int, z: int, color: int, rotation: int = 0) -> P
     )
 
 
+FACINGS: dict[str, Matrix] = {
+    "south": (1, 0, 0, 0, 0, -1, 0, 1, 0),
+    "north": (1, 0, 0, 0, 0, 1, 0, -1, 0),
+    "west": (0, 1, 0, -1, 0, 0, 0, 0, 1),
+    "east": (0, -1, 0, 1, 0, 0, 0, 0, 1),
+}
+
+
+def mount(part: str, x: int, y: int, z: int, color: int, facing: str) -> Placement:
+    """`part` with its top turned to face `facing`, backed against the wall behind stud (x, y), bottom at plate z."""
+    info = ldraw.info(part)
+    rot = FACINGS[facing]
+    lo, hi = bounds(Placement(part=info.part, color=color, pos=(0, 0, 0), rot=rot))
+    s = ldraw.STUD
+    px = (x + 1) * s - hi[0] if facing == "west" else x * s - lo[0]
+    pz = {"south": (y + 1) * s - hi[2], "north": y * s - lo[2]}.get(facing, y * s - lo[2])
+    return Placement(part=info.part, color=color, pos=(px, -z * ldraw.PLATE - hi[1], pz), rot=rot)
+
+
 def attach(anchor: Placement, part: str, color: int) -> Placement:
     """A part designed to share its anchor's origin, like the glass of a window frame."""
     return Placement(part=ldraw.normalize(part), color=color, pos=anchor.pos, rot=anchor.rot)
