@@ -1,7 +1,7 @@
 ldraw/
+.ldraw.*/
 data/
 docs/*
-!docs/iso.jpg
 node_modules/
 web/dist/
 .venv/
@@ -10,10 +10,8 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 *.tsbuildinfo
-!docs/holo-lighthouse.png
 !docs/paris.jpg
 !docs/hogwarts.jpg
 !docs/london.jpg
-!docs/holo-ab.jpg
 .vercel/
 .env*

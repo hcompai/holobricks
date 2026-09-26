@@ -4,17 +4,7 @@ Watch an agent build Lego models from real LDraw parts, step by step, in the bro
 
 Gallery (H team, Vercel login): https://brickyard-h-company.vercel.app
 
-![Garden Cottage](docs/iso.jpg)
-
-Holo's lighthouse (138 pieces, 23 steps, 8 min), as Holo itself sees it through `look`:
-
-![Holo lighthouse](docs/holo-lighthouse.png)
-
-Shape tools (`walls`, `fill`, `roof`) versus brick-by-brick only, same Holo, same prompts ("A cozy village square with a church, a few houses, a fountain and trees"; "Tower Bridge in London over the Thames"):
-
-![Holo A/B](docs/holo-ab.jpg)
-
-Showcase dioramas, hand-scripted by Claude through the same validated workbench (`python -m brickyard.showcase paris|hogwarts|london`):
+Showcase dioramas, hand-scripted by Claude through the same validated workbench Holo uses:
 
 | Paris, the Seine at Saint-Germain (32x32, 2,169 pieces) | Hogwarts (64x64, 5,294 pieces) | London, Mind the Gap (32x32, 1,555 pieces) |
 | --- | --- | --- |
@@ -46,11 +36,13 @@ A read-only, static export of chosen builds (models, step replay, parts list, Ho
 Vercel under the H Company team and visible to team members only:
 
 ```bash
-scripts/deploy-gallery.sh             # production
-scripts/deploy-gallery.sh --preview   # preview URL
+server/.venv/bin/python -m brickyard.showcase paris   # or london, hogwarts: regenerates data/builds/<name>.json
+scripts/deploy-gallery.sh --preview                  # preview URL
+scripts/deploy-gallery.sh --prod                     # production
 ```
 
-It builds the site with `npm run build:gallery`, exports the builds listed in the script with
+Each showcase keeps its name as build id, so regenerating replaces it in place. Open it once in the local app to
+render its thumbnail. The script builds the site with `npm run build:gallery`, exports the listed builds with
 `brickyard-gallery <site> <id>...` (parts are packed from the local LDraw library), and ships the output with
 `vercel deploy --prebuilt`. Live building stays in the local app.
 
@@ -77,8 +69,12 @@ heights come from the part geometry, so all ~25k parts work without a catalog. R
 | `demo` | Scripted cottage, no model needed. |
 | `claude` | Showcase builds from `server/brickyard/showcase`; asking to change one hands it to Holo. |
 
-Holo needs a key: `HOLO_API_KEY=... server/.venv/bin/brickyard` (`HAI_API_KEY` also works). Optional: `HOLO_MODEL`,
-`HOLO_BASE_URL`.
+| Variable | Default |
+| --- | --- |
+| `HOLO_API_KEY` (or `HAI_API_KEY`) | unset: only the `demo` builder is offered |
+| `HOLO_MODEL` / `HOLO_BASE_URL` | `holo4-27b` on `https://api.hcompany.ai/v1/models/<model>` |
+| `BRICKYARD_PORT` | `8000` (the server listens on 127.0.0.1 only; the API has no auth) |
+| `BRICKYARD_DATA` / `BRICKYARD_LDRAW` | `./data`, `./ldraw` |
 
 ## Tests
 
