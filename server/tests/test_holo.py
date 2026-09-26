@@ -5,7 +5,7 @@ import httpx
 import pytest
 
 from brickyard import ldraw
-from brickyard.builders.holo import HoloBuilder
+from brickyard.builders.holo import RECENT, HoloBuilder, trim
 from brickyard.model import Build, baseplate, grid
 from brickyard.session import Session, Store
 from brickyard.workbench import Workbench
@@ -156,3 +156,24 @@ def test_holo_survives_rate_limits_and_bad_tool_arguments(tmp_path):
     assert "add_bricks failed" in results[0] and "remove_bricks failed" in results[1]
     assert "must be a JSON object" in results[2]
     assert session.build.messages[-1].text == "Done."
+
+
+def test_long_runs_trim_old_turns_but_keep_recent_ones_and_every_call_paired():
+    bricks = [brick(x=i % 32, y=i // 32) for i in range(40)]
+    messages = [{"role": "system", "content": "rules"}, {"role": "user", "content": "build"}]
+    for n in range(100):
+        args = json.dumps({"title": f"Step {n}", "bricks": bricks})
+        messages.append(
+            {"role": "assistant", "content": "", "tool_calls": [{"id": str(n), "function": {"arguments": args}}]}
+        )
+        messages.append(
+            {"role": "tool", "tool_call_id": str(n), "content": f"Step {n}: placed 40 pieces. " + "x" * 2000}
+        )
+    before, recent = json.dumps(messages), json.dumps(messages[-RECENT:])
+    trim(messages, budget=100_000)
+    assert len(json.dumps(messages)) < len(before) / 4
+    assert json.dumps(messages[-RECENT:]) == recent
+    first = json.loads(messages[2]["tool_calls"][0]["function"]["arguments"])
+    assert first == {"title": "Step 0", "bricks": bricks[:2]}
+    assert messages[3]["tool_call_id"] == "0" and messages[3]["content"].startswith("Step 0: placed 40 pieces.")
+    assert messages[:2] == [{"role": "system", "content": "rules"}, {"role": "user", "content": "build"}]

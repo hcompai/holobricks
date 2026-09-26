@@ -21,6 +21,10 @@ GREEN = 2
 THINK_FLUSH_S = 0.25
 RETRIES = 3
 RETRY_CAP_S = 60
+CONTEXT_CHARS = 200_000
+RECENT = 12
+TRIMMED_RESULT = 300
+TRIMMED_LIST = 2
 
 PROMPT = """You are Holo, a LEGO master builder working in Brickyard. You build what the user asks on a {width}x{depth} stud \
 baseplate with real LDraw parts, one instruction-manual step at a time, while the user watches each step appear in 3D.
@@ -233,6 +237,29 @@ def _json_or_empty(call: dict) -> str:
     return call["arguments"] or "{}"
 
 
+def _size(message: dict) -> int:
+    content = message["content"]
+    text = content if isinstance(content, str) else "".join(part.get("text", "") for part in content)
+    return len(text) + sum(len(c["function"]["arguments"]) for c in message.get("tool_calls", []))
+
+
+def trim(messages: list[dict], budget: int = CONTEXT_CHARS) -> None:
+    """Shorten the oldest tool calls and results until the text fits the budget; recent turns stay whole."""
+    total = sum(map(_size, messages))
+    for m in messages[:-RECENT]:
+        if total <= budget:
+            return
+        before = _size(m)
+        if m["role"] == "tool" and len(m["content"]) > TRIMMED_RESULT:
+            m["content"] = m["content"][:TRIMMED_RESULT] + "... (trimmed; list_pieces shows the current pieces)"
+        for c in m.get("tool_calls", []):
+            args = json.loads(c["function"]["arguments"])
+            if isinstance(args, dict):
+                short = {k: v[:TRIMMED_LIST] if isinstance(v, list) else v for k, v in args.items()}
+                c["function"]["arguments"] = json.dumps(short)
+        total -= before - _size(m)
+
+
 class HoloBuilder:
     def __init__(
         self,
@@ -273,6 +300,7 @@ class HoloBuilder:
         ]
         async with httpx.AsyncClient(timeout=httpx.Timeout(600, connect=30), transport=self.transport) as client:
             for _ in range(self.max_turns):
+                trim(messages)
                 reply = await self._complete(client, session, messages)
                 if reply.finish == "length":
                     reply.calls = {}
