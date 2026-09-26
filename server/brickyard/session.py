@@ -83,7 +83,10 @@ class Session:
         return bool(self.task and not self.task.done()) or self.lock.locked()
 
     def subscribe(self) -> asyncio.Queue[dict]:
+        """A queue of every change from now on, starting with the renders still waiting for a viewer."""
         queue: asyncio.Queue[dict] = asyncio.Queue()
+        for request in self.renders:
+            queue.put_nowait({"type": "render", "request": request})
         self.subscribers.add(queue)
         return queue
 

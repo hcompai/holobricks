@@ -91,7 +91,8 @@ export function Viewer({ build, step, renderRequest, framing, spin }: Props) {
     answered.current.add(renderRequest);
     s.setPieces(build.pieces)
       .then(() => s.sheet())
-      .then((png) => png && api.putRender(build.id, renderRequest, png));
+      .then((png) => png && api.putRender(build.id, renderRequest, png))
+      .catch((error) => console.error("Could not answer a render request", error));
   }, [renderRequest, build?.id, build?.pieces]);
 
   useEffect(() => scene.current?.setVisibleStep(step), [step]);

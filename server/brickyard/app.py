@@ -14,20 +14,21 @@ from typing import Literal
 from urllib.parse import quote
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
+from fastapi.responses import FileResponse, PlainTextResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from brickyard import ldraw
 from brickyard.builders import BUILDERS
-from brickyard.guide import guide
 from brickyard.model import Build
 from brickyard.session import Session, Store
+from brickyard.viewer import headless
 from brickyard.workbench import Workbench
 
 WEB_DIST = Path(__file__).resolve().parents[2] / "web" / "dist"
 HEARTBEAT_S = 15
 SHUTDOWN_S = 3
+SHEET_TIMEOUT_S = 90
 log = logging.getLogger("brickyard")
 
 
@@ -52,13 +53,14 @@ TOOLS = {
     "look": Workbench.look,
     "parts": Workbench.find_parts,
     "reference": Workbench.find_reference,
+    "pin": Workbench.pin,
     "name": Workbench.rename,
 }
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    warm = asyncio.create_task(asyncio.to_thread(lambda: (ldraw.catalog(), guide())))
+    warm = asyncio.create_task(asyncio.to_thread(lambda: (ldraw.catalog(), ldraw.colors())))
     yield
     warm.cancel()
 
@@ -176,6 +178,17 @@ async def agent_say(build_id: str, body: AgentSay) -> dict:
     else:
         await session.say(body.text)
     return {"ok": True}
+
+
+@app.get("/api/builds/{build_id}/sheet.png")
+async def get_sheet(build_id: str, request: Request) -> Response:
+    """The four views a builder checks its work on, from a headless viewer when no tab has the build open."""
+    session = session_for(build_id)
+    async with headless(str(request.base_url).rstrip("/"), build_id):
+        png = await session.render(SHEET_TIMEOUT_S)
+    if png is None:
+        raise HTTPException(503, "no viewer rendered the build; build the web app and install Chrome")
+    return Response(png, media_type="image/png")
 
 
 @app.put("/api/builds/{build_id}/renders/{request}")

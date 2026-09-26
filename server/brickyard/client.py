@@ -26,10 +26,13 @@ def call(tool: str, **args: str) -> dict:
     return response.json()
 
 
-def save(images: list[dict], stem: str) -> list[str]:
+def save(images: list[dict], stem: str, numbered: bool = False) -> list[str]:
+    """Numbered images count on from the ones saved before, so earlier ones keep their names."""
     names = []
-    for n, image in enumerate(images, 1):
-        name = f"{stem}{f'-{n}' if len(images) > 1 else ''}.{image['mime'].split('/')[-1].replace('jpeg', 'jpg')}"
+    first = len(list(Path().glob(f"{stem}-*"))) + 1
+    for n, image in enumerate(images, first):
+        suffix = f"-{n}" if numbered else ""
+        name = f"{stem}{suffix}.{image['mime'].split('/')[-1].replace('jpeg', 'jpg')}"
         Path(name).write_bytes(base64.b64decode(image["data"]))
         names.append(name)
     return names
@@ -44,11 +47,14 @@ def main() -> None:
     tools.add_parser("look", help="render the model again; saves render.png")
     tools.add_parser("parts", help="search LDraw parts by words or number").add_argument("query")
     tools.add_parser("reference", help="find reference photos of a subject; saves reference-N").add_argument("query")
+    tools.add_parser("pin", help="show this photo beside every render from now on").add_argument("photo")
     tools.add_parser("name", help="name the build").add_argument("name")
     args = parser.parse_args()
 
     if args.tool == "run":
         out = call("run", code=Path(args.script).read_text())
+    elif args.tool == "pin":
+        out = call("pin", data=base64.b64encode(Path(args.photo).read_bytes()).decode())
     elif args.tool in ("parts", "reference"):
         out = call(args.tool, query=args.query)
     elif args.tool == "name":
@@ -57,7 +63,11 @@ def main() -> None:
         out = call("look")
     print(out["text"])
     if out["images"]:
-        names = save(out["images"], "reference" if args.tool == "reference" else "render")
+        names = (
+            save(out["images"], "reference", numbered=True)
+            if args.tool == "reference"
+            else save(out["images"], "render")
+        )
         print(f"\nSaved {', '.join(names)}. {out['caption']}")
         for name in names[:ATTACHED]:
             print(f"@@attach {name}")

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import hashlib
 import io
 import json
@@ -25,66 +26,6 @@ CELL = 4 * ldraw.STUD
 PROBLEM_LIMIT = 12
 SCRIPT_TIMEOUT_S = 60
 BASEPLATE = "3811.dat"
-
-COMMON_COLORS = (0, 15, 71, 72, 4, 320, 25, 14, 19, 28, 70, 2, 288, 10, 27, 1, 272, 73, 322, 5, 47, 43, 36, 46)
-
-COMMON_PARTS = [
-    "3005",
-    "3004",
-    "3622",
-    "3010",
-    "3009",
-    "3008",
-    "3003",
-    "3002",
-    "3001",
-    "2456",
-    "3007",
-    "3024",
-    "3023b",
-    "3623",
-    "3710",
-    "3666",
-    "3460",
-    "3022",
-    "3021",
-    "3020",
-    "3795",
-    "3034",
-    "3031",
-    "3958",
-    "3070b",
-    "3069b",
-    "3068b",
-    "98138",
-    "6141",
-    "3040b",
-    "3039",
-    "3038",
-    "3037",
-    "3043",
-    "3044b",
-    "4286",
-    "3298",
-    "3300",
-    "3688",
-    "3062b",
-    "3941",
-    "87081",
-    "6222",
-    "4589",
-    "3942c",
-    "3659",
-    "3455",
-    "2877",
-    "60592",
-    "60596",
-    "3633",
-    "3742",
-    "3471",
-    "3470",
-    "2423",
-]
 
 
 class Brick(BaseModel):
@@ -363,15 +304,31 @@ class Workbench:
             return Result(f"No photos for '{query}'. Try a more common name, or build from what you know.")
         urls = [self.session.store.save_image(p.data, p.mime) for p in photos]
         await self.session.say(f"Reference photos for '{query}'", role="tool", images=urls)
-        self.session.build.reference = urls[0].rsplit("/", 1)[-1]
-        self.session.store.save(self.session.build)
         titles = "; ".join(f"{i}) {p.title}" for i, p in enumerate(photos, 1))
+        pinned = "The photo pinned earlier stays beside every render."
+        if not self._reference():
+            self.session.build.reference = urls[0].rsplit("/", 1)[-1]
+            self.session.store.save(self.session.build)
+            pinned = "Every render from now on shows photo 1 beside it."
         return Result(
-            f"Found {len(photos)} photos from Wikipedia: {titles}. Every render from now on shows photo 1 beside it.",
+            f"Found {len(photos)} photos from Wikipedia: {titles}. {pinned}",
             images=[(p.data, p.mime) for p in photos],
             kind="reference",
             caption=f"Reference photos for '{query}', in order: {titles}.",
         )
+
+    async def pin(self, data: str) -> Result:
+        """Show this photo, base64 encoded, beside every render from now on."""
+        photo = base64.b64decode(data)
+        try:
+            mime = Image.MIME[Image.open(io.BytesIO(photo)).format]
+        except (OSError, KeyError) as e:
+            return Result(f"That file is not an image ({e}).", problems=1)
+        url = self.session.store.save_image(photo, mime)
+        self.session.build.reference = url.rsplit("/", 1)[-1]
+        self.session.store.save(self.session.build)
+        await self.session.say("Pinned the reference photo", role="tool", images=[url])
+        return Result("Pinned: every render from now on shows this photo on its left.")
 
     async def find_parts(self, query: str) -> Result:
         hits = await asyncio.to_thread(lambda: [part_line(p) for p in ldraw.search(query)])

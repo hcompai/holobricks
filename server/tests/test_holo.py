@@ -1,9 +1,12 @@
 import asyncio
 import base64
+import contextlib
 import io
 import os
+import re
 import sys
 import time
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -13,7 +16,7 @@ from brickyard import ldraw
 from brickyard.builders.holo import HoloBuilder
 from brickyard.model import Build, baseplate, grid
 from brickyard.session import Session, Store
-from brickyard.workbench import Workbench
+from brickyard.workbench import Workbench, part_line
 
 pytestmark = pytest.mark.skipif(not ldraw.LDRAW.exists(), reason="LDraw library not downloaded")
 
@@ -120,17 +123,19 @@ def test_a_script_rebuilds_from_its_first_changed_step_and_names_the_lines_of_it
     assert "undefined()" in bench.session.build.script
 
 
-def test_agents_build_through_the_tools_endpoint_and_see_the_reference_beside_each_render(tmp_path, monkeypatch):
+def test_agents_build_through_the_tools_endpoint_and_see_the_pinned_photo_beside_each_render(tmp_path, monkeypatch):
     from brickyard import app as app_module
 
     store = Store(tmp_path)
     monkeypatch.setattr(app_module, "store", store)
     monkeypatch.setattr(Session, "render", lambda self: asyncio.sleep(0, png(120, 90)))
     build = Build()
-    build.reference = store.save_image(png(60, 90), "image/png").rsplit("/", 1)[-1]
     store.save(build)
     tools = f"/api/builds/{build.id}/tools"
     with TestClient(app_module.app) as client:
+        pinned = client.post(f"{tools}/pin", json={"data": base64.b64encode(png(60, 90)).decode()}).json()
+        assert pinned["problems"] == 0, pinned["text"]
+        assert client.post(f"{tools}/pin", json={"data": base64.b64encode(b"not an image").decode()}).json()["problems"]
         ran = client.post(f"{tools}/run", json={"code": 'step("Core")\nbrick("3001", 4, 4, 0, 4)'}).json()
         assert ran["problems"] == 0 and "1 Core: 1 piece" in ran["text"], ran["text"]
         assert ran["caption"].startswith("Left, the reference photo.")
@@ -140,7 +145,39 @@ def test_agents_build_through_the_tools_endpoint_and_see_the_reference_beside_ea
     assert store.load(build.id).script.startswith('step("Core")')
 
 
-def test_holo_gets_the_task_on_stdin_and_stop_ends_its_whole_process_group(tmp_path):
+def test_a_viewer_that_connects_after_a_render_request_still_answers_it(tmp_path):
+    async def main() -> bytes | None:
+        session = Session(Build(), Store(tmp_path))
+        waiting = asyncio.create_task(session.render(timeout=5))
+        await asyncio.sleep(0)
+        event = session.subscribe().get_nowait()
+        assert event["type"] == "render"
+        session.deliver_render(event["request"], b"png")
+        return await waiting
+
+    assert asyncio.run(main()) == b"png"
+
+
+def test_the_prompt_names_only_real_parts_and_colors_and_its_example_builds_cleanly(bench, monkeypatch):
+    prompt = (Path(__file__).resolve().parents[2] / "agent" / "holo.j2").read_text()
+    parts = re.findall(r"^\w+: .*\| .* tall$", prompt, re.MULTILINE)
+    assert len(parts) > 80
+    for line in parts:
+        assert line == part_line(f"{line.split(':')[0]}.dat")
+    palette = ldraw.colors()
+    colors = prompt[prompt.index("# Colors") : prompt.index("# Session")].splitlines()
+    for entry in (e for line in colors if line.startswith("- ") for e in line.split(": ")[1].split(", ")):
+        code, name = entry.split(" ", 1)
+        assert palette[int(code)][0].lower() == name, entry
+
+    monkeypatch.setattr(bench.session, "render", lambda: asyncio.sleep(0))
+    example = re.search(r"```python\n(.*?)```", prompt, re.DOTALL).group(1)
+    result = asyncio.run(bench.run_script(example))
+    assert result.problems == 0, result.text
+
+
+def test_holo_gets_the_task_on_stdin_and_stop_ends_its_whole_process_group(tmp_path, monkeypatch):
+    monkeypatch.setattr(sys.modules[HoloBuilder.__module__], "headless", lambda url, build_id: contextlib.nullcontext())
     agent = (
         "import os, subprocess, sys, time; "
         "open('task.txt', 'w').write(sys.stdin.read() + os.environ['BRICKYARD_BUILD']); "
@@ -150,6 +187,8 @@ def test_holo_gets_the_task_on_stdin_and_stop_ends_its_whole_process_group(tmp_p
     )
     session = Session(Build(prompt="a lighthouse"), Store(tmp_path))
     workspace = tmp_path / "workspaces" / session.build.id
+    workspace.mkdir(parents=True)
+    (workspace / "notes.md").write_text("Pinned reference-2.jpg: the lighthouse from the pier.")
 
     async def main() -> list[int]:
         run = asyncio.create_task(HoloBuilder([sys.executable, "-c", agent], "http://test").run(session, "a tower"))
@@ -162,8 +201,9 @@ def test_holo_gets_the_task_on_stdin_and_stop_ends_its_whole_process_group(tmp_p
 
     pids = asyncio.run(main())
     task = (workspace / "task.txt").read_text()
-    assert task.startswith("# Request\na tower") and "# The build script" in task and task.endswith(session.build.id)
-    assert "1 Baseplate: 1 piece" in task and (workspace / "build.py").exists()
+    assert task.startswith("# Request\na tower") and "x runs 0-31" in task and task.endswith(session.build.id)
+    assert "the lighthouse from the pier" in task and "1 Baseplate: 1 piece" in task
+    assert (workspace / "build.py").exists() and (workspace / "showcase" / "paris.png").exists()
     assert not any(map(alive, pids))
 
 
