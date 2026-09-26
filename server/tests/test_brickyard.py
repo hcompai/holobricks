@@ -48,15 +48,6 @@ def test_demo_build_streams_to_completion_and_exports_steps(tmp_path, monkeypatc
         assert ldr.count("0 STEP") == len(build["steps"])
 
 
-def test_a_truncated_tool_call_leaves_a_history_the_api_accepts():
-    import json
-
-    from brickyard.builders.holo import Reply
-
-    reply = Reply(calls={0: {"id": "a", "name": "write_script", "arguments": '{"code": "step(\\"Wa'}})
-    assert json.loads(reply.message()["tool_calls"][0]["function"]["arguments"]) == {}
-
-
 def test_gallery_export_holds_every_file_the_static_site_reads(tmp_path):
     import json
 

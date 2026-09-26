@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import io
 import json
 import math
 import sys
@@ -11,6 +12,7 @@ import tempfile
 from dataclasses import dataclass, field
 
 import httpx
+from PIL import Image
 from pydantic import BaseModel, ValidationError
 
 from brickyard import ldraw, reference
@@ -263,27 +265,6 @@ class Workbench:
         note = f"Added {len(placements)} pieces: {title}" if placements else f"Rejected every brick of '{title}'"
         return Result("\n".join(lines), note=note, problems=problems)
 
-    async def write_script(self, code: str) -> Result:
-        if not isinstance(code, str):
-            raise TypeError("code must be a string")
-        return await self.run_script(code)
-
-    async def edit_script(self, edits: list[dict]) -> Result:
-        code = self.session.build.script
-        for n, edit in enumerate(edits, 1):
-            old, new = edit["old"], edit["new"]
-            found = code.count(old) if old else 0
-            if found != 1:
-                return Result(
-                    f"No edit applied: the old text of edit {n} appears {found} times in the script. Quote it "
-                    "exactly, with enough of its lines to be unique; read_script shows the script."
-                )
-            code = code.replace(old, new)
-        return await self.run_script(code)
-
-    async def read_script(self) -> Result:
-        return Result(_numbered(self.session.build.script) or "No build script yet.")
-
     async def run_script(self, code: str) -> Result:
         """Rebuild the model from `code`: steps up to the first changed one stay, the rest are rebuilt and checked."""
         build = self.session.build
@@ -309,6 +290,8 @@ class Workbench:
             if result.problems:
                 problems += result.problems
                 reports.append(result.text)
+        problems += len(out["notes"])
+        reports += out["notes"]
         kept = (
             ""
             if not same
@@ -359,9 +342,17 @@ class Workbench:
         summary = await asyncio.to_thread(self.summary)
         if png is None:
             return Result(f"No viewer is open, so no image this time.\n{summary}", note=f"{note} (no viewer open)")
-        await self.session.say(note, role="tool", images=[self.session.store.save_image(png, "image/png")])
         caption = "The render: 3/4 front-right, 3/4 back-left, front, and top (back at the top)."
+        if photo := self._reference():
+            png = await asyncio.to_thread(_beside, photo, png)
+            caption = "Left, the reference photo. Right, the render: " + caption.removeprefix("The render: ")
+        await self.session.say(note, role="tool", images=[self.session.store.save_image(png, "image/png")])
         return Result(summary, images=[(png, "image/png")], kind="render", caption=caption)
+
+    def _reference(self) -> bytes | None:
+        name = self.session.build.reference
+        path = self.session.store.image(name) if name else None
+        return path.read_bytes() if path and path.is_file() else None
 
     async def find_reference(self, query: str) -> Result:
         try:
@@ -372,9 +363,11 @@ class Workbench:
             return Result(f"No photos for '{query}'. Try a more common name, or build from what you know.")
         urls = [self.session.store.save_image(p.data, p.mime) for p in photos]
         await self.session.say(f"Reference photos for '{query}'", role="tool", images=urls)
+        self.session.build.reference = urls[0].rsplit("/", 1)[-1]
+        self.session.store.save(self.session.build)
         titles = "; ".join(f"{i}) {p.title}" for i, p in enumerate(photos, 1))
         return Result(
-            f"Found {len(photos)} photos from Wikipedia: {titles}. They follow as images.",
+            f"Found {len(photos)} photos from Wikipedia: {titles}. Every render from now on shows photo 1 beside it.",
             images=[(p.data, p.mime) for p in photos],
             kind="reference",
             caption=f"Reference photos for '{query}', in order: {titles}.",
@@ -419,6 +412,19 @@ class Workbench:
             n = len(boxes[step.index])
             lines.append(f"{step.index + 1} {step.title}: {n} piece{'s' * (n != 1)}, x {x}, y {y}, z {z}")
         return "\n".join(lines) or "No pieces yet."
+
+
+def _beside(photo: bytes, png: bytes) -> bytes:
+    """The photo, scaled to the render's height, to the left of the render."""
+    render = Image.open(io.BytesIO(png)).convert("RGB")
+    left = Image.open(io.BytesIO(photo)).convert("RGB")
+    left.thumbnail((render.width, render.height))
+    sheet = Image.new("RGB", (left.width + render.width, render.height), "white")
+    sheet.paste(left, (0, (render.height - left.height) // 2))
+    sheet.paste(render, (left.width, 0))
+    out = io.BytesIO()
+    sheet.save(out, "PNG")
+    return out.getvalue()
 
 
 def _numbered(script: str) -> str:

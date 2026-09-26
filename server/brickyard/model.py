@@ -60,6 +60,8 @@ class Build(BaseModel):
     steps: list[Step] = []
     messages: list[Message] = []
     script: str = ""
+    reference: str = ""
+    """The chat image of the reference photo that renders are shown beside."""
 
     def summary(self) -> dict:
         return {

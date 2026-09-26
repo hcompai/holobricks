@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import inspect
 import json
 import logging
 import os
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
+from typing import Literal
 from urllib.parse import quote
 
 from fastapi import FastAPI, HTTPException, Request
@@ -17,9 +20,10 @@ from pydantic import BaseModel
 
 from brickyard import ldraw
 from brickyard.builders import BUILDERS
-from brickyard.builders.holo import system_prompt
+from brickyard.guide import guide
 from brickyard.model import Build
 from brickyard.session import Session, Store
+from brickyard.workbench import Workbench
 
 WEB_DIST = Path(__file__).resolve().parents[2] / "web" / "dist"
 HEARTBEAT_S = 15
@@ -36,13 +40,25 @@ class Say(BaseModel):
     text: str
 
 
+class AgentSay(BaseModel):
+    text: str
+    role: Literal["assistant", "thinking"] = "assistant"
+
+
 store = Store()
 sessions: dict[str, Session] = {}
+TOOLS = {
+    "run": Workbench.run_script,
+    "look": Workbench.look,
+    "parts": Workbench.find_parts,
+    "reference": Workbench.find_reference,
+    "name": Workbench.rename,
+}
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    warm = asyncio.create_task(asyncio.to_thread(lambda: (ldraw.catalog(), system_prompt())))
+    warm = asyncio.create_task(asyncio.to_thread(lambda: (ldraw.catalog(), guide())))
     yield
     warm.cancel()
 
@@ -53,7 +69,7 @@ app = FastAPI(title="Brickyard", lifespan=lifespan)
 def session_for(build_id: str) -> Session:
     """The live session of a build; idle ones re-read the build so edits made on disk show up."""
     session = sessions.get(build_id)
-    if session and session.task and not session.task.done():
+    if session and session.busy:
         return session
     build = store.load(build_id)
     if build is None:
@@ -66,7 +82,7 @@ def session_for(build_id: str) -> Session:
 
 
 def idle(session: Session) -> Session:
-    if session.task and not session.task.done():
+    if session.busy:
         raise HTTPException(409, "this build is still running")
     return session
 
@@ -128,6 +144,37 @@ async def stop(build_id: str) -> dict:
     session = session_for(build_id)
     if session.task and not session.task.done():
         session.task.cancel()
+    return {"ok": True}
+
+
+@app.post("/api/builds/{build_id}/tools/{tool}")
+async def call_tool(build_id: str, tool: str, args: dict[str, str]) -> dict:
+    """Run a workbench tool for an agent working outside the server, like Holo through the bricks CLI."""
+    if tool not in TOOLS:
+        raise HTTPException(404, f"unknown tool {tool}; available: {list(TOOLS)}")
+    try:
+        inspect.signature(TOOLS[tool]).bind(None, **args)
+    except TypeError as e:
+        raise HTTPException(400, f"{tool}: {e}") from e
+    session = session_for(build_id)
+    async with session.lock:
+        result = await TOOLS[tool](Workbench(session), **args)
+    return {
+        "text": result.text,
+        "problems": result.problems,
+        "caption": result.caption,
+        "images": [{"mime": mime, "data": base64.b64encode(data).decode()} for data, mime in result.images],
+    }
+
+
+@app.post("/api/builds/{build_id}/say")
+async def agent_say(build_id: str, body: AgentSay) -> dict:
+    """Show a message or the live reasoning of an agent working outside the server."""
+    session = session_for(build_id)
+    if body.role == "thinking":
+        session.think(body.text, reset=True)
+    else:
+        await session.say(body.text)
     return {"ok": True}
 
 

@@ -75,6 +75,12 @@ class Session:
         self.subscribers: set[asyncio.Queue[dict]] = set()
         self.task: asyncio.Task | None = None
         self.renders: dict[str, asyncio.Future[bytes]] = {}
+        self.lock = asyncio.Lock()
+        """Held while a tool changes the build, one tool at a time."""
+
+    @property
+    def busy(self) -> bool:
+        return bool(self.task and not self.task.done()) or self.lock.locked()
 
     def subscribe(self) -> asyncio.Queue[dict]:
         queue: asyncio.Queue[dict] = asyncio.Queue()

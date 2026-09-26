@@ -41,6 +41,7 @@ class Script:
 
     def __init__(self, taken: list[list[int]]):
         self.steps: list[dict] = []
+        self.notes: list[str] = []
         self.columns: dict[Cell, list[tuple[int, int]]] = {}
         self.count = 0
         for x, y, w, d, z, height in taken:
@@ -160,6 +161,11 @@ class Script:
             raise ValueError("give fill either a color or a palette")
         cells = shapes.rect(x, y, w, d).difference(*(shapes.rect(*s) for s in skip))
         free = {c for c in cells if self._free(c, z, z + shapes.HEIGHTS[kind])}
+        if len(free) < len(cells) / 2:
+            self.notes.append(
+                f"line {self._line()}: fill covered only {len(free)} of {len(cells)} cells; the rest are already "
+                f"filled at z={z}. To lay it on top of them, use z={self.top(x, y, w, d)}."
+            )
         if palette:
             rng = random.Random(f"{x},{y},{z},{w},{d}")
             pairs = [(int(c), int(n)) for c, n in palette]
@@ -202,7 +208,8 @@ def run(code: str, taken: list[list[int]]) -> dict:
             exec(compile(code, SOURCE, "exec"), scope)  # noqa: S102
     except (Exception, SystemExit) as e:  # noqa: BLE001
         return {"error": _explain(e, code), "printed": printed.getvalue()[-PRINT_LIMIT:]}
-    return {"steps": [s for s in script.steps if s["bricks"]], "printed": printed.getvalue()[-PRINT_LIMIT:]}
+    steps = [s for s in script.steps if s["bricks"]]
+    return {"steps": steps, "notes": script.notes, "printed": printed.getvalue()[-PRINT_LIMIT:]}
 
 
 def main() -> None:
