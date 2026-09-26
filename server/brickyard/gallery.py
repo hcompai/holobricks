@@ -17,6 +17,7 @@ URL = "/gallery"
 def export(store: Store, ids: list[str], site: Path) -> Path:
     """Write every file the viewer reads for these builds under `site/gallery`; returns that folder."""
     out = site / URL.strip("/")
+    shutil.rmtree(out, ignore_errors=True)
     for folder in ("builds", "parts", "images", "thumbnails"):
         (out / folder).mkdir(parents=True, exist_ok=True)
     builds = [_load(store, i) for i in ids]
