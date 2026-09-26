@@ -115,7 +115,7 @@ def attach(anchor: Placement, part: str, color: int) -> Placement:
     return Placement(part=ldraw.normalize(part), color=color, pos=anchor.pos, rot=anchor.rot)
 
 
-ACCESSORIES = {"60592.dat": ("60601.dat", 47)}
+ACCESSORIES = {"60592.dat": ("60601.dat", 47), "60593.dat": ("60602.dat", 47), "60594.dat": ("60603.dat", 47)}
 
 
 def with_accessories(placement: Placement) -> list[Placement]:

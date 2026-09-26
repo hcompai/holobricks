@@ -12,9 +12,11 @@ from brickyard import ldraw, reference
 from brickyard.model import ROTATIONS, Piece, Placement, bounds, grid, place, with_accessories
 from brickyard.session import Session
 
-SIZE = 32 * ldraw.STUD
 STUD_HEIGHT = 4
 EPS = 0.5
+CELL = 4 * ldraw.STUD
+DESCRIBE_LIMIT = 300
+LIST_LIMIT = 600
 
 COMMON_COLORS = (0, 15, 71, 72, 4, 320, 25, 14, 19, 28, 70, 2, 288, 10, 27, 1, 272, 73, 322, 5, 47, 43, 36, 46)
 
@@ -127,14 +129,36 @@ def part_line(part: str) -> str:
 class Workbench:
     def __init__(self, session: Session):
         self.session = session
+        self._boxes: dict[int, tuple] = {}
 
     @property
     def pieces(self) -> list[Piece]:
         return self.session.build.pieces
 
+    def _box(self, p: Piece) -> tuple:
+        if p.id not in self._boxes:
+            self._boxes[p.id] = bounds(p)
+        return self._boxes[p.id]
+
     def _check(self, bricks: list[Brick]) -> tuple[list[Placement], list[str], list[str]]:
         """Placements that fit, plus rejection and warning lines, for a batch checked against itself and the build."""
-        taken = [(bounds(p), f"#{p.id} {_where(p)}") for p in self.pieces]
+        width, depth = self.session.build.width * ldraw.STUD, self.session.build.depth * ldraw.STUD
+        grid_index: dict[tuple[int, int], list[tuple[tuple, str]]] = {}
+
+        def cells(box: tuple) -> list[tuple[int, int]]:
+            xs = range(int(box[0][0] // CELL), int(box[1][0] // CELL) + 1)
+            return [(cx, cz) for cx in xs for cz in range(int(box[0][2] // CELL), int(box[1][2] // CELL) + 1)]
+
+        def take(box: tuple, what: str) -> None:
+            for cell in cells(box):
+                grid_index.setdefault(cell, []).append((box, what))
+
+        def near(box: tuple) -> list[tuple[tuple, str]]:
+            found = {id(entry): entry for cell in cells(box) for entry in grid_index.get(cell, [])}
+            return list(found.values())
+
+        for p in self.pieces:
+            take(self._box(p), f"#{p.id} {_where(p)}")
         accepted: list[tuple[Placement, tuple]] = []
         rejected, warnings = [], []
         for n, brick in enumerate(bricks, 1):
@@ -151,20 +175,21 @@ class Workbench:
                 continue
             placement = place(part, brick.x, brick.y, brick.z, brick.color, brick.rotation)
             box = bounds(placement)
-            if box[0][0] < -EPS or box[0][2] < -EPS or box[1][0] > SIZE + EPS or box[1][2] > SIZE + EPS:
-                rejected.append(f"{label}: outside the 32x32 baseplate")
+            if box[0][0] < -EPS or box[0][2] < -EPS or box[1][0] > width + EPS or box[1][2] > depth + EPS:
+                rejected.append(f"{label}: outside the {self.session.build.width}x{self.session.build.depth} baseplate")
                 continue
             if brick.z < 0:
                 rejected.append(f"{label}: below the baseplate")
                 continue
-            hit = next((what for other, what in taken if _collides(box, other)), None)
+            neighbors = near(box)
+            hit = next((what for other, what in neighbors if _collides(box, other)), None)
             if hit:
                 rejected.append(f"{label}: overlaps {hit}")
                 continue
-            if not any(_touches(box, other) for other, _ in taken):
+            if brick.z > 0 and not any(_touches(box, other) for other, _ in neighbors):
                 warnings.append(f"{label}: floating, nothing directly under or above it")
             accepted.append((placement, box))
-            taken.append((box, f"brick {n} of this step"))
+            take(box, f"brick {n} of this step")
         return [p for placement, _ in accepted for p in with_accessories(placement)], rejected, warnings
 
     async def add(self, title: str, bricks: list[dict]) -> Result:
@@ -227,7 +252,12 @@ class Workbench:
         return Result(text, note=f"Searched parts for '{query}'")
 
     async def list_pieces(self) -> Result:
-        return Result(await asyncio.to_thread(self.describe))
+        palette = ldraw.colors()
+        shown = self.pieces[-LIST_LIMIT:]
+        lines = [f"#{p.id} {_where(p)} color={p.color} ({palette.get(p.color, ('?',))[0]})" for p in shown]
+        if len(shown) < len(self.pieces):
+            lines.insert(0, f"The latest {len(shown)} of {len(self.pieces)} pieces:")
+        return Result("\n".join(lines) or "No pieces yet.")
 
     async def rename(self, name: str) -> Result:
         await self.session.rename(name.strip()[:60] or "Untitled build")
@@ -249,10 +279,19 @@ class Workbench:
         if not self.pieces:
             return "No pieces yet."
         palette = ldraw.colors()
-        lines = []
+        brief = len(self.pieces) > DESCRIBE_LIMIT
+        lines = (
+            [f"{len(self.pieces)} pieces; per step: ids and extents. Use list_pieces for every piece."] if brief else []
+        )
         for step in self.session.build.steps:
             pieces = [p for p in self.pieces if p.step == step.index]
-            if pieces:
-                lines.append(f"Step {step.index} {step.title}:")
-                lines += [f"  #{p.id} {_where(p)} color={p.color} ({palette.get(p.color, ('?',))[0]})" for p in pieces]
+            if not pieces:
+                continue
+            if brief:
+                spots = [grid(p) for p in pieces]
+                x, y, z = (f"{min(s[k] for s in spots)}-{max(s[k] for s in spots)}" for k in range(3))
+                lines.append(f"Step {step.index} {step.title}: #{pieces[0].id}-#{pieces[-1].id}, x {x}, y {y}, z {z}")
+                continue
+            lines.append(f"Step {step.index} {step.title}:")
+            lines += [f"  #{p.id} {_where(p)} color={p.color} ({palette.get(p.color, ('?',))[0]})" for p in pieces]
         return "\n".join(lines)

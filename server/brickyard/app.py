@@ -59,7 +59,7 @@ def session_for(build_id: str) -> Session:
 def start(session: Session, request: str) -> None:
     if session.task and not session.task.done():
         raise HTTPException(409, "this build is still running")
-    builder = BUILDERS[session.build.builder]
+    builder = BUILDERS.get(session.build.builder) or next(iter(BUILDERS.values()))
 
     async def run() -> None:
         await session.set_status("building")

@@ -21,7 +21,7 @@ GREEN = 2
 THINK_FLUSH_S = 0.25
 RETRIES = 3
 
-PROMPT = """You are Holo, a LEGO master builder working in Brickyard. You build what the user asks on a 32x32 stud \
+PROMPT = """You are Holo, a LEGO master builder working in Brickyard. You build what the user asks on a {width}x{depth} stud \
 baseplate with real LDraw parts, one instruction-manual step at a time, while the user watches each step appear in 3D.
 
 How to work
@@ -43,7 +43,7 @@ when it fits: rocks, a path, water made of blue tiles, plants.
 like slopes, round bricks, arches and grilles instead of only plain bricks.
 
 Coordinates
-- x runs 0-31 from left to right, y runs 0-31 from front to back, z is the height in plates above the baseplate. \
+- x runs 0-{xmax} from left to right, y runs 0-{ymax} from front to back, z is the height in plates above the baseplate. \
 Bricks are 3 plates tall; plates and tiles are 1.
 - A part placed at (x, y) covers studs x to x+W-1 and y to y+D-1, with W x D as listed at rotation 0. Rotation 90 or \
 270 swaps W and D.
@@ -98,11 +98,11 @@ TOOLS = [
 ]
 
 
-def system_prompt() -> str:
+def system_prompt(width: int = 32, depth: int = 32) -> str:
     palette = ldraw.colors()
     parts = "\n".join(part_line(f"{p}.dat") for p in COMMON_PARTS)
     colors = ", ".join(f"{c}: {palette[c][0].lower()}" for c in COMMON_COLORS if c in palette)
-    return PROMPT.format(parts=parts, colors=colors)
+    return PROMPT.format(parts=parts, colors=colors, width=width, depth=depth, xmax=width - 1, ymax=depth - 1)
 
 
 @dataclass
@@ -154,7 +154,10 @@ class HoloBuilder:
         if not session.build.pieces:
             await session.step("Baseplate", [baseplate(GREEN)])
         messages = [
-            {"role": "system", "content": await asyncio.to_thread(system_prompt)},
+            {
+                "role": "system",
+                "content": await asyncio.to_thread(system_prompt, session.build.width, session.build.depth),
+            },
             *self._history(session, request, await asyncio.to_thread(bench.describe)),
         ]
         async with httpx.AsyncClient(timeout=httpx.Timeout(600, connect=30), transport=self.transport) as client:
