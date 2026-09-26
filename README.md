@@ -7,7 +7,7 @@ Watch Holo build LEGO models from real LDraw parts, one instruction step at a ti
 ![Brickyard showing the Paris diorama](docs/brickyard.jpg)
 
 - **Chat** to describe a model; Holo, a sagent agent, writes a Python build script, and every run rebuilds the model, streams the new steps and shows Holo the render.
-- **Every brick is checked**: on the baseplate, no overlaps, resting on something.
+- **Every brick is checked**: inside the build area, no overlaps, resting on something.
 - **Replay** the steps, browse the parts list, download the `.ldr`.
 
 Gallery for the H team: [brickyard-h-company.vercel.app](https://brickyard-h-company.vercel.app) (Vercel login).

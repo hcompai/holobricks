@@ -9,14 +9,12 @@ import sys
 import time
 from pathlib import Path
 
-from brickyard.model import baseplate
 from brickyard.session import Session
 from brickyard.viewer import headless
 from brickyard.workbench import Workbench
 
 AGENT = Path(__file__).resolve().parents[3] / "agent" / "holo.py"
 SHOWCASE = AGENT.parent / "showcase"
-GREEN = 2
 STOP_S = 10
 
 
@@ -39,8 +37,6 @@ class HoloBuilder:
 
     async def run(self, session: Session, request: str) -> None:
         build = session.build
-        if not build.pieces:
-            await session.step("Baseplate", [baseplate(GREEN)])
         workspace = session.store.root.parent / "workspaces" / build.id
         runs = workspace / "runs"
         runs.mkdir(parents=True, exist_ok=True)
@@ -78,11 +74,11 @@ class HoloBuilder:
 
     @staticmethod
     def task(session: Session, request: str, workspace: Path) -> str:
-        """The request, the baseplate, Holo's notes from earlier requests, and the model as it stands."""
+        """The request, the build area, Holo's notes from earlier requests, and the model as it stands."""
         build = session.build
         parts = [
             f"# Request\n{request}",
-            f"# Baseplate\n{build.width}x{build.depth} studs: x runs 0-{build.width - 1}, y runs 0-{build.depth - 1}.",
+            f"# Build area\n{build.width}x{build.depth} studs of bare ground: x runs 0-{build.width - 1}, y runs 0-{build.depth - 1}.",
         ]
         notes = workspace / "notes.md"
         if notes.is_file():

@@ -10,7 +10,7 @@ import logging
 import os
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 from urllib.parse import quote
 
 from fastapi import FastAPI, HTTPException, Request
@@ -149,7 +149,7 @@ async def stop(build_id: str) -> dict:
 
 
 @app.post("/api/builds/{build_id}/tools/{tool}")
-async def call_tool(build_id: str, tool: str, args: dict[str, str]) -> dict:
+async def call_tool(build_id: str, tool: str, args: dict[str, Any]) -> dict:
     """Run a workbench tool for an agent working outside the server, like Holo through the bricks CLI."""
     if tool not in TOOLS:
         raise HTTPException(404, f"unknown tool {tool}; available: {list(TOOLS)}")

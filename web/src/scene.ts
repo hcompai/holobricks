@@ -3,7 +3,7 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { LDrawLoader } from "three/examples/jsm/loaders/LDrawLoader.js";
 import { LDrawConditionalLineMaterial } from "three/examples/jsm/materials/LDrawConditionalLineMaterial.js";
-import { api, type Piece } from "./api";
+import { api, type Camera, type Piece } from "./api";
 
 export type View = "iso" | "isoBack" | "front" | "top";
 
@@ -22,6 +22,15 @@ const SHEET: { view: View; label: string }[] = [
 ];
 
 const BACKDROP = "#f6f6f9";
+const STUD = 20;
+const PLATE = 8;
+
+/** From the model toward a camera seen from compass `angle` (0 front, 90 right) and `elevation` degrees up. */
+function towardCamera(angle: number, elevation: number): THREE.Vector3 {
+  const a = THREE.MathUtils.degToRad(angle);
+  const e = THREE.MathUtils.degToRad(Math.min(elevation, 89.9));
+  return new THREE.Vector3(Math.sin(a) * Math.cos(e), Math.sin(e), Math.cos(a) * Math.cos(e));
+}
 
 const lineMaterials = new WeakMap<THREE.Material, THREE.Material>();
 
@@ -273,9 +282,13 @@ export class BrickScene {
     this.controls.autoRotate = spin;
   }
 
-  /** Point the camera along `view` so the whole model (or the empty baseplate) fills the frame. */
   frameView(view: View, width: number, depth: number) {
     this.framing = { view, width, depth };
+    this.aim(VIEW_DIRECTIONS[view], width, depth);
+  }
+
+  /** Point the camera along `direction` so the whole model (or the empty baseplate) fills the frame, then close in `zoom` times on `at`. */
+  private aim(direction: THREE.Vector3, width: number, depth: number, zoom = 1, at?: THREE.Vector3) {
     this.root.updateMatrixWorld(true);
     const box = new THREE.Box3();
     for (const batch of this.batches.values()) batch.expand(box);
@@ -284,7 +297,7 @@ export class BrickScene {
       box.set(new THREE.Vector3(0, 0, -depth * 20), new THREE.Vector3(width * 20, 40, 0));
     }
     const center = box.getCenter(new THREE.Vector3());
-    const direction = VIEW_DIRECTIONS[view].clone().normalize();
+    direction = direction.clone().normalize();
     this.camera.position.copy(center).add(direction);
     this.camera.lookAt(center);
     this.camera.updateMatrixWorld();
@@ -298,17 +311,22 @@ export class BrickScene {
           const depth = p.z + 1;
           distance = Math.max(distance, depth + Math.abs(p.x) / tanX, depth + Math.abs(p.y) / tanY);
         }
-    distance *= 1.04;
-    this.camera.position.copy(center).addScaledVector(direction, distance);
+    distance *= 1.04 / zoom;
+    const target = at ?? center;
+    this.camera.position.copy(target).addScaledVector(direction, distance);
     this.camera.near = distance / 100;
     this.camera.far = distance * 100;
     this.camera.updateProjectionMatrix();
-    this.controls.target.copy(center);
+    this.controls.target.copy(target);
     this.controls.update();
   }
 
   /** Square renders of the whole model into a 2D canvas, leaving the user's camera and timeline untouched. */
-  private offscreen(size: number, tiles: { view: View; x: number; y: number; label?: string }[], columns = 1) {
+  private offscreen(
+    size: number,
+    tiles: { direction: THREE.Vector3; zoom?: number; at?: THREE.Vector3; x: number; y: number; label?: string }[],
+    columns = 1,
+  ) {
     const { position, near, far } = this.camera;
     const saved = { position: position.clone(), target: this.controls.target.clone(), near, far };
     const pixelRatio = this.renderer.getPixelRatio();
@@ -323,7 +341,7 @@ export class BrickScene {
     this.renderer.setSize(size * 2, size * 2, false);
     this.camera.aspect = 1;
     for (const tile of tiles) {
-      this.frameView(tile.view, 32, 32);
+      this.aim(tile.direction, 32, 32, tile.zoom, tile.at);
       this.renderer.render(this.scene, this.camera);
       ctx.fillStyle = BACKDROP;
       ctx.fillRect(tile.x, tile.y, size, size);
@@ -350,12 +368,23 @@ export class BrickScene {
   }
 
   thumbnail(size = 320): Promise<Blob | null> {
-    return this.offscreen(size, [{ view: "iso", x: 0, y: 0 }]);
+    return this.offscreen(size, [{ direction: VIEW_DIRECTIONS.iso, x: 0, y: 0 }]);
   }
 
   /** The four labelled views a builder looks at to check its work. */
   sheet(size = 384): Promise<Blob | null> {
-    const tiles = SHEET.map((s, i) => ({ view: s.view, label: s.label, x: (i % 2) * size, y: Math.floor(i / 2) * size }));
+    const tiles = SHEET.map((s, i) => ({
+      direction: VIEW_DIRECTIONS[s.view],
+      label: s.label,
+      x: (i % 2) * size,
+      y: Math.floor(i / 2) * size,
+    }));
     return this.offscreen(size, tiles, 2);
+  }
+
+  /** The one view a builder asks for, with the build's x and y in studs and z in plates. */
+  view(camera: Camera, size = 768): Promise<Blob | null> {
+    const at = camera.at ? new THREE.Vector3(camera.at[0] * STUD, camera.at[2] * PLATE, -camera.at[1] * STUD) : undefined;
+    return this.offscreen(size, [{ direction: towardCamera(camera.angle, camera.elevation), zoom: camera.zoom, at, x: 0, y: 0 }]);
   }
 }

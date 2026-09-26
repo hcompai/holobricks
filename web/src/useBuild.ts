@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, GALLERY, type Build, type BuildEvent } from "./api";
+import { api, GALLERY, type Build, type BuildEvent, type RenderRequest } from "./api";
 
 const THINKING_CHARS = 1500;
 
@@ -33,14 +33,14 @@ export interface LiveBuild {
   /** The tail of the builder's current reasoning, streamed live. */
   thinking: string;
   /** The latest render the builder asked a viewer for. */
-  renderRequest: string | null;
+  renderRequest: RenderRequest | null;
 }
 
 /** The open build, kept live by its event stream; every (re)connect resyncs from a snapshot and replays what arrived meanwhile. */
 export function useBuild(id: string | null): LiveBuild {
   const [build, setBuild] = useState<Build | null>(null);
   const [thinking, setThinking] = useState("");
-  const [renderRequest, setRenderRequest] = useState<string | null>(null);
+  const [renderRequest, setRenderRequest] = useState<RenderRequest | null>(null);
 
   useEffect(() => {
     setBuild(null);
@@ -87,7 +87,7 @@ export function useBuild(id: string | null): LiveBuild {
         return;
       }
       if (event.type === "render") {
-        setRenderRequest(event.request);
+        setRenderRequest({ request: event.request, camera: event.camera });
         return;
       }
       if (pending) pending.push(event);

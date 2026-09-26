@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { ArrowsClockwiseIcon } from "@phosphor-icons/react";
-import { api, GALLERY, type Build } from "./api";
+import { api, GALLERY, type Build, type RenderRequest } from "./api";
 import { BrickScene, type View } from "./scene";
 
 const VIEWS: { id: View; label: string }[] = [
@@ -44,7 +44,7 @@ export function ViewControls({
 interface Props {
   build: Build | null;
   step: number;
-  renderRequest: string | null;
+  renderRequest: RenderRequest | null;
   framing: Framing;
   spin: boolean;
 }
@@ -87,11 +87,12 @@ export function Viewer({ build, step, renderRequest, framing, spin }: Props) {
 
   useEffect(() => {
     const s = scene.current;
-    if (!s || !build || !renderRequest || answered.current.has(renderRequest)) return;
-    answered.current.add(renderRequest);
+    if (!s || !build || !renderRequest || answered.current.has(renderRequest.request)) return;
+    const { request, camera } = renderRequest;
+    answered.current.add(request);
     s.setPieces(build.pieces)
-      .then(() => s.sheet())
-      .then((png) => png && api.putRender(build.id, renderRequest, png))
+      .then(() => (camera ? s.view(camera) : s.sheet()))
+      .then((png) => png && api.putRender(build.id, request, png))
       .catch((error) => console.error("Could not answer a render request", error));
   }, [renderRequest, build?.id, build?.pieces]);
 

@@ -14,7 +14,7 @@ from PIL import Image
 
 from brickyard import ldraw
 from brickyard.builders.holo import HoloBuilder
-from brickyard.model import Build, baseplate, grid
+from brickyard.model import Build, Camera, grid
 from brickyard.session import Session, Store
 from brickyard.workbench import Workbench, part_line
 
@@ -33,9 +33,7 @@ def png(width: int, height: int) -> bytes:
 
 @pytest.fixture
 def bench(tmp_path):
-    session = Session(Build(), Store(tmp_path))
-    asyncio.run(session.step("Baseplate", [baseplate(2)]))
-    return Workbench(session)
+    return Workbench(Session(Build(), Store(tmp_path)))
 
 
 def test_workbench_places_valid_bricks_and_explains_every_rejection(bench):
@@ -54,10 +52,10 @@ def test_workbench_places_valid_bricks_and_explains_every_rejection(bench):
     )
     assert "placed 3 pieces" in result.text
     assert "overlaps brick 1 (3001 at x=4 y=4 z=0) of this step" in result.text
-    assert "outside the 32x32 baseplate" in result.text
+    assert "outside the 32x32 build area" in result.text
     assert "unknown part" in result.text
     assert "brick 5 (3001 at x=10 y=10 z=6): floating" in result.text
-    placed = [grid(p) for p in bench.pieces[1:]]
+    placed = [grid(p) for p in bench.pieces]
     assert placed == [(4, 4, 0, 0), (10, 10, 6, 0), (4, 4, 3, 90)]
 
 
@@ -74,13 +72,13 @@ def test_overhanging_parts_only_fill_their_footprint(bench):
         )
     )
     assert "placed 4 pieces" in result.text, result.text
-    assert [grid(p)[:2] for p in bench.pieces[1:]] == [(0, 0), (1, 0), (5, 5), (5, 6)]
+    assert [grid(p)[:2] for p in bench.pieces] == [(0, 0), (1, 0), (5, 5), (5, 6)]
 
 
 def test_window_frames_come_with_glass(bench):
     asyncio.run(bench.add("Window", [brick(part="60592", x=2, y=2, color=15)]))
-    assert [p.part for p in bench.pieces[1:]] == ["60592.dat", "60601.dat"]
-    assert "overlaps #2 60592" in asyncio.run(bench.add("Blocked", [brick(part="3005", x=2, y=2)])).text
+    assert [p.part for p in bench.pieces] == ["60592.dat", "60601.dat"]
+    assert "overlaps #1 60592" in asyncio.run(bench.add("Blocked", [brick(part="3005", x=2, y=2)])).text
 
 
 HOUSE = """
@@ -95,22 +93,22 @@ fill(0, 0, 32, 32, 0, palette=[[71, 1]], kind="tile")
 
 
 def test_a_script_rebuilds_from_its_first_changed_step_and_names_the_lines_of_its_problems(bench, monkeypatch):
-    monkeypatch.setattr(bench.session, "render", lambda: asyncio.sleep(0))
+    monkeypatch.setattr(bench.session, "render", lambda camera=None: asyncio.sleep(0))
     first = asyncio.run(bench.run_script(HOUSE))
     assert first.problems == 0 and "roof top" in first.text, first.text
-    assert [s.title for s in bench.session.build.steps] == ["Baseplate", "Walls", "Roof", "Paving"]
+    assert [s.title for s in bench.session.build.steps] == ["Walls", "Roof", "Paving"]
     assert any(p.part == "3659.dat" for p in bench.pieces)
-    walls = [p for p in bench.pieces if p.step == 1]
+    walls = [p for p in bench.pieces if p.step == 0]
 
     recolored = asyncio.run(bench.run_script(HOUSE.replace("320", "4")))
-    assert "kept step 2, rebuilt 2 steps" in recolored.text
-    assert [p for p in bench.pieces if p.step == 1] == walls
-    assert {p.color for p in bench.pieces if p.step == 2} == {4}
+    assert "kept step 1, rebuilt 2 steps" in recolored.text
+    assert [p for p in bench.pieces if p.step == 0] == walls
+    assert {p.color for p in bench.pieces if p.step == 1} == {4}
 
     stray = HOUSE.replace("320", "4") + 'brick("3001", 40, 0, 0, 4)\n'
     for _ in range(2):
         result = asyncio.run(bench.run_script(stray))
-        assert result.problems == 1 and "kept steps 2 to 3, rebuilt 1 steps" in result.text
+        assert result.problems == 1 and "kept steps 1 to 2, rebuilt 1 steps" in result.text
         assert 'line 9 `brick("3001", 40, 0, 0, 4)` (3001 at x=40 y=0 z=0): outside' in result.text
 
     buried = asyncio.run(bench.run_script(stray + "fill(10, 10, 8, 6, 0, 1)\n"))
@@ -123,12 +121,18 @@ def test_a_script_rebuilds_from_its_first_changed_step_and_names_the_lines_of_it
     assert "undefined()" in bench.session.build.script
 
 
-def test_agents_build_through_the_tools_endpoint_and_see_each_render(tmp_path, monkeypatch):
+def test_agents_build_through_the_tools_endpoint_and_see_the_model_from_any_camera(tmp_path, monkeypatch):
     from brickyard import app as app_module
 
     store = Store(tmp_path)
     monkeypatch.setattr(app_module, "store", store)
-    monkeypatch.setattr(Session, "render", lambda self: asyncio.sleep(0, png(120, 90)))
+    cameras = []
+
+    async def render(self, camera=None):
+        cameras.append(camera)
+        return png(120, 90)
+
+    monkeypatch.setattr(Session, "render", render)
     build = Build()
     store.save(build)
     tools = f"/api/builds/{build.id}/tools"
@@ -138,6 +142,11 @@ def test_agents_build_through_the_tools_endpoint_and_see_each_render(tmp_path, m
         assert ran["problems"] == 0 and "1 Core: 1 piece" in ran["text"], ran["text"]
         assert Image.open(io.BytesIO(base64.b64decode(ran["images"][0]["data"]))).size == (120, 90)
         assert "kept step 1," in client.post(f"{tools}/run", json={"code": code}).json()["text"]
+        assert cameras == [None, None]
+        closer = client.post(f"{tools}/look", json={"camera": {"angle": 200, "zoom": 3, "at": [4, 4, 3]}}).json()
+        assert closer["caption"] == "The view from 200 degrees, 30 up, zoom 3, centered on x 4, y 4, z 3."
+        assert cameras[-1] == Camera(angle=200, zoom=3, at=(4, 4, 3))
+        assert client.post(f"{tools}/look", json={"camera": {"zoom": 0}}).json()["problems"] == 1
         assert not store.load(build.id).messages[-1].images
         assert client.post(f"{tools}/build", json={}).status_code == 404
         assert client.post(f"{tools}/run", json={"script": "x"}).status_code == 400
@@ -147,10 +156,10 @@ def test_agents_build_through_the_tools_endpoint_and_see_each_render(tmp_path, m
 def test_a_viewer_that_connects_after_a_render_request_still_answers_it(tmp_path):
     async def main() -> bytes | None:
         session = Session(Build(), Store(tmp_path))
-        waiting = asyncio.create_task(session.render(timeout=5))
+        waiting = asyncio.create_task(session.render(Camera(angle=90), timeout=5))
         await asyncio.sleep(0)
         event = session.subscribe().get_nowait()
-        assert event["type"] == "render"
+        assert event["type"] == "render" and event["camera"]["angle"] == 90
         session.deliver_render(event["request"], b"png")
         return await waiting
 
@@ -169,7 +178,7 @@ def test_the_prompt_names_only_real_parts_and_colors_and_its_example_builds_clea
         code, name = entry.split(" ", 1)
         assert palette[int(code)][0].lower() == name, entry
 
-    monkeypatch.setattr(bench.session, "render", lambda: asyncio.sleep(0))
+    monkeypatch.setattr(bench.session, "render", lambda camera=None: asyncio.sleep(0))
     example = re.search(r"```python\n(.*?)```", prompt, re.DOTALL).group(1)
     result = asyncio.run(bench.run_script(example))
     assert result.problems == 0, result.text
@@ -201,7 +210,8 @@ def test_holo_gets_the_task_on_stdin_and_stop_ends_its_whole_process_group(tmp_p
     pids = asyncio.run(main())
     task = (workspace / "task.txt").read_text()
     assert task.startswith("# Request\na tower") and "x runs 0-31" in task and task.endswith(session.build.id)
-    assert "the lighthouse from the pier" in task and "1 Baseplate: 1 piece" in task
+    assert "the lighthouse from the pier" in task and "No pieces yet." in task
+    assert not session.build.steps
     assert (workspace / "build.py").exists() and (workspace / "showcase" / "paris.png").exists()
     assert not any(map(alive, pids))
 

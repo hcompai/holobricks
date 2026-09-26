@@ -14,7 +14,7 @@ import httpx
 from pydantic import BaseModel, ValidationError
 
 from brickyard import ldraw, reference
-from brickyard.model import FACINGS, ROTATIONS, Piece, Placement, bounds, grid, place, with_accessories
+from brickyard.model import FACINGS, ROTATIONS, Camera, Piece, Placement, bounds, grid, place, with_accessories
 from brickyard.session import Session
 
 STUD_HEIGHT = 4
@@ -161,7 +161,7 @@ class Workbench:
             elif brick.rotation not in ROTATIONS:
                 rejected.append(f"{label}: rotation must be 0, 90, 180 or 270")
             elif brick.z < 0:
-                rejected.append(f"{label}: below the baseplate")
+                rejected.append(f"{label}: below the ground")
             else:
                 placement = place(part, brick.x, brick.y, brick.z, brick.color, brick.rotation)
                 candidates.append((label, placement, brick.z > 0))
@@ -174,7 +174,9 @@ class Workbench:
         for label, placement, needs_support in candidates:
             box = bounds(placement)
             if box[0][0] < -EPS or box[0][2] < -EPS or box[1][0] > width + EPS or box[1][2] > depth + EPS:
-                rejected.append(f"{label}: outside the {self.session.build.width}x{self.session.build.depth} baseplate")
+                rejected.append(
+                    f"{label}: outside the {self.session.build.width}x{self.session.build.depth} build area"
+                )
                 continue
             neighbors = near(box)
             hit = next(((other, what) for other, what in neighbors if _collides(box, other)), None)
@@ -275,7 +277,7 @@ class Workbench:
         return "\n".join(lines)
 
     def _taken(self, steps: int) -> list[list[int]]:
-        """(x, y, w, d, z, height) on the grid of every piece in the first `steps` steps, except the baseplate."""
+        """(x, y, w, d, z, height) on the grid of every piece in the first `steps` steps, except a baseplate."""
         s, out = ldraw.STUD, []
         for p, (lo, hi) in self._index().values():
             if p.step < steps and p.part != BASEPLATE:
@@ -284,13 +286,20 @@ class Workbench:
                 out.append([x, y, max(1, w), max(1, d), z, max(1, _top((lo, hi)) - z)])
         return out
 
-    async def look(self, note: str = "Looked at the model") -> Result:
-        png = await self.session.render()
+    async def look(self, note: str = "Looked at the model", camera: dict | None = None) -> Result:
+        try:
+            view = None if camera is None else Camera.model_validate(camera)
+        except ValidationError as e:
+            return Result(f"Could not set the camera: {e}", problems=1)
+        png = await self.session.render(view)
         summary = await asyncio.to_thread(self.summary)
         if png is None:
             return Result(f"No viewer is open, so no image this time.\n{summary}", note=f"{note} (no viewer open)")
         await self.session.say(note, role="tool")
         caption = "The render: 3/4 front-right, 3/4 back-left, front, and top (back at the top)."
+        if view:
+            center = f", centered on x {view.at[0]:g}, y {view.at[1]:g}, z {view.at[2]:g}" if view.at else ""
+            caption = f"The view from {view.angle:g} degrees, {view.elevation:g} up, zoom {view.zoom:g}{center}."
         return Result(summary, images=[Picture(png, "image/png")], kind="render", caption=caption)
 
     async def find_reference(self, query: str) -> Result:
@@ -321,7 +330,7 @@ class Workbench:
     def summary(self) -> str:
         pieces = [p for p in self.pieces if p.part != BASEPLATE]
         if not pieces:
-            return "The baseplate is empty."
+            return "Nothing is built yet."
         boxes = [grid(p) for p in pieces]
         indexed = self._index()
         top = max(_top(indexed[p.id][1]) for p in pieces)

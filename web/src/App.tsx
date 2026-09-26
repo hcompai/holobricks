@@ -86,8 +86,7 @@ export default function App() {
     <div className="app">
       <header>
         <button className="brand" onClick={home}>
-          <img className="brand-icon" src="/favicon.png" alt="" />
-          <span className="brand-divider" />
+          <img className="brand-icon" src="/brick.png" alt="" />
           Brickyard
         </button>
         {build && (

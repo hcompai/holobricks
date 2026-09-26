@@ -182,7 +182,7 @@ class Script:
         return top
 
     def top(self, x: int, y: int, w: int = 1, d: int = 1) -> int:
-        """The highest plate height filled over the rectangle, 0 on the bare baseplate."""
+        """The highest plate height filled over the rectangle, 0 on bare ground."""
         return max((b for cell in shapes.rect(x, y, w, d) for _, b in self.columns.get(cell, ())), default=0)
 
 
