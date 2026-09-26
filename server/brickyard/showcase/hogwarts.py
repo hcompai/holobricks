@@ -9,13 +9,16 @@ from collections.abc import Callable
 
 from brickyard.shapes import brick, rect
 from brickyard.showcase.kit import Kit
-from brickyard.showcase.sculpt import Sculpture, circle, erode
+from brickyard.showcase.sculpt import Color, Sculpture, circle, erode
 
 W, D = 152, 124
 BLACK, TAN, DTAN, LBG, DBG, GOLD, LIT = 0, 19, 28, 71, 72, 297, 46
 GREEN, DGREEN, OLIVE = 2, 288, 330
 DBLUE, TLBLUE, TMBLUE = 272, 43, 41
 DBROWN, BROWN = 308, 70
+WHITE, YELLOW, ORANGE, LAVENDER, PINK, AZURE, CLEAR, SQUID = 15, 14, 25, 31, 29, 322, 47, 320
+FLOWERS = (WHITE, YELLOW, LAVENDER, PINK, YELLOW)
+PINES = (("3471", DGREEN), ("3471", DGREEN), ("3471", GREEN), ("3470", GREEN), ("6064", DGREEN), ("6064", OLIVE))
 
 Cell = tuple[int, int]
 PROMPT = (
@@ -317,13 +320,15 @@ def round_tower(
     spire(sc, cx, cy, r + 0.5, k1, cone, finials)
 
 
-def gable_roof(sc: Sculpture, x0: int, y0: int, w: int, d: int, k0: int, ridge: str, pitch: int = 2) -> int:
+def gable_roof(
+    sc: Sculpture, x0: int, y0: int, w: int, d: int, k0: int, ridge: str, pitch: int = 2, slate: Color = DBG
+) -> int:
     """A steep slate roof with tan crow-stepped gables at both ends of its ridge; returns the course above it."""
     cells, k = rect(x0, y0, w, d), k0
     ends = {x0, x0 + w - 1} if ridge == "x" else {y0, y0 + d - 1}
     while cells:
         gable = {c for c in cells if (c[0] if ridge == "x" else c[1]) in ends}
-        sc.fill(cells - gable, k, k + pitch, DBG, sloped=True)
+        sc.fill(cells - gable, k, k + pitch, slate, sloped=True)
         sc.fill(gable, k, k + pitch + 1, TAN)
         cells, k = erode(cells, ridge), k + pitch
     return k + 1
@@ -358,7 +363,8 @@ def great_hall(sc: Sculpture, finials: Finials) -> None:
             sc.part("3040b", x, outer, PLATEAU + 17, TAN, turn)
             sc.fill([(x, y)], PLATEAU, top, stone({PLATEAU, PLATEAU + 13, top - 1}))
             pinnacle(sc, x, y, top)
-    gable_roof(sc, x0, y0, w, d, top, ridge="x")
+    dormers = lambda x, y, k: BLACK if k - top in (4, 5) and (x - x0) % 4 == 2 else DBG
+    gable_roof(sc, x0, y0, w, d, top, ridge="x", slate=dormers)
     ridge_y = y0 + d // 2 - 1
     for x in (x0 + 12, x1 - 13):
         for i in range(5):
@@ -381,6 +387,14 @@ def stone(bands: set[int]) -> Callable[[int, int, int], int]:
     return lambda x, y, k: DTAN if k in bands else TAN
 
 
+def ivy(x: int, y: int, k: int, k0: int) -> int | None:
+    """Ivy climbing a wall from its foot in patches, thinning out with height."""
+    n = noise(x * 0.6 + k * 0.35, y * 0.6 - k * 0.25)
+    if n > 0.3 + 0.1 * (k - k0):
+        return DGREEN if n > 0.55 + 0.1 * (k - k0) else GREEN
+    return None
+
+
 def block(
     sc: Sculpture,
     x0: int,
@@ -397,15 +411,37 @@ def block(
     rows = range(k0 + 4, top - 3, 5)
 
     def color(x: int, y: int, k: int) -> int:
-        if k < k0 + 1 or k == top - 1:
-            return DTAN
         u = x - x0 if y in (y0, y0 + d - 1) else y - y0
         if u % every == every // 2 and any(r <= k < r + 2 for r in rows):
             return LIT if (u + k) % 3 else BLACK
-        return TAN
+        if green := ivy(x, y, k, k0):
+            return green
+        return DTAN if k < k0 + 1 or k == top - 1 else TAN
 
     sc.fill(rect(x0, y0, w, d), k0, top, color)
     return gable_roof(sc, x0, y0, w, d, top, ridge) if ridge else sc.roof(rect(x0, y0, w, d), top, DBG)
+
+
+def hall_front(sc: Sculpture) -> None:
+    """The Great Hall's gabled front on the courtyard: a pointed door, two tall lancets, pinnacles, a clock in the gable."""
+    sc.owner = "the Great Hall's front"
+    x0, y0, w, d = CX - 12, CY - 28, 4, 12
+    x1, mid, top = x0 + w - 1, y0 + d / 2, PLATEAU + 30
+
+    def color(x: int, y: int, k: int) -> int:
+        off = abs(y + 0.5 - mid)
+        if x == x1 and off < 2:
+            if k < YARD + 7 + (off < 1):
+                return BLACK
+            for a, b in ((PLATEAU + 7, PLATEAU + 15), (PLATEAU + 18, PLATEAU + 27)):
+                if a <= k < b + (off < 1):
+                    return LIT
+        return DTAN if k in (YARD, PLATEAU + 16, top - 1) else TAN
+
+    sc.fill(rect(x0, y0, w, d), YARD, top, color)
+    gable_roof(sc, x0, y0, w, d, top, ridge="x")
+    for y in (y0, y0 + d - 1):
+        pinnacle(sc, x1, y, top, rounds=6)
 
 
 def staircase_tower(sc: Sculpture, finials: Finials) -> None:
@@ -413,9 +449,9 @@ def staircase_tower(sc: Sculpture, finials: Finials) -> None:
     sc.owner = "the Marble Staircase Tower"
     cx, cy, r = CX, CY, 12
     crown = PLATEAU + 48
-    bands = {PLATEAU, PLATEAU + 1, PLATEAU + 18, PLATEAU + 34}
-    rows = list(range(PLATEAU + 5, crown - 2, 7))
-    sc.fill(circle(cx, cy, r), PLATEAU, crown, round_wall(cx, cy, bands, windows(r, 14, rows)))
+    bands = {YARD, YARD + 1, PLATEAU + 18, PLATEAU + 34}
+    wall = round_wall(cx, cy, bands, windows(r, 14, list(range(PLATEAU + 5, crown - 2, 7))))
+    sc.fill(circle(cx, cy, r), YARD, crown, wall)
     sc.fill(circle(cx, cy, r + 0.5), crown, crown + 1, DTAN)
     sc.fill(circle(cx, cy, r + 1), crown + 1, crown + 4, DTAN)
     ring = circle(cx, cy, r + 1) - circle(cx, cy, r + 0.5)
@@ -433,37 +469,16 @@ def staircase_tower(sc: Sculpture, finials: Finials) -> None:
         finials.append((x + 1, y + 1, k1 + 5))
 
 
-def entrance_hall(sc: Sculpture) -> None:
-    """The narrow hall from the great tower's foot to the lake front, between the Great Hall and the courtyard."""
-    sc.owner = "the Entrance Hall"
-    x0, y0, w, d = CX - 12, CY - 32, 8, 22
-    top = PLATEAU + 24
-
-    def color(x: int, y: int, k: int) -> int:
-        if y == y0 and (
-            x0 + 2 <= x <= x0 + 5 and PLATEAU + 4 <= k <= PLATEAU + 17 or x0 + 3 <= x <= x0 + 4 and k <= PLATEAU + 19
-        ):
-            return LIT
-        if x in (x0, x0 + w - 1) and (y - y0) % 4 == 2 and PLATEAU + 6 <= k <= PLATEAU + 12:
-            return LIT
-        if k < PLATEAU + 2 or k == top - 1:
-            return DTAN
-        return TAN
-
-    sc.fill(rect(x0, y0, w, d), YARD, top, color)
-    gable_roof(sc, x0, y0, w, d, top, ridge="y")
-
-
 def chamber(sc: Sculpture, finials: Finials) -> None:
-    """The Chamber of Reception: the fat round tower where the Great Hall meets the Entrance Hall, on a lower ledge."""
+    """The Chamber of Reception: the fat round tower at the front corner of the Great Hall and the courtyard, on a lower ledge."""
     sc.owner = "the Chamber of Reception"
     round_tower(sc, CX - 10, CY - 37, 5, PLATEAU - 6, PLATEAU + 18, 9, finials)
 
 
 def viaduct_courtyard(sc: Sculpture, finials: Finials) -> None:
-    """The open yard at the great tower's foot where the viaduct lands, ringed by a gabled arcade with lit arches."""
+    """The open yard from the Great Hall's end to the viaduct, at the great tower's door, ringed by a gabled arcade."""
     sc.owner = "the Viaduct Courtyard's towers"
-    x0, y0, x1, y1 = CX - 4, CY - 38, CX + 23, CY - 14
+    x0, y0, x1, y1 = CX - 12, CY - 38, CX + 23, CY - 14
     round_tower(sc, x1 + 1, y0, 5, YARD, PLATEAU + 30, 16, finials)
     round_tower(sc, x1 + 1, y1 + 1, 4, YARD, PLATEAU + 20, 10, finials)
     sc.owner = "the Viaduct Courtyard"
@@ -473,12 +488,14 @@ def viaduct_courtyard(sc: Sculpture, finials: Finials) -> None:
         u = x if y in (y0, y1, y0 + 3, y1 - 3) else y
         if u % 4 in (1, 2) and YARD + 2 <= k <= YARD + 6:
             return LIT
+        if green := ivy(x, y, k, YARD):
+            return green
         return DTAN if k in (YARD, top - 1) else TAN
 
     for x, y, w, d, ridge in (
         (x0, y0, x1 - x0 + 1, 4, "x"),
         (x1 - 3, y0 + 4, 4, y1 - y0 - 3, "y"),
-        (x0, y1 - 3, x1 - x0 - 3, 4, "x"),
+        (CX + 8, y1 - 3, x1 - CX - 11, 4, "x"),
     ):
         sc.fill(rect(x, y, w, d), YARD, top, color)
         gable_roof(sc, x, y, w, d, top, ridge)
@@ -513,6 +530,9 @@ def viaduct(sc: Sculpture) -> None:
             sc.fill([(x, y)], low, deck + 2, stone({deck + 1, *range(low, low + 2)}))
             if y in (y0, y1):
                 sc.fill([(x, y)], deck + 2, deck + 3 + (x % 2 == 0), TAN)
+    for x in range(x0 + 3, x1, 7):
+        for y in (y0, y1):
+            sc.part("3062b", x, y, deck + 3 + (x % 2 == 0), LIT)
 
 
 def stairs(sc: Sculpture) -> None:
@@ -556,16 +576,81 @@ def grounds(sc: Sculpture) -> None:
     sc.owner = "the grounds"
     for cells, k, color in (
         (rect(CX - 59, CY - 15, 47, 11), PLATEAU - 1, GREEN),
-        (rect(CX - 32, CY + 4, 36, 34), PLATEAU - 1, GREEN),
-        (rect(CX - 4, CY - 34, 24, 17), YARD - 1, LBG),
+        (rect(CX - 32, CY + 4, 36, 34), PLATEAU - 1, paths(CX - 14, CY + 21)),
+        (rect(CX - 12, CY - 34, 32, 22), YARD - 1, LBG),
     ):
-        sc.fill({c for c in cells if (*c, k + 1) not in sc.solid and (*c, k + 2) not in sc.solid}, k, k + 1, color)
+        sc.fill({c for c in cells if not any((*c, k + i) in sc.solid for i in (1, 2, 3))}, k, k + 1, color)
+
+
+def paths(cx: int, cy: int) -> Callable[[int, int, int], int]:
+    """A lawn crossed by two paths meeting at (cx, cy)."""
+    return lambda x, y, k: TAN if abs(x - cx) <= 1 or abs(y - cy) <= 1 else GREEN
+
+
+def gardens(sc: Sculpture) -> None:
+    """Trees, a fountain and flower borders in the South Courtyard; trees, lamps and a gold statue in the Viaduct Courtyard."""
+    sc.owner = "the South Courtyard's garden"
+    lx, ly = CX - 14, CY + 21
+    sc.part("87081", lx - 2, ly - 2, PLATEAU, LBG)
+    sc.part("3941", lx - 1, ly - 1, PLATEAU + 1, LBG)
+    for x, y in ((lx - 1, ly - 1), (lx, ly)):
+        sc.part("3062b", x, y, PLATEAU + 2, TLBLUE)
+    for part, x, y, color in (
+        ("3470", CX - 28, CY + 8, GREEN),
+        ("3471", CX - 28, CY + 30, DGREEN),
+        ("3471", CX - 4, CY + 30, DGREEN),
+        ("2435", CX - 4, CY + 16, GREEN),
+    ):
+        sc.part(part, x, y, PLATEAU, color)
+    lawn = {
+        (x, y)
+        for (x, y, k), (color, _, owner) in sc.solid.items()
+        if k == PLATEAU - 1 and color == GREEN and owner == "the grounds"
+    }
+    for x, y in sorted(lawn):
+        edge = any((x + dx, y + dy) not in lawn for dx, dy in SIDES4)
+        if edge and (x + y) % 2 == 0 and (x, y, PLATEAU) not in sc.claimed:
+            sc.part("24866", x, y, PLATEAU, FLOWERS[(7 * x + 3 * y) % len(FLOWERS)])
+    sc.owner = "the Viaduct Courtyard"
+    for x, y in ((CX - 3, CY - 21), (CX + 16, CY - 21)):
+        sc.part("2435", x, y, YARD, DGREEN)
+    for x, y in ((CX + 2, CY - 31), (CX + 13, CY - 31), (CX + 2, CY - 23), (CX + 13, CY - 23)):
+        for i, color in enumerate((DBG, DBG, LIT)):
+            sc.part("3062b", x, y, YARD + i, color)
+        sc.part("4589", x, y, YARD + 3, BLACK)
+    x, y = CX + 7, CY - 27
+    sc.part("3941", x, y, YARD, LBG)
+    for i in (1, 2):
+        sc.part("3062b", x, y, YARD + i, GOLD)
+    sc.part("4589", x, y, YARD + 3, GOLD)
+
+
+def easter_eggs(sc: Sculpture) -> None:
+    """Hagrid's round hut and pumpkin patch on a ledge below the Great Hall."""
+    sc.owner = "Hagrid's hut"
+    cx, cy, k0 = 9, 20, 9
+
+    def wall(x: int, y: int, k: int) -> int:
+        if y < cy - 2 and abs(x + 0.5 - cx) < 1 and k < k0 + 3:
+            return DBROWN
+        if abs(y + 0.5 - cy) < 1 and k == k0 + 2:
+            return LIT
+        return LBG if noise(x * 0.9, y * 0.9 + k) > 0.3 else DBG
+
+    sc.fill(circle(cx, cy, 3.5), k0, k0 + 5, wall)
+    sc.cone(cx, cy, 4.5, k0 + 5, 5, DBROWN)
+    sc.fill([(cx + 1, cy + 1)], k0 + 5, k0 + 10, DBG)
+    sc.owner = "Hagrid's pumpkins"
+    sc.fill(rect(cx - 5, cy - 7, 10, 3), k0 - 1, k0, DBROWN)
+    for x, y in ((cx - 4, cy - 7), (cx - 1, cy - 6), (cx + 2, cy - 7), (cx + 3, cy - 5)):
+        sc.part("3062b", x, y, k0, ORANGE)
+        sc.part("32607", x, y, k0 + 1, GREEN)
 
 
 def castle(sc: Sculpture, finials: Finials) -> None:
     great_hall(sc, finials)
+    hall_front(sc)
     staircase_tower(sc, finials)
-    entrance_hall(sc)
     chamber(sc, finials)
     viaduct_courtyard(sc, finials)
     south_courtyard(sc, finials)
@@ -574,6 +659,8 @@ def castle(sc: Sculpture, finials: Finials) -> None:
     stairs(sc)
     boathouse(sc)
     grounds(sc)
+    gardens(sc)
+    easter_eggs(sc)
 
 
 async def boats(kit: Kit, ground: Ground) -> None:
@@ -585,6 +672,70 @@ async def boats(kit: Kit, ground: Ground) -> None:
         kit.add("3020", x, y, 2, BROWN, 90)
         kit.add("3062b", x, y + 3, 3, LIT)
     await kit.step("Boats with lanterns crossing the Black Lake")
+
+
+async def life(kit: Kit, sc: Sculpture, ground: Ground, rng: random.Random) -> None:
+    """The clock, the Whomping Willow with the Ford Anglia in its branches, the forest and flowers, the giant squid."""
+    kit.mount("4150p03", CX - 8, CY - 23, 1 + 3 * (PLATEAU + 33), WHITE, "east")
+    await kit.step("The clock in the Great Hall's gable")
+    x, y, z = CX - 36, CY - 10, 1 + 3 * PLATEAU
+    for i in range(3):
+        kit.add("3941", x, y, z + 3 * i, BROWN)
+    kit.add("2417", x - 2, y - 2, z + 9, OLIVE)
+    kit.add("3941", x, y, z + 10, BROWN)
+    kit.add("2417", x - 2, y - 2, z + 13, DGREEN, 90)
+    kit.add("3021", x - 1, y, z + 14, AZURE)
+    kit.add("3004", x, y, z + 15, CLEAR, 90)
+    kit.add("3023", x, y, z + 18, AZURE, 90)
+    await kit.step("The Whomping Willow, with a flying Ford Anglia stuck in it")
+    tops = {
+        c: h
+        for c, h in ground.height.items()
+        if h > 0 and ground.kind[c] == "crag" and (*c, h - 1) not in ground.claimed
+    }
+    used: set[Cell] = set()
+
+    def free(cells: list[Cell], h: int, courses: int) -> bool:
+        return all(tops.get(c) == h and c not in used for c in cells) and not any(
+            (x, y, k) in sc.solid or (x, y, k) in sc.claimed
+            for c in cells
+            for x, y in ground.studs(*c)
+            for k in range(h, h + courses)
+        )
+
+    for (X, Y), h in sorted(tops.items()):
+        cells = [(X, Y), (X + 1, Y), (X, Y + 1), (X + 1, Y + 1)]
+        forest = S * Y > CY + 36 or S * X < 16
+        if rng.random() < (0.45 if forest else 0.06) and free(cells, h, 7):
+            part, color = rng.choice(PINES)
+            kit.add(part, S * X, S * Y, 1 + 3 * h, color)
+            used.update(cells)
+    await kit.step("Pines of the Forbidden Forest and bushes on the crag")
+    for (X, Y), h in sorted(tops.items()):
+        if (X, Y) in used or not free([(X, Y)], h, 1):
+            continue
+        for x, y in sorted(ground.studs(X, Y)):
+            if rng.random() < 0.06:
+                flower = rng.random() < 0.6
+                kit.add("24866" if flower else "32607", x, y, 1 + 3 * h, rng.choice(FLOWERS) if flower else DGREEN)
+    await kit.step("Wild flowers and ferns on the ledges")
+    for x, y in ((126, 5), (131, 8), (137, 4)):
+        if any(ground.course(u, v) for u in range(x, x + 3) for v in (y, y + 1)):
+            continue
+        for part, dx, z in (
+            ("3941", 0, 2),
+            ("3062b", 1, 5),
+            ("3062b", 1, 8),
+            ("3023", 1, 11),
+            ("3062b", 2, 12),
+            ("4589", 2, 15),
+        ):
+            kit.add(part, x + dx, y, z, SQUID)
+    await kit.step("The giant squid's tentacles out of the Black Lake")
+    x, y = 104, 8
+    k = max((k + 1 for (u, v, k) in sc.solid if (u, v) == (x, y)), default=ground.course(x, y))
+    kit.add("33320", x, y, 1 + 3 * k, GREEN)
+    await kit.step("Trevor the toad, found at the foot of the boathouse stairs")
 
 
 async def raise_castle(kit: Kit, sc: Sculpture, ground: Ground, finials: Finials, band: int = 6) -> None:
@@ -614,6 +765,7 @@ async def build() -> Kit:
     await ground.mesh()
     await ground.surface({"castle": lambda x, y: LBG, "footing": lambda x, y: DBG, "crag": lambda x, y: grass(x, y)})
     await raise_castle(kit, sc, ground, finials)
+    await life(kit, sc, ground, rng)
     await boats(kit, ground)
     kit.save(STORY)
     print(f"{sc.overhangs} bricks hang from the one above")
