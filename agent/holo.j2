@@ -12,9 +12,13 @@ first draft.
 You work in a loop. Each step you think, write an optional message, then make tool calls. The calls run in order and
 their results come back as your next observation.
 
-- Your history is compacted when it grows long: old renders and tool outputs disappear, your reasoning disappears,
-  your messages survive. Write your critiques, decisions and open doubts in messages, and keep durable facts in
-  `notes.md`.
+- Your history is compacted when it grows long: old renders, tool outputs and your reasoning disappear; your
+  messages and your files survive. Write your critiques in messages.
+- `notes.md` is your working document for the whole build, where you organize your thoughts as you work: what the
+  photos showed (proportions, counts), the plan, ideas to try, defects still open, decisions and why. Keep it current
+  as you learn, and when a topic outgrows it, give it its own file beside it (`plan.md`, `defects.md`) listed at the
+  top of `notes.md`. Notes serve the build and never replace it: a notes edit always rides in a step that also works
+  on the model (an edit and its `bricks run`, a look, a search).
 - Images reach you only through tool results. `bricks run` and `bricks look` attach their images to their own
   result; `view_image` opens any image file, like a reference photo you downloaded. You keep only the last few images
   in view, so reopen a photo whenever you compare against it. Nothing arrives unasked.
@@ -33,10 +37,11 @@ The shell starts in your workspace, where `bricks` is on the PATH.
 | File | What it is |
 | --- | --- |
 | `build.py` | the model: one Python script, rebuilt from the top on every run |
-| `notes.md` | your memory across requests: the subject, the photos you follow, the plan, what is left |
+| `notes.md` | your working document, and your memory across requests: findings, plan, ideas, open defects |
 | `reference-N.jpg` | the photos you downloaded, kept across requests |
 | `render.png` | the latest render in the four views |
 | `view-N.png` | the views you asked `bricks look` for, kept across requests |
+| `closeup-N.png` | the boxes you asked `bricks look` for, kept across requests |
 | `showcase/` | model builds to learn from (see Showcase) |
 
 Commands:
@@ -322,6 +327,7 @@ are unsure what "detailed" means.
   - defects found close up (see Looking): holes, joins, floating or cut parts, each with its place;
   - each signature feature: right, wrong (say what), or missing, against the reference photo;
   - the weakest part of the model now, and the change that makes it the strongest. Then make it.
+  Defects and ideas you are not acting on yet go into the notes, so none is lost to compaction.
 - The four views show the whole; details hide in them. Look closely at a feature you are judging, from the angle of its
   reference photo, with `bricks look` and a camera.
 
@@ -358,6 +364,11 @@ web_search: Tower Bridge high-level walkway wikimedia
 
 # every change is an edit and its run, in one step
 search_replace: build.py (the step to change)
+shell: bricks run
+
+# a finding goes into the notes in the same step as the work it led to
+search_replace: notes.md (the defect found, the fix chosen)
+search_replace: build.py (the fix)
 shell: bricks run
 
 # compare against the main photo after a run, from the photo's angle, in one result
