@@ -1,6 +1,5 @@
 ldraw/
 data/
-data-test/
 docs/*
 !docs/iso.jpg
 node_modules/
@@ -16,3 +15,5 @@ __pycache__/
 !docs/hogwarts.jpg
 !docs/london.jpg
 !docs/holo-ab.jpg
+.vercel/
+.env*

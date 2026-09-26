@@ -1,5 +1,6 @@
+import { ArrowUpIcon, StopIcon } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
-import { api, type Build } from "./api";
+import { api, GALLERY, type Build } from "./api";
 
 const SUGGESTIONS = [
   "A red-and-white lighthouse",
@@ -29,6 +30,7 @@ export function ChatPanel({ build, thinking, onCreate, onSay }: Props) {
   const target = build && mode === "change" ? "change" : "new";
 
   useEffect(() => {
+    if (GALLERY) return;
     api.builders().then((list) => {
       setBuilders(list);
       setBuilder((b) => b || list[0] || "");
@@ -100,49 +102,55 @@ export function ChatPanel({ build, thinking, onCreate, onSay }: Props) {
           </div>
         )}
       </div>
-      <div className="composer">
-        <div className="modes">
-          {build && (
-            <>
-              <button className={mode === "change" ? "active" : ""} onClick={() => setMode("change")}>
-                Change this build
-              </button>
-              <button className={mode === "new" ? "active" : ""} onClick={() => setMode("new")}>
-                Start a new build
-              </button>
-            </>
-          )}
-          {target === "new" && builders.length > 1 && (
-            <select className="builder-select" value={builder} onChange={(e) => setBuilder(e.target.value)}>
-              {builders.map((b) => (
-                <option key={b} value={b}>
-                  {BUILDER_LABELS[b] ?? b}
-                </option>
-              ))}
-            </select>
+      {GALLERY ? (
+        <p className="gallery-note">Read-only gallery. New builds run in the local app with Holo.</p>
+      ) : (
+        <div className="composer">
+          <div className="modes">
+            {build && (
+              <>
+                <button className={mode === "change" ? "active" : ""} onClick={() => setMode("change")}>
+                  Change this build
+                </button>
+                <button className={mode === "new" ? "active" : ""} onClick={() => setMode("new")}>
+                  Start a new build
+                </button>
+              </>
+            )}
+            {target === "new" && builders.length > 1 && (
+              <select className="builder-select" value={builder} onChange={(e) => setBuilder(e.target.value)}>
+                {builders.map((b) => (
+                  <option key={b} value={b}>
+                    {BUILDER_LABELS[b] ?? b}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+          <textarea
+            value={text}
+            placeholder={target === "change" ? "Describe how to change it…" : "Describe what to build…"}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                send();
+              }
+            }}
+          />
+          {busy && build && target === "change" ? (
+            <button className="send stop" onClick={() => api.stop(build.id)}>
+              <StopIcon size={14} weight="fill" />
+              Stop
+            </button>
+          ) : (
+            <button className="send" disabled={!text.trim()} onClick={() => send()}>
+              Send
+              <ArrowUpIcon size={14} weight="bold" />
+            </button>
           )}
         </div>
-        <textarea
-          value={text}
-          placeholder={target === "change" ? "Describe how to change it…" : "Describe what to build…"}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              send();
-            }
-          }}
-        />
-        {busy && build && target === "change" ? (
-          <button className="send stop" onClick={() => api.stop(build.id)}>
-            Stop
-          </button>
-        ) : (
-          <button className="send" disabled={!text.trim()} onClick={() => send()}>
-            Send →
-          </button>
-        )}
-      </div>
+      )}
     </div>
   );
 }

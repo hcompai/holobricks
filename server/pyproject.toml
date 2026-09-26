@@ -17,6 +17,7 @@ dev = [
 
 [project.scripts]
 brickyard = "brickyard.app:main"
+brickyard-gallery = "brickyard.gallery:main"
 
 [build-system]
 requires = ["hatchling"]

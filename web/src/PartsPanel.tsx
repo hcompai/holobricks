@@ -33,7 +33,7 @@ export function PartsPanel({ build }: { build: Build }) {
                 <span className="swatch" style={{ background: l.hex }} />
                 {l.colorName}
               </td>
-              <td className="muted">{l.part.replace(".dat", "")}</td>
+              <td className="id">{l.part.replace(".dat", "")}</td>
             </tr>
           ))}
         </tbody>

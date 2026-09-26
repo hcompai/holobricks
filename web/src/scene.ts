@@ -31,6 +31,7 @@ export class BrickScene {
   private root = new THREE.Group();
   private objects = new Map<number, THREE.Object3D>();
   private steps = new Map<number, number>();
+  private parts = new Map<string, Promise<string>>();
   private templates = new Map<string, Promise<THREE.Group>>();
   private materials: Promise<void>;
   private visibleStep = Infinity;
@@ -46,7 +47,7 @@ export class BrickScene {
     this.renderer.toneMapping = THREE.NeutralToneMapping;
     container.appendChild(this.renderer.domElement);
 
-    this.scene.background = new THREE.Color(0xf3f3f1);
+    this.scene.background = new THREE.Color(0xf6f6f9);
     const pmrem = new THREE.PMREMGenerator(this.renderer);
     this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
     this.scene.environmentIntensity = 0.55;
@@ -64,7 +65,7 @@ export class BrickScene {
 
     this.loader.smoothNormals = true;
     this.loader.setConditionalLineMaterial(LDrawConditionalLineMaterial);
-    this.materials = this.loader.preloadMaterials("/api/ldconfig");
+    this.materials = this.loader.preloadMaterials(api.ldconfigUrl);
 
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(container);
@@ -94,14 +95,22 @@ export class BrickScene {
     this.camera.updateProjectionMatrix();
   }
 
+  /** The packed part places it in main color 16 on its second line; each color gets its own parsed copy. */
   private template(part: string, color: number): Promise<THREE.Group> {
     const key = `${part}:${color}`;
     let template = this.templates.get(key);
     if (!template) {
-      template = this.materials
-        .then(() => fetch(api.partUrl(part, color)))
-        .then((r) => r.text())
-        .then((text) => new Promise<THREE.Group>((resolve, reject) => this.loader.parse(text, resolve, reject)));
+      let text = this.parts.get(part);
+      if (!text) {
+        text = fetch(api.partUrl(part)).then((r) => r.text());
+        this.parts.set(part, text);
+      }
+      template = Promise.all([text, this.materials]).then(
+        ([packed]) =>
+          new Promise<THREE.Group>((resolve, reject) =>
+            this.loader.parse(packed.replace("\n1 16 ", `\n1 ${color} `), resolve, reject),
+          ),
+      );
       this.templates.set(key, template);
     }
     return template;
@@ -187,9 +196,9 @@ export class BrickScene {
       ctx.drawImage(this.renderer.domElement, tile.x, tile.y, size, size);
       if (tile.label) {
         ctx.font = "600 15px system-ui, sans-serif";
-        ctx.fillStyle = "#333";
+        ctx.fillStyle = "#1c1c26";
         ctx.fillText(tile.label, tile.x + 10, tile.y + 22);
-        ctx.strokeStyle = "#d0d0cc";
+        ctx.strokeStyle = "#d8d8e2";
         ctx.strokeRect(tile.x + 0.5, tile.y + 0.5, size - 1, size - 1);
       }
     }

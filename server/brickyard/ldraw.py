@@ -154,8 +154,8 @@ def colors() -> dict[int, tuple[str, str]]:
     return out
 
 
-def pack(part: str, color: int) -> str:
-    """One MPD holding `part` in `color` and every file it references, so the viewer loads it in one request."""
+def pack(part: str) -> str:
+    """One MPD holding `part` and every file it references; line 2 places it in main color 16 for the viewer to swap."""
     order: list[str] = []
 
     def visit(name: str) -> None:
@@ -167,7 +167,7 @@ def pack(part: str, color: int) -> str:
 
     root = normalize(part)
     visit(root)
-    lines = ["0 FILE brickyard.ldr", f"1 {color} 0 0 0 1 0 0 0 1 0 0 0 1 {root}", ""]
+    lines = ["0 FILE brickyard.ldr", f"1 16 0 0 0 1 0 0 0 1 0 0 0 1 {root}", ""]
     for name in order:
         lines += [f"0 FILE {_embedded_name(name)}", *read(name), ""]
     return "\n".join(lines)

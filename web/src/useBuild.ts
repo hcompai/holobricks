@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, type Build, type BuildEvent } from "./api";
+import { api, GALLERY, type Build, type BuildEvent } from "./api";
 
 const THINKING_CHARS = 1500;
 
@@ -45,6 +45,13 @@ export function useBuild(id: string | null): LiveBuild {
     setThinking("");
     setRenderRequest(null);
     if (!id) return;
+    let active = true;
+    if (GALLERY) {
+      api.build(id).then((fetched) => active && setBuild(fetched));
+      return () => {
+        active = false;
+      };
+    }
     let pending: BuildEvent[] | null = [];
     let current: Build | null = null;
     const source = api.events(id);
@@ -62,11 +69,15 @@ export function useBuild(id: string | null): LiveBuild {
       else if (current) setBuild((current = apply(current, event)));
     };
     api.build(id).then((fetched) => {
+      if (!active) return;
       current = (pending ?? []).reduce(apply, fetched);
       pending = null;
       setBuild(current);
     });
-    return () => source.close();
+    return () => {
+      active = false;
+      source.close();
+    };
   }, [id]);
 
   return { build, thinking, renderRequest };

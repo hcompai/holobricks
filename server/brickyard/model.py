@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 import uuid
+from collections import Counter
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -78,6 +79,22 @@ class Build(BaseModel):
                 lines.append(f"1 {p.color} {p.pos[0]:g} {p.pos[1]:g} {p.pos[2]:g} {rot} {p.part}")
             lines.append(f"0 STEP {step.title}".rstrip())
         return "\n".join(lines) + "\n"
+
+    def bom(self) -> list[dict]:
+        """Bill of materials: one line per part and color, most used first."""
+        palette = ldraw.colors()
+        counts = Counter((p.part, p.color) for p in self.pieces)
+        return [
+            {
+                "part": part,
+                "title": ldraw.info(part).title,
+                "color": color,
+                "colorName": palette.get(color, (str(color), "#888888"))[0],
+                "hex": palette.get(color, (str(color), "#888888"))[1],
+                "count": n,
+            }
+            for (part, color), n in counts.most_common()
+        ]
 
 
 class Placement(BaseModel):

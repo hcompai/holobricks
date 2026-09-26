@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-from collections import Counter
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
@@ -22,6 +21,7 @@ from brickyard.session import Session, Store
 
 WEB_DIST = Path(__file__).resolve().parents[2] / "web" / "dist"
 HEARTBEAT_S = 15
+SHUTDOWN_S = 3
 
 
 class NewBuild(BaseModel):
@@ -165,19 +165,7 @@ def get_thumbnail(build_id: str) -> FileResponse:
 
 @app.get("/api/builds/{build_id}/bom")
 def bill_of_materials(build_id: str) -> list[dict]:
-    counts = Counter((p.part, p.color) for p in session_for(build_id).build.pieces)
-    palette = ldraw.colors()
-    return [
-        {
-            "part": part,
-            "title": ldraw.info(part).title,
-            "color": color,
-            "colorName": palette.get(color, (str(color), "#888888"))[0],
-            "hex": palette.get(color, (str(color), "#888888"))[1],
-            "count": n,
-        }
-        for (part, color), n in counts.most_common()
-    ]
+    return session_for(build_id).build.bom()
 
 
 @app.get("/api/builds/{build_id}/download.ldr")
@@ -189,18 +177,10 @@ def download(build_id: str) -> PlainTextResponse:
 
 
 @app.get("/api/parts/{part}")
-def part(part: str, color: int = 16) -> PlainTextResponse:
+def part(part: str) -> PlainTextResponse:
     if not ldraw.exists(part):
         raise HTTPException(404, f"unknown part {part}")
-    return PlainTextResponse(ldraw.pack(part, color), headers={"Cache-Control": "public, max-age=86400"})
-
-
-@app.get("/api/parts/{part}/info")
-def part_info(part: str) -> dict:
-    if not ldraw.exists(part):
-        raise HTTPException(404, f"unknown part {part}")
-    info = ldraw.info(part)
-    return {"part": info.part, "title": info.title, "footprint": info.footprint, "plates": info.plates}
+    return PlainTextResponse(ldraw.pack(part), headers={"Cache-Control": "public, max-age=86400"})
 
 
 @app.get("/api/images/{name}")
@@ -224,4 +204,9 @@ def main() -> None:
     import uvicorn
 
     with suppress(KeyboardInterrupt):
-        uvicorn.run(app, host="127.0.0.1", port=int(os.environ.get("BRICKYARD_PORT", "8000")))
+        uvicorn.run(
+            app,
+            host="127.0.0.1",
+            port=int(os.environ.get("BRICKYARD_PORT", "8000")),
+            timeout_graceful_shutdown=SHUTDOWN_S,
+        )

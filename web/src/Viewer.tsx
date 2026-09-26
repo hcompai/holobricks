@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { api, type Build } from "./api";
+import { ArrowsClockwiseIcon } from "@phosphor-icons/react";
+import { api, GALLERY, type Build } from "./api";
 import { BrickScene, type View } from "./scene";
 
 const VIEWS: { id: View; label: string }[] = [
@@ -40,7 +41,7 @@ export function Viewer({ build, step, renderRequest }: Props) {
         framedBuild.current = build.id;
         s.frameView(view, width, depth);
       }
-      if (build.status === "done" && !thumbnailed.current.has(build.id)) {
+      if (!GALLERY && build.status === "done" && !thumbnailed.current.has(build.id)) {
         thumbnailed.current.add(build.id);
         const png = await s.thumbnail();
         if (png) await api.putThumbnail(build.id, png);
@@ -77,11 +78,16 @@ export function Viewer({ build, step, renderRequest }: Props) {
           </button>
         ))}
         <span className="toolbar-sep" />
-        <button className={spin ? "active accent" : ""} onClick={() => setSpin(!spin)}>
+        <button className={spin ? "active" : ""} onClick={() => setSpin(!spin)}>
+          <ArrowsClockwiseIcon size={14} weight="bold" />
           Spin
         </button>
       </div>
-      {!build && <div className="viewer-empty">Describe a model in the chat to start building.</div>}
+      {!build && (
+        <div className="viewer-empty">
+          {GALLERY ? "Pick a build from the library." : "Describe a model in the chat to start building."}
+        </div>
+      )}
     </div>
   );
 }

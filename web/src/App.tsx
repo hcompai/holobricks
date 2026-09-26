@@ -1,6 +1,8 @@
+import { DownloadSimpleIcon } from "@phosphor-icons/react";
 import { useCallback, useEffect, useState } from "react";
-import { api, type BuildSummary } from "./api";
+import { api, GALLERY, type BuildSummary } from "./api";
 import { ChatPanel } from "./ChatPanel";
+import { HLogo } from "./HLogo";
 import { LibraryPanel } from "./LibraryPanel";
 import { PartsPanel } from "./PartsPanel";
 import { Timeline } from "./Timeline";
@@ -17,7 +19,7 @@ export default function App() {
   const [buildId, setBuildId] = useState<string | null>(initialBuildId);
   const { build, thinking, renderRequest } = useBuild(buildId);
   const [builds, setBuilds] = useState<BuildSummary[]>([]);
-  const [left, setLeft] = useState<"chat" | "library">("chat");
+  const [left, setLeft] = useState<"chat" | "library">(GALLERY ? "library" : "chat");
   const [center, setCenter] = useState<"model" | "parts">("model");
   const [step, setStep] = useState(Infinity);
   const [following, setFollowing] = useState(true);
@@ -41,6 +43,12 @@ export default function App() {
     else url.searchParams.delete("build");
     window.history.replaceState(null, "", url);
   }, []);
+
+  const home = () => (GALLERY ? open(builds[0]?.id ?? null) : open(null));
+
+  useEffect(() => {
+    if (GALLERY && !buildId && builds.length) open(builds[0].id);
+  }, [buildId, builds, open]);
 
   useEffect(() => {
     if (following) setStep(last);
@@ -75,10 +83,11 @@ export default function App() {
   return (
     <div className="app">
       <header>
-        <div className="brand" onClick={() => open(null)}>
-          <span className="logo" />
+        <button className="brand" onClick={home}>
+          <HLogo />
+          <span className="brand-divider" />
           Brickyard
-        </div>
+        </button>
         {build && (
           <>
             <span className="title">{build.name}</span>
@@ -88,8 +97,9 @@ export default function App() {
               {build.width}×{build.depth} studs
             </span>
             <span className="spacer" />
-            <a className="button primary" href={api.downloadUrl(build.id)}>
-              ⤓ Download .ldr
+            <a className="button primary" href={api.downloadUrl(build.id)} download={`${build.name}.ldr`}>
+              <DownloadSimpleIcon size={16} weight="bold" />
+              Download .ldr
             </a>
           </>
         )}
@@ -116,7 +126,7 @@ export default function App() {
             activeId={buildId}
             onOpen={(id) => {
               open(id);
-              setLeft("chat");
+              if (!GALLERY) setLeft("chat");
             }}
           />
         )}

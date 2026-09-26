@@ -19,8 +19,8 @@ def test_place_puts_parts_on_the_stud_grid_at_plate_heights():
 
 
 def test_packed_part_embeds_every_subfile_under_the_names_the_viewer_resolves():
-    packed = ldraw.pack("3001.dat", 4)
-    assert packed.startswith("0 FILE brickyard.ldr\n1 4 0 0 0 1 0 0 0 1 0 0 0 1 3001.dat")
+    packed = ldraw.pack("3001.dat")
+    assert packed.startswith("0 FILE brickyard.ldr\n1 16 0 0 0 1 0 0 0 1 0 0 0 1 3001.dat")
     names = [line[7:] for line in packed.splitlines() if line.startswith("0 FILE ")]
     assert "3001.dat" in names and "stud.dat" in names
     assert all(not n.startswith(("s/", "48/")) for n in names)
@@ -83,6 +83,32 @@ def test_a_truncated_tool_call_leaves_a_history_the_api_accepts():
 
     reply = Reply(calls={0: {"id": "a", "name": "add_bricks", "arguments": '{"title": "Wall", "bricks": [{"pa'}})
     assert json.loads(reply.message()["tool_calls"][0]["function"]["arguments"]) == {}
+
+
+def test_gallery_export_holds_every_file_the_static_site_reads(tmp_path):
+    import json
+
+    from brickyard.gallery import export
+    from brickyard.model import Build, Message, Piece
+    from brickyard.session import Store
+
+    store = Store(tmp_path / "data")
+    image = store.save_image(b"png", "image/png")
+    pieces = [place("3001.dat", 0, 0, 0, 4), place("3024.dat", 0, 0, 3, 15)]
+    build = Build(
+        status="done",
+        pieces=[Piece(id=i, step=0, **p.model_dump()) for i, p in enumerate(pieces)],
+        messages=[Message(role="tool", text="Looked", images=[image])],
+    )
+    store.save(build)
+    out = export(store, [build.id], tmp_path / "site")
+
+    assert [b["id"] for b in json.loads((out / "builds.json").read_text())] == [build.id]
+    exported = Build.model_validate_json((out / "builds" / f"{build.id}.json").read_text())
+    shown = exported.messages[0].images[0]
+    assert shown.startswith("/gallery/") and (out.parent / shown.lstrip("/")).read_bytes() == b"png"
+    assert all((out / "parts" / p.part).exists() for p in exported.pieces)
+    assert (out / "builds" / f"{build.id}.bom.json").exists() and (out / "LDConfig.ldr").exists()
 
 
 def test_changing_a_hand_scripted_build_hands_it_to_a_live_builder(tmp_path, monkeypatch):
