@@ -33,6 +33,38 @@ const SUGGESTIONS = [
 
 const BUILDER_LABELS: Record<string, string> = { holo: "Holo", demo: "Scripted demo", claude: "Claude" };
 
+const WAITING = [
+  "Sorting the parts bin",
+  "Counting studs",
+  "Studying the photos",
+  "Hunting for the right slope",
+  "Checking every join",
+  "Stacking plates",
+  "Snapping bricks together",
+  "Walking around the model",
+  "Measuring twice",
+  "Rummaging for a 1x1 round",
+  "Squinting at the render",
+  "Lining up the courses",
+  "Looking for gaps",
+  "Trying another angle",
+];
+const WAITING_S = 4;
+
+/** A waiting line that changes every few seconds while `active`, never twice in a row. */
+function useWaitingLine(active: boolean): string {
+  const [line, setLine] = useState(() => Math.floor(Math.random() * WAITING.length));
+  useEffect(() => {
+    if (!active) return;
+    const timer = setInterval(
+      () => setLine((i) => (i + 1 + Math.floor(Math.random() * (WAITING.length - 1))) % WAITING.length),
+      WAITING_S * 1000,
+    );
+    return () => clearInterval(timer);
+  }, [active]);
+  return WAITING[line];
+}
+
 interface Props {
   build: Build | null;
   thinking: string;
@@ -50,6 +82,7 @@ export function ChatPanel({ build, thinking, onCreate, onSay }: Props) {
   const input = useRef<HTMLTextAreaElement>(null);
   const [opened, setOpened] = useState<string | null>(null);
   const busy = build?.status === "building";
+  const waiting = useWaitingLine(busy);
   const target = build && mode === "change" ? "change" : "new";
 
   useEffect(() => {
@@ -114,9 +147,10 @@ export function ChatPanel({ build, thinking, onCreate, onSay }: Props) {
         )}
         {busy && (
           <div className="msg assistant thinking">
-            <div className="thinking-head">
-              <span className="pulse" />
-              {who} is {thinking ? "thinking" : "working"}…
+            <div className="thinking-head" title={`${who} is ${thinking ? "thinking" : "working"}`}>
+              <span key={waiting} className="shimmer">
+                {waiting}
+              </span>
             </div>
             {thinking && (
               <div className="thinking-text" ref={thought}>
