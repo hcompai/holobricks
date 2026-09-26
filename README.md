@@ -37,7 +37,7 @@ Live building runs on your machine only. The Vercel site is a read-only gallery 
 ```
 your tab + headless Chrome  <── steps, renders ──>  brickyard server  ── starts ──>  sagent (hai venv), agent/holo.py
 (viewers of web/dist)                               (FastAPI, :8000)                  │ edits build.py in data/workspaces/<build>
-                                                          ▲                           │ shell: bricks run / reference / pin
+                                                          ▲                           │ shell: bricks run / reference / parts
                                                           └────── HTTP tools API ─────┘
 ```
 

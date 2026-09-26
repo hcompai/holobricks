@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-import base64
 import hashlib
-import io
 import json
 import math
 import sys
@@ -13,7 +11,6 @@ import tempfile
 from dataclasses import dataclass, field
 
 import httpx
-from PIL import Image
 from pydantic import BaseModel, ValidationError
 
 from brickyard import ldraw, reference
@@ -40,11 +37,20 @@ class Brick(BaseModel):
 
 
 @dataclass
+class Picture:
+    data: bytes
+    mime: str
+    title: str = ""
+    url: str = ""
+    """Where the image came from, for images found on the web."""
+
+
+@dataclass
 class Result:
     text: str
     note: str | None = None
-    images: list[tuple[bytes, str]] = field(default_factory=list)
-    """(data, mime) pairs the agent should see."""
+    images: list[Picture] = field(default_factory=list)
+    """Images the agent should see."""
     kind: str | None = None
     """What the images are, like `render`; an agent keeps only the latest images of each kind in context."""
     caption: str = ""
@@ -283,17 +289,9 @@ class Workbench:
         summary = await asyncio.to_thread(self.summary)
         if png is None:
             return Result(f"No viewer is open, so no image this time.\n{summary}", note=f"{note} (no viewer open)")
+        await self.session.say(note, role="tool")
         caption = "The render: 3/4 front-right, 3/4 back-left, front, and top (back at the top)."
-        if photo := self._reference():
-            png = await asyncio.to_thread(_beside, photo, png)
-            caption = "Left, the reference photo. Right, the render: " + caption.removeprefix("The render: ")
-        await self.session.say(note, role="tool", images=[self.session.store.save_image(png, "image/png")])
-        return Result(summary, images=[(png, "image/png")], kind="render", caption=caption)
-
-    def _reference(self) -> bytes | None:
-        name = self.session.build.reference
-        path = self.session.store.image(name) if name else None
-        return path.read_bytes() if path and path.is_file() else None
+        return Result(summary, images=[Picture(png, "image/png")], kind="render", caption=caption)
 
     async def find_reference(self, query: str) -> Result:
         try:
@@ -302,33 +300,14 @@ class Workbench:
             return Result(f"Reference search failed ({e}). Build from what you know.")
         if not photos:
             return Result(f"No photos for '{query}'. Try a more common name, or build from what you know.")
-        urls = [self.session.store.save_image(p.data, p.mime) for p in photos]
-        await self.session.say(f"Reference photos for '{query}'", role="tool", images=urls)
-        titles = "; ".join(f"{i}) {p.title}" for i, p in enumerate(photos, 1))
-        pinned = "The photo pinned earlier stays beside every render."
-        if not self._reference():
-            self.session.build.reference = urls[0].rsplit("/", 1)[-1]
-            self.session.store.save(self.session.build)
-            pinned = "Every render from now on shows photo 1 beside it."
+        titles = "; ".join(p.title for p in photos)
+        await self.session.say(f"Found reference photos for '{query}': {titles}", role="tool")
         return Result(
-            f"Found {len(photos)} photos from Wikipedia: {titles}. {pinned}",
-            images=[(p.data, p.mime) for p in photos],
+            f"Found {len(photos)} photos from Wikipedia for '{query}'.",
+            images=[Picture(p.data, p.mime, p.title, p.url) for p in photos],
             kind="reference",
-            caption=f"Reference photos for '{query}', in order: {titles}.",
+            caption=f"Reference photos for '{query}'.",
         )
-
-    async def pin(self, data: str) -> Result:
-        """Show this photo, base64 encoded, beside every render from now on."""
-        photo = base64.b64decode(data)
-        try:
-            mime = Image.MIME[Image.open(io.BytesIO(photo)).format]
-        except (OSError, KeyError) as e:
-            return Result(f"That file is not an image ({e}).", problems=1)
-        url = self.session.store.save_image(photo, mime)
-        self.session.build.reference = url.rsplit("/", 1)[-1]
-        self.session.store.save(self.session.build)
-        await self.session.say("Pinned the reference photo", role="tool", images=[url])
-        return Result("Pinned: every render from now on shows this photo on its left.")
 
     async def find_parts(self, query: str) -> Result:
         hits = await asyncio.to_thread(lambda: [part_line(p) for p in ldraw.search(query)])
@@ -369,19 +348,6 @@ class Workbench:
             n = len(boxes[step.index])
             lines.append(f"{step.index + 1} {step.title}: {n} piece{'s' * (n != 1)}, x {x}, y {y}, z {z}")
         return "\n".join(lines) or "No pieces yet."
-
-
-def _beside(photo: bytes, png: bytes) -> bytes:
-    """The photo, scaled to the render's height, to the left of the render."""
-    render = Image.open(io.BytesIO(png)).convert("RGB")
-    left = Image.open(io.BytesIO(photo)).convert("RGB")
-    left.thumbnail((render.width, render.height))
-    sheet = Image.new("RGB", (left.width + render.width, render.height), "white")
-    sheet.paste(left, (0, (render.height - left.height) // 2))
-    sheet.paste(render, (left.width, 0))
-    out = io.BytesIO()
-    sheet.save(out, "PNG")
-    return out.getvalue()
 
 
 def _numbered(script: str) -> str:

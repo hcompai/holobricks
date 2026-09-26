@@ -266,30 +266,6 @@ aside {
   color: var(--text-tertiary);
 }
 
-.msg-images {
-  display: grid;
-  gap: 4px;
-  margin-top: 6px;
-  width: 250px;
-}
-
-.msg-images.n2 {
-  grid-template-columns: 1fr 1fr;
-}
-
-.msg-images.n3 {
-  grid-template-columns: 1fr 1fr 1fr;
-}
-
-.msg-images img {
-  width: 100%;
-  aspect-ratio: 1;
-  object-fit: cover;
-  border-radius: var(--radius-medium);
-  border: 1px solid var(--stroke-default);
-  display: block;
-}
-
 .msg.thinking {
   width: 88%;
   display: flex;

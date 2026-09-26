@@ -47,14 +47,11 @@ def main() -> None:
     tools.add_parser("look", help="render the model again; saves render.png")
     tools.add_parser("parts", help="search LDraw parts by words or number").add_argument("query")
     tools.add_parser("reference", help="find reference photos of a subject; saves reference-N").add_argument("query")
-    tools.add_parser("pin", help="show this photo beside every render from now on").add_argument("photo")
     tools.add_parser("name", help="name the build").add_argument("name")
     args = parser.parse_args()
 
     if args.tool == "run":
         out = call("run", code=Path(args.script).read_text())
-    elif args.tool == "pin":
-        out = call("pin", data=base64.b64encode(Path(args.photo).read_bytes()).decode())
     elif args.tool in ("parts", "reference"):
         out = call(args.tool, query=args.query)
     elif args.tool == "name":
@@ -68,7 +65,10 @@ def main() -> None:
             if args.tool == "reference"
             else save(out["images"], "render")
         )
-        print(f"\nSaved {', '.join(names)}. {out['caption']}")
+        print(f"\n{out['caption']} Saved in your workspace:")
+        for name, image in zip(names, out["images"], strict=True):
+            source = f": {image['title']}, from {image['url']}" if image.get("url") else ""
+            print(f"- {Path(name).resolve()}{source}")
         for name in names[:ATTACHED]:
             print(f"@@attach {name}")
     sys.exit(1 if out["problems"] else 0)

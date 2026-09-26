@@ -123,7 +123,7 @@ def test_a_script_rebuilds_from_its_first_changed_step_and_names_the_lines_of_it
     assert "undefined()" in bench.session.build.script
 
 
-def test_agents_build_through_the_tools_endpoint_and_see_the_pinned_photo_beside_each_render(tmp_path, monkeypatch):
+def test_agents_build_through_the_tools_endpoint_and_see_each_render(tmp_path, monkeypatch):
     from brickyard import app as app_module
 
     store = Store(tmp_path)
@@ -133,16 +133,15 @@ def test_agents_build_through_the_tools_endpoint_and_see_the_pinned_photo_beside
     store.save(build)
     tools = f"/api/builds/{build.id}/tools"
     with TestClient(app_module.app) as client:
-        pinned = client.post(f"{tools}/pin", json={"data": base64.b64encode(png(60, 90)).decode()}).json()
-        assert pinned["problems"] == 0, pinned["text"]
-        assert client.post(f"{tools}/pin", json={"data": base64.b64encode(b"not an image").decode()}).json()["problems"]
-        ran = client.post(f"{tools}/run", json={"code": 'step("Core")\nbrick("3001", 4, 4, 0, 4)'}).json()
+        code = 'import random\nrng = random.Random(7)\nstep("Core")\nbrick("3001", rng.randint(0, 9), 4, 0, 4)'
+        ran = client.post(f"{tools}/run", json={"code": code}).json()
         assert ran["problems"] == 0 and "1 Core: 1 piece" in ran["text"], ran["text"]
-        assert ran["caption"].startswith("Left, the reference photo.")
-        assert Image.open(io.BytesIO(base64.b64decode(ran["images"][0]["data"]))).size == (180, 90)
+        assert Image.open(io.BytesIO(base64.b64decode(ran["images"][0]["data"]))).size == (120, 90)
+        assert "kept step 1," in client.post(f"{tools}/run", json={"code": code}).json()["text"]
+        assert not store.load(build.id).messages[-1].images
         assert client.post(f"{tools}/build", json={}).status_code == 404
         assert client.post(f"{tools}/run", json={"script": "x"}).status_code == 400
-    assert store.load(build.id).script.startswith('step("Core")')
+    assert store.load(build.id).script == code
 
 
 def test_a_viewer_that_connects_after_a_render_request_still_answers_it(tmp_path):

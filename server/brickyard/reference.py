@@ -15,6 +15,7 @@ class Photo:
     title: str
     data: bytes
     mime: str
+    url: str
 
 
 async def search(query: str, limit: int = 3, size: int = 512) -> list[Photo]:
@@ -38,5 +39,5 @@ async def search(query: str, limit: int = 3, size: int = 512) -> list[Photo]:
             image = await client.get(url)
             mime = image.headers.get("content-type", "").split(";")[0]
             if image.status_code == 200 and mime in ("image/jpeg", "image/png", "image/webp"):
-                photos.append(Photo(page["title"], image.content, mime))
+                photos.append(Photo(page["title"], image.content, mime, url))
         return photos
