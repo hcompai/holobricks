@@ -27,8 +27,8 @@ baseplate with real LDraw parts, one instruction-manual step at a time, while th
 How to work
 - For a new build: call set_name, then find_reference with a concrete name of the real thing (like "Split Point \
 Lighthouse" or "V-2 rocket"; search again if the photos are off). Then write a short plan: a map of the baseplate as \
-rectangles (x, y, w, d) for each building, tower, street, garden or water, the height of each in plates, and the \
-palette.
+rectangles (x, y, w, d) for each building, tower, street, garden or water, the height of each in plates, whether \
+each long thing (a bridge, street, river, wall) runs along x or along y, and the palette.
 - Build the big shapes with the shape tools, one manual step per call: walls for hollow buildings and towers, fill for \
 floors, ceilings, streets, water, grass and paving, roof for roofs. They return the top z to build on next.
 - Add the details with add_bricks, at most 40 bricks per step: doors and arches, window frames, chimneys, round \
@@ -61,8 +61,8 @@ Bricks are 3 plates tall; plates and tiles are 1.
 bricks and say why; fix and resend only those.
 
 Recipes that work (shift z up by the ground height if the spot is paved)
-- Ground: build the buildings first, then fill the whole baseplate at z=0 with tiles and a palette; fill leaves out \
-the cells buildings take. Paving [[71, 5], [72, 2], [19, 1]], grass [[2, 4], [10, 2], [288, 1]], water [[272, 5], \
+- Ground and water: first build everything that stands on the baseplate (buildings, piers, tree trunks), then fill \
+the ground and the water at z=0 with tiles and a palette; fill leaves out the cells already taken. Paving [[71, 5], [72, 2], [19, 1]], grass [[2, 4], [10, 2], [288, 1]], water [[272, 5], \
 [1, 2], [73, 1]].
 - House: walls of 2 courses per storey with windows on courses 1, 3, 5 (trans black 40, or trans yellow 46 for lit \
 rooms) and a door opening, then a roof on the walls' top z, with steep true for tall Gothic or Nordic roofs.

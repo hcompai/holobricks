@@ -330,7 +330,8 @@ class Workbench:
         if (f.color is None) == (f.palette is None):
             return Result("Give either a color or a palette, not both.")
         cells = shapes.rect(f.x, f.y, f.w, f.d).difference(*(shapes.rect(*s) for s in f.skip))
-        taken = cells & await asyncio.to_thread(self.occupied, f.z, shapes.HEIGHTS[f.kind])
+        occupied = await asyncio.to_thread(self.occupied, f.z, shapes.HEIGHTS[f.kind])
+        taken = cells & occupied.keys()
         cells -= taken
         if f.palette:
             rng = random.Random(f"{f.x},{f.y},{f.z},{f.w},{f.d}")
@@ -341,7 +342,12 @@ class Workbench:
             return Result("Nothing to fill: every cell is taken at that height.")
         result = await self.add(title, bricks)
         if taken:
-            result.text += f"\nLeft out {len(taken)} cells already taken at that height."
+            blockers = list({occupied[c].id: occupied[c] for c in sorted(taken)}.values())
+            names = ", ".join(f"#{p.id} {_where(p)}" for p in blockers[:3]) + (", ..." if len(blockers) > 3 else "")
+            result.text += (
+                f"\nLeft out {len(taken)} cells already taken at that height by {len(blockers)} pieces ({names}). "
+                "To build over them, fill above their top; to replace them, remove them first."
+            )
         return result
 
     async def roof(self, title: str, spec: dict) -> Result:
@@ -356,15 +362,16 @@ class Workbench:
         result.text += f"\nTop of the roof: z={top}."
         return result
 
-    def occupied(self, z: int, height: int) -> set[tuple[int, int]]:
-        """Stud cells some piece fills between plate heights z and z + height."""
+    def occupied(self, z: int, height: int) -> dict[tuple[int, int], Piece]:
+        """The piece filling each stud cell between plate heights z and z + height."""
         lo, hi, s = z * ldraw.PLATE, (z + height) * ldraw.PLATE, ldraw.STUD
-        cells = set()
+        cells = {}
         for p in self.pieces:
             box = self._box(p)
             if -box[1][1] < hi - EPS and -box[0][1] - STUD_HEIGHT > lo + EPS:
-                xs = range(round(box[0][0] / s), round(box[1][0] / s))
-                cells |= {(x, y) for x in xs for y in range(round(box[0][2] / s), round(box[1][2] / s))}
+                for x in range(round(box[0][0] / s), round(box[1][0] / s)):
+                    for y in range(round(box[0][2] / s), round(box[1][2] / s)):
+                        cells[(x, y)] = p
         return cells
 
     async def remove(self, ids: list[int]) -> Result:

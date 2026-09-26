@@ -73,7 +73,7 @@ def test_shape_tools_build_a_sound_house_and_pave_around_it(tmp_path):
     assert all("Rejected" not in r.text and "check:" not in r.text for r in results), [r.text for r in results]
     assert "Top of the walls: z=15." in results[0].text
     assert any(p.part == "3659.dat" for p in bench.pieces)
-    assert f"Left out {2 * (8 + 6) - 4 - 2} cells" in results[2].text
+    assert f"Left out {2 * (8 + 6) - 4 - 2} cells already taken" in results[2].text
 
 
 def test_a_truncated_tool_call_leaves_a_history_the_api_accepts():
