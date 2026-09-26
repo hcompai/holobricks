@@ -35,8 +35,9 @@ export function Viewer({ build, step, renderRequest }: Props) {
   useEffect(() => {
     const s = scene.current;
     if (!s) return;
+    let current = true;
     s.setPieces(build?.pieces ?? []).then(async () => {
-      if (!build || !build.pieces.length) return;
+      if (!current || !build || !build.pieces.length) return;
       if (framedBuild.current !== build.id || (build.status === "building" && !s.userMoved)) {
         framedBuild.current = build.id;
         s.frameView(view, width, depth);
@@ -47,6 +48,9 @@ export function Viewer({ build, step, renderRequest }: Props) {
         if (png) await api.putThumbnail(build.id, png);
       }
     });
+    return () => {
+      current = false;
+    };
   }, [build?.id, build?.pieces, build?.status]);
 
   useEffect(() => {

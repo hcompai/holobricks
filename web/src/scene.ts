@@ -40,6 +40,7 @@ export class BrickScene {
   userMoved = false;
   private resizeObserver: ResizeObserver;
   private frame = 0;
+  private framing: { view: View; width: number; depth: number } = { view: "iso", width: 32, depth: 32 };
 
   constructor(private container: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
@@ -93,6 +94,7 @@ export class BrickScene {
     this.renderer.setSize(w, h);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
+    if (!this.userMoved) this.frameView(this.framing.view, this.framing.width, this.framing.depth);
   }
 
   /** The packed part places it in main color 16 on its second line; each color gets its own parsed copy. */
@@ -156,6 +158,8 @@ export class BrickScene {
 
   /** Point the camera along `view` so the visible pieces (or the empty baseplate) fill the frame. */
   frameView(view: View, width: number, depth: number) {
+    this.framing = { view, width, depth };
+    this.root.updateMatrixWorld(true);
     const box = new THREE.Box3();
     for (const object of this.objects.values()) if (object.visible) box.expandByObject(object);
     if (box.isEmpty()) {
