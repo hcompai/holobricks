@@ -260,6 +260,44 @@ aside {
   padding: 0 12px;
 }
 
+.msg-render {
+  display: block;
+  margin-top: 6px;
+  padding: 0;
+  overflow: hidden;
+  border-radius: var(--radius-medium);
+  cursor: zoom-in;
+  opacity: 0.8;
+  transition: opacity 0.15s;
+}
+
+.msg-render:hover {
+  opacity: 1;
+}
+
+.msg-render img {
+  display: block;
+  width: 88px;
+  aspect-ratio: 1;
+}
+
+.lightbox {
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-large);
+  background: #f6f6f9;
+  cursor: zoom-out;
+}
+
+.lightbox::backdrop {
+  background: rgb(0 0 0 / 0.6);
+}
+
+.lightbox img {
+  display: block;
+  width: min(88vw, 88vh);
+}
+
 .msg.thinking {
   width: 88%;
   display: flex;

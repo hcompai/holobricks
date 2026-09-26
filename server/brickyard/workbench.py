@@ -293,7 +293,7 @@ class Workbench:
         summary = await asyncio.to_thread(self.summary)
         if png is None:
             return Result(f"No viewer is open, so no image this time.\n{summary}", note=f"{note} (no viewer open)")
-        await self.session.say(note, role="tool")
+        await self.session.say(note, role="tool", images=[self.session.store.save_image(png, "image/png")])
         caption = "The render: 3/4 front-right, 3/4 back-left, front, and top (back at the top)."
         if view:
             center = f", centered on x {view.at[0]:g}, y {view.at[1]:g}, z {view.at[2]:g}" if view.at else ""

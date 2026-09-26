@@ -120,7 +120,9 @@ def test_a_script_rebuilds_from_its_first_changed_step_and_names_the_lines_of_it
     assert "undefined()" in bench.session.build.script
 
 
-def test_agents_build_through_the_tools_endpoint_and_see_the_model_from_any_camera(tmp_path, monkeypatch):
+def test_agents_build_through_the_tools_endpoint_and_see_the_model_from_any_camera_as_the_chat_does(
+    tmp_path, monkeypatch
+):
     from brickyard import app as app_module
 
     store = Store(tmp_path)
@@ -146,7 +148,8 @@ def test_agents_build_through_the_tools_endpoint_and_see_the_model_from_any_came
         assert closer["caption"] == "The view from 200 degrees, 30 up, zoom 3, centered on x 4, y 4, z 3."
         assert cameras[-1] == Camera(angle=200, zoom=3, at=(4, 4, 3))
         assert client.post(f"{tools}/look", json={"camera": {"zoom": 0}}).json()["problems"] == 1
-        assert not store.load(build.id).messages[-1].images
+        shown = store.load(build.id).messages[-1].images
+        assert len(shown) == 1 and client.get(shown[0]).content == png(120, 90)
         assert client.post(f"{tools}/build", json={}).status_code == 404
         assert client.post(f"{tools}/run", json={"script": "x"}).status_code == 400
     assert store.load(build.id).script == code

@@ -70,7 +70,7 @@ export function Viewer({ build, step, renderRequest, framing, spin }: Props) {
     let current = true;
     s.setPieces(build?.pieces ?? []).then(async () => {
       if (!current || !build || !build.pieces.length) return;
-      if (framedBuild.current !== build.id || (build.status === "building" && !s.userMoved)) {
+      if (framedBuild.current !== build.id || !s.userMoved) {
         framedBuild.current = build.id;
         s.frameView(framing.view, width, depth);
       }

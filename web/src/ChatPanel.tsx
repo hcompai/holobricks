@@ -1,6 +1,7 @@
 import { ArrowUpIcon, StopIcon } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
 import { api, GALLERY, type Build } from "./api";
+import { Lightbox } from "./Lightbox";
 
 const SUGGESTIONS = [
   {
@@ -47,6 +48,7 @@ export function ChatPanel({ build, thinking, onCreate, onSay }: Props) {
   const log = useRef<HTMLDivElement>(null);
   const thought = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
+  const [opened, setOpened] = useState<string | null>(null);
   const busy = build?.status === "building";
   const target = build && mode === "change" ? "change" : "new";
 
@@ -102,6 +104,11 @@ export function ChatPanel({ build, thinking, onCreate, onSay }: Props) {
           build.messages.map((m) => (
             <div key={`${m.at}-${m.role}`} className={`msg ${m.role}`}>
               {m.text}
+              {m.images?.map((src) => (
+                <button key={src} className="msg-render" onClick={() => setOpened(src)} title="Open the render">
+                  <img src={src} alt="The render Holo saw" />
+                </button>
+              ))}
             </div>
           ))
         )}
@@ -159,6 +166,7 @@ export function ChatPanel({ build, thinking, onCreate, onSay }: Props) {
           {error && <p className="composer-error">{error}</p>}
         </div>
       )}
+      <Lightbox src={opened} onClose={() => setOpened(null)} />
     </div>
   );
 }
