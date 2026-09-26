@@ -76,6 +76,15 @@ def test_shape_tools_build_a_sound_house_and_pave_around_it(tmp_path):
     assert f"Left out {2 * (8 + 6) - 4 - 2} cells" in results[2].text
 
 
+def test_a_truncated_tool_call_leaves_a_history_the_api_accepts():
+    import json
+
+    from brickyard.builders.holo import Reply
+
+    reply = Reply(calls={0: {"id": "a", "name": "add_bricks", "arguments": '{"title": "Wall", "bricks": [{"pa'}})
+    assert json.loads(reply.message()["tool_calls"][0]["function"]["arguments"]) == {}
+
+
 def test_changing_a_hand_scripted_build_hands_it_to_a_live_builder(tmp_path, monkeypatch):
     from brickyard import app as app_module
     from brickyard.builders import BUILDERS

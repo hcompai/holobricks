@@ -53,7 +53,7 @@ heights come from the part geometry, so all ~25k parts work without a catalog. R
 
 | Builder | What it does |
 | --- | --- |
-| `holo` | Holo (`holo4-27b`) in a tool loop: `add_bricks`, `remove_bricks`, `look`, `find_parts`, `list_pieces`, `set_name`. Bricks are validated (bounds, overlaps, floating); `look` returns a 4-view render from the open viewer. Reasoning streams live into the chat. |
+| `holo` | Holo (`holo4-27b`) in a tool loop: shape tools `walls` (bonded, hollow, windows, arched doors), `fill` (plates, tiles, textured mosaics that pave around what is built) and `roof` (hipped, 45° or steep), plus `add_bricks`, `remove_bricks`, `look`, `find_parts`, `find_reference`, `list_pieces`, `set_name`. Everything is validated (bounds, overlaps, floating); `look` returns a 4-view render from the open viewer. Reasoning streams live into the chat. |
 | `demo` | Scripted cottage, no model needed. |
 | `claude` | Showcase builds from `server/brickyard/showcase`; asking to change one hands it to Holo. |
 

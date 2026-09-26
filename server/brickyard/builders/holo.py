@@ -212,13 +212,22 @@ class Reply:
     calls: dict[int, dict] = field(default_factory=dict)
 
     def message(self) -> dict:
+        """The assistant turn for the history; arguments that are not JSON become {} so the API accepts the history."""
         message: dict = {"role": "assistant", "content": self.content}
         if self.calls:
             message["tool_calls"] = [
-                {"id": c["id"], "type": "function", "function": {"name": c["name"], "arguments": c["arguments"]}}
+                {"id": c["id"], "type": "function", "function": {"name": c["name"], "arguments": _json_or_empty(c)}}
                 for c in self.calls.values()
             ]
         return message
+
+
+def _json_or_empty(call: dict) -> str:
+    try:
+        json.loads(call["arguments"] or "{}")
+    except json.JSONDecodeError:
+        return "{}"
+    return call["arguments"] or "{}"
 
 
 class HoloBuilder:
@@ -262,12 +271,16 @@ class HoloBuilder:
         async with httpx.AsyncClient(timeout=httpx.Timeout(600, connect=30), transport=self.transport) as client:
             for _ in range(self.max_turns):
                 reply = await self._complete(client, session, messages)
+                if reply.finish == "length":
+                    reply.calls = {}
                 messages.append(reply.message())
                 if reply.content:
                     await session.say(reply.content)
                 if not reply.calls:
                     if reply.finish == "length":
-                        messages.append({"role": "user", "content": "You ran out of tokens. Take one small step now."})
+                        messages.append(
+                            {"role": "user", "content": "You ran out of tokens. Take one smaller step now."}
+                        )
                         continue
                     return
                 for call in reply.calls.values():
@@ -340,8 +353,10 @@ class HoloBuilder:
                         await asyncio.sleep(2**attempt)
                         continue
                     if response.status_code != 200:
+                        size = len(json.dumps(body["messages"]))
                         raise RuntimeError(
-                            f"Holo API {response.status_code}: {(await response.aread()).decode()[:300]}"
+                            f"Holo API {response.status_code}: {(await response.aread()).decode()[:300]} "
+                            f"({len(messages)} messages, {size} characters)"
                         )
                     return await self._read(response, session)
             except (httpx.TransportError, httpx.RemoteProtocolError):
