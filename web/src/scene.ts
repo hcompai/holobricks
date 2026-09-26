@@ -162,12 +162,22 @@ export class BrickScene {
       box.set(new THREE.Vector3(0, 0, -depth * 20), new THREE.Vector3(width * 20, 40, 0));
     }
     const center = box.getCenter(new THREE.Vector3());
-    const radius = box.getSize(new THREE.Vector3()).length() / 2;
-    const halfFov = THREE.MathUtils.degToRad(this.camera.fov / 2);
-    const fitHeight = radius / Math.tan(halfFov);
-    const fitWidth = radius / (Math.tan(halfFov) * this.camera.aspect);
-    const distance = Math.max(fitHeight, fitWidth) * 0.72;
-    this.camera.position.copy(center).addScaledVector(VIEW_DIRECTIONS[view], distance);
+    const direction = VIEW_DIRECTIONS[view].clone().normalize();
+    this.camera.position.copy(center).add(direction);
+    this.camera.lookAt(center);
+    this.camera.updateMatrixWorld();
+    const tanY = Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2));
+    const tanX = tanY * this.camera.aspect;
+    let distance = 0;
+    for (const x of [box.min.x, box.max.x])
+      for (const y of [box.min.y, box.max.y])
+        for (const z of [box.min.z, box.max.z]) {
+          const p = new THREE.Vector3(x, y, z).applyMatrix4(this.camera.matrixWorldInverse);
+          const depth = p.z + 1;
+          distance = Math.max(distance, depth + Math.abs(p.x) / tanX, depth + Math.abs(p.y) / tanY);
+        }
+    distance *= 1.04;
+    this.camera.position.copy(center).addScaledVector(direction, distance);
     this.camera.near = distance / 100;
     this.camera.far = distance * 100;
     this.camera.updateProjectionMatrix();

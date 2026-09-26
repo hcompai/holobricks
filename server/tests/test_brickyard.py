@@ -125,3 +125,18 @@ def test_changing_a_hand_scripted_build_hands_it_to_a_live_builder(tmp_path, mon
     with TestClient(app_module.app) as client:
         changed = client.post(f"/api/builds/{build.id}/messages", json={"text": "add a tree"}).json()
     assert changed["builder"] == next(iter(BUILDERS))
+
+
+def test_an_idle_build_rewritten_on_disk_is_served_fresh(tmp_path, monkeypatch):
+    from brickyard import app as app_module
+    from brickyard.model import Build
+    from brickyard.session import Store
+
+    store = Store(tmp_path)
+    monkeypatch.setattr(app_module, "store", store)
+    build = Build(prompt="Paris", name="old", builder="claude", status="done")
+    store.save(build)
+    with TestClient(app_module.app) as client:
+        assert client.get(f"/api/builds/{build.id}").json()["name"] == "old"
+        store.save(build.model_copy(update={"name": "new"}))
+        assert client.get(f"/api/builds/{build.id}").json()["name"] == "new"

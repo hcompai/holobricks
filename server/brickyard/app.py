@@ -48,12 +48,18 @@ app = FastAPI(title="Brickyard", lifespan=lifespan)
 
 
 def session_for(build_id: str) -> Session:
-    if build_id not in sessions:
-        build = store.load(build_id)
-        if build is None:
-            raise HTTPException(404, f"no build {build_id}")
-        sessions[build_id] = Session(build, store)
-    return sessions[build_id]
+    """The live session of a build; idle ones re-read the build so edits made on disk show up."""
+    session = sessions.get(build_id)
+    if session and session.task and not session.task.done():
+        return session
+    build = store.load(build_id)
+    if build is None:
+        raise HTTPException(404, f"no build {build_id}")
+    if session:
+        session.build = build
+    else:
+        session = sessions[build_id] = Session(build, store)
+    return session
 
 
 def start(session: Session, request: str) -> None:
