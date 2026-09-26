@@ -1,46 +1,39 @@
-"""Hogwarts on its crag above the Black Lake: a 128x88 microscale diorama after LEGO 76419 and the Studio Tour model."""
+"""Hogwarts' south front above the Black Lake, the first film's arrival shot, after Stuart Craig's design and LEGO 71043."""
 
 from __future__ import annotations
 
 import math
 import random
+from collections import Counter
 from collections.abc import Callable
 
 from brickyard.shapes import brick, rect
 from brickyard.showcase.kit import Kit
+from brickyard.showcase.sculpt import Sculpture, circle, erode
 
-W, D = 128, 88
-BLACK, WHITE, TAN, DTAN, LBG, DBG, GOLD, LIT, CLEAR = 0, 15, 19, 28, 71, 72, 297, 46, 47
-GREEN, DGREEN, BGREEN, OLIVE, SGREEN = 2, 288, 10, 330, 378
-BLUE, DBLUE, TLBLUE, TMBLUE = 1, 272, 43, 41
-RBROWN, DBROWN, ORANGE = 70, 308, 25
+W, D = 152, 92
+BLACK, TAN, DTAN, LBG, DBG, GOLD, LIT = 0, 19, 28, 71, 72, 297, 46
+GREEN, DGREEN, OLIVE = 2, 288, 330
+DBLUE, TLBLUE, TMBLUE = 272, 43, 41
+DBROWN = 308
 
 Cell = tuple[int, int]
-PROMPT = "Hogwarts on its crag above the Black Lake, a big microscale diorama with real height"
+PROMPT = (
+    "Hogwarts' south front above the Black Lake: the Great Hall on its cliff, the Marble Staircase Tower, the viaduct"
+)
 STORY = [
     (
-        "Hand-scripted by Claude after LEGO's microscale sets and the Studio Tour model, as a showcase of what "
-        "Brickyard's parts and checks can do. Every step went through the same validation Holo uses; ask for a "
-        "change and Holo takes over."
+        "Hand-scripted by Claude after Stuart Craig's concept art, the film's miniature and LEGO 71043, as a showcase "
+        "of what Brickyard's parts and checks can do. The castle is sculpted as solids and meshed into bricks: only the "
+        "shell is built, steady steps become slopes, and every brick rests on another. Ask for a change and Holo takes over."
     ),
 ]
 
 S = 2
 """The terrain is sculpted on 2x2-stud cells, so its faces are big facets and not a noise of small bricks."""
-CLIFF, SLOPE = 2.8, 0.5
-LEVELS = [
-    ("castle", (26, 38, 96, 70), 22, CLIFF),
-    ("castle", (40, 34, 82, 40), 22, CLIFF),
-    ("castle", (30, 70, 72, 74), 22, CLIFF),
-    ("west", (4, 48, 10, 68), 22, CLIFF),
-    ("landing", (60, 26, 76, 32), 13, CLIFF),
-    ("greenhouses", (82, 28, 98, 34), 17, CLIFF),
-    ("hill", (106, 42, 116, 52), 22, CLIFF),
-    ("grounds", (102, 30, 127, 87), 9, SLOPE),
-    ("back", (0, 78, 127, 87), 9, SLOPE),
-]
-STAIRS = [((24 + j, 12), 2 + 2 * j) for j in range(6)]
-BOATHOUSE = (20, 9, 23, 10)
+PLATEAU = 40
+CLIFF = 3.2
+"""Courses the crag falls per stud away from the buildings on it."""
 
 
 def noise(x: float, y: float) -> float:
@@ -52,39 +45,54 @@ def noise(x: float, y: float) -> float:
     )
 
 
-def distance(x: float, y: float, box: tuple[int, int, int, int]) -> float:
-    x0, y0, x1, y1 = box
-    return math.hypot(max(x0 - x, 0, x - x1), max(y0 - y, 0, y - y1))
-
-
-def terrain(rng: random.Random) -> tuple[dict[Cell, int], dict[Cell, str]]:
-    """Height in courses and the level of each 2x2 cell; 0 is the lake."""
+def terrain(rng: random.Random, pads: dict[Cell, tuple[int, str]]) -> tuple[dict[Cell, int], dict[Cell, str]]:
+    """Height in courses and the kind of each 2x2 cell: the castle's pads, crags falling from them, the lake at 0."""
     height, kind = {}, {}
+    reach = math.ceil(PLATEAU / CLIFF / S) + 3
     for X in range(W // S):
         for Y in range(D // S):
-            x, y = S * X + 0.5, S * Y + 0.5
+            x, y = S * X + 1, S * Y + 1
+            wobble = noise(x * 0.18, y * 0.18), noise(x * 0.7, y * 0.7)
+            stretch = 1 + 0.35 * noise(X * 0.45 + 7, Y * 0.45) + 0.1 * (rng.random() - 0.5)
             best, name = 0.0, "lake"
-            for level, box, h, rate in LEVELS:
-                d = distance(x, y, box)
-                if d and rate == CLIFF:
-                    d = max(0.0, d - 2.5 - 2.5 * noise(x * 0.18, y * 0.18) - 0.8 * noise(x * 0.7, y * 0.7))
-                    d *= 1 + 0.45 * noise(X * 0.9 + 7, Y * 0.9) + 0.3 * (rng.random() - 0.5)
-                bump = 0.8 * noise(x * 0.2 + 3, y * 0.2) if rate == SLOPE else 0
-                value = h + bump - d * rate
-                if value > best:
-                    best, name = value, level
+            for PX in range(X - reach, X + reach + 1):
+                for PY in range(Y - reach, Y + reach + 1):
+                    if (PX, PY) not in pads:
+                        continue
+                    h, what = pads[PX, PY]
+                    if what == "footing":
+                        continue
+                    d = max(0.0, S * math.hypot(X - PX, Y - PY) - 0.6 * (1 + wobble[0]) - 0.8 * wobble[1]) * stretch
+                    if h - d * CLIFF > best:
+                        best, name = h - d * CLIFF, "crag"
             height[X, Y], kind[X, Y] = max(0, math.floor(best)), name
-    for x0, y0, w, d in footprints():
-        for X in range((x0 - 1) // S, (x0 + w) // S + 1):
-            for Y in range((y0 - 1) // S, (y0 + d) // S + 1):
-                height[X, Y], kind[X, Y] = 22, "castle"
-    X0, Y0, X1, Y1 = BOATHOUSE
-    for c in rect(X0, Y0, X1 - X0 + 1, Y1 - Y0 + 1):
-        height[c], kind[c] = 1, "boathouse"
-    for (X, Y), h in STAIRS:
-        height[X, Y], kind[X, Y] = h, "stairs"
-        height[X, Y - 1] = min(height[X, Y - 1], max(0, h - 3))
+    for c, (h, name) in pads.items():
+        if c in height and (name != "footing" or height[c] < h):
+            height[c], kind[c] = h, name
     return height, kind
+
+
+def pads(sc: Sculpture) -> tuple[dict[Cell, tuple[int, str]], set[Cell]]:
+    """Flat ground under every building at its lowest course, one stud wider; also the cells a building stands in.
+
+    Only courses up to the plateau count, so corbelled crowns don't raise rock under them. Footings at the water's
+    edge only raise the ground to course 1, so the crag keeps its height where it is higher.
+    """
+    base: dict[Cell, int] = {}
+    for (x, y, k), (_, _, owner) in sc.solid.items():
+        if k <= PLATEAU and (owner != "the viaduct" or k <= 1):
+            base[x, y] = min(k, base.get((x, y), k))
+    own: dict[Cell, int] = {}
+    for (x, y), k in base.items():
+        own[x // S, y // S] = min(k, own.get((x // S, y // S), k))
+    out = dict(own)
+    for (x, y), k in base.items():
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                c = ((x + dx) // S, (y + dy) // S)
+                if c not in own:
+                    out[c] = min(k, out.get(c, k))
+    return {c: (k, "footing" if k <= 1 else "castle") for c, k in out.items()}, set(own)
 
 
 RUNS = {1: "3003", 2: "3001", 3: "2456", 4: "3007"}
@@ -96,7 +104,7 @@ CORNER_TURNS = {((0, -1), (1, 0)): 0, ((-1, 0), (0, -1)): 90, ((0, 1), (-1, 0)):
 
 def rock(x: int, y: int, k: int) -> int:
     n = noise(x * 0.25 + k * 0.5, y * 0.25 - k * 0.3)
-    return DBG if n > 0.3 else DTAN if n < -0.8 else LBG
+    return DBG if n > -0.15 else DTAN if n < -0.75 else LBG
 
 
 def earth(x: int, y: int, k: int) -> int:
@@ -111,14 +119,14 @@ def grass(x: int, y: int) -> int:
 class Ground:
     """The terrain meshed into bricks: exposed faces only, step edges bevelled, hidden columns under the top plates."""
 
-    def __init__(self, kit: Kit, rng: random.Random):
-        self.kit, self.rng = kit, rng
-        self.height, self.kind = terrain(rng)
+    def __init__(self, kit: Kit, rng: random.Random, pads: dict[Cell, tuple[int, str]], footing: set[Cell]):
+        self.kit, self.rng, self.footing = kit, rng, footing
+        self.height, self.kind = terrain(rng, pads)
         self.claimed: set[tuple[int, int, int]] = set()
 
-    def top(self, x: int, y: int) -> int:
-        """Plate height of the ground's surface at stud (x, y)."""
-        return 1 + 3 * self.height[x // S, y // S]
+    def course(self, x: int, y: int) -> int:
+        """The course a building starts on at stud (x, y)."""
+        return self.height.get((x // S, y // S), 0)
 
     def studs(self, X: int, Y: int) -> set[Cell]:
         return rect(S * X, S * Y, S, S)
@@ -127,7 +135,7 @@ class Ground:
         return (X, Y) in self.height and k < self.height[X, Y]
 
     def grassy(self, c: Cell) -> bool:
-        return self.kind[c] in ("grounds", "back")
+        return False
 
     def exposed(self, X: int, Y: int, k: int) -> bool:
         """A cell's course seen from outside, so built as bricks; the ones inside stay hollow."""
@@ -141,13 +149,13 @@ class Ground:
         self.kit.fill(0, 0, W, D, 0, DBLUE)
         await self.kit.step("The bed of the Black Lake")
         water = {s for c, h in self.height.items() if h == 0 for s in self.studs(*c)}
-        self.kit.scatter(water, 1, [(TMBLUE, 12), (TLBLUE, 1)], self.rng, WATER)
+        self.kit.scatter(water, 1, [(TMBLUE, 14), (TLBLUE, 1)], self.rng, WATER)
         await self.kit.step("The Black Lake")
 
     def bevels(self) -> list[tuple[str, int, int, int, int, int]]:
         out = []
         for (X, Y), h in sorted(self.height.items()):
-            if h == 0 or self.kind[X, Y] in ("stairs", "boathouse"):
+            if h == 0 or self.kind[X, Y] == "footing" or (X, Y) in self.footing:
                 continue
             drops = {
                 d: h - self.height[X + d[0], Y + d[1]]
@@ -177,15 +185,17 @@ class Ground:
             low = next((k for k in range(h) if (X, Y, k) in self.claimed or self.exposed(X, Y, k)), 0)
             self.kit.pending += _column(S * X, S * Y, 1, 1 + 3 * low)
         await self.kit.step("Hidden columns under the rock faces")
-        for k in range(max(self.height.values())):
-            groups: dict[int, set[Cell]] = {}
-            for X, Y in self.height:
-                if self.exposed(X, Y, k):
-                    color = (earth if self.grassy((X, Y)) else rock)(X, Y, k)
-                    groups.setdefault(color, set()).add((X, Y))
-            for color, group in groups.items():
-                self.blocks(group, 1 + 3 * k, color)
-            await self.kit.step(f"Rock, course {k + 1}")
+        top = max(self.height.values())
+        for k0 in range(0, top, 4):
+            for k in range(k0, min(k0 + 4, top)):
+                groups: dict[int, set[Cell]] = {}
+                for X, Y in self.height:
+                    if self.exposed(X, Y, k):
+                        color = (earth if self.grassy((X, Y)) else rock)(X, Y, k)
+                        groups.setdefault(color, set()).add((X, Y))
+                for color, group in groups.items():
+                    self.blocks(group, 1 + 3 * k, color)
+            await self.kit.step(f"The crag, courses {k0 + 1} to {min(k0 + 4, top)}")
         for part, x, y, z, color, rotation in bevels:
             self.kit.add(part, x, y, z, color, rotation)
         await self.kit.step("Crags: the angled faces of the rock")
@@ -242,197 +252,282 @@ def _column(x: int, y: int, z0: int, z1: int, color: int = DBG) -> list[dict]:
     return out
 
 
-Z = 67
-"""Plate height of the castle crag's top."""
+Finials = list[tuple[int, int, int]]
+"""The 2x2 tops, as (x, y, course above), that get a cone and a gold spike."""
 
 
-def facade(x0: int, y0: int, w: int, d: int, window: Callable[[int, int], bool], lit: int = BLACK):
-    """Wall colors: a dark tan plinth, tan stone, and windows where `window(u, course)` holds, u along the face."""
-    y1 = y0 + d - 1
+def windows(r: float, n: int, rows: list[int], tall: int = 2) -> Callable[[float, int], int | None]:
+    """Window colors on a round wall of radius r: n per row, each 1 stud wide and `tall` courses, mostly lit."""
+    step = 2 * math.pi / n
 
-    def color(x: int, y: int, c: int) -> int:
-        if c == 0:
-            return DTAN
-        along = y in (y0, y1)
-        u, n = (x - x0, w) if along else (y - y0, d)
-        return lit if 0 < u < n - 1 and window(u, c) else TAN
+    def color(a: float, k: int) -> int | None:
+        i = round(a / step)
+        if abs(a - i * step) * r > 0.6:
+            return None
+        for row, k0 in enumerate(rows):
+            if k0 <= k < k0 + tall:
+                return BLACK if (3 * i + row) % 4 == 0 else LIT
+        return None
 
     return color
 
 
-def slits(courses: int, every: int = 2) -> Callable[[int, int], bool]:
-    return lambda u, c: u % every == 1 and c % 4 in (2, 3) and c < courses - 1
+def round_wall(cx: float, cy: float, bands: set[int], window: Callable[[float, int], int | None]):
+    def color(x: int, y: int, k: int) -> int:
+        if k in bands:
+            return DTAN
+        return window(math.atan2(y + 0.5 - cy, x + 0.5 - cx), k) or TAN
+
+    return color
 
 
-def finial(kit: Kit, x: int, y: int, z: int) -> None:
-    """A cone and a gold spike on the stud in the middle of the 2x2 at (x, y)."""
-    kit.centered("4589", x, y, z, DBG)
-    kit.centered("30374", x, y, z + 3, GOLD)
+def slate(cx: float, cy: float, k0: int, dormers: int = 0) -> Callable[[int, int, int], int]:
+    """Dark grey slate, with rows of small black dormer windows every 8 courses."""
+    step = 2 * math.pi / max(dormers, 1)
+
+    def color(x: int, y: int, k: int) -> int:
+        if dormers and (k - k0) % 8 == 5:
+            a = math.atan2(y + 0.5 - cy, x + 0.5 - cx) + ((k - k0) // 8) * step / 2
+            if abs(a - round(a / step) * step) < 0.08:
+                return BLACK
+        return DBG
+
+    return color
 
 
-def roof(kit: Kit, x0: int, y0: int, w: int, d: int, z: int) -> int:
-    """A dark tan cornice and a steep slate roof of 75-degree slopes; returns its top."""
-    kit.fill(x0, y0, w, d, z, DTAN)
-    x, y, rw, rd, top = kit.hip(x0, y0, w, d, z + 1, DBG, slope="4460b", rise=9)
-    if rw == rd == 2:
-        kit.add("3688", x, y, top, DBG)
-        return top + 6
-    kit.ridge(x, y, rw, rd, top, DBG)
-    return top + 3
+def spire(sc: Sculpture, cx: int, cy: int, r: float, k0: int, height: int, finials: Finials, dormers: int = 0) -> None:
+    """A slate cone on a round tower centered on a stud corner, and its finial."""
+    top = sc.cone(cx, cy, r, k0, height, slate(cx, cy, k0, dormers))
+    finials.append((cx - 1, cy - 1, top))
 
 
-def pinnacle(kit: Kit, x: int, y: int, z: int, rounds: int = 2) -> None:
+def round_tower(
+    sc: Sculpture, cx: int, cy: int, r: float, k0: int, k1: int, cone: int, finials: Finials, rows: int = 4
+) -> None:
+    """A round stone tower with bands, windows, a corbelled crown and a slate spire `cone` courses tall."""
+    bands = {k0, k0 + 1, *range(k0 + 10, k1 - 4, 12)}
+    sc.fill(circle(cx, cy, r), k0, k1 - 2, round_wall(cx, cy, bands, windows(r, 8, list(range(k0 + 5, k1 - 6, 6)))))
+    sc.fill(circle(cx, cy, r + 0.5), k1 - 2, k1, DTAN)
+    spire(sc, cx, cy, r + 0.5, k1, cone, finials)
+
+
+def gable_roof(sc: Sculpture, x0: int, y0: int, w: int, d: int, k0: int, ridge: str, pitch: int = 2) -> int:
+    """A steep slate roof with tan crow-stepped gables at both ends of its ridge; returns the course above it."""
+    cells, k = rect(x0, y0, w, d), k0
+    ends = {x0, x0 + w - 1} if ridge == "x" else {y0, y0 + d - 1}
+    while cells:
+        gable = {c for c in cells if (c[0] if ridge == "x" else c[1]) in ends}
+        sc.fill(cells - gable, k, k + pitch, DBG, sloped=True)
+        sc.fill(gable, k, k + pitch + 1, TAN)
+        cells, k = erode(cells, ridge), k + pitch
+    return k + 1
+
+
+def pinnacle(sc: Sculpture, x: int, y: int, k: int, rounds: int = 3) -> None:
     for i in range(rounds):
-        kit.add("3062b", x, y, z + 3 * i, TAN)
-    kit.add("4589", x, y, z + 3 * rounds, DBG)
+        sc.part("3062b", x, y, k + i, TAN)
+    sc.part("4589", x, y, k + rounds, DBG)
 
 
-def hall(
-    kit: Kit,
-    x0: int,
-    y0: int,
-    w: int,
-    d: int,
-    courses: int,
-    z: int = Z,
-    window: Callable[[int, int], bool] | None = None,
-    lit: int = BLACK,
-    buttresses: tuple[str, ...] = (),
-) -> int:
-    """A wing: plinth, walls with windows, a steep slate roof, and buttresses ending in pinnacles; returns its top."""
-    top = kit.ring(x0, y0, w, d, z, courses, facade(x0, y0, w, d, window or slits(courses), lit))
-    for face in buttresses:
-        y = y0 - 1 if face == "front" else y0 + d
-        for u in range(3, w - 1, 3):
-            kit.pending += _column(x0 + u, y, z, top, TAN)
-            kit.add("4589", x0 + u, y, top, DBG)
-    return roof(kit, x0, y0, w, d, top)
+def great_hall(sc: Sculpture, finials: Finials) -> None:
+    """41x14 on the cliff edge: ten bays of tall lit lancets between buttresses, pinnacles above a steep gabled roof."""
+    sc.owner = "the Great Hall"
+    x0, y0, w, d = 24, 32, 41, 14
+    x1, y1, top = x0 + w - 1, y0 + d - 1, PLATEAU + 26
+
+    def color(x: int, y: int, k: int) -> int:
+        if k < PLATEAU + 2 or k in (PLATEAU + 13, top - 1):
+            return DTAN
+        if y in (y0, y1) and (x - x0) % 4 in (1, 2) and PLATEAU + 4 <= k <= PLATEAU + 21:
+            return LIT
+        if x in (x0, x1) and 4 <= y - y0 <= 9 and PLATEAU + 5 <= k <= PLATEAU + 22 and (y - y0) not in (6, 7):
+            return LIT
+        return TAN
+
+    sc.fill(rect(x0, y0, w, d), PLATEAU, top, color)
+    for x in range(x0 + 4, x1 + 1, 4):
+        for y, outer, turn in ((y0 - 1, y0 - 2, 0), (y1 + 1, y1 + 1, 180)):
+            sc.fill([(x, y0 - 2 if turn == 0 else y1 + 2)], PLATEAU, PLATEAU + 17, stone({PLATEAU, PLATEAU + 13}))
+            sc.part("3040b", x, outer, PLATEAU + 17, TAN, turn)
+            sc.fill([(x, y)], PLATEAU, top, stone({PLATEAU, PLATEAU + 13, top - 1}))
+            pinnacle(sc, x, y, top)
+    gable_roof(sc, x0, y0, w, d, top, ridge="x")
+    ridge_y = y0 + d // 2 - 1
+    for x in (x0 + 12, x1 - 13):
+        for i in range(5):
+            sc.part("3941", x, ridge_y, top + 14 + i, TAN if i < 4 else DTAN)
+        sc.part("3942c", x, ridge_y, top + 19, DBG)
+        finials.append((x, ridge_y, top + 21))
+    sc.owner = "the Great Hall's corner turret"
+    for i in range(46):
+        sc.part("87081", x0 - 2, y0 - 2, PLATEAU + i, DTAN if i % 9 == 0 else TAN)
+    sc.part("272", x0 - 2, y0 - 2, PLATEAU + 46, DBG)
+    sc.part("3942c", x0 - 1, y0 - 1, PLATEAU + 49, DBG)
+    finials.append((x0 - 1, y0 - 1, PLATEAU + 51))
+    sc.owner = "the terrace"
+    edge = rect(x0 - 6, y0 - 2, 6, d + 4) - rect(x0 - 5, y0 - 1, 5, d + 2)
+    sc.fill(edge, PLATEAU, PLATEAU + 1, DTAN)
+    sc.fill({(x, y) for x, y in edge if (x + y) % 2 == 0}, PLATEAU + 1, PLATEAU + 2, TAN)
 
 
-def square_tower(kit: Kit, x: int, y: int, s: int, courses: int, z: int = Z) -> int:
-    """Tan walls with windows, a crenellated cornice, corner pinnacles and a slate spire; returns the spire's base."""
-    middle = (s // 2 - 1, s // 2)
-    top = kit.ring(x, y, s, s, z, courses, facade(x, y, s, s, lambda u, c: u in middle and c % 5 in (2, 3)))
-    kit.fill(x, y, s, s, top, DTAN)
-    top += 1
-    for cx, cy in ((x, y), (x + s - 1, y), (x, y + s - 1), (x + s - 1, y + s - 1)):
-        pinnacle(kit, cx, cy, top)
-    for u in range(2, s - 2, 2):
-        for cx, cy in ((x + u, y), (x + u, y + s - 1), (x, y + u), (x + s - 1, y + u)):
-            kit.add("3005", cx, cy, top, TAN)
-    sx, sy, _, _, peak = kit.hip(x + 1, y + 1, s - 2, s - 2, top, DBG, slope="4460b", rise=9)
-    kit.add("3688", sx, sy, peak, DBG)
-    finial(kit, sx, sy, peak + 6)
-    return top
+def stone(bands: set[int]) -> Callable[[int, int, int], int]:
+    return lambda x, y, k: DTAN if k in bands else TAN
 
 
-def round_tower(kit: Kit, x: int, y: int, s: int, courses: int, z: int = Z, cap: bool = True) -> int:
-    """A round tower of 2x2, 4x4 or 8x8 bricks with a slate cone and a gold finial; returns the shaft's top."""
-    for c in range(courses):
-        color = DTAN if c == 0 or c % 8 == 7 else TAN
-        zc = z + 3 * c
-        if s == 8:
-            for dx, dy, rotation in ((0, 0, 90), (4, 0, 0), (0, 4, 180), (4, 4, 270)):
-                kit.add("48092", x + dx, y + dy, zc, color, rotation)
-        else:
-            kit.add({2: "3941", 4: "87081"}[s], x, y, zc, color)
-    top = z + 3 * courses
-    if cap:
-        cone(kit, x, y, s, top)
-    return top
+def block(sc: Sculpture, x0: int, y0: int, w: int, d: int, courses: int, every: int = 3, skip: set[Cell] = frozenset()):
+    """A tan wing with rows of small windows every `every` studs, under a hipped slate roof."""
+    top = PLATEAU + courses
+    rows = range(PLATEAU + 4, top - 3, 5)
+
+    def color(x: int, y: int, k: int) -> int:
+        if k < PLATEAU + 1 or k == top - 1:
+            return DTAN
+        u = x - x0 if y in (y0, y0 + d - 1) else y - y0
+        if u % every == every // 2 and any(r <= k < r + 2 for r in rows):
+            return LIT if (u + k) % 3 else BLACK
+        return TAN
+
+    cells = rect(x0, y0, w, d) - skip
+    sc.fill(cells, PLATEAU, top, color)
+    sc.roof(cells, top, DBG)
 
 
-def cone(kit: Kit, x: int, y: int, s: int, z: int) -> None:
-    if s == 8:
-        kit.add("48310", x, y, z, DBG)
-        kit.add("48310", x, y + 4, z, DBG, 180)
-        x, y, s, z = x + 2, y + 2, 4, z + 18
-    if s == 4:
-        kit.add("272", x, y, z, DBG)
-        x, y, z = x + 1, y + 1, z + 9
-    kit.add("3942c", x, y, z, DBG)
-    finial(kit, x, y, z + 6)
+def entrance(sc: Sculpture) -> None:
+    """The block in front of the great tower: two tall lancets under a crow-stepped gable facing the lake."""
+    sc.owner = "the Entrance Hall"
+    x0, y0, w, d = 65, 30, 16, 16
+    top = PLATEAU + 20
+
+    def color(x: int, y: int, k: int) -> int:
+        if k < PLATEAU + 2 or k == top - 1:
+            return DTAN
+        if y == y0:
+            for a in (x0 + 2, x0 + 11):
+                if a <= x <= a + 2 and PLATEAU + 4 <= k <= PLATEAU + 15 or x == a + 1 and k == PLATEAU + 16:
+                    return LIT
+        if x in (x0, x0 + w - 1) and (y - y0) % 4 == 2 and (y - y0) < 12 and PLATEAU + 6 <= k <= PLATEAU + 12:
+            return LIT
+        return TAN
+
+    sc.fill(rect(x0, y0, w, d), PLATEAU, top, color)
+    gable_roof(sc, x0, y0, w, d, top, ridge="y")
 
 
-def astronomy(kit: Kit, x: int, y: int) -> None:
-    """The tallest tower: a square base, a slender round shaft, a gallery of pinnacles, and a tall cone."""
-    base = hall_block(kit, x - 2, y - 2, 8, 8, 12)
-    top = round_tower(kit, x, y, 4, 22, base, cap=False)
-    kit.fill(x - 1, y - 1, 6, 6, top, DTAN)
-    for cx, cy in ((x - 1, y - 1), (x + 4, y - 1), (x - 1, y + 4), (x + 4, y + 4)):
-        pinnacle(kit, cx, cy, top + 1, 3)
-    top = round_tower(kit, x, y, 4, 6, top + 1, cap=False)
-    cone(kit, x, y, 4, top)
+def staircase_tower(sc: Sculpture, finials: Finials) -> None:
+    """The Marble Staircase Tower: 24 studs across, a corbelled crown, a spire twice as tall with Dumbledore's turrets."""
+    sc.owner = "the Marble Staircase Tower"
+    cx, cy, r = 76, 54, 12
+    crown = PLATEAU + 48
+    bands = {PLATEAU, PLATEAU + 1, PLATEAU + 18, PLATEAU + 34}
+    rows = list(range(PLATEAU + 5, crown - 2, 7))
+    sc.fill(circle(cx, cy, r), PLATEAU, crown, round_wall(cx, cy, bands, windows(r, 14, rows)))
+    sc.fill(circle(cx, cy, r + 0.5), crown, crown + 1, DTAN)
+    sc.fill(circle(cx, cy, r + 1), crown + 1, crown + 4, DTAN)
+    ring = circle(cx, cy, r + 1) - circle(cx, cy, r + 0.5)
+    sc.fill({(x, y) for x, y in ring if (x + y) % 2 == 0}, crown + 4, crown + 5, TAN)
+    spire(sc, cx, cy, r + 0.5, crown + 4, 46, finials, dormers=9)
+    sc.owner = "Dumbledore's turrets"
+    for angle, courses in ((205, 9), (180, 12), (155, 8)):
+        a = math.radians(angle)
+        x, y, k0 = round(cx + 9 * math.cos(a)) - 2, round(cy + 9 * math.sin(a)) - 2, crown + 16
+        k1 = k0 + courses
+        for k in range(k0, k1):
+            sc.part("87081", x, y, k, DTAN if k in (k0, k1 - 1) else TAN)
+        sc.part("272", x, y, k1, DBG)
+        sc.part("3942c", x + 1, y + 1, k1 + 3, DBG)
+        finials.append((x + 1, y + 1, k1 + 5))
 
 
-def hall_block(kit: Kit, x0: int, y0: int, w: int, d: int, courses: int) -> int:
-    """Walls with windows under a flat cornice, as a base for a tower; returns the cornice's top."""
-    top = kit.ring(x0, y0, w, d, Z, courses, facade(x0, y0, w, d, slits(courses)))
-    kit.fill(x0, y0, w, d, top, DTAN)
-    return top + 1
+def pepperpot(sc: Sculpture, finials: Finials) -> None:
+    """The fat round tower on its own ledge below the Great Hall's end, under a squat cone."""
+    sc.owner = "the pepperpot"
+    round_tower(sc, 64, 25, 5, PLATEAU - 6, PLATEAU + 18, 9, finials)
 
 
-GREAT_HALL = lambda u, c: u % 3 != 0 and 1 <= c <= 7
-CASTLE = [
-    ("Ravenclaw Tower, the great round tower", [("round", 28, 40, 8, 8, 28)]),
-    ("Entrance Hall", [("hall", 36, 40, 8, 10, 12)]),
-    ("The Great Hall, its lancet windows lit", [("great hall", 44, 37, 28, 8, 10)]),
-    ("Great Hall tower", [("square", 72, 36, 6, 6, 24)]),
-    ("Clock Tower and the hospital wing", [("hall", 78, 36, 10, 6, 9), ("square", 88, 36, 6, 6, 18)]),
-    ("Astronomy Tower", [("astronomy", 54, 50, 8, 8, 12)]),
-    ("Courtyard wings", [("hall", 44, 46, 10, 8, 11), ("hall", 62, 46, 16, 8, 12)]),
-    ("Gryffindor Tower", [("square", 80, 50, 6, 6, 32), ("hall", 86, 48, 10, 8, 9)]),
-    ("Transfiguration wing", [("hall", 28, 52, 16, 8, 10)]),
-    ("Headmaster's Tower", [("round", 66, 58, 4, 4, 34)]),
-    ("Library and north wings", [("hall", 44, 60, 20, 8, 10), ("hall", 70, 60, 20, 8, 9)]),
-    (
-        "Towers and turrets",
-        [
-            ("round", 36, 62, 4, 4, 20),
-            ("round", 92, 58, 4, 4, 16),
-            ("round", 28, 62, 4, 4, 14),
-            ("round", 42, 50, 2, 2, 16),
-            ("round", 78, 46, 2, 2, 15),
-            ("round", 72, 42, 2, 2, 15),
-            ("round", 26, 50, 2, 2, 12),
-            ("round", 54, 58, 2, 2, 18),
-        ],
-    ),
-]
-"""Steps of (kind, x, y, w, d, courses) on the crag top, front to back."""
+def quad(sc: Sculpture) -> None:
+    """The wings around the courtyard behind the Great Hall."""
+    sc.owner = "the Quad"
+    block(sc, 26, 48, 40, 30, 18, skip=rect(34, 56, 24, 14))
 
 
-def footprints() -> list[tuple[int, int, int, int]]:
-    return [
-        (x, y - (kind == "great hall"), w, d + (kind == "great hall"))
-        for _, parts in CASTLE
-        for kind, x, y, w, d, _ in parts
-    ]
+def east_front(sc: Sculpture, finials: Finials) -> None:
+    """The wing where the viaduct lands, and the tall-spired round tower in front of it."""
+    sc.owner = "the viaduct wing"
+    block(sc, 81, 32, 16, 14, 18)
+    sc.owner = "the viaduct tower"
+    round_tower(sc, 96, 28, 4, PLATEAU, PLATEAU + 30, 16, finials)
 
 
-async def castle(kit: Kit) -> None:
-    for title, parts in CASTLE:
-        for kind, x, y, w, d, courses in parts:
-            if kind == "round":
-                round_tower(kit, x, y, w, courses)
-            elif kind == "square":
-                square_tower(kit, x, y, w, courses)
-            elif kind == "hall":
-                hall(kit, x, y, w, d, courses)
-            elif kind == "great hall":
-                hall(kit, x, y, w, d, courses, window=GREAT_HALL, lit=LIT, buttresses=("front",))
-            elif kind == "astronomy":
-                astronomy(kit, x + 2, y + 2)
-        await kit.step(title)
+def gate_tower(sc: Sculpture, finials: Finials) -> None:
+    sc.owner = "the gate tower"
+    round_tower(sc, 141, 37, 5, PLATEAU - 2, PLATEAU + 24, 10, finials)
+
+
+def viaduct(sc: Sculpture) -> None:
+    """Tall slender piers rising from the lake, pointed arches, and a parapeted deck to the gate tower."""
+    sc.owner = "the viaduct"
+    x0, x1, y0, y1, deck = 97, 136, 35, 40, PLATEAU - 2
+    for x in range(x0, x1 + 1):
+        rel = (x - x0) % 5
+        for y in range(y0, y1 + 1):
+            low = 1 if rel in (3, 4) else deck - 1 if rel in (0, 2) else deck
+            sc.fill([(x, y)], low, deck + 2, stone({deck + 1, *range(low, low + 2)}))
+            if y in (y0, y1):
+                sc.fill([(x, y)], deck + 2, deck + 3 + (rel % 2 == 0), TAN)
+
+
+def boathouse(sc: Sculpture) -> None:
+    sc.owner = "the boathouse"
+    x0, y0, w, d = 104, 10, 8, 6
+
+    def color(x: int, y: int, k: int) -> int:
+        if y == y0 and 107 <= x <= 108 and k < 5:
+            return BLACK
+        return DTAN if k == 1 else TAN
+
+    sc.fill(rect(x0, y0, w, d), 1, 7, color)
+    gable_roof(sc, x0, y0, w, d, 7, ridge="y", pitch=1)
+
+
+def castle(sc: Sculpture, finials: Finials) -> None:
+    great_hall(sc, finials)
+    entrance(sc)
+    staircase_tower(sc, finials)
+    pepperpot(sc, finials)
+    quad(sc)
+    east_front(sc, finials)
+    gate_tower(sc, finials)
+    viaduct(sc)
+    boathouse(sc)
+
+
+async def raise_castle(kit: Kit, sc: Sculpture, ground: Ground, finials: Finials, band: int = 6) -> None:
+    pieces = sc.mesh(ground.course)
+    for k0 in range(0, int(pieces[-1][0]) + 1, band):
+        chunk = [(owner, b) for k, owner, b in pieces if k0 <= int(k) < k0 + band]
+        if not chunk:
+            continue
+        names = [name for name, _ in Counter(owner for owner, _ in chunk).most_common(3)]
+        listed = ", ".join(names[:-1]) + " and " + names[-1] if len(names) > 1 else names[0]
+        kit.pending = [b for _, b in chunk]
+        await kit.step(f"Courses {k0 + 1} to {k0 + band}: {listed}")
+    for x, y, k in finials:
+        kit.centered("4589", x, y, 1 + 3 * k, DBG)
+        kit.centered("30374", x, y, 4 + 3 * k, GOLD)
+    await kit.step("Gold finials on every spire")
 
 
 async def build() -> Kit:
     kit = Kit("hogwarts", "Hogwarts", PROMPT, W, D)
     rng = random.Random(7)
-    ground = Ground(kit, rng)
+    sc, finials = Sculpture(), []
+    castle(sc, finials)
+    ground = Ground(kit, rng, *pads(sc))
+    sc.clip(ground.course)
     await ground.lake()
     await ground.mesh()
-    await ground.surface({"castle": lambda x, y: LBG, "stairs": lambda x, y: TAN, "boathouse": lambda x, y: DTAN})
-    await castle(kit)
+    await ground.surface({"castle": lambda x, y: LBG, "footing": lambda x, y: DBG, "crag": lambda x, y: grass(x, y)})
+    await raise_castle(kit, sc, ground, finials)
     kit.save(STORY)
+    print(f"{sc.overhangs} bricks hang from the one above")
     return kit

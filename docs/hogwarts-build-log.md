@@ -62,3 +62,51 @@ Loop: script, run, render 4 views, then close-up looks at weak spots, fix, repea
   - `48310` half cone 8x4x6: rot 0 is the front half, rot 180 the back; together an 8x8 cone with a 4x4 top.
   - a 1x1 finial on a 2x2 cone sits between grid cells, so I added `Kit.centered` (half-stud offset, placed as a mounted part).
 - Lesson for Holo: **a one-render part test beats reasoning about rotations**. Colors per rotation make it readable at a glance.
+
+### 4.2 Terrain, three tries
+
+- v1: heightmap on 1-stud cells. Noisy, boxy, floating bricks.
+- v2: 2x2-stud super-cells, hidden columns placed first, 2-wide aligned runs so each face brick touches its column.
+- v3: edges bevelled with 2x2 slopes sized by the drop (1/2/3 courses). Crag facets, strata, olive moss. 6.5k pieces, 0 problems.
+- Lesson: **coarser cells + slopes read as rock**; 1-stud noise reads as pixels.
+
+### 4.3 Castle v1: rejected
+
+![v1](../data/refs/hogwarts/v1-sheet.png)
+
+10.7k pieces, 0 problems, and still wrong. User: "super off regarding the architecture", "no thin ass towers/walls".
+
+Why it failed:
+- I invented a layout from memory instead of reading plans.
+- Everything tiny (4x4 towers) so nothing reads from afar.
+- Castle sat back from the cliff edge; the plateau dwarfed it.
+
+### 4.4 Real plans, then a new scope
+
+| Ref | Source | What it taught |
+|---|---|---|
+| Stuart Craig's concept sketch | hogwarts4d.home.blog | the canonical left part: Great Hall on the cliff edge, Marble Staircase Tower behind its right end, pepperpot in front, viaduct right, boathouse below |
+| Hogwarts 4D model (fan rebuild of the film miniature) | same blog, block-in and detail renders | proportions: tower 92 ft wide, spire ~2x its width, top 600 ft above the lake; hall ~1.5x the tower's width long |
+| Harry Potter wiki | fandom | the big cone tower is the **Marble Staircase Tower** (Turris Magnus), with 3 small turrets on its cone |
+| LEGO 71043 | brickset | the same left part in bricks: tan walls, dark grey stepped cone, buttress pinnacles above the roof |
+
+Tools: web search for names and plans, `curl` the blog posts, `rg` the image URLs out of the HTML, `curl ?w=1000` for sized copies, read each image.
+
+Decision (agreed with the user): **build only the left part, at ~3x the scale**. Tower 24 studs across, hall 41x14, ~145 courses tall (portrait, like the film shot).
+
+Lesson: **name the buildings first** (search "which tower is in shot X"); a name unlocks plans, proportions and fan reconstructions.
+
+### 4.5 A voxel sculptor (`showcase/sculpt.py`)
+
+Big round towers and cones don't exist as parts, and hand-placing bricks can't union buildings. So:
+
+- Buildings are solids on a stud x course grid: `fill`, `roof` (hip or gable by erosion), `cone`, `part` (a real part claims its voxels).
+- `mesh` emits only the shell: studs next to air (2 deep on sloped solids), or open on top.
+- Steady steps become slopes: 45/65/75 degrees picked from the rise of the step above.
+- Every brick is held: a hanging stud gets a 2 to 4 stud bridge to a held one, most constrained studs first, else a hidden column down.
+
+Test: a 24-stud tower + cone next to a gabled hall, 3.3k pieces in 0.1 s, 4 floaters left (fixing).
+
+![sculpt test](../data/refs/hogwarts/sculpt-test.png)
+
+Lesson: **when parts can't express the shape, build a small geometry layer** and let it guarantee the rules (support, no overlap) by construction.
