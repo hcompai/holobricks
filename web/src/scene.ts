@@ -62,7 +62,10 @@ function instancedLine(material: THREE.Material): THREE.Material {
     copy.defines = { ...copy.defines, USE_INSTANCING: "" };
     if (copy instanceof THREE.ShaderMaterial) {
       copy.clipping = true;
-      copy.vertexShader = copy.vertexShader.replace(/vec4\( (position|control0|control1|position \+ direction), 1\.0 \)/g, "instanceMatrix * $&");
+      copy.vertexShader = copy.vertexShader.replace(
+        /vec4\( (position|control0|control1|position \+ direction), 1\.0 \)/g,
+        "instanceMatrix * $&",
+      );
     }
     lineMaterials.set(material, copy);
   }
@@ -152,7 +155,9 @@ class Batch {
         for (const group of source.geometry.groups) geometry.addGroup(group.start, group.count, group.materialIndex);
         matrices = new THREE.InstancedBufferAttribute(new Float32Array(capacity * 16), 16);
         geometry.setAttribute("instanceMatrix", matrices);
-        const material = Array.isArray(source.material) ? source.material.map(instancedLine) : instancedLine(source.material);
+        const material = Array.isArray(source.material)
+          ? source.material.map(instancedLine)
+          : instancedLine(source.material);
         object = new THREE.LineSegments(geometry, material);
       }
       object.frustumCulled = false;
@@ -309,7 +314,14 @@ export class BrickScene {
   }
 
   /** Point the camera along `direction` so the whole model (or the empty baseplate, or `focus`) fills the frame, then close in `zoom` times on `at`. */
-  private aim(direction: THREE.Vector3, width: number, depth: number, zoom = 1, at?: THREE.Vector3, focus?: THREE.Box3) {
+  private aim(
+    direction: THREE.Vector3,
+    width: number,
+    depth: number,
+    zoom = 1,
+    at?: THREE.Vector3,
+    focus?: THREE.Box3,
+  ) {
     this.root.updateMatrixWorld(true);
     const box = new THREE.Box3();
     if (focus) box.copy(focus);
@@ -412,7 +424,9 @@ export class BrickScene {
 
   /** The one view a builder asks for, with the build's x and y in studs and z in plates. */
   view(camera: Camera, box: Box | null = null, size = 768): Promise<Blob | null> {
-    const at = camera.at ? new THREE.Vector3(camera.at[0] * STUD, camera.at[2] * PLATE, -camera.at[1] * STUD) : undefined;
+    const at = camera.at
+      ? new THREE.Vector3(camera.at[0] * STUD, camera.at[2] * PLATE, -camera.at[1] * STUD)
+      : undefined;
     const tile = { direction: towardCamera(camera.angle, camera.elevation), zoom: camera.zoom, at, x: 0, y: 0 };
     return this.offscreen(size, [tile], 1, box);
   }

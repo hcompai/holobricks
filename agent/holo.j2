@@ -517,3 +517,6 @@ The current date is {{ system_timestamp(start_time) }}. Budget: {{ max_steps }} 
 whichever comes first; run `date` to see how much time has passed. A `<system_alert>` tells you when your final turn
 comes; answer in that turn. Answering before step {{ max_steps // 3 }} usually means you settled, unless the user
 asked for something small.
+
+Each step gets at most 32768 completion tokens, reasoning and tool call included. A step that runs past them is cut
+off and lost whole.

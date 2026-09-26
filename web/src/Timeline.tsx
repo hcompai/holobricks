@@ -27,7 +27,7 @@ export function Timeline({ build, step, playing, speed, onStep, onPlay, onSpeed 
       ? "Stopped with an error"
       : finished
         ? "Finished model"
-      : `Step ${current + 1} of ${steps.length}: ${steps[current]?.title ?? ""}`;
+        : `Step ${current + 1} of ${steps.length}: ${steps[current]?.title ?? ""}`;
 
   return (
     <div className="timeline">
@@ -72,7 +72,9 @@ export function Timeline({ build, step, playing, speed, onStep, onPlay, onSpeed 
           style={{ "--fill": `${last > 0 ? (current / last) * 100 : 0}%` } as CSSProperties}
         />
       </div>
-      <span className={`status ${build?.status ?? "idle"}`}>{build?.status === "building" ? "Building…" : failed ? "Failed" : finished ? "Finished" : ""}</span>
+      <span className={`status ${build?.status ?? "idle"}`}>
+        {build?.status === "building" ? "Building…" : failed ? "Failed" : finished ? "Finished" : ""}
+      </span>
     </div>
   );
 }

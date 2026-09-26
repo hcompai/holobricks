@@ -143,6 +143,10 @@ export const api = {
   stop: (id: string) => post(`/api/builds/${id}/stop`, {}),
   events: (id: string) => new EventSource(`/api/builds/${id}/events`),
   putRender: (id: string, request: string, png: Blob, pieces: number) =>
-    fetch(`/api/builds/${id}/renders/${request}`, { method: "PUT", body: png, headers: { "X-Pieces": String(pieces) } }),
+    fetch(`/api/builds/${id}/renders/${request}`, {
+      method: "PUT",
+      body: png,
+      headers: { "X-Pieces": String(pieces) },
+    }),
   putThumbnail: (id: string, png: Blob) => fetch(`/api/builds/${id}/thumbnail.png`, { method: "PUT", body: png }),
 };

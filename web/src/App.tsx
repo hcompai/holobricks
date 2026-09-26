@@ -147,17 +147,11 @@ export default function App() {
             <button className={center === "model" ? "active" : ""} onClick={() => setCenter("model")}>
               Model
             </button>
-            <button
-              className={center === "parts" ? "active" : ""}
-              disabled={!build}
-              onClick={() => setCenter("parts")}
-            >
+            <button className={center === "parts" ? "active" : ""} disabled={!build} onClick={() => setCenter("parts")}>
               Parts
             </button>
           </div>
-          {center === "model" && (
-            <ViewControls framing={framing} spin={spin} onFrame={setFraming} onSpin={setSpin} />
-          )}
+          {center === "model" && <ViewControls framing={framing} spin={spin} onFrame={setFraming} onSpin={setSpin} />}
         </div>
         <div className="stage">
           <div className={center === "model" ? "pane" : "pane hidden"}>

@@ -210,6 +210,7 @@ aside {
 .chat-log {
   flex: 1;
   overflow-y: auto;
+  scrollbar-width: none;
   padding: 16px 2px;
   display: flex;
   flex-direction: column;
@@ -330,13 +331,8 @@ aside {
 }
 
 .shimmer {
-  background: linear-gradient(
-      100deg,
-      var(--text-tertiary) 40%,
-      var(--text-default) 50%,
-      var(--text-tertiary) 60%
-    )
-    0 0 / 250% 100% no-repeat;
+  background: linear-gradient(100deg, var(--text-tertiary) 40%, var(--text-default) 50%, var(--text-tertiary) 60%) 0 0 /
+    250% 100% no-repeat;
   background-clip: text;
   color: transparent;
   animation:
@@ -353,6 +349,7 @@ aside {
 .thinking-text {
   max-height: 150px;
   overflow-y: auto;
+  scrollbar-width: none;
   font-size: 12px;
   line-height: 18px;
   color: var(--text-tertiary);
