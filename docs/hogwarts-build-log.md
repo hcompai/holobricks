@@ -136,8 +136,32 @@ A render looked unchanged after a real change. Cause: the user's open browser ta
 
 Result: 26.3k pieces, 41 steps, 0 problems.
 
+Lesson: **compare against the reference shot from the same camera** (`r.sh hogwarts out.png 335 4 1.3`); a generic view hides what's off.
+
+### 4.9 Layout from a floor plan
+
+User: "way off in terms of structure... missing the entire courtyard in front of the Great Hall". I had polished details on a wrong plan.
+
+The user sent 3 fan floor plans of the film castle. What they showed:
+
+| Plan | My build |
+|---|---|
+| Viaduct Courtyard: open yard at the tower's foot, right of the Hall | a solid block |
+| Entrance Hall: a narrow wing from the tower to the lake front | a 16x16 block |
+| South Courtyard: a 52-stud ring behind the tower, Gryffindor Tower opposite | a small box |
+| viaduct leaves from the courtyard | leaves from a wing |
+| switchback stairs from the courtyard down to the boathouse | missing |
+
+How: overlay a labelled grid on the plan, read corner pixels, rotate so the camera looks from the lake, scale by the tower (24 studs across). Then every building is placed relative to the tower's center.
+
+- Kept on the grid: the plan's diagonal viaduct and the 42 degree South Courtyard. Diagonal walls read as jagged bricks.
+- Terrain fix found on the way: a 2x2 terrain cell now meets the **highest** foot in it, so no building hovers a course above a lower lawn.
+
+Result: 33.6k pieces, 41 steps, 0 problems.
+
+![top](hogwarts/top.jpg)
 ![hero](hogwarts/hero.jpg)
 ![sheet](hogwarts/sheet.jpg)
 
-Lesson: **compare against the reference shot from the same camera** (`r.sh hogwarts out.png 335 4 1.3`); a generic view hides what's off.
+Lesson: **get the plan right before any detail**. Find a floor plan first, and check the render's top view against it at every step.
 
