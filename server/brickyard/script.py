@@ -12,7 +12,7 @@ from brickyard import ldraw, shapes
 from brickyard.shapes import Brick, Cell
 
 SOURCE = "<script>"
-MAX_BRICKS = 20_000
+MAX_BRICKS = 100_000
 PRINT_LIMIT = 2000
 API = ("step", "brick", "top")
 

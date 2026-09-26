@@ -9,7 +9,7 @@ import uuid
 from pathlib import Path
 from typing import Protocol
 
-from brickyard.model import Box, Build, Camera, Message, Piece, Placement, Step
+from brickyard.model import Box, Build, Camera, Message, Piece, Placement, Step, footprint
 from brickyard.viewer import Viewers
 
 log = logging.getLogger("brickyard")
@@ -118,7 +118,17 @@ class Session:
         pieces = [Piece(id=next_id + i, step=step.index, **pl.model_dump()) for i, pl in enumerate(placements)]
         self.build.steps.append(step)
         self.build.pieces += pieces
-        self._publish({"type": "step", "step": step.model_dump(), "pieces": [p.model_dump() for p in pieces]})
+        width, depth = footprint(pieces)
+        self.build.width, self.build.depth = max(self.build.width, width), max(self.build.depth, depth)
+        self._publish(
+            {
+                "type": "step",
+                "step": step.model_dump(),
+                "pieces": [p.model_dump() for p in pieces],
+                "width": self.build.width,
+                "depth": self.build.depth,
+            }
+        )
         await asyncio.sleep(0)
         return step
 
@@ -126,7 +136,8 @@ class Session:
         """Keep only the first `steps` steps and their pieces."""
         self.build.steps = self.build.steps[:steps]
         self.build.pieces = [p for p in self.build.pieces if p.step < steps]
-        self._publish({"type": "rewind", "steps": steps})
+        self.build.width, self.build.depth = footprint(self.build.pieces)
+        self._publish({"type": "rewind", "steps": steps, "width": self.build.width, "depth": self.build.depth})
 
     def think(self, text: str, reset: bool = False) -> None:
         """Stream the builder's live reasoning; ephemeral, never persisted."""

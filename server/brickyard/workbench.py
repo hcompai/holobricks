@@ -130,9 +130,8 @@ class Workbench:
     ) -> tuple[list[Placement], list[str], list[str]]:
         """Placements that fit, plus rejection and warning lines, for a batch checked against itself and the build.
 
-        Mounted placements hang on a wall, so they only have to stay in bounds and clear of other pieces.
+        Mounted placements hang on a wall, so they only have to stay at x, y >= 0 and clear of other pieces.
         """
-        width, depth = self.session.build.width * ldraw.STUD, self.session.build.depth * ldraw.STUD
         indexed = self._index()
         batch: dict[tuple[int, int], list[tuple[tuple, str]]] = {}
 
@@ -169,10 +168,8 @@ class Workbench:
                 candidates.append((label, p, False))
         for label, placement, needs_support in candidates:
             box = bounds(placement)
-            if box[0][0] < -EPS or box[0][2] < -EPS or box[1][0] > width + EPS or box[1][2] > depth + EPS:
-                rejected.append(
-                    f"{label}: outside the {self.session.build.width}x{self.session.build.depth} build area"
-                )
+            if box[0][0] < -EPS or box[0][2] < -EPS:
+                rejected.append(f"{label}: x and y start at 0")
                 continue
             neighbors = near(box)
             hit = next(((other, what) for other, what in neighbors if _collides(box, other)), None)

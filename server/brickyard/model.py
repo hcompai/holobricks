@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import math
 import time
 import uuid
 from collections import Counter
+from collections.abc import Iterable
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -52,8 +54,8 @@ class Build(BaseModel):
     name: str = "Untitled build"
     prompt: str = ""
     builder: str = "demo"
-    width: int = 32
-    depth: int = 32
+    width: int = 0
+    depth: int = 0
     created: float = Field(default_factory=time.time)
     status: Literal["idle", "building", "done", "error"] = "idle"
     pieces: list[Piece] = []
@@ -214,6 +216,14 @@ def baseplate(color: int) -> Placement:
 
 
 Vec = tuple[float, float, float]
+
+
+def footprint(pieces: Iterable[Placement | Piece]) -> tuple[int, int]:
+    """Studs from x 0 and y 0 to the far sides of the pieces, (0, 0) for none."""
+    far = [bounds(p)[1] for p in pieces]
+    width = max((math.ceil((h[0] - 0.5) / ldraw.STUD) for h in far), default=0)
+    depth = max((math.ceil((h[2] - 0.5) / ldraw.STUD) for h in far), default=0)
+    return width, depth
 
 
 def bounds(p: Placement | Piece) -> tuple[Vec, Vec]:

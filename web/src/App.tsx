@@ -94,9 +94,11 @@ export default function App() {
             <span className="title">{build.name}</span>
             <span className="chip">{build.pieces.length.toLocaleString()} pieces</span>
             <span className="chip">{build.steps.length} steps</span>
-            <span className="chip">
-              {build.width}×{build.depth} studs
-            </span>
+            {build.width > 0 && (
+              <span className="chip">
+                {build.width}×{build.depth} studs
+              </span>
+            )}
           </>
         )}
         <span className="spacer" />

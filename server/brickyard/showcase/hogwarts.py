@@ -755,7 +755,7 @@ async def raise_castle(kit: Kit, sc: Sculpture, ground: Ground, finials: Finials
 
 
 async def build() -> Kit:
-    kit = Kit("hogwarts", "Hogwarts", PROMPT, W, D)
+    kit = Kit("hogwarts", "Hogwarts", PROMPT)
     rng = random.Random(7)
     sc, finials = Sculpture(), []
     castle(sc, finials)

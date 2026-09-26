@@ -15,12 +15,20 @@ function apply(build: Build, event: BuildEvent): Build {
       return { ...build, messages: [...build.messages, event.message] };
     case "step":
       if (event.step.index < build.steps.length) return build;
-      return { ...build, steps: [...build.steps, event.step], pieces: [...build.pieces, ...event.pieces] };
+      return {
+        ...build,
+        steps: [...build.steps, event.step],
+        pieces: [...build.pieces, ...event.pieces],
+        width: event.width,
+        depth: event.depth,
+      };
     case "rewind":
       return {
         ...build,
         steps: build.steps.slice(0, event.steps),
         pieces: build.pieces.filter((p) => p.step < event.steps),
+        width: event.width,
+        depth: event.depth,
       };
     case "thinking":
     case "render":

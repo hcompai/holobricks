@@ -8,7 +8,7 @@
 ![Brickyard showing the Paris diorama](docs/brickyard.jpg)
 
 - **Chat** to describe a model; Holo, a sagent agent, writes a Python build script, and every run rebuilds the model, streams the new steps and shows Holo the render.
-- **Every brick is checked**: inside the build area, no overlaps, resting on something.
+- **Every brick is checked**: no overlaps, resting on something; the model grows as large as it needs.
 - **Replay** the steps, browse the parts list, download the `.ldr`.
 
 Gallery for the H team: [brickyard-h-company.vercel.app](https://brickyard-h-company.vercel.app) (Vercel login).

@@ -55,8 +55,8 @@ export function Viewer({ build, step, renderRequest, framing, spin }: Props) {
   const framedBuild = useRef<string | null>(null);
   const thumbnailed = useRef(new Set<string>());
   const answered = useRef(new Set<string>());
-  const width = build?.width ?? 32;
-  const depth = build?.depth ?? 32;
+  const width = build?.width || 32;
+  const depth = build?.depth || 32;
 
   useEffect(() => {
     const s = new BrickScene(container.current!);

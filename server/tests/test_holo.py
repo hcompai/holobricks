@@ -35,27 +35,29 @@ def bench(tmp_path):
     return Workbench(Session(Build(), Store(tmp_path)))
 
 
-def test_workbench_places_valid_bricks_and_explains_every_rejection(bench):
+def test_workbench_places_valid_bricks_anywhere_from_x_and_y_0_and_explains_every_rejection(bench):
     result = asyncio.run(
         bench.add(
             "Base",
             [
                 brick(x=4, y=4),
                 brick(x=5, y=4),
-                brick(x=30, y=0),
+                brick(x=-1, y=0),
+                brick(x=200, y=150),
                 brick(part="nope"),
                 brick(x=10, y=10, z=6),
                 brick(x=4, y=4, z=3, rotation=90),
             ],
         )
     )
-    assert "placed 3 pieces" in result.text
+    assert "placed 4 pieces" in result.text
     assert "overlaps brick 1 (3001 at x=4 y=4 z=0) of this step" in result.text
-    assert "outside the 32x32 build area" in result.text
+    assert "brick 3 (3001 at x=-1 y=0 z=0): x and y start at 0" in result.text
     assert "unknown part" in result.text
-    assert "brick 5 (3001 at x=10 y=10 z=6): floating" in result.text
+    assert "brick 6 (3001 at x=10 y=10 z=6): floating" in result.text
     placed = [grid(p) for p in bench.pieces]
-    assert placed == [(4, 4, 0, 0), (10, 10, 6, 0), (4, 4, 3, 90)]
+    assert placed == [(4, 4, 0, 0), (200, 150, 0, 0), (10, 10, 6, 0), (4, 4, 3, 90)]
+    assert (bench.session.build.width, bench.session.build.depth) == (204, 152)
 
 
 def test_overhanging_parts_only_fill_their_footprint(bench):
@@ -106,11 +108,11 @@ def test_a_script_rebuilds_from_its_first_changed_step_and_names_the_lines_of_it
     assert [p for p in bench.pieces if p.step == 0] == walls
     assert {p.color for p in bench.pieces if p.step == 1} == {4}
 
-    stray = HOUSE.replace("320", "4") + 'brick("3001", 40, 0, 0, 4)\n'
+    stray = HOUSE.replace("320", "4") + 'brick("3001", -1, 0, 0, 4)\n'
     for _ in range(2):
         result = asyncio.run(bench.run_script(stray))
         assert result.problems == 1 and "kept steps 1 to 2, rebuilt 1 steps" in result.text
-        assert 'line 12 `brick("3001", 40, 0, 0, 4)` (3001 at x=40 y=0 z=0): outside' in result.text
+        assert 'line 12 `brick("3001", -1, 0, 0, 4)` (3001 at x=-1 y=0 z=0): x and y start at 0' in result.text
 
     before = list(bench.pieces)
     broken = asyncio.run(bench.run_script(bench.session.build.script + "undefined()\n"))
@@ -228,7 +230,7 @@ def test_holo_gets_the_task_on_stdin_and_stop_ends_its_whole_process_group(tmp_p
 
     pids = asyncio.run(main())
     task = (workspace / "task.txt").read_text()
-    assert task.startswith("# Request\na tower") and "x runs 0-31" in task and task.endswith(session.build.id)
+    assert task.startswith("# Request\na tower") and "Build area" not in task and task.endswith(session.build.id)
     assert "the lighthouse from the pier" in task and "No pieces yet." in task
     assert not session.build.steps
     assert (workspace / "build.py").exists() and (workspace / "showcase" / "paris.png").exists()

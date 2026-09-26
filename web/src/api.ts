@@ -83,8 +83,8 @@ export type BuildEvent =
   | { type: "hello"; build: BuildSummary }
   | { type: "build"; build: BuildSummary }
   | { type: "message"; message: Message }
-  | { type: "step"; step: Step; pieces: Piece[] }
-  | { type: "rewind"; steps: number }
+  | { type: "step"; step: Step; pieces: Piece[]; width: number; depth: number }
+  | { type: "rewind"; steps: number; width: number; depth: number }
   | { type: "thinking"; text: string; reset: boolean }
   | ({ type: "render" } & RenderRequest);
 

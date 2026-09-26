@@ -17,8 +17,8 @@ FACINGS = {"south": 0, "west": 90, "north": 180, "east": 270}
 class Kit:
     """Collects bricks into validated steps of the build `id`, replacing any earlier version in the library."""
 
-    def __init__(self, id: str, name: str, prompt: str, width: int, depth: int):
-        self.build = Build(id=id, name=name, prompt=prompt, builder="claude", width=width, depth=depth, status="done")
+    def __init__(self, id: str, name: str, prompt: str):
+        self.build = Build(id=id, name=name, prompt=prompt, builder="claude", status="done")
         self.session = Session(self.build, Store())
         self.session.store.thumbnail(id).unlink(missing_ok=True)
         self.bench = Workbench(self.session)
