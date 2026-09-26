@@ -1,9 +1,9 @@
 <h1 align="center">
-  <img src="docs/brick.png" alt="" width="64" align="middle" />
+  <img src="docs/brick.png" alt="" width="64" align="absmiddle" />
   Brickyard
 </h1>
 
-<p align="center">Watch Holo build LEGO models from real LDraw parts, one instruction step at a time.</p>
+<p align="center">Watch Holo build LEGO models step by step.</p>
 
 ![Brickyard showing the Paris diorama](docs/brickyard.jpg)
 
@@ -60,7 +60,7 @@ server/.venv/bin/brickyard
 | model, reasoning effort, step and time budget, tools | `agent/holo.yaml` |
 | how Holo builds: principles, workflow, the build script API, parts, colors | `agent/holo.j2` |
 | the build script functions | `server/brickyard/script.py` (document them in `agent/holo.j2`) |
-| the icon | `scripts/brick-icon.py`, rendered with `blender -b -P scripts/brick-icon.py -- docs/brick.png` |
+| the icon | `scripts/brick-icon.py`, rendered with `blender -b -P scripts/brick-icon.py -- /tmp/brick.png`, then resized (`sips -Z`) and compressed (`pngquant`) into `docs/brick.png` (128 px), `web/public/brick.png` (64 px) and `web/public/brick-touch.png` (180 px, on white) |
 
 Each request leaves `data/workspaces/<build>/runs/<time>.log` (what Holo did, as the terminal shows it) and `<time>.jsonl` (the full trajectory, reasoning included). Try the tools by hand from a workspace: `BRICKYARD_BUILD=<build> ../../../server/.venv/bin/bricks run`.
 
