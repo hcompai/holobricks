@@ -165,3 +165,31 @@ Result: 33.6k pieces, 41 steps, 0 problems.
 
 Lesson: **get the plan right before any detail**. Find a floor plan first, and check the render's top view against it at every step.
 
+
+### 4.10 Life, easter eggs, and the Hall's front
+
+User: "make it lively, go into details, maybe some easter eggs". Then: "in front of the Great Hall there's another building that makes no sense", with a film still and a LEGO Great Hall: "should look like this".
+
+| Added | Where |
+|---|---|
+| lawns with paths, fountain, 4 trees, flower borders | South Courtyard |
+| 2 trees, 4 lamps, gold statue, paving | Viaduct Courtyard |
+| ivy on the lower walls, lanterns on the viaduct | walls |
+| pines on flat crags, denser for the Forbidden Forest | cliffs |
+| Hagrid's hut, pumpkin patch | left edge |
+| Whomping Willow holding the Ford Anglia | lawn behind the Hall |
+| giant squid tentacles, Trevor the toad | Black Lake |
+| gabled front: crow-stepped gable, clock, stacked lancets, pinnacles, pointed door | Great Hall, facing the courtyard |
+| roof dormers, spires on the corners | Great Hall roof |
+
+- The stray building was my Entrance Hall wing, placed from a plan without checking how the film shows it. I removed it.
+- Decor goes in its own steps, after the sculptor. It uses `kit.add` on real surfaces (lawn cells owned by the grounds, the top of a ground column), so the checker catches anything that floats.
+- Bugs found in renders, not in code: flowers on green ivy walls (filter by owner too), a toad inside a rock column, squid tentacles that looked like pipes (now a thick base that tapers and curls).
+
+Result: 34.4k pieces, 46 steps, 0 problems.
+
+![hero](hogwarts/hero.jpg)
+![front](hogwarts/front.jpg)
+![willow](hogwarts/willow.jpg)
+
+Lesson: **when the user sends a reference image, copy it feature by feature**, then render from the same angle. A plan tells you where things are; a photo tells you what they look like.
