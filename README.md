@@ -1,5 +1,5 @@
 <h1 align="center">
-  <img src="docs/brick.png" alt="" width="64" align="absmiddle" />
+  <img src="docs/brick.png" alt="" width="64" align="absmiddle" hspace="8" />
   Brickyard
 </h1>
 
