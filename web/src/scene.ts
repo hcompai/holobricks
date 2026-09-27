@@ -4,6 +4,7 @@ import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment
 import { LDrawLoader } from "three/examples/jsm/loaders/LDrawLoader.js";
 import { LDrawConditionalLineMaterial } from "three/examples/jsm/materials/LDrawConditionalLineMaterial.js";
 import { api, type Box, type Camera, type Piece } from "./api";
+import { loadAsset, pieceRevision } from "./loadAsset";
 
 export type View = "iso" | "isoBack" | "front" | "top";
 
@@ -235,7 +236,8 @@ export class BrickScene {
   private batches = new Map<string, Batch>();
   private parts = new Map<string, Promise<string>>();
   private templates = new Map<string, Promise<THREE.Group>>();
-  private materials: Promise<void>;
+  private materials: Promise<void> | null = null;
+  private lifetime = new AbortController();
   private visibleStep = Infinity;
   private loading: Promise<void> = Promise.resolve();
   private wanted: Piece[] | null = null;
@@ -250,7 +252,7 @@ export class BrickScene {
 
   constructor(
     private container: HTMLElement,
-    private options: { replay?: boolean; signal?: AbortSignal } = {},
+    private options: { replay?: boolean; signal?: AbortSignal; onError?: (error: Error) => void } = {},
   ) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
     this.renderer.setPixelRatio(options.replay ? 1 : Math.min(window.devicePixelRatio, 2));
@@ -282,7 +284,9 @@ export class BrickScene {
 
     this.loader.smoothNormals = true;
     this.loader.setConditionalLineMaterial(LDrawConditionalLineMaterial);
-    this.materials = this.loader.preloadMaterials(api.ldconfigUrl);
+    options.signal?.addEventListener("abort", () => this.lifetime.abort(), { once: true });
+    if (options.signal?.aborted) this.lifetime.abort();
+    this.renderer.domElement.addEventListener("webglcontextlost", this.contextLost);
 
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(container);
@@ -301,12 +305,15 @@ export class BrickScene {
     this.dirty = false;
     if (this.shadowsStale) this.fitShadows();
     this.light(VIEW_LIGHT);
+    this.adaptEdges(this.renderer.getDrawingBufferSize(new THREE.Vector2()).y);
+    this.renderer.render(this.scene, this.camera);
+  }
+
+  private adaptEdges(height: number) {
     const distance = this.camera.position.distanceTo(this.controls.target);
-    const height = this.renderer.getDrawingBufferSize(new THREE.Vector2()).y;
     const pixels = (STUD * height) / (2 * distance * Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)));
     const { opacity, fromPixels, toPixels } = EDGE_FADE;
     fadeEdges(opacity * THREE.MathUtils.smoothstep(pixels, fromPixels, toPixels));
-    this.renderer.render(this.scene, this.camera);
   }
 
   /** Aim the sun's shadow camera at the whole model and redraw its shadow map on the next render. */
@@ -343,6 +350,8 @@ export class BrickScene {
   dispose() {
     if (this.disposed) return;
     this.disposed = true;
+    this.lifetime.abort();
+    this.renderer.domElement.removeEventListener("webglcontextlost", this.contextLost);
     cancelAnimationFrame(this.frame);
     this.resizeObserver.disconnect();
     this.controls.dispose();
@@ -374,7 +383,7 @@ export class BrickScene {
       }
     });
     this.renderer.dispose();
-    if (this.options.replay) this.renderer.forceContextLoss();
+    this.renderer.forceContextLoss();
     this.renderer.domElement.remove();
   }
 
@@ -388,66 +397,105 @@ export class BrickScene {
     if (!this.userMoved) this.frameView(this.framing.view, this.framing.width, this.framing.depth);
   }
 
-  /** The packed part places it in main color 16 on its second line; each color gets its own parsed copy. */
+  private contextLost = (event: Event) => {
+    event.preventDefault();
+    this.options.onError?.(new Error("The 3D connection was lost. Reload the model to recover."));
+  };
+
+  private assertAvailable() {
+    if (this.disposed || this.lifetime.signal.aborted) throw new Error("Renderer disposed");
+    if (this.renderer.getContext().isContextLost()) throw new Error("The 3D connection was lost");
+  }
+
+  private palette(): Promise<void> {
+    if (!this.materials) {
+      const pending = loadAsset(api.ldconfigUrl, this.lifetime.signal).then(async (text) => {
+        if (!/^0 !COLOUR /m.test(text)) throw new Error("Empty LDraw color palette");
+        const url = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
+        try {
+          await this.loader.preloadMaterials(url);
+        } finally {
+          URL.revokeObjectURL(url);
+        }
+      });
+      this.materials = pending;
+      void pending.catch(() => {
+        if (this.materials === pending) this.materials = null;
+      });
+    }
+    return this.materials;
+  }
+
+  /** Failed fetches/parses are evicted, so retrying can actually recover. */
   private template(part: string, color: number): Promise<THREE.Group> {
     const key = `${part}:${color}`;
     let template = this.templates.get(key);
     if (!template) {
       let text = this.parts.get(part);
       if (!text) {
-        text = fetch(api.partUrl(part), { signal: this.options.signal }).then((r) => {
-          if (!r.ok) throw new Error(`Could not load part ${part} (${r.status})`);
-          return r.text();
-        });
+        text = loadAsset(api.partUrl(part), this.lifetime.signal);
         this.parts.set(part, text);
+        const pending = text;
+        void pending.catch(() => {
+          if (this.parts.get(part) === pending) this.parts.delete(part);
+        });
       }
-      template = Promise.all([text, this.materials]).then(
-        ([packed]) =>
-          new Promise<THREE.Group>((resolve, reject) =>
-            this.loader.parse(packed.replace("\n1 16 ", `\n1 ${color} `), resolve, reject),
-          ),
-      );
+      template = Promise.all([text, this.palette()]).then(([packed]) => {
+        this.assertAvailable();
+        // Never parse HTML/JSON errors or follow external references from an incomplete pack.
+        if (!packed.startsWith("0 FILE ") || !/\n[134] /m.test(packed))
+          throw new Error(`Invalid render asset: ${part}`);
+        return new Promise<THREE.Group>((resolve, reject) => {
+          const timer = setTimeout(() => reject(new Error(`Parsing ${part} timed out`)), 12000);
+          this.loader.parse(
+            packed.replace("\n1 16 ", `\n1 ${color} `),
+            (group) => {
+              clearTimeout(timer);
+              if (new THREE.Box3().setFromObject(group).isEmpty()) reject(new Error(`Empty render asset: ${part}`));
+              else resolve(group);
+            },
+            (error) => {
+              clearTimeout(timer);
+              reject(error);
+            },
+          );
+        });
+      });
       this.templates.set(key, template);
+      const pending = template;
+      void pending.catch(() => {
+        if (this.templates.get(key) === pending) this.templates.delete(key);
+      });
     }
     return template;
   }
 
-  /** Show exactly these pieces; calls apply in order, skipping any a later call superseded, and each resolves once its turn is drawn. */
-  setPieces(pieces: Piece[]): Promise<void> {
+  /** True only after these exact pieces were drawn. Superseded calls cannot acknowledge success. */
+  setPieces(pieces: Piece[]): Promise<boolean> {
     this.wanted = pieces;
-    this.loading = this.loading
+    const update = this.loading
       .catch(() => undefined)
-      .then(() => (this.wanted === pieces && this.shown !== pieces ? this.apply(pieces) : undefined));
-    return this.loading;
+      .then(async () => {
+        if (this.wanted !== pieces) return false;
+        if (this.shown !== pieces && !(await this.apply(pieces, () => this.wanted === pieces))) return false;
+        this.assertAvailable();
+        this.draw();
+        return this.wanted === pieces;
+      });
+    this.loading = update.then(
+      () => undefined,
+      () => undefined,
+    );
+    return update;
   }
 
-  /** Bind an agent image to its exact geometry and serialize it with all scene updates. */
+  /** Capture only the current scene, never install an obsolete agent request into the user's canvas. */
   renderBuild(pieces: Piece[], revision: string, camera: Camera | null, box: Box | null): Promise<Blob | null> {
     const render = this.loading
       .catch(() => undefined)
       .then(async () => {
-        const rows = pieces.map((p) => [
-          p.id,
-          p.part,
-          p.color,
-          p.step,
-          ...[...p.pos, ...p.rot].map((v) => Math.round(v * 1_000_000)),
-        ]);
-        const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(rows)));
-        const actual = Array.from(new Uint8Array(digest), (v) => v.toString(16).padStart(2, "0")).join("");
-        if (actual !== revision) return null;
-        // Preflight every distinct asset before changing the scene. A failed or empty template
-        // must never produce an apparently verified image with some pieces silently missing.
-        const parts = new Map(pieces.map((p) => [`${p.part}:${p.color}`, p]));
-        await Promise.all(
-          [...parts.values()].map(async (p) => {
-            const template = await this.template(p.part, p.color);
-            if (new THREE.Box3().setFromObject(template).isEmpty()) {
-              throw new Error(`Empty render asset: ${p.part} in color ${p.color}`);
-            }
-          }),
-        );
-        await this.apply(pieces);
+        if (this.wanted !== pieces || this.shown !== pieces || (await pieceRevision(pieces)) !== revision) return null;
+        this.assertAvailable();
         return camera ? this.view(camera, box) : this.sheet(box);
       });
     this.loading = render.then(
@@ -457,7 +505,22 @@ export class BrickScene {
     return render;
   }
 
-  private async apply(pieces: Piece[]) {
+  renderThumbnail(pieces: Piece[]): Promise<Blob | null> {
+    const render = this.loading
+      .catch(() => undefined)
+      .then(() => {
+        if (this.wanted !== pieces || this.shown !== pieces) return null;
+        this.assertAvailable();
+        return this.thumbnail();
+      });
+    this.loading = render.then(
+      () => undefined,
+      () => undefined,
+    );
+    return render;
+  }
+
+  private async apply(pieces: Piece[], current: () => boolean): Promise<boolean> {
     const groups = new Map<string, Piece[]>();
     for (const p of pieces) {
       const key = `${p.part}:${p.color}`;
@@ -465,16 +528,10 @@ export class BrickScene {
       if (group) group.push(p);
       else groups.set(key, [p]);
     }
-    const templates = await Promise.all(
-      [...groups.values()].map(([p]) =>
-        this.template(p.part, p.color).catch((error) => {
-          if (this.options.replay) throw error;
-          console.error(`Could not load ${p.part} in color ${p.color}`, error);
-          return null;
-        }),
-      ),
-    );
-    if (this.disposed) return;
+    // Preflight the complete candidate before touching any live batch.
+    const templates = await Promise.all([...groups.values()].map(([p]) => this.template(p.part, p.color)));
+    this.assertAvailable();
+    if (!current()) return false;
     for (const [key, batch] of this.batches) {
       if (groups.has(key)) continue;
       batch.dispose();
@@ -489,6 +546,13 @@ export class BrickScene {
     });
     this.shown = pieces;
     this.dirty = this.shadowsStale = true;
+    return true;
+  }
+
+  /** Flush the current camera and timeline before acknowledging a revision. */
+  drawCurrent() {
+    this.assertAvailable();
+    this.draw();
   }
 
   setVisibleStep(step: number) {
@@ -591,38 +655,40 @@ export class BrickScene {
     canvas.height = size * Math.ceil(tiles.length / columns);
     const ctx = canvas.getContext("2d")!;
 
-    this.setVisibleStep(Infinity);
-    this.renderer.clippingPlanes = focus ? clippingPlanes(focus) : [];
-    this.renderer.setPixelRatio(1);
-    this.renderer.setSize(size * 2, size * 2, false);
-    fadeEdges(1);
-    this.light(SHEET_LIGHT);
-    this.camera.aspect = 1;
-    for (const tile of tiles) {
-      this.aim(tile.direction, 32, 32, tile.zoom, tile.at, focus);
-      this.renderer.render(this.scene, this.camera);
-      ctx.fillStyle = BACKDROP;
-      ctx.fillRect(tile.x, tile.y, size, size);
-      ctx.drawImage(this.renderer.domElement, tile.x, tile.y, size, size);
-      if (tile.label) {
-        ctx.font = "600 15px system-ui, sans-serif";
-        ctx.fillStyle = "#1c1c26";
-        ctx.fillText(tile.label, tile.x + 10, tile.y + 22);
-        ctx.strokeStyle = "#d8d8e2";
-        ctx.strokeRect(tile.x + 0.5, tile.y + 0.5, size - 1, size - 1);
+    try {
+      this.setVisibleStep(Infinity);
+      this.renderer.clippingPlanes = focus ? clippingPlanes(focus) : [];
+      this.renderer.setPixelRatio(1);
+      this.renderer.setSize(size * 2, size * 2, false);
+      this.light(SHEET_LIGHT);
+      this.camera.aspect = 1;
+      for (const tile of tiles) {
+        this.aim(tile.direction, 32, 32, tile.zoom, tile.at, focus);
+        this.adaptEdges(size);
+        this.renderer.render(this.scene, this.camera);
+        ctx.fillStyle = BACKDROP;
+        ctx.fillRect(tile.x, tile.y, size, size);
+        ctx.drawImage(this.renderer.domElement, tile.x, tile.y, size, size);
+        if (tile.label) {
+          ctx.font = "600 15px system-ui, sans-serif";
+          ctx.fillStyle = "#1c1c26";
+          ctx.fillText(tile.label, tile.x + 10, tile.y + 22);
+          ctx.strokeStyle = "#d8d8e2";
+          ctx.strokeRect(tile.x + 0.5, tile.y + 0.5, size - 1, size - 1);
+        }
       }
+    } finally {
+      this.setVisibleStep(visibleStep);
+      this.renderer.clippingPlanes = [];
+      this.renderer.setPixelRatio(pixelRatio);
+      this.resize();
+      Object.assign(this.camera, { near: saved.near, far: saved.far });
+      this.camera.position.copy(saved.position);
+      this.camera.updateProjectionMatrix();
+      this.controls.target.copy(saved.target);
+      this.controls.update();
+      this.draw();
     }
-
-    this.setVisibleStep(visibleStep);
-    this.renderer.clippingPlanes = [];
-    this.renderer.setPixelRatio(pixelRatio);
-    this.resize();
-    Object.assign(this.camera, { near: saved.near, far: saved.far });
-    this.camera.position.copy(saved.position);
-    this.camera.updateProjectionMatrix();
-    this.controls.target.copy(saved.target);
-    this.controls.update();
-    this.dirty = true;
     return new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
   }
 

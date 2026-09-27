@@ -8,6 +8,7 @@ import json
 import math
 import sys
 import tempfile
+from collections import Counter
 from dataclasses import dataclass, field
 
 from pydantic import BaseModel, ValidationError
@@ -371,7 +372,21 @@ class Workbench:
         png = await self.session.render(view, inside)
         summary = await asyncio.to_thread(self.summary)
         if png is None:
-            return Result(f"No viewer is open, so no image this time.\n{summary}", note=f"{note} (no viewer open)")
+            return Result(
+                f"No verified render was received (viewer unavailable, asset failure, or timeout).\n{summary}",
+                note=f"{note} (render unavailable)",
+                problems=1,
+            )
+        palette = await asyncio.to_thread(ldraw.colors)
+        colors = Counter(p.color for p in self.pieces if inside is None or inside.holds(p))
+        summary += "\nRendered revision: " + self.session.build.revision
+        summary += "\nStored LDraw colors: " + "; ".join(
+            f"{color} {palette.get(color, ('Unknown', ''))[0]} × {count}" for color, count in colors.most_common()
+        )
+        summary += (
+            "\nEvery part's geometry was loaded before this render. Shading and outlines can darken surfaces; "
+            "check stored color codes and an exact part-ID lookup before changing geometry to fix an apparent color."
+        )
         await self.session.say(note, role="tool", images=[self.session.store.save_image(png, "image/png")])
         caption = "The render: 3/4 front-right, 3/4 back-left, front, and top (back at the top)."
         if view:

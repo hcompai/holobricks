@@ -21,7 +21,7 @@ function urlBuildId(): string | null {
 
 export default function App() {
   const [buildId, setBuildId] = useState<string | null>(urlBuildId);
-  const { build, loading, thinking, renderRequest, error } = useBuild(buildId);
+  const { build, loading, thinking, renderRequest, error, syncError } = useBuild(buildId);
   const viewer = useRef<ViewerHandle>(null);
   const [builds, setBuilds] = useState<BuildSummary[] | null>(null);
   const [buildsFailed, setBuildsFailed] = useState(false);
@@ -249,6 +249,7 @@ export default function App() {
               opening={buildId && !error ? `Opening ${heading?.name ?? "the build"}` : null}
               step={visibleStep}
               renderRequest={renderRequest}
+              syncError={syncError}
               framing={framing}
               spin={spin}
               thumbnailFresh={

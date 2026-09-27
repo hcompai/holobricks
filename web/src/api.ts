@@ -41,6 +41,8 @@ export interface BuildSummary {
 }
 
 export interface Build extends Omit<BuildSummary, "pieces" | "steps" | "thumbnail"> {
+  /** Geometry fingerprint; optional for older static gallery exports. */
+  revision?: string;
   pieces: Piece[];
   steps: Step[];
   messages: Message[];
@@ -156,6 +158,10 @@ const post = (url: string, body: unknown) =>
 export const api = {
   builds: () => json<BuildSummary[]>(fetch(urls.builds)),
   build: (id: string) => json<Build>(fetch(urls.build(id))),
+  state: (id: string, after: string, signal: AbortSignal) =>
+    json<{ token: string; build: Build | null; renders: RenderRequest[] }>(
+      fetch(`/api/builds/${id}/state?after=${encodeURIComponent(after)}`, { signal, cache: "no-store" }),
+    ),
   bom: (id: string) => json<Bom>(fetch(urls.bom(id), { cache: "no-store" })),
   thumbnailUrl: (id: string, version: number) => `${urls.thumbnail(id)}?v=${version}`,
   /** A chat image as WebP with its short side at most 240 pixels. */
@@ -173,6 +179,7 @@ export const api = {
       method: "PUT",
       body: png,
       headers: { "X-Pieces": String(pieces), "X-Revision": revision },
+      signal: AbortSignal.timeout(8000),
     }),
   putThumbnail: (id: string, png: Blob) => fetch(`/api/builds/${id}/thumbnail.png`, { method: "PUT", body: png }),
 };

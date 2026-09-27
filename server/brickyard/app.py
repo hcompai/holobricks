@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib
 import inspect
 import json
 import logging
@@ -193,6 +194,24 @@ async def get_build(build_id: str) -> Response:
     return Response(session_for(build_id).build.model_dump_json(), media_type="application/json")
 
 
+@app.get("/api/builds/{build_id}/state")
+async def get_state(build_id: str, after: str = "") -> Response:
+    """One atomic public snapshot, with pending renders even when the event stream was missed.
+
+    The content token includes metadata/chat as well as geometry. Events only invalidate
+    this snapshot: replaying rewind/step deltas over a newer HTTP response is not safe.
+    """
+    session = session_for(build_id)
+    snapshot = session.build.model_dump(mode="json", exclude={"script", "checked_revision"})
+    token = hashlib.sha256(json.dumps(snapshot, separators=(",", ":")).encode()).hexdigest()
+    body = {
+        "token": token,
+        "build": snapshot if after != token else None,
+        "renders": [event for event, future in session.renders.values() if not future.done()],
+    }
+    return Response(json.dumps(body), media_type="application/json", headers={"Cache-Control": "no-store"})
+
+
 @app.post("/api/builds/{build_id}/messages")
 async def post_message(build_id: str, body: Say) -> dict:
     session = session_for(build_id)
@@ -275,8 +294,13 @@ async def put_render(build_id: str, request: str, body: Request) -> dict:
 
 
 @app.get("/api/builds/{build_id}/events")
-async def events(build_id: str) -> StreamingResponse:
+async def events(build_id: str) -> Response:
     session = session_for(build_id)
+    # HTTP 204 tells EventSource not to reconnect. This also releases old tabs
+    # running a previous frontend, which otherwise monopolize HTTP/1 slots.
+    # New viewers recover future changes and pending render requests via /state.
+    if session.build.status != "building" and not session.renders:
+        return Response(status_code=204)
     queue = session.subscribe()
 
     async def stream():
@@ -286,6 +310,8 @@ async def events(build_id: str) -> StreamingResponse:
                 try:
                     event = await asyncio.wait_for(queue.get(), HEARTBEAT_S)
                     yield f"data: {json.dumps(event)}\n\n"
+                    if event["type"] == "build" and event["build"]["status"] != "building":
+                        break
                 except TimeoutError:
                     yield ": heartbeat\n\n"
         finally:
