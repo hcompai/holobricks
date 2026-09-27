@@ -4,7 +4,7 @@
 max_steps: 300
 max_time_s: 10800
 max_images:
-  message: 2
+  message: 5 # four persistent references plus the verified geometry sheet
   tool_result: 3
 model_name: ${oc.env:HOLO_MODEL,holo4-27b}
 reasoning_effort: high
@@ -41,6 +41,7 @@ review_llm:
 
 compactor:
   _target_: quality.ConstructionCompactor
+  workspace: ${workspace}
   trigger_tokens: ${compactor_trigger_tokens}
   passthrough_images: ${max_images}
   passthrough_actions: 10
@@ -101,7 +102,10 @@ agent:
     - _target_: sagent.lib.tools.sandbox.ReadFile
     - _target_: sagent.lib.tools.sandbox.WriteFile
     - _target_: sagent.lib.tools.sandbox.SearchReplace
-    - _target_: sagent.lib.tools.sandbox.ViewImage
+    - _target_: visual_memory.ViewImage
+      workspace: ${workspace}
+    - _target_: visual_memory.ListImages
+      workspace: ${workspace}
     - _target_: sagent.lib.tools.search.WebSearch
     - _target_: quality.RestoreBest
       workspace: ${workspace}
@@ -116,6 +120,8 @@ agent:
       url: ${oc.env:BRICKYARD_URL,http://127.0.0.1:8000}
       build: ${oc.env:BRICKYARD_BUILD}
     - _target_: quality.CompletionDisclosure
+    - _target_: visual_memory.VisualMemory
+      workspace: ${workspace}
   services:
     sandbox: ${sandbox}
     search_engine:
