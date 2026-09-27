@@ -57,7 +57,7 @@ class Viewers:
                     "--no-default-browser-check",
                     "--mute-audio",
                     "--window-size=1280,800",
-                    f"{self.url}/?build={build_id}",
+                    f"{self.url}/?build={build_id}&renderer=1",
                     stdout=asyncio.subprocess.DEVNULL,
                     stderr=asyncio.subprocess.DEVNULL,
                 )

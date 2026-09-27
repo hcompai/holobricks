@@ -3,6 +3,7 @@ import { ArrowsClockwiseIcon } from "@phosphor-icons/react";
 import { api, GALLERY, type Build, type RenderRequest } from "./api";
 import { BrickLoader } from "./BrickLoader";
 import { BrickScene, type View } from "./scene";
+import { pieceRevision } from "./loadAsset";
 
 const VIEWS: { id: View; label: string }[] = [
   { id: "iso", label: "3/4" },
@@ -59,6 +60,7 @@ interface Props {
   opening: string | null;
   step: number;
   renderRequest: RenderRequest | null;
+  syncError?: string | null;
   framing: Framing;
   spin: boolean;
   /** Whether the library's thumbnail shows the current pieces; undefined until the library loads. */
@@ -67,76 +69,123 @@ interface Props {
 }
 
 export function Viewer(props: Props) {
-  const { ref, build, opening, step, renderRequest, framing, spin, thumbnailFresh, onThumbnail } = props;
+  const { ref, build, opening, step, renderRequest, framing, spin, thumbnailFresh, onThumbnail, syncError } = props;
   const container = useRef<HTMLDivElement>(null);
   const scene = useRef<BrickScene | null>(null);
   const framedBuild = useRef<string | null>(null);
   const thumbnailed = useRef(new Set<string>());
   const answered = useRef(new Set<string>());
-  const [drawn, setDrawn] = useState<string | null>(null);
+  const [drawn, setDrawn] = useState<{ key: string; pieces: Build["pieces"] } | null>(null);
+  const [renderError, setRenderError] = useState<string | null>(null);
+  const [retry, setRetry] = useState(0);
+  const version = build ? `${build.id}:${build.revision ?? JSON.stringify(build.pieces)}` : null;
+  const ready = !!build && drawn?.key === version && drawn.pieces === build.pieces && !renderError;
+  const failed = (error: unknown) => {
+    setDrawn(null);
+    setRenderError(error instanceof Error ? error.message : "Could not draw the latest model");
+  };
   const width = build?.width || 32;
   const depth = build?.depth || 32;
 
   useEffect(() => {
-    const s = new BrickScene(container.current!);
-    scene.current = s;
-    return () => s.dispose();
-  }, []);
+    setDrawn(null);
+    setRenderError(null);
+    try {
+      const s = new BrickScene(container.current!, { onError: failed });
+      scene.current = s;
+      return () => {
+        scene.current = null;
+        s.dispose();
+      };
+    } catch (error) {
+      failed(error);
+    }
+  }, [retry]);
 
-  useImperativeHandle(ref, () => ({ image: () => scene.current?.image() ?? Promise.resolve(null) }), []);
+  useImperativeHandle(
+    ref,
+    () => ({
+      image: () => (ready && !syncError ? (scene.current?.image() ?? Promise.resolve(null)) : Promise.resolve(null)),
+    }),
+    [ready, syncError],
+  );
 
   useEffect(() => {
     const s = scene.current;
     if (!s) return;
     let current = true;
+    setRenderError(null);
     if (!build) setDrawn(null);
-    s.setPieces(build?.pieces ?? []).then(() => {
-      if (!current || !build) return;
-      setDrawn(build.id);
-      if (!build.pieces.length) return;
-      if (framedBuild.current !== build.id || !s.userMoved) {
-        framedBuild.current = build.id;
-        s.frameView(framing.view, width, depth);
-      }
-    });
+    s.setVisibleStep(step);
+    s.setPieces(build?.pieces ?? [])
+      .then(async (applied) => {
+        if (!current || !build || !applied) return;
+        if (build.revision && (await pieceRevision(build.pieces)) !== build.revision) {
+          throw new Error("Model revision mismatch. Reload the model to recover.");
+        }
+        if (!current) return;
+        if (build.pieces.length && (framedBuild.current !== build.id || !s.userMoved)) {
+          framedBuild.current = build.id;
+          s.frameView(framing.view, width, depth);
+        }
+        s.drawCurrent();
+        setDrawn({ key: version!, pieces: build.pieces });
+      })
+      .catch((error) => {
+        if (current) failed(error);
+      });
     return () => {
       current = false;
     };
-  }, [build?.id, build?.pieces, build?.status]);
+  }, [build?.id, build?.pieces, version, retry]);
 
   useEffect(() => {
     const s = scene.current;
-    if (GALLERY || !s || !build?.pieces.length || build.status !== "done" || thumbnailFresh !== false) return;
-    const version = `${build.id}:${build.updated}`;
-    if (thumbnailed.current.has(version)) return;
-    thumbnailed.current.add(version);
-    s.setPieces(build.pieces)
-      .then(() => s.thumbnail())
+    if (GALLERY || !s || !ready || !build?.pieces.length || build.status !== "done" || thumbnailFresh !== false) return;
+    const key = `${build.id}:${build.updated}:${version}`;
+    if (thumbnailed.current.has(key)) return;
+    let current = true;
+    s.renderThumbnail(build.pieces)
       .then(async (png) => {
-        if (png && (await api.putThumbnail(build.id, png)).ok) onThumbnail();
+        if (current && png && (await api.putThumbnail(build.id, png)).ok) {
+          thumbnailed.current.add(key);
+          onThumbnail();
+        }
       })
       .catch((error) => console.error("Could not save the thumbnail", error));
-  }, [build?.id, build?.status, build?.updated, thumbnailFresh]);
+    return () => {
+      current = false;
+    };
+  }, [ready, build?.id, build?.status, build?.updated, thumbnailFresh, version]);
 
   useEffect(() => {
     const s = scene.current;
-    if (!s || !build || !renderRequest || answered.current.has(renderRequest.request)) return;
+    if (!s || !ready || syncError || !build || !renderRequest || answered.current.has(renderRequest.request)) return;
     const { request, camera, box, pieces, revision } = renderRequest;
-    if (build.pieces.length !== pieces) return;
-    s.renderBuild(build.pieces, revision, camera, box)
-      .then(async (png) => {
-        if (!png || answered.current.has(request)) return;
+    if (build.pieces.length !== pieces || (build.revision && build.revision !== revision)) return;
+    let active = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const answer = async () => {
+      try {
+        const png = await s.renderBuild(build.pieces, revision, camera, box);
+        if (!active || !png || answered.current.has(request)) return;
         const response = await api.putRender(build.id, request, png, pieces, revision);
         if (response.ok && (await response.json()).accepted) answered.current.add(request);
-      })
-      .catch((error) => {
-        answered.current.delete(request);
+        else if (active) timer = setTimeout(answer, 2000);
+      } catch (error) {
         console.error("Could not answer a render request", error);
-      });
-  }, [renderRequest, build?.id, build?.pieces]);
+        if (active) timer = setTimeout(answer, 2000);
+      }
+    };
+    void answer();
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [renderRequest, build?.id, build?.pieces, ready, syncError]);
 
-  useEffect(() => scene.current?.setVisibleStep(step), [step]);
-  useEffect(() => scene.current?.setSpin(spin), [spin]);
+  useEffect(() => scene.current?.setVisibleStep(step), [step, retry]);
+  useEffect(() => scene.current?.setSpin(spin), [spin, retry]);
 
   useEffect(() => {
     const s = scene.current;
@@ -146,9 +195,24 @@ export function Viewer(props: Props) {
   }, [framing]);
 
   return (
-    <div className="viewer">
-      <div className="viewer-canvas" ref={container} />
-      {opening && drawn !== build?.id && <BrickLoader label={opening} />}
+    <div
+      className="viewer"
+      data-revision={ready ? (build?.revision ?? "gallery") : undefined}
+      data-render-state={ready ? "ready" : renderError ? "error" : "loading"}
+    >
+      <div
+        className="viewer-canvas"
+        ref={container}
+        style={{ visibility: ready && !syncError ? "visible" : "hidden" }}
+      />
+      {syncError || renderError ? (
+        <div className="viewer-empty" role="alert">
+          <div>{syncError ?? `The latest model could not be displayed. ${renderError}`}</div>
+          {!syncError && <button onClick={() => setRetry((n) => n + 1)}>Reload model</button>}
+        </div>
+      ) : (
+        opening && !ready && <BrickLoader label={build ? "Loading the latest model…" : opening} />
+      )}
       {!build && !opening && (
         <div className="viewer-empty">
           {GALLERY ? "Pick a build from the library." : "Describe a model in the chat to start building."}

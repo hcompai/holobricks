@@ -262,7 +262,7 @@ def test_hidden_features_do_not_block_and_refused_answers_are_capped(rig):
     rig.loop.on_update_state_end(None)
     assert not rig.loop.validate().passed and not rig.loop.validate().passed
     final = rig.loop.validate()
-    assert final.passed and "still open: feet" in final.feedback
+    assert final.passed and not final.verified and "quality remains unverified: feet" in final.feedback
 
 
 @pytest.mark.parametrize(
@@ -416,3 +416,28 @@ def test_sagent_rejects_early_answer_then_accepts_only_after_repair(rig):
     agent.step()
     assert agent.has_answer and agent.answer == "Built"
     assert len(rig.llm.calls) == 3
+
+
+def test_good_visual_review_cannot_waive_persisted_support_warnings(rig):
+    rig.llm.outputs = [BRIEF, review(True)]
+    rig.loop.on_update_state_end(None)
+    rig.build["support_warnings"] = 135
+    for _ in range(4):
+        verdict = rig.loop.validate()
+        assert not verdict.passed
+        assert "135 unresolved support warnings" in verdict.feedback
+    rig.build["support_warnings"] = 0
+    assert rig.loop.validate().passed
+
+
+def test_refusal_limit_can_stop_but_cannot_claim_verified_success(rig):
+    rig.loop.on_update_state_end(None)
+    assert not rig.loop.validate().passed
+    assert not rig.loop.validate().passed
+    verdict = rig.loop.validate()
+    assert verdict.passed and not verdict.verified
+    answer = CompletionDisclosure().on_answer(
+        AnswerEvent(answer="My draft", outcome="success", context={"judge_feedback": verdict})
+    )
+    assert answer.outcome == "partial"
+    assert "quality remains unverified" in answer.answer

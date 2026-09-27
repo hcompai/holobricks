@@ -4,48 +4,7 @@ import { decompressFrames, parseGIF } from "gifuct-js";
 import type { Build } from "../src/api";
 import { planReplay, replayFilename, replayPieces } from "../src/replayPlan";
 
-// Offline test geometry, deliberately independent of the LDraw install and inference server.
-const part = `0 FILE main.ldr
-1 16 0 0 0 1 0 0 0 1 0 0 0 1 test-brick.dat
-0 FILE test-brick.dat
-0 BFC CERTIFY CCW
-4 16 -20 0 -20 20 0 -20 20 0 20 -20 0 20
-4 16 -20 24 20 20 24 20 20 24 -20 -20 24 -20
-4 16 -20 0 20 20 0 20 20 24 20 -20 24 20
-4 16 20 0 -20 -20 0 -20 -20 24 -20 20 24 -20
-4 16 20 0 20 20 0 -20 20 24 -20 20 24 20
-4 16 -20 0 -20 -20 0 20 -20 24 20 -20 24 -20
-0 NOFILE`;
-const colors = `0 !COLOUR Red CODE 4 VALUE #C91A09 EDGE #333333
-0 !COLOUR Yellow CODE 14 VALUE #F2CD37 EDGE #333333
-0 !COLOUR Blue CODE 1 VALUE #0055BF EDGE #333333
-0 !COLOUR Green CODE 2 VALUE #237841 EDGE #333333
-0 !COLOUR Main_Colour CODE 16 VALUE #FFFF80 EDGE #333333
-0 !COLOUR Edge_Colour CODE 24 VALUE #333333 EDGE #333333`;
-
-function fixture(): Build {
-  return {
-    id: "export-test",
-    name: "A little LEGO tower",
-    prompt: "A little LEGO tower",
-    builder: "holo",
-    status: "done",
-    created: 1,
-    updated: 1,
-    width: 4,
-    depth: 2,
-    messages: [],
-    steps: Array.from({ length: 4 }, (_, index) => ({ index, title: `Layer ${index + 1}` })),
-    pieces: Array.from({ length: 8 }, (_, id) => ({
-      id,
-      part: "test-brick",
-      color: [4, 14, 1, 2][Math.floor(id / 2)],
-      step: Math.floor(id / 2),
-      pos: [(id % 2) * 40, -Math.floor(id / 2) * 24, 0],
-      rot: [1, 0, 0, 0, 1, 0, 0, 0, 1],
-    })),
-  };
-}
+import { part, colors, fixture } from "./fixtures";
 
 const PIECES = fixture().pieces.length;
 
@@ -75,6 +34,14 @@ async function mock(page: Page, build = fixture(), missingPart = false) {
         json: [{ ...build, pieces: build.pieces.length, steps: build.steps.length, thumbnail: 9999999999999 }],
       });
     if (path === "/api/builds/export-test") return route.fulfill({ json: build });
+    if (path === "/api/builds/export-test/state")
+      return route.fulfill({
+        json: {
+          token: String(build.pieces.length),
+          build: new URL(request.url()).searchParams.get("after") === String(build.pieces.length) ? null : build,
+          renders: [],
+        },
+      });
     if (path === "/api/ldconfig") return route.fulfill({ body: colors });
     if (path.startsWith("/api/parts/")) {
       parts.push(path);
@@ -234,6 +201,8 @@ test("a live snapshot stays frozen, cancellation can retry, and closing releases
   await page.getByRole("button", { name: "Export GIF", exact: true }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByRole("button", { name: "Generate GIF", exact: true })).toBeEnabled();
+  build.pieces.push({ ...build.pieces[0], id: 100, step: 4 });
+  build.steps.push({ index: 4, title: "New layer" });
   await page.evaluate((piece) => {
     (window as any).events.onmessage({
       data: JSON.stringify({
@@ -277,7 +246,7 @@ test("missing parts block exporting a misleading partial model; scripted demos c
   await mock(page, build, true);
   await page.getByRole("button", { name: "Export GIF", exact: true }).click();
   const dialog = page.getByRole("dialog");
-  await expect(dialog.getByRole("alert")).toContainText("Could not load part");
+  await expect(dialog.getByRole("alert")).toContainText("Could not load /api/parts/");
   await expect(dialog.getByRole("button", { name: "Generate GIF", exact: true })).toBeDisabled();
   await expect(dialog.getByLabel("Suggested caption")).not.toContainText("HOLO4");
   await expect(dialog.getByRole("checkbox")).toHaveCount(0);

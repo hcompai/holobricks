@@ -413,3 +413,31 @@ def test_reference_selection_is_paired_with_renders_but_not_failed_candidates(tm
         client.main()
     assert exit.value.code == 1
     assert "@@attach" not in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("part", ["4282", "3034", "3020"])
+def test_popemobile_plate_ids_resolve_to_real_geometry(bench, part):
+    assert ldraw.search(part) == [part + ".dat"]
+    assert "0 FILE " + part + ".dat" in ldraw.pack(part + ".dat")
+
+
+def test_render_failure_is_not_reported_as_a_missing_viewer_or_as_success(bench):
+    result = asyncio.run(bench.look())
+    assert result.problems == 1
+    assert "No verified render" in result.text
+    assert not result.images
+
+
+def test_support_warnings_survive_unchanged_reruns_and_clear_only_after_repair(bench):
+    async def run():
+        code = 'step("Floating")\nbrick("3001", 0, 0, 6, 4)\n'
+        for _ in range(2):
+            result = await bench.run_script(code)
+            assert result.problems == 1
+            assert bench.session.build.support_warnings == 1
+            assert bench.session.store.load(bench.session.build.id).support_warnings == 1
+        assert not (await bench.run_script(code.replace(", 6,", ", 0,"))).problems
+        assert bench.session.build.support_warnings == 0
+        assert bench.session.store.load(bench.session.build.id).support_warnings == 0
+
+    asyncio.run(run())
