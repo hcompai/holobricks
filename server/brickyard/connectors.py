@@ -177,17 +177,28 @@ class Library:
                 sections = opts.get("secs", "").split()
                 gender = opts.get("gender", "M").upper()
                 supported = (
-                    len(sections) == 3
+                    len(sections) >= 3
+                    and len(sections) % 3 == 0
+                    and (gender == "F" or len(sections) == 3)
                     # Standard one-stud undersides use square sockets (S 6),
                     # which accept the same round stud. Square male shafts do not.
                     and sections[0] in ({"R", "S"} if gender == "F" else {"R"})
                     and abs(float(sections[1]) - 6) < 1e-5
-                    and opts.get("caps", "one") in {"one", "A" if gender == "M" else "B"}
+                    and opts.get("caps", "one") in ({"one", "B", "none"} if gender == "F" else {"one", "A"})
                     and opts.get("center", "false") == "false"
                     and opts.get("slide", "false") == "false"
                     and gender in {"M", "F"}
                 )
-                depth = float(sections[2]) if len(sections) == 3 else 0
+                # A standard 4-LDU stud only enters the first socket section.
+                # Deeper bore changes (e.g. a hollow round brick) are irrelevant
+                # to this engagement, but must still describe finite geometry.
+                if supported:
+                    supported = all(
+                        sections[i] in {"R", "S"}
+                        and all(math.isfinite(float(v)) and float(v) > 0 for v in sections[i + 1 : i + 3])
+                        for i in range(0, len(sections), 3)
+                    )
+                depth = float(sections[2]) if len(sections) >= 3 else 0
                 supported = supported and (abs(depth - 4) < 1e-5 if gender == "M" else depth >= 4)
                 if not supported:
                     unsupported.append(f"{name}: unsupported cylinder")

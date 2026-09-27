@@ -87,6 +87,8 @@ Commands:
   and the accepted `assembly-plan.json`. Reorder a roof after its trapped parts, construct a connected
   unit separately, or change impossible connections. Do not simplify the requested subject merely
   to bypass missing connector support; report the limitation if it prevents a printable guide.
+  Tie walls and ground together with real plates and interlocking brick courses. Adjacent stacks
+  of 1x1 bricks do not form one connected wall; bare ground and touching side faces are not joints.
 - `bricks check`: checks every current part/color pair. `bricks run` also applies this catalog check to the
   whole candidate before publication and rejects unverified combinations, including inherited pieces.
   Repair the named pairs using the returned verified colors or a different verified part matching the photo.

@@ -46,7 +46,7 @@ class Group(BaseModel):
     model_config = ConfigDict(extra="forbid")
     id: str = Field(min_length=1, max_length=80)
     title: str = Field(min_length=1, max_length=160)
-    operations: list[Operation] = Field(min_length=1, max_length=5000)
+    operations: list[Operation] = Field(min_length=1, max_length=20000)
 
 
 class Plan(BaseModel):
@@ -55,7 +55,7 @@ class Plan(BaseModel):
     revision: str
     policy: str = POLICY
     root: str = "model"
-    groups: list[Group] = Field(min_length=1, max_length=5000)
+    groups: list[Group] = Field(min_length=1, max_length=20000)
     evidence: str | None = None
 
 
@@ -144,8 +144,8 @@ class Checker:
         self.build = build
         self.library = library or Library()
         self.parts = {p.id: p for p in build.pieces}
-        if len(self.parts) > 5000:
-            reject("planning_limit", "Automatic assembly checking currently supports at most 5000 parts.")
+        if len(self.parts) > 20000:
+            reject("planning_limit", "Automatic assembly checking currently supports at most 20000 parts.")
         self.local = {p.id: self.library.profile(p.part) for p in build.pieces}
         self.world = {p.id: self.library.world(p) for p in build.pieces}
         for p in build.pieces:
@@ -294,11 +294,27 @@ class Checker:
         if not ids:
             reject("empty_model", "Build a model before planning assembly.")
         if not self.connected(ids):
-            seed = min(ids)
+            islands = []
+            unseen = set(ids)
+            while unseen:
+                component, queue = set(), [min(unseen)]
+                while queue:
+                    p = queue.pop()
+                    if p not in component:
+                        component.add(p)
+                        queue.extend((self.graph[p] & unseen) - component)
+                unseen -= component
+                islands.append(component)
+            islands.sort(key=lambda group: (-len(group), min(group)))
+            examples = [f"#{min(group)} ({self.parts[min(group)].part}, {len(group)} parts)" for group in islands[:12]]
             reject(
                 "disconnected_model",
-                "The supported connection graph has separate islands. Join them with verified connectors or represent separate display models explicitly.",
-                moving=sorted(ids - {seed})[:30],
+                f"The supported connection graph has {len(islands)} separate islands: "
+                + "; ".join(examples)
+                + ". Join them with verified connectors. Bare ground is not a LEGO connection. "
+                "Intentionally separate display objects cannot be verified as one connected assembly by this policy.",
+                moving=sorted(islands[1])[:30],
+                obstacles=[min(islands[0])],
             )
         groups = []
         last_issue = None

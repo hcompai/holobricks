@@ -168,3 +168,19 @@ def test_saved_order_is_rechecked_without_reusing_an_old_proof(library, tmp_path
     assert assembly.check(b, saved, library).evidence == report.evidence
     b.pieces[0].color = 14
     assert assembly.cached_plan(tmp_path, b) is None
+
+
+def test_hollow_round_brick_still_accepts_a_standard_stud(library):
+    profile = library.profile("3062b.dat")
+    assert any(p.gender == "F" and p.pos == (0, 24, 0) and p.depth == 20 for p in profile.ports)
+    b = model(place("3024.dat", 0, 0, 0, 4), place("3062b.dat", 0, 0, 1, 4))
+    result = assembly.check(b, plan(b, 1, 2), library)
+    assert result.status == "verified", result
+
+
+def test_disconnected_feedback_names_a_real_other_component(library):
+    b = model(place("3001.dat", 0, 0, 0, 4), place("3001.dat", 0, 0, 3, 4), place("3001.dat", 8, 0, 0, 4))
+    result = assembly.check(b, library=library)
+    issue = result.issues[0]
+    assert "2 separate islands" in issue.message
+    assert issue.moving == [3] and issue.obstacles == [1]
