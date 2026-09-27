@@ -195,9 +195,7 @@ def test_reference_images_reach_the_chat_and_the_builder_within_holos_image_budg
             seen.append([p.read_bytes() for p in references])
 
     holo = (Path(__file__).resolve().parents[2] / "agent" / "holo.yaml").read_text()
-    # The persistent packet also reserves slots for older references and the current model sheet.
-    message_budget = int(re.search(r"^  message: (\d+)\b", holo, re.MULTILINE).group(1))
-    assert app_module.MAX_REFERENCES <= message_budget
+    assert app_module.MAX_REFERENCES == int(re.search(r"^  message: (\d+)$", holo, re.MULTILINE).group(1))
     monkeypatch.setattr(app_module, "store", Store(tmp_path))
     monkeypatch.setitem(BUILDERS, "demo", Recorder())
     photo = "data:image/jpeg;base64," + base64.b64encode(b"jpeg").decode()
