@@ -67,7 +67,6 @@ def test_checked_revision_only_tracks_geometry_that_passed_transaction(bench):
     "bad",
     [
         'brick("3001", 0, 0, 0, 14)',  # collision in a later step
-        'brick("3001", 8, 0, 9, 14)',  # unsupported candidate
         'brick("missing-part", 8, 0, 0, 14)',
         'raise ValueError("broken script")',
     ],
@@ -203,20 +202,19 @@ def test_support_is_checked_on_the_complete_step_in_any_line_order(bench):
         assert len(bench.pieces) == 3
 
 
-def test_touching_floating_bricks_do_not_support_each_other(bench):
+def test_floating_bricks_are_placed_with_a_warning_and_cannot_support_each_other(bench):
     result = asyncio.run(
         bench.run_script('step("Floating pair")\nbrick("3001", 0, 0, 6, 4)\nbrick("3001", 0, 0, 9, 4)')
     )
-    assert result.problems == 2
-    assert "vertical contact path" in result.text
-    assert not bench.pieces
+    assert result.problems == 2 and "vertical contact path" in result.text
+    assert "rejected" not in result.text and len(bench.pieces) == 2
+    assert bench.session.build.checked_revision == bench.session.build.revision
 
 
 def test_a_later_step_cannot_retroactively_support_an_earlier_step(bench):
     code = 'step("Top first")\nbrick("3001", 0, 0, 3, 4)\n' + CORE
     result = asyncio.run(bench.run_script(code))
-    assert result.problems == 1
-    assert not bench.pieces
+    assert result.problems == 1 and "Top first" in result.text and "vertical contact path" in result.text
 
 
 def test_fixed_manual_steps_survive_script_rejection_and_script_removal(bench):

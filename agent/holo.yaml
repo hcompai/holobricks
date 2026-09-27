@@ -116,11 +116,6 @@ agent:
       url: ${oc.env:BRICKYARD_URL,http://127.0.0.1:8000}
       build: ${oc.env:BRICKYARD_BUILD}
     - _target_: quality.CompletionDisclosure
-      restore:
-        _target_: quality.RestoreBest
-        workspace: ${workspace}
-        url: ${oc.env:BRICKYARD_URL,http://127.0.0.1:8000}
-        build: ${oc.env:BRICKYARD_BUILD}
   services:
     sandbox: ${sandbox}
     search_engine:

@@ -237,7 +237,7 @@ class Workbench:
         return Result("\n".join(lines), note=note, problems=problems)
 
     async def run_script(self, code: str) -> Result:
-        """Check changed steps in memory; publish the whole revision only if every step passes."""
+        """Check changed steps in memory; publish the revision unless a brick is rejected, floating ones only warn."""
         build = self.session.build
         fixed = self._fixed()
         out = await _execute(code, await asyncio.to_thread(self._taken, fixed))
@@ -265,20 +265,21 @@ class Workbench:
         # This workbench is only a geometry checker. No session method publishes or saves the candidate.
         draft = Workbench(Session(candidate, self.session.store))
         source = code.splitlines()
-        problems, reports = 0, []
+        errors, floating, reports = 0, 0, []
         for n, (s, key) in enumerate(zip(steps[same:], keys[same:], strict=True), kept_steps + 1):
             bricks = [b | {"label": _line(source, b["line"])} for b in s["bricks"]]
             try:
                 parsed = [Brick.model_validate(b) for b in bricks]
             except ValidationError as e:
-                problems += 1
+                errors += 1
                 reports.append(f"Step {n} '{s['title']}': invalid bricks: {e.errors(include_url=False)}")
                 continue
             placements, rejected, warnings = await asyncio.to_thread(draft._check, parsed)
             if placements:
                 candidate.add_step(s["title"], placements, key)
             if rejected or warnings:
-                problems += len(rejected) + len(warnings)
+                errors += len(rejected)
+                floating += len(warnings)
                 reports.append(f"Step {n} '{s['title']}':\n" + _first(rejected + warnings))
         kept = (
             ""
@@ -288,19 +289,17 @@ class Workbench:
             else f"kept steps {fixed + 1} to {fixed + same}, "
         )
         lines = [f"Ran the script: {kept}rebuilt {len(steps) - same} steps."]
-        if problems:
+        if errors:
             return Result(
                 "Candidate rejected; the model and accepted script did not change.\n"
                 + "\n".join(lines + ["Problems, by script line:", *reports])
                 + printed
                 + "\nFix the named lines in your script and run again. No candidate render was published.",
-                problems=problems,
+                problems=errors + floating,
             )
         self.session.commit_script(candidate, kept_steps)
-        lines.append(
-            "Changed steps passed bounding-box overlap and ground-contact checks. "
-            "LEGO connections, physical stability and reference likeness are not verified."
-        )
+        problems = floating
+        lines += ["Placed, but check these floating bricks, by script line:", *reports] if reports else []
         lines.append("Steps: pieces, then where they sit in studs (x, y) and plates (z, bottom to top):")
         lines.append(await asyncio.to_thread(self.describe))
         pieces = sum(p.part != BASEPLATE for p in self.pieces)
