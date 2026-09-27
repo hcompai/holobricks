@@ -84,9 +84,7 @@ def main() -> None:
             names = save(out["images"], "view", numbered=True)
         else:
             names = save(out["images"], "render")
-        print(f"\n{out['caption']} Saved in your workspace:")
-        for name in names:
-            print(f"- {Path(name).resolve()}")
+        print(f"\nSaved {', '.join(names)}. {out['caption']}")
         for name in names[:ATTACHED]:
             print(f"@@attach {name}")
     sys.exit(1 if out["problems"] else 0)

@@ -203,7 +203,7 @@ def test_the_prompt_names_only_real_parts_and_colors_and_its_example_builds_clea
     for line in parts:
         assert line == part_line(f"{line.split(':')[0]}.dat")
     palette = ldraw.colors()
-    colors = prompt[prompt.index("# Colors") : prompt.index("# Session")].splitlines()
+    colors = prompt.split("## Colors")[1].split("\n#")[0].splitlines()
     for entry in (e for line in colors if line.startswith("- ") for e in line.split(": ")[1].split(", ")):
         code, name = entry.split(" ", 1)
         assert palette[int(code)][0].lower() == name, entry
