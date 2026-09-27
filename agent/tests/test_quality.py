@@ -13,6 +13,9 @@ from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from hai_protocols.chat_completion.messages import ImageContentChunk
+from hai_protocols.image.encoding import MediaType
+from hai_protocols.image.serializable_image import SerializableImage
 from quality import (
     CompletionDisclosure,
     ConstructionCompactor,
@@ -20,9 +23,8 @@ from quality import (
     RestoreBest,
     Verdict,
 )
-from sagent.core.events import AnswerEvent, MessageEvent
+from sagent.core.events import AnswerEvent, EventRecord, MessageEvent
 from sagent.lib.callbacks.compactor import Compactor
-from visual_memory import VisualMemory
 
 
 def png(color):
@@ -116,7 +118,7 @@ def rig(tmp_path):
     def request(req):
         if req.url.path.endswith("/bom/validation"):
             return httpx.Response(inventory.get("http_status", 200), json={"revision": build["revision"], **inventory})
-        if req.url.path == "/api/images/target.png":
+        if req.url.path.startswith("/api/images/"):
             return httpx.Response(200, content=png("yellow"), headers={"content-type": "image/png"})
         if req.url.path.endswith("/sheet.png"):
             rendered.append(dict(req.url.params))
@@ -139,7 +141,7 @@ def test_reviews_actual_pixels_without_builder_claims_and_injects_only_changes(r
     assert rig.rendered == [{}, {"angle": "40.0", "elevation": "25.0"}]
     assert "perfect" not in str(rig.llm.calls)
     assert "Wheels and blank face" in events[0].text_content
-    assert len(VisualMemory(rig.path).on_update_state_end(None)[0].images) == 2
+    assert not events[0].images
     assert rig.loop.on_update_state_end(None) == [] and len(rig.llm.calls) == 2
     assert not rig.loop.validate().passed
     assert (rig.loop.folder / rig.build["revision"] / "build.py").read_text() == rig.build["script"]
@@ -287,6 +289,35 @@ def test_missing_evidence_or_reviewer_failure_cannot_approve(rig, failure):
     assert "fake-secret" not in str(rig.loop.cached_result)
 
 
+def test_a_failed_review_is_not_repeated_every_step_but_retried_on_answer(rig):
+    rig.llm.outputs = [BRIEF, ValueError("provider down"), review(True)]
+    rig.loop.on_update_state_end(None)
+    rig.loop.on_update_state_end(None)
+    assert len(rig.llm.calls) == 2
+    assert rig.loop.validate().passed and len(rig.llm.calls) == 3
+
+
+def test_endless_inspection_requests_keep_the_last_review(rig):
+    asking = review(True)
+    asking["inspection"] = {"requirement": "eye", "angle": 0, "elevation": 15, "zoom": 3}
+    rig.llm.outputs = [BRIEF, asking, asking, asking]
+    rig.loop.on_update_state_end(None)
+    assert len(rig.llm.calls) == 4 and rig.build["revision"] in rig.loop.state["reviews"]
+
+
+def test_every_review_request_fits_the_endpoint_image_limit(rig):
+    rig.build["messages"][0]["images"] = [f"/api/images/photo-{i}.png" for i in range(7)]
+    asking = review(True)
+    asking["inspection"] = {"requirement": "eye", "angle": 0, "elevation": 15, "zoom": 3}
+    rig.llm.outputs = [BRIEF, review(True), asking, asking, asking]
+    rig.loop.on_update_state_end(None)
+    rig.build.update(revision="b" * 64, checked_revision="b" * 64, script="# candidate B")
+    (rig.path / "build.py").write_text(rig.build["script"])
+    rig.loop.on_update_state_end(None)
+    counts = [sum(isinstance(c, ImageContentChunk) for c in call.messages[1].content) for call in rig.llm.calls]
+    assert counts == [5, 3, 4, 5, 5]
+
+
 def test_user_clarification_invalidates_brief_and_best(rig):
     rig.llm.outputs = [BRIEF, review(True), BRIEF, review()]
     rig.loop.on_update_state_end(None)
@@ -344,17 +375,15 @@ def test_restore_best_rechecks_geometry_before_replacing_workspace_script(rig, m
 
 
 @pytest.mark.parametrize("emergency", [False, True])
-def test_compaction_keeps_the_latest_visual_evidence(rig, monkeypatch, emergency):
+def test_compaction_keeps_the_latest_review(rig, monkeypatch, emergency):
     event = rig.loop.on_update_state_end(None)[0]
     compactor = object.__new__(ConstructionCompactor)
     compactor.history = SimpleNamespace(events=[event])
-    compactor.images = rig.loop.images
     monkeypatch.setattr(
         Compactor, "compact", lambda self, **kw: [MessageEvent(caller_id="compactor", content=["briefing"])]
     )
     events = compactor.compact(emergency=emergency)
-    assert events[-2] is event and len(events[-1].images) == 2
-    assert events[-1].caller_id == "visual-memory"
+    assert events[-1] is event
 
 
 def test_real_holo_config_instantiates_review_and_validator_with_fake_llms(tmp_path, monkeypatch):
@@ -372,13 +401,21 @@ def test_real_holo_config_instantiates_review_and_validator_with_fake_llms(tmp_p
     agent = build_agent_from_dict(config, skip_services=True)
     assert isinstance(agent.validator, QualityLoop)
     assert isinstance(agent.callbacks[0], ConstructionCompactor)
-    assert isinstance(agent.callbacks[-2], CompletionDisclosure)
-    assert isinstance(agent.callbacks[-1], VisualMemory)
-    assert agent.history.msg_image_budget == 5
-    assert agent.select_tool("list_images") is not None
-    assert type(agent.select_tool("view_image")).__module__ == "visual_memory"
+    assert isinstance(agent.callbacks[-1], CompletionDisclosure)
     assert agent.select_tool("restore_best") is not None
     agent.validator.client.close()
+
+    photos = [SerializableImage.from_bytes(png(color), MediaType.PNG) for color in ("red", "yellow")]
+    compactor = agent.callbacks[0]
+    compactor.skill = lambda events: "summary"
+    compactor.on_event(EventRecord(event=MessageEvent(caller_id="user", content=["Build this", *photos])))
+    for _ in range(2):
+        events = compactor.compact()
+        for event in events:
+            compactor.on_event(EventRecord(event=event))
+            agent.history.append(EventRecord(event=event))
+    kept = agent.history.events[-1].images
+    assert [image.pil_image.getpixel((0, 0)) for image in kept] == [(255, 0, 0), (255, 255, 0)]
 
 
 def test_sagent_rejects_early_answer_then_accepts_only_after_repair(rig):

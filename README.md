@@ -36,7 +36,6 @@ Hot reload: `cd web && npm run dev` (http://127.0.0.1:5173).
 | `HAI_API_KEY`, `HAI_BASE_URL` | for Holo: your key, and `https://api.hcompany.ai/v1/models` |
 | `LINKUP_API_KEY` | for Holo's image search |
 | `HOLO_MODEL` | `holo4-27b` |
-| `HOLO_MAX_REQUEST_IMAGES` | `5`: total image attachments allowed by the inference endpoint; set to its actual capacity |
 | `BRICKYARD_PORT` | `8000`, on 127.0.0.1 only (no auth) |
 | `BRICKYARD_DATA`, `BRICKYARD_LDRAW` | `./data`, `./ldraw` |
 | `BRICKYARD_CHROME` | the Chrome or Chromium found on the machine, for renders |
@@ -72,35 +71,17 @@ your tab + headless Chrome  <── steps, renders ──>  brickyard server  �
   BOM, gallery and shopping exports all require a complete verified inventory, bound to the current revision.
   Cold lookups use the public catalog; cached evidence is reused for 24 hours. Network failures cannot authorize
   an unverified list. Existing invalid models stay viewable for repair, but cannot be presented as verified BOMs.
-- `web_search` returns Linkup text and image URLs, not image pixels. `view_image` opens URLs or local files and
-  archives their bytes and provenance in `.brickyard-images/`. `list_images` returns stable IDs; either agent can
-  reopen saved references without re-fetching a website. Crops use normalized `[left, top, right, bottom]`
-  coordinates and are extracted before resizing, without overwriting the original stored image.
-  User uploads are still normalized by the browser to a 1600-pixel JPEG before reaching this archive.
+- For references it has `web_search` (Linkup pages, then image URLs) and `view_image`: it downloads the photos it wants into its workspace with `curl` and looks at them, all through the build.
 - Renders come from a viewer: the server keeps a hidden Chrome on each build that asks for renders (until its run ends, or 10 idle minutes), so it renders whether or not your tab is open. It serves `web/dist`: rebuild it (`npm run build`) after web changes.
 - Its workspace keeps `notes.md` (its memory, fed back with each request), the reference photos, and `showcase/` (`agent/showcase`: the showcase renders and sources).
 - A separate Holo call extracts a visual brief from the actual user messages and photographs. Each changed, checked
-  geometry is then reviewed in a fresh context: primary references, four model views, a fixed comparison camera
-  and the best previous candidate. The reviewer has up to two inspection rounds to request model cameras,
-  previously saved reference images, or reference crops for small or occluded features.
+  geometry is then reviewed in a fresh context: the primary reference, four model views, a fixed comparison camera
+  and the best previous candidate from that camera. The reviewer can request up to two focused views, one at a time,
+  for small or occluded features. Every request stays within the endpoint's five images; the brief reads up to five photos.
   It receives no builder explanations. User photos take precedence over builder-selected references.
-- All user image messages remain in the shared library, with their associated requests. A bounded visual packet
-  prioritizes the latest user attachments, earlier user views, then external references (up to four images), plus
-  one verified model sheet. Both builder and reviewer use this selection and can reopen any other reference.
-  The full catalogue preserves provenance; later instructions may replace a subject without deleting its photos.
-- The packet is restored independently of review success, including after normal or emergency compaction.
-  The builder has five message-image slots for this packet and three recent tool-image slots. A render is only
-  reattached when its verified revision matches the latest fetched geometry; old renders remain archived.
-  Before inference, one shared budget covers the **whole request**, including tool images and review inspections.
-  Requests over the endpoint's image limit deduplicate identical pixels, then group middle views into numbered
-  overview sheets, preserving the first reference and newest view as separate images. Original files and labels
-  remain available; sheets reduce fine detail, so both agents can reopen originals/crops for closer inspection.
-  Requests already within the limit are unchanged. The builder, reviewer and compactor all use this transport.
-  HAI sends image bytes with stable UUIDs on every call: the public Holo gateway rejects hash-only image references.
-  This client transport setting does **not** disable server KV/prefix caching; its actual hit rate and pricing
-  remain the inference service's responsibility.
-  Reviews and candidate scripts/images are saved under `.brickyard-quality/` in each
-  workspace, separated by request/reference content. `restore_best` rechecks the best saved script before restoring
+- The brief and review are reinjected as text when they change, and after compaction. The user's photos stay in the
+  builder's view through its message-image budget, including after compaction. Reviews and candidate scripts/images
+  are saved under `.brickyard-quality/` in each workspace, separated by request/reference content. `restore_best` rechecks the best saved script before restoring
   it. Repeated non-improvements prompt a change of scale, part family or construction approach.
 - Verified completion requires checked, nonempty geometry matching the current script, no unresolved support
   warnings, and a passing visual review. The refusal limit may stop the loop, but that answer is marked partial and
@@ -130,8 +111,6 @@ server/.venv/bin/brickyard
 | model, reasoning effort, step and time budget, tools | `agent/holo.yaml` |
 | how Holo builds: principles, workflow, the build script API, parts, colors | `agent/holo.j2` |
 | independent visual brief, revision reviews, best-candidate memory and completion gate | `agent/quality.py` |
-| shared image archive, reference retrieval/crops and persistent visual context | `agent/visual_memory.py` |
-| final request image budget and overview packing | `agent/image_transport.py` |
 | the build script functions | `server/brickyard/script.py` (document them in `agent/holo.j2`) |
 | the icon | `scripts/brick-icon.py`, rendered with `blender -b -P scripts/brick-icon.py -- /tmp/brick.png`, then resized (`sips -Z`) and compressed (`pngquant`) into `docs/brick.png` (128 px), `web/public/brick.png` (64 px) and `web/public/brick-touch.png` (180 px, on white) |
 
@@ -152,8 +131,6 @@ cd ..
 
 The agent tests exercise the actual SAgent validator/callback wiring with fake inference, including early-answer
 rejection, repair and final approval. They do not measure aesthetic quality or Holo inference latency.
-Image-memory regressions additionally inspect pixels in the actual SAgent chat mapping after eviction, review
-errors and both compaction paths, and verify offline retrieval, earlier uploads and reviewer-requested crops.
 
 ## Showcases and gallery
 
