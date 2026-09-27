@@ -65,15 +65,26 @@ your tab + headless Chrome  <── steps, renders ──>  brickyard server  �
   BOM, gallery and shopping exports all require a complete verified inventory, bound to the current revision.
   Cold lookups use the public catalog; cached evidence is reused for 24 hours. Network failures cannot authorize
   an unverified list. Existing invalid models stay viewable for repair, but cannot be presented as verified BOMs.
-- For references it has `web_search` (Linkup pages, then image URLs) and `view_image`: it downloads the photos it wants into its workspace with `curl` and looks at them, all through the build.
+- `web_search` returns Linkup text and image URLs, not image pixels. `view_image` opens URLs or local files and
+  archives their bytes and provenance in `.brickyard-images/`. `list_images` returns stable IDs; either agent can
+  reopen saved references without re-fetching a website. Crops use normalized `[left, top, right, bottom]`
+  coordinates and are extracted before resizing, without overwriting the original stored image.
+  User uploads are still normalized by the browser to a 1600-pixel JPEG before reaching this archive.
 - Renders come from a viewer: the server keeps a hidden Chrome on each build that asks for renders (until its run ends, or 10 idle minutes), so it renders whether or not your tab is open. It serves `web/dist`: rebuild it (`npm run build`) after web changes.
 - Its workspace keeps `notes.md` (its memory, fed back with each request), the reference photos, and `showcase/` (`agent/showcase`: the showcase renders and sources).
 - A separate Holo call extracts a visual brief from the actual user messages and photographs. Each changed, checked
   geometry is then reviewed in a fresh context: primary references, four model views, a fixed comparison camera
-  and the best previous candidate. The reviewer can request up to two focused views for small or occluded features.
+  and the best previous candidate. The reviewer has up to two inspection rounds to request model cameras,
+  previously saved reference images, or reference crops for small or occluded features.
   It receives no builder explanations. User photos take precedence over builder-selected references.
-- The brief, individual failed requirements and current target/model images are reinjected before every policy call,
-  including after compaction. Reviews and candidate scripts/images are saved under `.brickyard-quality/` in each
+- All user image messages remain in the shared library, with their associated requests. A bounded visual packet
+  prioritizes the latest user attachments, earlier user views, then external references (up to four images), plus
+  one verified model sheet. Both builder and reviewer use this selection and can reopen any other reference.
+  The full catalogue preserves provenance; later instructions may replace a subject without deleting its photos.
+- The packet is restored independently of review success, including after normal or emergency compaction.
+  The builder has five message-image slots for this packet and three recent tool-image slots. A render is only
+  reattached when its verified revision matches the latest fetched geometry; old renders remain archived.
+  Reviews and candidate scripts/images are saved under `.brickyard-quality/` in each
   workspace, separated by request/reference content. `restore_best` rechecks the best saved script before restoring
   it. Repeated non-improvements prompt a change of scale, part family or construction approach.
 - Completion requires a checked, nonempty geometry matching the current script and two passing visual judgments.
@@ -100,6 +111,7 @@ server/.venv/bin/brickyard
 | model, reasoning effort, step and time budget, tools | `agent/holo.yaml` |
 | how Holo builds: principles, workflow, the build script API, parts, colors | `agent/holo.j2` |
 | independent visual brief, revision reviews, best-candidate memory and completion gate | `agent/quality.py` |
+| shared image archive, reference retrieval/crops and persistent visual context | `agent/visual_memory.py` |
 | the build script functions | `server/brickyard/script.py` (document them in `agent/holo.j2`) |
 | the icon | `scripts/brick-icon.py`, rendered with `blender -b -P scripts/brick-icon.py -- /tmp/brick.png`, then resized (`sips -Z`) and compressed (`pngquant`) into `docs/brick.png` (128 px), `web/public/brick.png` (64 px) and `web/public/brick-touch.png` (180 px, on white) |
 
@@ -120,6 +132,8 @@ cd ..
 
 The agent tests exercise the actual SAgent validator/callback wiring with fake inference, including early-answer
 rejection, repair and final approval. They do not measure aesthetic quality or Holo inference latency.
+Image-memory regressions additionally inspect pixels in the actual SAgent chat mapping after eviction, review
+errors and both compaction paths, and verify offline retrieval, earlier uploads and reviewer-requested crops.
 
 ## Showcases and gallery
 

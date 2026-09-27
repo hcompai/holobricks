@@ -22,6 +22,7 @@ from quality import (
 )
 from sagent.core.events import AnswerEvent, MessageEvent
 from sagent.lib.callbacks.compactor import Compactor
+from visual_memory import VisualMemory
 
 
 def png(color):
@@ -138,7 +139,7 @@ def test_reviews_actual_pixels_without_builder_claims_and_injects_only_changes(r
     assert rig.rendered == [{}, {"angle": "40.0", "elevation": "25.0"}]
     assert "perfect" not in str(rig.llm.calls)
     assert "Wheels and blank face" in events[0].text_content
-    assert len(events[0].images) == 2
+    assert len(VisualMemory(rig.path).on_update_state_end(None)[0].images) == 2
     assert rig.loop.on_update_state_end(None) == [] and len(rig.llm.calls) == 2
     assert not rig.loop.validate().passed
     assert (rig.loop.folder / rig.build["revision"] / "build.py").read_text() == rig.build["script"]
@@ -347,11 +348,13 @@ def test_compaction_keeps_the_latest_visual_evidence(rig, monkeypatch, emergency
     event = rig.loop.on_update_state_end(None)[0]
     compactor = object.__new__(ConstructionCompactor)
     compactor.history = SimpleNamespace(events=[event])
+    compactor.images = rig.loop.images
     monkeypatch.setattr(
         Compactor, "compact", lambda self, **kw: [MessageEvent(caller_id="compactor", content=["briefing"])]
     )
     events = compactor.compact(emergency=emergency)
-    assert events[-1] is event and len(events[-1].images) == 2
+    assert events[-2] is event and len(events[-1].images) == 2
+    assert events[-1].caller_id == "visual-memory"
 
 
 def test_real_holo_config_instantiates_review_and_validator_with_fake_llms(tmp_path, monkeypatch):
@@ -369,7 +372,11 @@ def test_real_holo_config_instantiates_review_and_validator_with_fake_llms(tmp_p
     agent = build_agent_from_dict(config, skip_services=True)
     assert isinstance(agent.validator, QualityLoop)
     assert isinstance(agent.callbacks[0], ConstructionCompactor)
-    assert isinstance(agent.callbacks[-1], CompletionDisclosure)
+    assert isinstance(agent.callbacks[-2], CompletionDisclosure)
+    assert isinstance(agent.callbacks[-1], VisualMemory)
+    assert agent.history.msg_image_budget == 5
+    assert agent.select_tool("list_images") is not None
+    assert type(agent.select_tool("view_image")).__module__ == "visual_memory"
     assert agent.select_tool("restore_best") is not None
     agent.validator.client.close()
 

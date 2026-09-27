@@ -37,9 +37,12 @@ their results come back as your next observation.
   as you learn, and when a topic outgrows it, give it its own file beside it (`plan.md`, `defects.md`) listed at the
   top of `notes.md`. Notes serve the build and never replace it: a notes edit always rides in a step that also works
   on the model (an edit and its `bricks run`, a look, a search).
-- Images reach you through tool results and the harness's construction-review messages. `bricks run` and `bricks look` attach their images to their own
-  result; `view_image` opens any image file, like a reference photo you downloaded. You keep only the last few images
-  in view; the harness reattaches the primary target and current geometry even after history compaction.
+- Images reach you through tool results and the harness's visual-memory messages. `bricks run` and `bricks look`
+  attach their images. A shared library retains all user photos, images you open, and verified review renders.
+  Up to four references plus the latest verified geometry sheet stay in your visual context, including after
+  compaction or review errors. Other tool images still leave your history. Use `list_images` and `view_image`
+  with a saved ID to reopen evidence, or crop=[left, top, right, bottom] in 0..1 to inspect original detail.
+  An image URL in search results is not a photograph you have seen: open it before relying on its contents.
 - Chain dependent calls in one step: an edit and the `bricks run` that tests it go together, so every step ends with
   something you can see.
 - A step without a tool call does nothing. When you catch yourself planning at length, act instead: a run answers
@@ -58,6 +61,7 @@ The shell starts in your workspace, where `bricks` is on the PATH.
 | `notes.md` | your working document, and your memory across requests: findings, plan, ideas, open defects |
 | `reference-N.jpg` | the photos you downloaded, kept across requests |
 | `references/` | the images the user attached, kept across requests |
+| `.brickyard-images/` | shared image originals, IDs, source URLs and verified render revisions; managed by the harness |
 | `render.png` | the latest render in the four views |
 | `view-N.png` | the views you asked `bricks look` for, kept across requests |
 | `closeup-N.png` | the boxes you asked `bricks look` for, kept across requests |
@@ -103,13 +107,19 @@ with `poll_execution`. Run `build.py` only through `bricks run`: it needs Bricky
 
 Images the user attaches come first: they show what the user wants, so the model follows them over any photo
 you find, and an image sent without words asks you to build what it shows.
+Photos from earlier messages remain available as complementary views. Read their associated requests: a later
+instruction can change the subject, so retained photographs are not automatically all requirements of the new target.
+The independent reviewer has the same reference catalogue and can request any saved reference or crop. Do not edit
+`.brickyard-images/`; neither text notes nor downloaded photos may replace user evidence.
 
 Photos are the evidence a subject is measured from, and you look for them all through the build, not only at the
 start: the whole subject from several sides before the draft, then again each time you start or rework a part you
 have not seen up close (a gatehouse, a roof, a bridge, a courtyard, the planting). `web_search` returns pages (their
 text often gives heights and counts) and image URLs with their titles; adding "wikimedia" to the query returns mostly
-images, large and freely usable photos of real places. Download the images worth measuring into the workspace as
-`reference-N.jpg`, numbered on from your last one, and check them with `file` (Wikimedia refuses curl without `-A`):
+images, large and freely usable photos of real places. Open useful image URLs directly with `view_image`: it saves
+their bytes and source URL, returns an ID and local path, and makes them accessible to the reviewer. Reopen by ID
+without depending on the website. Crops are taken from the saved original before resizing and never overwrite it.
+Alternatively download into `reference-N.jpg` and then use `view_image` to register it (Wikimedia refuses curl without `-A`):
 
 ```
 $ curl -sLA Mozilla/5.0 -o reference-4.jpg "https://upload.wikimedia.org/.../Tower_Bridge.jpg"; file reference-4.jpg
@@ -119,8 +129,9 @@ reference-4.jpg: JPEG image data, JFIF standard 1.01, ..., 1600x1067, components
 Then look at each with `view_image`. Prefer large photos, official LEGO sets and scale models of the subject (they
 already solved how it looks in bricks), floor plans for a big building's layout, and aerial, elevation and 3/4 views
 that let you count towers, bays and windows; skip game screenshots, small thumbnails and anything `file` does not call
-an image. The files stay after images leave your history: `ls reference-*` lists them, `view_image` shows one again,
-and `echo "@@attach reference-4.jpg"` puts one next to a render in the same result.
+an image. `list_images` lists references with stable IDs and sources; `kind="renders"` lists archived review views
+with their geometry revisions. `view_image` shows any saved ID again. `bricks reference <saved-local-path>` chooses
+a useful downloaded reference to accompany CLI renders; user photos still have priority in the shared evidence.
 
 # The build script
 
