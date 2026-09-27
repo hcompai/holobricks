@@ -195,6 +195,13 @@ def test_a_render_is_answered_by_a_late_viewer_but_never_by_a_stale_one(tmp_path
     assert asyncio.run(main()) == b"png"
 
 
+def test_the_worked_example_in_the_prompt_builds_without_problems(bench, monkeypatch):
+    monkeypatch.setattr(bench.session, "render", lambda camera=None, box=None: asyncio.sleep(0))
+    example = (Path(__file__).resolve().parents[2] / "agent" / "showcase" / "bag-end.py").read_text()
+    result = asyncio.run(bench.run_script(example))
+    assert result.problems == 0 and len(bench.session.build.pieces) > 10_000, result.text
+
+
 def test_the_prompt_names_only_real_parts_sizes_and_colors():
     prompt = (Path(__file__).resolve().parents[2] / "agent" / "holo.j2").read_text()
     rows = re.findall(r"^- (\d+) tall[^:]*: (.*)$", prompt.split("## Parts")[1].split("\n## ")[0], re.MULTILINE)

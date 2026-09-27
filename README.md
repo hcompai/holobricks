@@ -104,7 +104,7 @@ The agent tests build the real `agent/holo.yaml` with fake inference and resume 
 
 ## Showcases and gallery
 
-Paris, London and Hogwarts are scripted in `server/brickyard/showcase` and pass the same checks as Holo's bricks.
+Paris, London and Hogwarts are scripted in `server/brickyard/showcase` and pass the same checks as Holo's bricks. Bag End (`6eb28d127e`) is a Holo build: its script, `agent/showcase/bag-end.py`, is printed in full in Holo's prompt as the worked example.
 
 ```bash
 server/.venv/bin/python -m brickyard.showcase paris                            # or london, hogwarts

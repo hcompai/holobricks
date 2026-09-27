@@ -25,6 +25,7 @@ from sagent.sagent import SAgent
 from sagent.utils.builder import build_agent
 
 CONFIG = Path(__file__).resolve().with_name("holo.yaml")
+BAG_END = CONFIG.with_name("showcase") / "bag-end.py"
 POST_TIMEOUT_S = 10
 MEDIA_TYPES = {".jpg": MediaType.JPEG, ".png": MediaType.PNG, ".webp": MediaType.WEBP}
 LOGGER = logging.getLogger(__name__)
@@ -92,6 +93,7 @@ def main() -> None:
     earlier = earlier_history()
     agent = build_agent(CONFIG.stem, overrides=sys.argv[1:], config_dir=CONFIG.parent)
     agent.policy_context["max_completion_tokens"] = agent.policy.llm.base_request.max_completion_tokens
+    agent.policy_context["bag_end"] = BAG_END.read_text()
     try:
         resume(agent, earlier)
         agent([sys.stdin.read(), *references()])

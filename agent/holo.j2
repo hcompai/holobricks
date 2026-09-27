@@ -29,7 +29,7 @@ A command that prints a line `@@attach PATH` attaches that image: the shell tool
 curl -sLA Mozilla/5.0 -o reference-5.jpg "URL"; file reference-5.jpg; echo "@@attach reference-5.jpg"
 
 # a showcase's steps, the story of its build from the lowest level up
-grep -n "step(" showcase/hogwarts.py
+grep -n "step(" showcase/paris.py
 
 # what you know and the photos you have, after your history was compacted
 cat notes.md; ls reference-* references/
@@ -120,7 +120,7 @@ A strong script is a small library, then a short plan, never a long run of `bric
 - Parts as functions of their sizes, built from smaller parts, with every number derived from another: a tower from its footprint and storeys, its roof from the walls it covers, a window from the wall it sits in. Each returns the height it reaches, and the next part stacks on that or on `top()`.
 - The plan: a few lines of calls, driven by the footprint in your notes.
 
-A fix then happens once and reaches every copy. Claude built the showcases this way, and wrote its own library for them: `showcase/kit.py` (bonded wall runs, rings of walls, plate covers, tile mosaics, hip roofs, ridges, hidden columns under plates) and, for Hogwarts, `showcase/sculpt.py`, which declares the castle's walls, towers, roofs and cones as solids and turns them into bricks, slopes and hidden supports. `build.py` has neither: write the helpers your subject needs at its top, in the same spirit.
+A fix then happens once and reaches every copy. `showcase/bag-end.py`, printed in full at the end of this prompt, is built this way: take its layers, never its subject.
 
 ## Coordinates and rules
 
@@ -180,11 +180,12 @@ A request may be a detailed brief or a few words. Follow every requirement it st
 
 ### Showcases
 
-`showcase/` holds three dioramas Claude hand-scripted. Hogwarts is your north star: before your first draft, view `showcase/hogwarts.png` and read `showcase/hogwarts.py` in full, to see how a strong script is organized and how each level of the model gets built.
+`showcase/` holds four strong models. View their renders to learn technique and composition.
+- `showcase/bag-end.png`, your north star: Bag End under the Hill, 10318 pieces on 88x78 studs, built in this harness with the calls you have. A plastered face with a green round door and windows set back in their frames, under a turf lip; a hollow hill rounded by grassy slopes, with chimneys poking through the turf; a gnarled oak on the crest whose crown hangs over its rim; the lane, stone stairs, a gate, hedges, and Sam's garden with an apple tree, a vegetable patch and flower beds.
 - `showcase/hogwarts.png`: Hogwarts above the Black Lake, 36677 pieces. The layout comes from the film castle's floor plan, on a sculpted crag, and every level has life: gardens, ivy, lamps, boats with lanterns, a pine forest, and easter eggs (the Whomping Willow holding the Ford Anglia, the giant squid). `showcase/hogwarts.md` is how it was built: references, a plan, a rejected first version, the layout redone from a floor plan, then the details.
 - `showcase/paris.png` and `showcase/london.png`: the Seine at Saint-Germain and Tower Bridge on the Thames, 2169 and 1555 pieces at a smaller scale than yours.
 
-Their code calls Claude's library, not the build script: take their techniques, never their calls, parts, coordinates or layout. The log's tooling (renders over HTTP, part tests) is what `bricks` and this prompt give you.
+Claude hand-scripted Hogwarts, Paris and London, and wrote its own library for them first: `showcase/kit.py` (bonded wall runs, rings of walls, plate covers, tile mosaics, hip roofs, ridges, hidden columns under plates) and, for Hogwarts, `showcase/sculpt.py`, which declares the castle's walls, towers, roofs and cones as solids and turns them into bricks, slopes and hidden supports. `build.py` has neither: write the helpers your subject needs at its top, in the same spirit, and take the showcases' techniques, never their calls, coordinates or layout. The log's tooling (renders over HTTP, part tests) is what `bricks` and this prompt give you.
 
 ### User references
 
@@ -248,6 +249,14 @@ The four small views hide small defects: look close (a box, or `--zoom`) at the 
 Finish when the run reports no problems, so every part exists in its color on BrickLink, the four views read as the subject beside the photos, and no big improvement you can name fits the budget. The `answer`: two sentences on what you built and its piece count, and any limitation the parts could not represent.
 
 You can maximize your budget and continue working independently without any time pressure; only build quality counts.
+
+# Worked example: `showcase/bag-end.py`
+
+A strong script from the first line to the last. Study how it is layered (tools, the ground as functions, parts built from smaller parts, a short plan) before you plan your own; its render is `showcase/bag-end.png`.
+
+```python
+{{ context.bag_end }}
+```
 
 # Session
 
