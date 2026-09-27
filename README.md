@@ -75,8 +75,9 @@ your tab + headless Chrome  <── steps, renders ──>  brickyard server  �
 - Renders come from a viewer: the server keeps a hidden Chrome on each build that asks for renders (until its run ends, or 10 idle minutes), so it renders whether or not your tab is open. It serves `web/dist`: rebuild it (`npm run build`) after web changes.
 - Its workspace keeps `notes.md` (its memory, fed back with each request), the reference photos, and `showcase/` (`agent/showcase`: the showcase renders and sources).
 - A separate Holo call extracts a visual brief from the actual user messages and photographs. Each changed, checked
-  geometry is then reviewed in a fresh context: primary references, four model views, a fixed comparison camera
-  and the best previous candidate. The reviewer can request up to two focused views for small or occluded features.
+  geometry is then reviewed in a fresh context: the primary reference, four model views, a fixed comparison camera
+  and the best previous candidate from that camera. The reviewer can request up to two focused views, one at a time,
+  for small or occluded features. Every request stays within the endpoint's five images; the brief reads up to five photos.
   It receives no builder explanations. User photos take precedence over builder-selected references.
 - The brief and review are reinjected as text when they change, and after compaction. The user's photos stay in the
   builder's view through its message-image budget, including after compaction. Reviews and candidate scripts/images

@@ -13,12 +13,16 @@ compactor_trigger_tokens: 120000
 llm_timeout: 1200
 workspace: ${oc.env:BRICKYARD_WORKSPACE}
 
+chat_provider:
+  _target_: hai_adapters.chat_provider_builder.build_chat_provider
+  name: ${model_name}
+  # The public gateway rejects hash-only image references; server-side prefix caching still applies.
+  enable_client_side_img_caching: false
+
 llm:
   _target_: hai_adapters.llm.LanguageModel
   default_timeout: ${llm_timeout}
-  chat_provider:
-    _target_: hai_adapters.chat_provider_builder.build_chat_provider
-    name: ${model_name}
+  chat_provider: ${chat_provider}
   base_request:
     _target_: hai_protocols.base.BaseRequest
     temperature: 1.0
@@ -30,9 +34,7 @@ llm:
 review_llm:
   _target_: hai_adapters.llm.LanguageModel
   default_timeout: ${llm_timeout}
-  chat_provider:
-    _target_: hai_adapters.chat_provider_builder.build_chat_provider
-    name: ${model_name}
+  chat_provider: ${chat_provider}
   base_request:
     _target_: hai_protocols.base.BaseRequest
     temperature: 0.2
@@ -62,9 +64,7 @@ compactor:
     llm:
       _target_: hai_adapters.llm.LanguageModel
       default_timeout: ${llm_timeout}
-      chat_provider:
-        _target_: hai_adapters.chat_provider_builder.build_chat_provider
-        name: ${model_name}
+      chat_provider: ${chat_provider}
       base_request:
         _target_: hai_protocols.base.BaseRequest
         temperature: 0.6

@@ -13,6 +13,7 @@ from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from hai_protocols.chat_completion.messages import ImageContentChunk
 from hai_protocols.image.encoding import MediaType
 from hai_protocols.image.serializable_image import SerializableImage
 from quality import (
@@ -117,7 +118,7 @@ def rig(tmp_path):
     def request(req):
         if req.url.path.endswith("/bom/validation"):
             return httpx.Response(inventory.get("http_status", 200), json={"revision": build["revision"], **inventory})
-        if req.url.path == "/api/images/target.png":
+        if req.url.path.startswith("/api/images/"):
             return httpx.Response(200, content=png("yellow"), headers={"content-type": "image/png"})
         if req.url.path.endswith("/sheet.png"):
             rendered.append(dict(req.url.params))
@@ -302,6 +303,19 @@ def test_endless_inspection_requests_keep_the_last_review(rig):
     rig.llm.outputs = [BRIEF, asking, asking, asking]
     rig.loop.on_update_state_end(None)
     assert len(rig.llm.calls) == 4 and rig.build["revision"] in rig.loop.state["reviews"]
+
+
+def test_every_review_request_fits_the_endpoint_image_limit(rig):
+    rig.build["messages"][0]["images"] = [f"/api/images/photo-{i}.png" for i in range(7)]
+    asking = review(True)
+    asking["inspection"] = {"requirement": "eye", "angle": 0, "elevation": 15, "zoom": 3}
+    rig.llm.outputs = [BRIEF, review(True), asking, asking, asking]
+    rig.loop.on_update_state_end(None)
+    rig.build.update(revision="b" * 64, checked_revision="b" * 64, script="# candidate B")
+    (rig.path / "build.py").write_text(rig.build["script"])
+    rig.loop.on_update_state_end(None)
+    counts = [sum(isinstance(c, ImageContentChunk) for c in call.messages[1].content) for call in rig.llm.calls]
+    assert counts == [5, 3, 4, 5, 5]
 
 
 def test_user_clarification_invalidates_brief_and_best(rig):

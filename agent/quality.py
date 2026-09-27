@@ -144,6 +144,8 @@ origin ranges. A detail view supplements the full-model views; it cannot erase v
 
 
 MAX_REFUSALS = 3
+# The Holo endpoint rejects requests with more images (vLLM limit_mm_per_prompt).
+MAX_REQUEST_IMAGES = 5
 
 
 def digest(value: object) -> str:
@@ -235,7 +237,7 @@ class QualityLoop(Validator):
         # User-supplied photos cannot be replaced accidentally by the builder's chosen downloaded reference.
         urls = next((m["images"] for m in reversed(requests) if m["images"]), [])
         targets = []
-        for n, url in enumerate(urls):
+        for n, url in enumerate(urls[:MAX_REQUEST_IMAGES]):
             if not url.startswith("/api/images/") or "/" in url.removeprefix("/api/images/"):
                 raise ReviewUnavailable("Unexpected reference URL")
             if url not in self.downloads:
@@ -296,7 +298,7 @@ class QualityLoop(Validator):
         (folder / "sheet.png").write_bytes(sheet)
         (folder / "view.png").write_bytes(view)
         (folder / "build.py").write_text(build["script"])
-        images = self.targets + [
+        images = self.targets[:1] + [
             ("Candidate: four standard views", sheet, "image/png"),
             ("Candidate: fixed comparison camera", view, "image/png"),
         ]
@@ -310,14 +312,12 @@ class QualityLoop(Validator):
         best = self.state.get("best")
         if best:
             old = self.folder / best
-            images += [
-                ("Previous best: four standard views", (old / "sheet.png").read_bytes(), "image/png"),
-                ("Previous best: same comparison camera", (old / "view.png").read_bytes(), "image/png"),
-            ]
+            images.append(("Previous best: same comparison camera", (old / "view.png").read_bytes(), "image/png"))
             last = self.state.get("latest")
             if last:
                 previous = self.state["reviews"][last]
                 payload["previous_open_findings"] = [f for f in previous["findings"] if f["status"] != "pass"]
+        views = images
         for inspection in range(3):
             report = self.ask(REVIEW_PROMPT, payload, images, Review)
             if sorted(f.requirement for f in report.findings) != sorted(r.id for r in brief.requirements):
@@ -329,11 +329,11 @@ class QualityLoop(Validator):
             camera = report.inspection.model_dump(exclude={"requirement"}, exclude_none=True)
             detail = self.render(revision, camera)
             (folder / f"detail-{inspection + 1}.png").write_bytes(detail)
-            images.append(
+            images = views + [
                 (f"Candidate detail for {report.inspection.requirement}: {json.dumps(camera)}", detail, "image/png")
-            )
+            ]
             payload["inspection_note"] = (
-                "The requested detail is now appended. Reassess all requirements with it and the original views. "
+                "The requested detail is now attached. Reassess all requirements with it and the original views. "
                 "If evidence is sufficient set inspection=null; otherwise keep the feature unobservable."
             )
         self.state["reviews"][revision] = report.model_dump()
