@@ -91,6 +91,8 @@ test("one copy hands HoloTab a frozen, private-data-free shopping task", async (
   expect(prompt).toContain(`/api/shopping/${pack.id}.ldr`);
   expect(prompt).toContain("2 pieces, 1 part/color combinations");
   expect(prompt).toContain("instead of importing again");
+  expect(prompt).toContain("3069b → BrickLink 3069");
+  expect(prompt).toContain("keeping the existing quantities and already converted BrickLink colors");
   expect(prompt).toContain("do not place orders or submit payment");
   expect(prompt).not.toContain("PRIVATE REQUEST");
   expect(prompt).not.toContain("/download.ldr");

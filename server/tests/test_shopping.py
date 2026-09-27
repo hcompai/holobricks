@@ -51,6 +51,81 @@ def test_import_preserves_every_instance_and_ldraw_colors(model, tmp_path):
         assert "PRIVATE" not in file.read_text() and "/api/images/" not in file.read_text()
 
 
+def test_microduck_catalog_aliases_preserve_all_three_colors_and_source_model(model, tmp_path, monkeypatch):
+    ldraw.catalog().update({"3069b.dat": "Tile 1 x 2 with Groove", "6143.dat": "Brick 2 x 2 Round Reinforced"})
+    monkeypatch.setattr(
+        ldraw,
+        "colors",
+        lambda: {
+            14: ("Yellow", "#F2CD37"),
+            70: ("Reddish Brown", "#582A12"),
+            78: ("Light Nougat", "#F6D7B3"),
+            326: ("Yellowish Green", "#DFEEA5"),
+        },
+    )
+    model.pieces = []
+    for part, color, count in [
+        ("3069b.dat", 70, 122),
+        ("3069b.dat", 78, 46),
+        ("3069b.dat", 326, 4),
+        ("6143.dat", 14, 1),
+    ]:
+        for _ in range(count):
+            model.pieces.append(
+                Piece(id=len(model.pieces), part=part, color=color, pos=(20 * len(model.pieces), -8, 0), step=0)
+            )
+    original = model.model_dump()
+    pack = shopping.save(model, tmp_path)
+    assert pack["version"] == 2
+    assert model.model_dump() == original
+    lines = [
+        line.split() for line in (tmp_path / f"{pack['id']}.ldr").read_text().splitlines() if line.startswith("1 ")
+    ]
+    assert Counter((row[-1], int(row[1])) for row in lines) == {
+        ("3069.dat", 70): 122,
+        ("3069.dat", 78): 46,
+        ("3069.dat", 326): 4,
+        ("3941.dat", 14): 1,
+    }
+    for piece, row in zip(model.pieces, lines, strict=True):
+        assert tuple(map(float, row[2:-1])) == (*piece.pos, *piece.rot)
+    assert pack["pieces"] == 173 and pack["lots"] == 4
+    assert {(row["part"], row["import_part"]) for row in pack["inventory"]} == {
+        ("3069b.dat", "3069.dat"),
+        ("6143.dat", "3941.dat"),
+    }
+    page = (tmp_path / f"{pack['id']}.html").read_text()
+    assert "<td>3069b.dat</td><td>3069</td>" in page
+    assert "<td>6143.dat</td><td>3941</td>" in page
+    assert "not BrickLink XML color IDs" in page
+
+
+def test_catalog_normalization_does_not_strip_variant_or_print_suffixes(model, tmp_path):
+    ldraw.catalog().update({"3069a.dat": "Tile without Groove", "3069bp01.dat": "Printed Tile"})
+    model.pieces = [
+        Piece(id=1, part="3069a.dat", color=14, pos=(0, 0, 0), step=0),
+        Piece(id=2, part="3069bp01.dat", color=14, pos=(40, 0, 0), step=0),
+    ]
+    pack = shopping.save(model, tmp_path)
+    rows = [
+        line.split()[-1] for line in (tmp_path / f"{pack['id']}.ldr").read_text().splitlines() if line.startswith("1 ")
+    ]
+    assert rows == ["3069a.dat", "3069bp01.dat"]
+    assert all(row["import_part"] == row["part"] for row in pack["inventory"])
+
+
+def test_aliases_for_the_same_import_lot_keep_every_instance(model, tmp_path):
+    ldraw.catalog().update({"3069.dat": "Tile 1 x 2", "3069b.dat": "Tile 1 x 2 with Groove"})
+    model.pieces = [
+        Piece(id=1, part="3069.dat", color=14, pos=(0, 0, 0), step=0),
+        Piece(id=2, part="3069b.dat", color=14, pos=(40, 0, 0), step=0),
+    ]
+    pack = shopping.save(model, tmp_path)
+    assert pack["pieces"] == 2 and pack["lots"] == 1
+    assert (tmp_path / f"{pack['id']}.ldr").read_text().count("3069.dat\n") == 2
+    assert sum(row["count"] for row in pack["inventory"]) == 2
+
+
 def test_retries_are_idempotent_and_recolors_cannot_change_a_saved_order(model, tmp_path):
     first = shopping.save(model, tmp_path)
     content = {p.name: p.read_bytes() for p in tmp_path.iterdir()}
