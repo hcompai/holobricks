@@ -1,10 +1,11 @@
-import { PlusIcon } from "@phosphor-icons/react";
+import { PlusIcon, ShoppingBagIcon } from "@phosphor-icons/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, GALLERY, type Build, type BuildSummary } from "./api";
 import { ChatPanel } from "./ChatPanel";
 import { DownloadMenu } from "./DownloadMenu";
 import { LibraryPanel } from "./LibraryPanel";
 import { PartsPanel } from "./PartsPanel";
+import { ShopDialog } from "./ShopDialog";
 import { Timeline } from "./Timeline";
 import { ReplayExport } from "./ReplayExport";
 import { useBuild } from "./useBuild";
@@ -33,6 +34,12 @@ export default function App() {
   const [framing, setFraming] = useState<Framing>({ view: "iso" });
   const [spin, setSpin] = useState(false);
   const [exportBuild, setExportBuild] = useState<Build | null>(null);
+  const [shopping, setShopping] = useState<{ build: Build; preview: Promise<Blob | null> } | null>(null);
+  const shop = () => {
+    if (build?.status === "done" && build.pieces.length) {
+      setShopping({ build: structuredClone(build), preview: viewer.current?.image() ?? Promise.resolve(null) });
+    }
+  };
   const exportReplay = () => {
     if (build?.pieces.length) setExportBuild(structuredClone(build));
   };
@@ -143,6 +150,16 @@ export default function App() {
           </>
         )}
         <span className="spacer" />
+        {build && (
+          <button
+            className="shop-trigger"
+            onClick={shop}
+            disabled={build.status !== "done" || !build.pieces.length}
+            title={build.status === "done" ? "Shop bricks with HoloTab" : "Finish your build to shop its bricks"}
+          >
+            <ShoppingBagIcon size={16} /> <span>Shop bricks</span>
+          </button>
+        )}
         <ThemeToggle />
         {build && (
           <DownloadMenu
@@ -270,6 +287,7 @@ export default function App() {
         )}
       </main>
       {exportBuild && <ReplayExport build={exportBuild} onClose={() => setExportBuild(null)} />}
+      {shopping && <ShopDialog build={shopping.build} preview={shopping.preview} onClose={() => setShopping(null)} />}
     </div>
   );
 }

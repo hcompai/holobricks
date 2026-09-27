@@ -7,7 +7,7 @@ import json
 import shutil
 from pathlib import Path
 
-from brickyard import ldraw
+from brickyard import ldraw, shopping
 from brickyard.model import Build
 from brickyard.session import Store
 
@@ -28,6 +28,11 @@ def export(store: Store, ids: list[str], site: Path) -> Path:
         (out / "builds" / f"{build.id}.json").write_text(build.model_dump_json())
         (out / "builds" / f"{build.id}.bom.json").write_text(json.dumps(build.bom()))
         (out / "builds" / f"{build.id}.ldr").write_text(build.to_ldraw())
+        try:
+            package = shopping.save(build, out / "shopping")
+        except ValueError as exc:
+            package = {"error": str(exc)}
+        (out / "builds" / f"{build.id}.shopping.json").write_text(json.dumps(package))
         thumbnail = store.thumbnail(build.id)
         if thumbnail.exists():
             shutil.copy(thumbnail, out / "thumbnails" / f"{build.id}.png")

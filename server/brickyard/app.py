@@ -19,7 +19,7 @@ from fastapi.responses import FileResponse, PlainTextResponse, Response, Streami
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ValidationError
 
-from brickyard import ldraw
+from brickyard import ldraw, shopping
 from brickyard.builders import BUILDERS
 from brickyard.model import Box, Build, Camera, Message
 from brickyard.session import Session, Store
@@ -45,6 +45,10 @@ class NewBuild(BaseModel):
 class Say(BaseModel):
     text: str
     images: list[str] = []
+
+
+class ShoppingRequest(BaseModel):
+    revision: str
 
 
 class AgentSay(BaseModel):
@@ -314,6 +318,33 @@ async def download(build_id: str) -> PlainTextResponse:
     build = session_for(build_id).build
     disposition = f"attachment; filename*=UTF-8''{quote(f'{build.name}.ldr')}"
     return PlainTextResponse(build.to_ldraw(), headers={"Content-Disposition": disposition})
+
+
+@app.post("/api/builds/{build_id}/shopping")
+async def prepare_shopping(build_id: str, request: ShoppingRequest) -> dict:
+    session = idle(session_for(build_id))
+    if session.build.revision != request.revision:
+        raise HTTPException(409, "Your model changed. Close this window and try again to shop the latest version.")
+    try:
+        return shopping.save(session.build, store.root.parent / "shopping")
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
+@app.get("/api/shopping/{filename}")
+def shopping_file(filename: str) -> FileResponse:
+    if not shopping.PACKAGE_FILE.fullmatch(filename):
+        raise HTTPException(404, "No such parts list.")
+    path = store.root.parent / "shopping" / filename
+    if not path.is_file():
+        raise HTTPException(404, "No such parts list.")
+    suffix = path.suffix
+    return FileResponse(
+        path,
+        media_type={".ldr": "text/plain", ".html": "text/html", ".json": "application/json"}[suffix],
+        filename=f"brickyard-{filename[:12]}-parts.ldr" if suffix == ".ldr" else None,
+        headers={"Cache-Control": "private, max-age=31536000, immutable", "X-Content-Type-Options": "nosniff"},
+    )
 
 
 @app.get("/api/parts/{part}")

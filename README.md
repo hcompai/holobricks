@@ -11,6 +11,7 @@
 - **Candidates are checked before publication**: a script with rejected parts or unsupported groups preserves the
   previous model. Checks use bounding boxes; they do not certify LEGO connections or physical stability.
 - **Replay** the steps, browse the parts list, download the `.ldr`.
+- **Shop bricks**: copy a ready-made request into HoloTab, which can import the saved parts list on BrickLink and prepare carts for you to review and pay. Includes a HoloTab install link; no extension integration or API key is required.
 - **Share** an assembly GIF from the timeline or download menu, with optional HOLO4 / H Company branding for Holo builds.
 
 Gallery for the H team: [brickyard-h-company.vercel.app](https://brickyard-h-company.vercel.app) (Vercel login).
