@@ -24,8 +24,9 @@ const BACKDROP = "#eceef3";
 const INK = "#1c1c26";
 const MUTED = "#8a8a96";
 const FOV = 28;
-/** Share of the frame's height kept clear of the model for the caption line. */
-const CAPTION = 0.12;
+/** Share of the frame's height kept clear of the model for the caption. */
+const CAPTION = 0.15;
+const NAME_PX = 46;
 const MARGIN = 1.08;
 const HERO_ANGLE = 35;
 const ORBIT_DEGREES = 55;
@@ -226,6 +227,7 @@ export class FilmRenderer {
   async prepare() {
     await Promise.all([
       this.scene.setPieces(this.ranked),
+      document.fonts.load(`700 ${NAME_PX}px ${FONT}`),
       document.fonts.load(`600 26px ${FONT}`),
       document.fonts.load(`500 26px ${FONT}`),
     ]);
@@ -465,7 +467,7 @@ export class FilmRenderer {
     camera.clearViewOffset();
   }
 
-  /** A vignette, the H mark when branded, and one caption line: what is being built and how many pieces are in. */
+  /** A vignette, the H mark when branded, the build's name over the current step, and how many pieces are in. */
   private overlay(time: number) {
     const { width, height, branded } = this.options;
     const { plan, ctx } = this;
@@ -491,16 +493,6 @@ export class FilmRenderer {
 
     const total = plan.order.length;
     const done = landed(plan, time);
-    let title = this.build.name;
-    let since = time;
-    if (done === total) {
-      since = time - (plan.starts[total - 1] + plan.flight);
-    } else if (started(plan, time) > 0) {
-      let step = this.captions[0];
-      for (const s of this.captions) if (s.start <= time) step = s;
-      title = step.title;
-      since = time - step.start;
-    }
     const base = height - margin;
     ctx.font = `500 ${26 * unit}px ${FONT}`;
     ctx.fillStyle = MUTED;
@@ -511,10 +503,21 @@ export class FilmRenderer {
     ctx.fillStyle = INK;
     ctx.font = `600 ${26 * unit}px ${FONT}`;
     const counter = this.digits(done.toLocaleString("en-US"), width - margin - suffix, base) + suffix;
+    const room = width - margin * 3 - counter;
 
-    ctx.globalAlpha = Math.min(1, since / FADE_S);
     ctx.textAlign = "left";
-    this.text(title, margin, base, width - margin * 3 - counter);
+    ctx.font = `700 ${NAME_PX * unit}px ${FONT}`;
+    this.text(this.build.name, margin, base - 48 * unit, room);
+    const assembled = plan.starts[total - 1] + plan.flight;
+    if (started(plan, time) === 0 || time >= assembled + FADE_S) return;
+    let step = this.captions[0];
+    for (const s of this.captions) if (s.start <= time) step = s;
+    const fadeIn = (time - step.start) / FADE_S;
+    const fadeOut = (assembled + FADE_S - time) / FADE_S;
+    ctx.globalAlpha = THREE.MathUtils.clamp(Math.min(fadeIn, fadeOut), 0, 1);
+    ctx.font = `500 ${26 * unit}px ${FONT}`;
+    ctx.fillStyle = MUTED;
+    this.text(step.title, margin, base, room);
     ctx.globalAlpha = 1;
   }
 

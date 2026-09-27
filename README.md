@@ -160,7 +160,7 @@ Open a regenerated showcase once in the app to refresh its thumbnail before depl
 
 ## Build films
 
-Choose **Export film** in the timeline (or the download menu): bricks drop in step by step, the camera cranes up with the model, then the finished build takes a full turn and holds. One caption line names each step and counts the pieces; Holo builds can carry the H Company logo.
+Choose **Export film** in the timeline (or the download menu): bricks drop in step by step, the camera cranes up with the model, then the finished build takes a full turn and holds. The caption shows the build's name over the current step, and counts the pieces; Holo builds can carry the H Company logo.
 
 With Chrome and ffmpeg on the server, the dialog renders a 1080p, 60 fps MP4 (H.264, CRF 18) and a GIF under 15 MB (X's limit), with progress and cancellation. The static gallery has no server, so it makes a 640 px GIF in the browser instead.
 

@@ -43,7 +43,7 @@ CHROME_FLAGS = (
     "--enable-unsafe-swiftshader",
 )
 X264 = (
-    *("-c:v", "libx264", "-preset", "slow", "-crf", "18", "-pix_fmt", "yuv420p"),
+    *("-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p"),
     *("-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709", "-color_range", "tv"),
     *("-movflags", "+faststart"),
 )
