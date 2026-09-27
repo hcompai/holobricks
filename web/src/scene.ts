@@ -467,9 +467,31 @@ export class BrickScene {
 
   /** Draw a replay in an isolated scene. Framing uses the complete model, even while pieces are hidden. */
   replayFrame(step: number): HTMLCanvasElement {
-    this.setVisibleStep(step);
+    if (this.visibleStep !== step) this.setVisibleStep(step);
     this.draw();
     return this.renderer.domElement;
+  }
+
+  /** A fixed-distance orbit starting at the front, fitted to the model's full swept bounds. */
+  frameReplayOrbit(turn: number) {
+    const box = this.modelBox();
+    if (box.isEmpty()) return;
+    const center = box.getCenter(new THREE.Vector3());
+    const size = box.getSize(new THREE.Vector3());
+    const radius = Math.hypot(size.x, size.z) / 2;
+    // The envelope encloses every yaw, so long/wide models neither clip nor pulse in size.
+    const envelope = new THREE.Box3(
+      new THREE.Vector3(center.x - radius, box.min.y, center.z - radius),
+      new THREE.Vector3(center.x + radius, box.max.y, center.z + radius),
+    );
+    this.aim(VIEW_DIRECTIONS.front, this.framing.width, this.framing.depth, 1, undefined, envelope);
+    this.camera.position
+      .sub(center)
+      .applyAxisAngle(new THREE.Vector3(0, 1, 0), turn * Math.PI * 2)
+      .add(center);
+    this.camera.lookAt(center);
+    this.controls.update();
+    this.dirty = true;
   }
 
   frameView(view: View, width: number, depth: number) {

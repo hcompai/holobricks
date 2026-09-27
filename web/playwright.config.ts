@@ -2,8 +2,8 @@ import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./tests",
-  // Shared runners render WebGL on the CPU; shader warm-up alone can take ~30 seconds.
-  timeout: 180000,
+  // CPU-only runners need shader warm-up plus the 30-frame turntable finale.
+  timeout: 300000,
   expect: { timeout: 30000 },
   workers: 1,
   use: {

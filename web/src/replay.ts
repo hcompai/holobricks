@@ -54,8 +54,9 @@ export class ReplayRenderer {
     this.scene.frameView(this.view, this.build.width, this.build.depth);
   }
 
-  draw(count: number, branded: boolean) {
+  draw(count: number, branded: boolean, turn?: number) {
     this.signal.throwIfAborted();
+    if (turn !== undefined) this.scene.frameReplayOrbit(turn);
     const { width, height } = this.size;
     const ctx = this.ctx;
     const margin = 32;
@@ -78,7 +79,12 @@ export class ReplayRenderer {
     ctx.drawImage(this.scene.replayFrame(count - 1), 24, this.header, width - 48, this.viewHeight);
     const piece = this.ordered.ordered[count - 1];
     const step = piece ? this.build.steps.findIndex((s) => s.index === piece.step) : -1;
-    const label = count === 0 ? "The first brick…" : (this.build.steps[step]?.title ?? "Assembling");
+    const label =
+      turn !== undefined
+        ? "The complete snapshot"
+        : count === 0
+          ? "The first brick…"
+          : (this.build.steps[step]?.title ?? "Assembling");
     ctx.font = `600 15px ${FONT}`;
     ctx.fillStyle = "#1c1c26";
     this.text(label, margin, height - 62, width - margin * 2 - 150);
@@ -149,10 +155,12 @@ export class ReplayRenderer {
         else worker.postMessage(message, transfer);
       });
     try {
+      // A previous export/cancellation may have left the private camera mid-orbit.
+      this.scene.frameView(this.view, this.build.width, this.build.depth);
       const frames = planReplay(this.build.pieces.length, seconds, this.ordered.stepEnds);
       for (const [i, frame] of frames.entries()) {
         signal.throwIfAborted();
-        this.draw(frame.pieces, branded);
+        this.draw(frame.pieces, branded, frame.turn);
         const { width, height } = this.size;
         const rgba = this.ctx.getImageData(0, 0, width, height).data.buffer;
         await send({ type: "frame", rgba, width, height, delay: frame.delay }, [rgba]);

@@ -190,6 +190,9 @@ export function ReplayExport({ build, onClose }: Props) {
               </label>
             )}
           </fieldset>
+          <p className="small muted">
+            Includes a 3-second spin of the complete snapshot, ending with a 1-second front view.
+          </p>
           <div className="replay-generation" aria-live="polite">
             {busy ? (
               <>

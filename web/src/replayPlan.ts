@@ -9,15 +9,18 @@ export type ReplayFormat = keyof typeof REPLAY_FORMATS;
 export interface ReplayFrame {
   pieces: number;
   delay: number;
+  /** Fraction of a full orbit from the front; absent during assembly. */
+  turn?: number;
 }
 
-/** Compress an assembly into a bounded number of frames, retaining an empty start and a held final model. */
+/** Bounded assembly, then a three-second orbit and a one-second front hold, within the requested duration. */
 export function planReplay(pieces: number, seconds: number, stepEnds: readonly number[] = [pieces]): ReplayFrame[] {
   if (!Number.isSafeInteger(pieces) || pieces < 1 || ![8, 12, 20].includes(seconds)) {
     throw new Error("Choose a nonempty model and an 8, 12 or 20 second replay.");
   }
-  const ticks = seconds * 100 - 230; // GIF timing is in hundredths of a second.
-  const count = Math.min(pieces, 120, Math.ceil(ticks / 10));
+  const spinFrames = 30;
+  const ticks = seconds * 100 - 430; // GIF timing is in hundredths of a second.
+  const count = Math.min(pieces, 120 - spinFrames - 1, Math.ceil(ticks / 10));
   const frames: ReplayFrame[] = [{ pieces: 0, delay: 300 }];
   for (let i = 1; i <= count; i++) {
     const delay = (Math.round((i * ticks) / count) - Math.round(((i - 1) * ticks) / count)) * 10;
@@ -27,10 +30,11 @@ export function planReplay(pieces: number, seconds: number, stepEnds: readonly n
     const start = stepEnds[step - 1] ?? 0;
     const visible =
       i === count ? pieces : Math.ceil((start * count + (position - step * count) * (stepEnds[step] - start)) / count);
-    const duration = delay + (i === count ? 2000 : 0);
-    if (frames.at(-1)!.pieces === visible) frames.at(-1)!.delay += duration;
-    else frames.push({ pieces: visible, delay: duration });
+    if (frames.at(-1)!.pieces === visible) frames.at(-1)!.delay += delay;
+    else frames.push({ pieces: visible, delay });
   }
+  for (let i = 0; i < spinFrames; i++) frames.push({ pieces, delay: 100, turn: i / spinFrames });
+  frames.push({ pieces, delay: 1000, turn: 0 });
   return frames;
 }
 

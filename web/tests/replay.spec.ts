@@ -90,10 +90,16 @@ test("timing covers a single brick and very large timelines without unbounded fr
       expect(frames.length).toBeLessThanOrEqual(121);
       expect(frames[0].pieces).toBe(0);
       expect(frames.at(-1)!.pieces).toBe(count);
-      expect(frames.at(-1)!.delay).toBeGreaterThanOrEqual(2000);
+      expect(frames.at(-1)).toEqual({ pieces: count, delay: 1000, turn: 0 });
       expect(frames.reduce((sum, f) => sum + f.delay, 0)).toBe(seconds * 1000);
       expect(frames.every((f) => f.delay > 0 && f.delay % 10 === 0)).toBe(true);
-      expect(frames.slice(1).every((f, i) => f.pieces > frames[i].pieces)).toBe(true);
+      const assembly = frames.filter((f) => f.turn === undefined);
+      expect(assembly.slice(1).every((f, i) => f.pieces > assembly[i].pieces)).toBe(true);
+      const finale = frames.filter((f) => f.turn !== undefined);
+      expect(finale.every((f) => f.pieces === count)).toBe(true);
+      expect(finale.reduce((sum, f) => sum + f.delay, 0)).toBe(4000);
+      expect(finale[0].turn).toBe(0);
+      expect(new Set(finale.map((f) => f.turn)).size).toBe(30);
     }
   expect(() => planReplay(0, 12)).toThrow();
   const original = fixture().pieces.reverse();
@@ -123,13 +129,16 @@ test("downloads a decodable looping GIF, preserves the viewer, and shares the ac
   await page.getByRole("button", { name: "Export GIF", exact: true }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByRole("button", { name: "Generate GIF", exact: true })).toBeEnabled();
+  // Even when assembly is viewed from above, the finale must turn and finish at the front.
+  await dialog.getByRole("combobox", { name: "Camera", exact: true }).selectOption("top");
+  await expect(dialog.getByRole("button", { name: "Generate GIF", exact: true })).toBeEnabled();
   await dialog.screenshot({ path: info.outputPath("preview.png") });
   const before = await page
     .locator(".viewer-canvas canvas")
     .evaluate((canvas: HTMLCanvasElement) => canvas.toDataURL());
   await dialog.getByRole("button", { name: "Generate GIF", exact: true }).click();
   const downloadLink = dialog.getByRole("link", { name: "Download GIF" });
-  await expect(downloadLink).toBeVisible({ timeout: 90000 });
+  await expect(downloadLink).toBeVisible({ timeout: 180000 });
   const pendingDownload = page.waitForEvent("download");
   await downloadLink.click();
   const download = await pendingDownload;
@@ -141,12 +150,15 @@ test("downloads a decodable looping GIF, preserves the viewer, and shares the ac
   expect(gif.lsd.width).toBe(640);
   expect(gif.lsd.height).toBe(640);
   const frames = decompressFrames(gif, true);
-  expect(frames).toHaveLength(9);
+  expect(frames).toHaveLength(40);
   expect(frames.reduce((sum, f) => sum + f.delay, 0)).toBe(12000);
-  expect(frames.at(-1)!.delay).toBeGreaterThanOrEqual(2000);
+  expect(frames.at(-1)!.delay).toBe(1000);
   // Check actual decoded model-area pixels, not just a changing progress label.
   const modelPixels = (f: (typeof frames)[number]) => f.patch.slice(640 * 4 * 140, 640 * 4 * 520);
   expect(modelPixels(frames[0])).not.toEqual(modelPixels(frames.at(-1)!));
+  expect(modelPixels(frames[8])).not.toEqual(modelPixels(frames[9]));
+  expect(modelPixels(frames[9])).not.toEqual(modelPixels(frames[16]));
+  expect(modelPixels(frames[9])).toEqual(modelPixels(frames.at(-1)!));
   expect(bytes.includes(Buffer.from("NETSCAPE2.0"))).toBe(true);
   await expect(dialog.getByText("File sharing is unavailable", { exact: false })).toBeVisible();
   await page.evaluate(() => {
@@ -208,7 +220,7 @@ test("a live snapshot stays frozen, cancellation can retry, and closing releases
   await expect(dialog.getByRole("button", { name: "Generate GIF", exact: true })).toBeEnabled();
   await expect(dialog.getByRole("link", { name: "Download GIF" })).toHaveCount(0);
   await dialog.getByRole("button", { name: "Generate GIF", exact: true }).click();
-  await expect(dialog.getByRole("link", { name: "Download GIF" })).toBeVisible({ timeout: 90000 });
+  await expect(dialog.getByRole("link", { name: "Download GIF" })).toBeVisible({ timeout: 180000 });
   await expect(dialog.getByText("640 × 800", { exact: false })).toBeVisible();
   await dialog.getByRole("button", { name: "Close export" }).click();
   await expect(page.locator('body > div[aria-hidden="true"]')).toHaveCount(0);
