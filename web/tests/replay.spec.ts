@@ -32,16 +32,18 @@ function fixture(): Build {
     status: "done",
     created: 1,
     updated: 1,
-    width: 6,
-    depth: 4,
+    width: 4,
+    depth: 2,
     messages: [],
     steps: Array.from({ length: 4 }, (_, index) => ({ index, title: `Layer ${index + 1}` })),
-    pieces: Array.from({ length: 24 }, (_, id) => ({
+    // Eight pieces still exercise every color/step and the real encoder, without making
+    // CPU-only CI render two dozen full-size frames for each lifecycle assertion.
+    pieces: Array.from({ length: 8 }, (_, id) => ({
       id,
       part: "test-brick",
-      color: [4, 14, 1, 2][Math.floor(id / 6)],
-      step: Math.floor(id / 6),
-      pos: [(id % 3) * 40, -Math.floor(id / 6) * 24, Math.floor((id % 6) / 3) * 40],
+      color: [4, 14, 1, 2][Math.floor(id / 2)],
+      step: Math.floor(id / 2),
+      pos: [(id % 2) * 40, -Math.floor(id / 2) * 24, 0],
       rot: [1, 0, 0, 0, 1, 0, 0, 0, 1],
     })),
   };
@@ -98,8 +100,8 @@ test("timing covers a single brick and very large timelines without unbounded fr
   const copy = structuredClone(original);
   const { ordered, rendered } = replayPieces(original);
   expect(original).toEqual(copy);
-  expect(ordered.map((p) => p.id)).toEqual(Array.from({ length: 24 }, (_, i) => i));
-  expect(rendered.at(-1)!.step).toBe(23);
+  expect(ordered.map((p) => p.id)).toEqual(Array.from({ length: 8 }, (_, i) => i));
+  expect(rendered.at(-1)!.step).toBe(7);
   expect(replayFilename("a/b:c?.")).toBe("a-b-c--assembly.gif");
   const uneven = planReplay(1000, 12, [990, 991, 1000]);
   let elapsed = 0;
@@ -127,7 +129,7 @@ test("downloads a decodable looping GIF, preserves the viewer, and shares the ac
     .evaluate((canvas: HTMLCanvasElement) => canvas.toDataURL());
   await dialog.getByRole("button", { name: "Generate GIF", exact: true }).click();
   const downloadLink = dialog.getByRole("link", { name: "Download GIF" });
-  await expect(downloadLink).toBeVisible({ timeout: 45000 });
+  await expect(downloadLink).toBeVisible({ timeout: 90000 });
   const pendingDownload = page.waitForEvent("download");
   await downloadLink.click();
   const download = await pendingDownload;
@@ -139,7 +141,7 @@ test("downloads a decodable looping GIF, preserves the viewer, and shares the ac
   expect(gif.lsd.width).toBe(640);
   expect(gif.lsd.height).toBe(640);
   const frames = decompressFrames(gif, true);
-  expect(frames).toHaveLength(25);
+  expect(frames).toHaveLength(9);
   expect(frames.reduce((sum, f) => sum + f.delay, 0)).toBe(12000);
   expect(frames.at(-1)!.delay).toBeGreaterThanOrEqual(2000);
   // Check actual decoded model-area pixels, not just a changing progress label.
@@ -197,7 +199,7 @@ test("a live snapshot stays frozen, cancellation can retry, and closing releases
       }),
     });
   }, build.pieces[0]);
-  await expect(dialog.getByLabel("Suggested caption")).toContainText("24 LEGO pieces");
+  await expect(dialog.getByLabel("Suggested caption")).toContainText("8 LEGO pieces");
   await expect(dialog.getByLabel("Suggested caption")).toContainText("work in progress");
   await dialog.getByRole("combobox", { name: "Format", exact: true }).selectOption("portrait");
   await expect(dialog.getByRole("button", { name: "Generate GIF", exact: true })).toBeEnabled();
@@ -206,11 +208,11 @@ test("a live snapshot stays frozen, cancellation can retry, and closing releases
   await expect(dialog.getByRole("button", { name: "Generate GIF", exact: true })).toBeEnabled();
   await expect(dialog.getByRole("link", { name: "Download GIF" })).toHaveCount(0);
   await dialog.getByRole("button", { name: "Generate GIF", exact: true }).click();
-  await expect(dialog.getByRole("link", { name: "Download GIF" })).toBeVisible({ timeout: 45000 });
+  await expect(dialog.getByRole("link", { name: "Download GIF" })).toBeVisible({ timeout: 90000 });
   await expect(dialog.getByText("640 × 800", { exact: false })).toBeVisible();
   await dialog.getByRole("button", { name: "Close export" }).click();
   await expect(page.locator('body > div[aria-hidden="true"]')).toHaveCount(0);
-  await expect(page.locator(".chip").filter({ hasText: "25 pieces" })).toBeVisible();
+  await expect(page.locator(".chip").filter({ hasText: "9 pieces" })).toBeVisible();
   expect(mutations).toEqual([]);
 });
 
