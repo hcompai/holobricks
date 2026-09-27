@@ -220,7 +220,7 @@ async def get_state(build_id: str, after: str = "") -> Response:
     this snapshot: replaying rewind/step deltas over a newer HTTP response is not safe.
     """
     session = session_for(build_id)
-    snapshot = session.build.model_dump(mode="json", exclude={"script", "checked_revision"})
+    snapshot = session.build.model_dump(mode="json", exclude={"script"})
     token = hashlib.sha256(json.dumps(snapshot, separators=(",", ":")).encode()).hexdigest()
     body = {
         "token": token,

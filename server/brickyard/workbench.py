@@ -241,16 +241,14 @@ class Workbench:
         return Result("\n".join(lines), note=note, problems=problems)
 
     async def run_script(self, code: str) -> Result:
-        """Check changed steps in memory; publish the revision unless a brick is rejected, floating ones only warn."""
+        """Rebuild the model from `code`: steps up to the first changed one stay, the rest are rebuilt and checked."""
         build = self.session.build
         fixed = self._fixed()
         out = await _execute(code, await asyncio.to_thread(self._taken, fixed))
         printed = f"\nThe script printed:\n{out['printed']}" if out.get("printed") else ""
         if "error" in out:
-            return Result(
-                f"The script stopped, so the model and accepted script did not change.\n{out['error']}{printed}",
-                problems=1,
-            )
+            await self.session.save_script(code)
+            return Result(f"The script stopped, so the model did not change.\n{out['error']}{printed}", problems=1)
         steps = out["steps"]
         keys = [_digest(s) for s in steps]
         old = [s.key for s in build.steps[fixed:]]
@@ -266,50 +264,43 @@ class Workbench:
             }
         )
         candidate.width, candidate.depth = footprint(candidate.pieces)
-        # This workbench is only a geometry checker. No session method publishes or saves the candidate.
         draft = Workbench(Session(candidate, self.session.store))
         source = code.splitlines()
-        errors, floating, reports = 0, 0, []
+        reports, floating = [], []
         for n, (s, key) in enumerate(zip(steps[same:], keys[same:], strict=True), kept_steps + 1):
             bricks = [b | {"label": _line(source, b["line"])} for b in s["bricks"]]
             try:
                 parsed = [Brick.model_validate(b) for b in bricks]
             except ValidationError as e:
-                errors += 1
                 reports.append(f"Step {n} '{s['title']}': invalid bricks: {e.errors(include_url=False)}")
                 continue
             placements, rejected, warnings = await asyncio.to_thread(draft._check, parsed)
             if placements:
-                added = candidate.add_step(s["title"], placements, key if not warnings else "")
-                added.support_warnings = len(warnings)
-            if rejected or warnings:
-                errors += len(rejected)
-                floating += len(warnings)
-                reports.append(f"Step {n} '{s['title']}':\n" + _first(rejected + warnings))
+                candidate.add_step(s["title"], placements, "" if rejected else key)
+            if rejected:
+                reports.append(f"Step {n} '{s['title']}':\n" + _first(rejected))
+            if warnings:
+                floating.append(f"Step {n} '{s['title']}':\n" + _first(warnings))
+        await self.session.commit_script(candidate, kept_steps)
+        parts = await self.session.check_parts() if self.pieces else None
+        problems = len(reports) + (len(parts["issues"]) if parts else 0)
         kept = (
             ""
             if not same
-            else f"kept step {fixed + 1}, "
+            else f"kept step {fixed + 1} unchanged, "
             if same == 1
-            else f"kept steps {fixed + 1} to {fixed + same}, "
+            else f"kept steps {fixed + 1} to {fixed + same} unchanged, "
         )
-        lines = [f"Ran the script: {kept}rebuilt {len(steps) - same} steps."]
-        if errors:
-            return Result(
-                "Candidate rejected; the model and accepted script did not change.\n"
-                + "\n".join(lines + ["Problems, by script line:", *reports])
-                + printed
-                + "\nFix the named lines in your script and run again. No candidate render was published.",
-                problems=errors + floating,
-            )
-        try:
-            report = await self.session.commit_script(candidate, kept_steps)
-        except catalog.ValidationError as exc:
-            return self.catalog_rejection(exc.report)
-        if report:
-            lines.append(catalog.describe(report))
-        problems = floating
-        lines += ["Placed, but check these floating bricks, by script line:", *reports] if reports else []
+        rebuilt = len(steps) - same
+        lines = [f"Ran the script: {kept}rebuilt and checked {rebuilt} step{'' if rebuilt == 1 else 's'}."]
+        if reports:
+            lines += ["Problems, by script line; these bricks were not placed:", *reports]
+        if parts and not parts["valid"]:
+            lines.append(_catalog_issues(parts))
+        if not problems:
+            lines.append("No problems: every brick is known, fits, and exists in its color on BrickLink.")
+        if floating:
+            lines += ["Floating, fine only if the subject flies or hangs there:", *floating]
         lines.append("Steps: pieces, then where they sit in studs (x, y) and plates (z, bottom to top):")
         lines.append(await asyncio.to_thread(self.describe))
         pieces = sum(p.part != BASEPLATE for p in self.pieces)
@@ -325,30 +316,14 @@ class Workbench:
 
     @staticmethod
     def catalog_rejection(report: dict) -> Result:
-        retry = any(issue["code"] == "catalog_unavailable" for issue in report["issues"])
         return Result(
-            "Candidate rejected; the model and accepted script did not change.\n"
-            + catalog.describe(report)
-            + (
-                "\nRetry the catalog check; do not change the design to bypass an unavailable source."
-                if retry
-                else "\nChoose verified part/color combinations matching the reference, edit the script and run again."
-            ),
+            "Candidate rejected; the model did not change.\n" + _catalog_issues(report),
             problems=len(report["issues"]),
         )
 
     def _fixed(self) -> int:
         """How many steps were built before the script; it builds on them and never changes them."""
         return next((s.index for s in self.session.build.steps if s.key is not None), len(self.session.build.steps))
-
-    def brief(self) -> str:
-        """The model as a new request finds it: its steps, and the script behind them."""
-        lines = ["Steps:", self.describe()]
-        fixed, script = self._fixed(), self.session.build.script
-        if fixed > 1:
-            lines.append(f"Steps 1-{fixed} were built before the script; it builds on them and cannot change them.")
-        lines += ["The build script:", _numbered(script)] if script else ["No build script yet."]
-        return "\n".join(lines)
 
     def _taken(self, steps: int) -> list[list[int]]:
         """(x, y, w, d, z, height) on the grid of every piece in the first `steps` steps, except a baseplate."""
@@ -462,8 +437,13 @@ class Workbench:
         return "\n".join(lines) or "No pieces yet."
 
 
-def _numbered(script: str) -> str:
-    return "\n".join(f"{n:>4}  {line}" for n, line in enumerate(script.splitlines(), 1))
+def _catalog_issues(report: dict) -> str:
+    retry = any(issue["code"] == "catalog_unavailable" for issue in report["issues"])
+    return catalog.describe(report) + (
+        "\nRetry the catalog check; do not change the design to bypass an unavailable source."
+        if retry
+        else "\nChoose verified part/color combinations matching the reference, edit the script and run again."
+    )
 
 
 def _line(source: list[str], n: int) -> str | None:

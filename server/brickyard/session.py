@@ -149,10 +149,9 @@ class Session:
         step = candidate.add_step(title, placements, key)
         await self.validate_parts(candidate)
         candidate.updated = time.time()
-        candidate.checked_revision = None
         # Persist first: a failed validation/save must leave the live model and event stream unchanged.
         self.store.save(candidate)
-        for name in ("pieces", "steps", "width", "depth", "updated", "checked_revision"):
+        for name in ("pieces", "steps", "width", "depth", "updated"):
             setattr(self.build, name, getattr(candidate, name))
         pieces = [p for p in self.build.pieces if p.step == step.index]
         for queue in self.subscribers:
@@ -171,15 +170,19 @@ class Session:
     async def validate_parts(self, candidate: Build) -> dict:
         return await asyncio.to_thread(catalog.require, candidate.pieces, self.store.root.parent / "bricklink-catalog")
 
-    async def commit_script(self, candidate: Build, kept: int) -> dict | None:
-        """Persist checked geometry once, then publish its changed steps without yielding halfway through."""
-        # An explicit clear may publish an empty model, but it cannot become a purchasable BOM.
-        report = await self.validate_parts(candidate) if candidate.pieces else None
-        candidate.checked_revision = candidate.revision
-        changes = {
-            name: getattr(candidate, name)
-            for name in ("script", "steps", "pieces", "width", "depth", "checked_revision")
-        }
+    async def check_parts(self) -> dict:
+        """The BrickLink verdict on every part/color pair of the model as it stands."""
+        return await asyncio.to_thread(
+            catalog.validate, self.build.pieces, self.store.root.parent / "bricklink-catalog"
+        )
+
+    async def save_script(self, script: str) -> None:
+        self.build.script = script
+        self.store.save(self.build)
+
+    async def commit_script(self, candidate: Build, kept: int) -> None:
+        """Persist the rebuilt model once, then publish its changed steps without yielding halfway through."""
+        changes = {name: getattr(candidate, name) for name in ("script", "steps", "pieces", "width", "depth")}
         changes["updated"] = time.time() if candidate.revision != self.build.revision else self.build.updated
         self.store.save(self.build.model_copy(update=changes))
         for name, value in changes.items():
@@ -198,7 +201,6 @@ class Session:
         for queue in self.subscribers:
             for event in events:
                 queue.put_nowait(event)
-        return report
 
     def think(self, text: str, reset: bool = False) -> None:
         """Stream the builder's live reasoning; ephemeral, never persisted."""
