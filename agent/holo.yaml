@@ -11,14 +11,18 @@ reasoning_effort: high
 max_completion_tokens: 32768
 compactor_trigger_tokens: 120000
 llm_timeout: 1200
+max_request_images: ${oc.env:HOLO_MAX_REQUEST_IMAGES,5}
 workspace: ${oc.env:BRICKYARD_WORKSPACE}
 
 llm:
-  _target_: hai_adapters.llm.LanguageModel
+  _target_: image_transport.ImageBoundedLanguageModel
+  max_request_images: ${max_request_images}
   default_timeout: ${llm_timeout}
   chat_provider:
     _target_: hai_adapters.chat_provider_builder.build_chat_provider
     name: ${model_name}
+    # Send bytes plus stable image UUIDs. This does not disable server KV/prefix caching.
+    enable_client_side_img_caching: false # the public gateway rejects hash-only image references
   base_request:
     _target_: hai_protocols.base.BaseRequest
     temperature: 1.0
@@ -28,11 +32,13 @@ llm:
 
 # A separate Holo context judges actual images without the builder's explanations or private reasoning.
 review_llm:
-  _target_: hai_adapters.llm.LanguageModel
+  _target_: image_transport.ImageBoundedLanguageModel
+  max_request_images: ${max_request_images}
   default_timeout: ${llm_timeout}
   chat_provider:
     _target_: hai_adapters.chat_provider_builder.build_chat_provider
     name: ${model_name}
+    enable_client_side_img_caching: false
   base_request:
     _target_: hai_protocols.base.BaseRequest
     temperature: 0.2
@@ -60,11 +66,13 @@ compactor:
             keep_last: ${max_images.tool_result}
             keep_last_images: ${max_images.tool_result}
     llm:
-      _target_: hai_adapters.llm.LanguageModel
+      _target_: image_transport.ImageBoundedLanguageModel
+      max_request_images: ${max_request_images}
       default_timeout: ${llm_timeout}
       chat_provider:
         _target_: hai_adapters.chat_provider_builder.build_chat_provider
         name: ${model_name}
+        enable_client_side_img_caching: false
       base_request:
         _target_: hai_protocols.base.BaseRequest
         temperature: 0.6
