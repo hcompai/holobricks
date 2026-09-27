@@ -287,6 +287,22 @@ def test_missing_evidence_or_reviewer_failure_cannot_approve(rig, failure):
     assert "fake-secret" not in str(rig.loop.cached_result)
 
 
+def test_a_failed_review_is_not_repeated_every_step_but_retried_on_answer(rig):
+    rig.llm.outputs = [BRIEF, ValueError("provider down"), review(True)]
+    rig.loop.on_update_state_end(None)
+    rig.loop.on_update_state_end(None)
+    assert len(rig.llm.calls) == 2
+    assert rig.loop.validate().passed and len(rig.llm.calls) == 3
+
+
+def test_endless_inspection_requests_keep_the_last_review(rig):
+    asking = review(True)
+    asking["inspection"] = {"requirement": "eye", "angle": 0, "elevation": 15, "zoom": 3}
+    rig.llm.outputs = [BRIEF, asking, asking, asking]
+    rig.loop.on_update_state_end(None)
+    assert len(rig.llm.calls) == 4 and rig.build["revision"] in rig.loop.state["reviews"]
+
+
 def test_user_clarification_invalidates_brief_and_best(rig):
     rig.llm.outputs = [BRIEF, review(True), BRIEF, review()]
     rig.loop.on_update_state_end(None)
