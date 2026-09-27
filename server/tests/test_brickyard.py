@@ -90,6 +90,43 @@ def test_changing_a_hand_scripted_build_hands_it_to_a_live_builder(tmp_path, mon
     assert changed["builder"] == next(iter(BUILDERS))
 
 
+def test_reference_images_reach_the_chat_and_the_builder_within_holos_image_budget(tmp_path, monkeypatch):
+    import base64
+    import re
+    from pathlib import Path
+
+    from brickyard import app as app_module
+    from brickyard.builders import BUILDERS
+    from brickyard.session import Store
+
+    seen = []
+
+    class Recorder:
+        name = "demo"
+
+        async def run(self, session, request, references):
+            seen.append([p.read_bytes() for p in references])
+
+    holo = (Path(__file__).resolve().parents[2] / "agent" / "holo.yaml").read_text()
+    assert app_module.MAX_REFERENCES == int(re.search(r"^  message: (\d+)$", holo, re.MULTILINE).group(1))
+    monkeypatch.setattr(app_module, "store", Store(tmp_path))
+    monkeypatch.setitem(BUILDERS, "demo", Recorder())
+    photo = "data:image/jpeg;base64," + base64.b64encode(b"jpeg").decode()
+    with TestClient(app_module.app) as client:
+        body = {"prompt": "a barn", "builder": "demo"}
+        assert client.post("/api/builds", json=body | {"images": [photo] * 3}).status_code == 400
+        assert client.post("/api/builds", json=body | {"images": ["data:text/plain;base64,aGk="]}).status_code == 400
+        created = client.post("/api/builds", json=body | {"images": [photo]}).json()
+        for _ in range(50):
+            if seen:
+                break
+            time.sleep(0.05)
+        message = client.get(f"/api/builds/{created['id']}").json()["messages"][0]
+        assert client.get(message["images"][0]).content == b"jpeg"
+    assert len(Store(tmp_path).all()) == 1
+    assert seen == [[b"jpeg"]]
+
+
 def test_an_idle_build_rewritten_on_disk_is_served_fresh(tmp_path, monkeypatch):
     from brickyard import app as app_module
     from brickyard.model import Build

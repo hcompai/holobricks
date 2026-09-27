@@ -192,4 +192,6 @@ class Builder(Protocol):
 
     name: str
 
-    async def run(self, session: Session, request: str) -> None: ...
+    async def run(self, session: Session, request: str, references: list[Path]) -> None:
+        """Carry out `request`, with the images the user attached to it in `references`."""
+        ...

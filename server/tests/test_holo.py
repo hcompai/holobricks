@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import io
+import json
 import os
 import re
 import sys
@@ -210,6 +211,7 @@ def test_holo_gets_the_task_on_stdin_and_stop_ends_its_whole_process_group(tmp_p
     agent = (
         "import os, subprocess, sys, time; "
         "open('task.txt', 'w').write(sys.stdin.read() + os.environ['BRICKYARD_BUILD']); "
+        "open('references.json', 'w').write(os.environ['BRICKYARD_REFERENCES']); "
         "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)']); "
         "open('pids', 'w').write(f'{os.getpid()} {child.pid}'); "
         "time.sleep(60)"
@@ -218,9 +220,14 @@ def test_holo_gets_the_task_on_stdin_and_stop_ends_its_whole_process_group(tmp_p
     workspace = tmp_path / "workspaces" / session.build.id
     workspace.mkdir(parents=True)
     (workspace / "notes.md").write_text("Pinned reference-2.jpg: the lighthouse from the pier.")
+    photo = tmp_path / "images" / "pier.jpg"
+    photo.parent.mkdir()
+    photo.write_bytes(b"jpeg")
 
     async def main() -> list[int]:
-        run = asyncio.create_task(HoloBuilder([sys.executable, "-c", agent], "http://test").run(session, "a tower"))
+        run = asyncio.create_task(
+            HoloBuilder([sys.executable, "-c", agent], "http://test").run(session, "a tower", [photo])
+        )
         while not (workspace / "pids").exists():
             await asyncio.sleep(0.05)
         run.cancel()
@@ -232,6 +239,9 @@ def test_holo_gets_the_task_on_stdin_and_stop_ends_its_whole_process_group(tmp_p
     task = (workspace / "task.txt").read_text()
     assert task.startswith("# Request\na tower") and "Build area" not in task and task.endswith(session.build.id)
     assert "the lighthouse from the pier" in task and "No pieces yet." in task
+    assert "- references/pier.jpg (attached to this request)" in task
+    assert json.loads((workspace / "references.json").read_text()) == [str(workspace / "references" / "pier.jpg")]
+    assert (workspace / "references" / "pier.jpg").read_bytes() == b"jpeg"
     assert not session.build.steps
     assert (workspace / "build.py").exists() and (workspace / "showcase" / "paris.png").exists()
     assert not any(map(alive, pids))

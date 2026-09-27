@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
+import shutil
 import signal
 import sys
 import time
@@ -15,6 +17,7 @@ from brickyard.workbench import Workbench
 AGENT = Path(__file__).resolve().parents[3] / "agent" / "holo.py"
 SHOWCASE = AGENT.parent / "showcase"
 STOP_S = 10
+REFERENCES = "references"
 
 
 class HoloBuilder:
@@ -34,7 +37,7 @@ class HoloBuilder:
             return None
         return cls([str(python), str(AGENT)], f"http://127.0.0.1:{os.environ.get('BRICKYARD_PORT', '8000')}")
 
-    async def run(self, session: Session, request: str) -> None:
+    async def run(self, session: Session, request: str, references: list[Path]) -> None:
         build = session.build
         workspace = session.store.root.parent / "workspaces" / build.id
         runs = workspace / "runs"
@@ -42,7 +45,8 @@ class HoloBuilder:
         (workspace / "build.py").write_text(build.script)
         if not os.path.lexists(workspace / "showcase"):
             (workspace / "showcase").symlink_to(SHOWCASE, target_is_directory=True)
-        task = await asyncio.to_thread(self.task, session, request, workspace)
+        attached = await asyncio.to_thread(self.keep_references, workspace, references)
+        task = await asyncio.to_thread(self.task, session, request, workspace, attached)
         run = runs / time.strftime("%Y%m%d-%H%M%S")
         env = os.environ | {
             "BRICKYARD_URL": self.url,
@@ -50,6 +54,7 @@ class HoloBuilder:
             "BRICKYARD_WORKSPACE": str(workspace),
             "BRICKYARD_TRAJECTORY": f"{run}.jsonl",
             "BRICKYARD_BIN": str(Path(sys.executable).parent),
+            "BRICKYARD_REFERENCES": json.dumps([str(workspace / name) for name in attached]),
         }
         log = await asyncio.to_thread(open, f"{run}.log", "wb")
         with log:
@@ -71,9 +76,28 @@ class HoloBuilder:
             raise RuntimeError(f"Holo exited with code {process.returncode}; its log is {run}.log")
 
     @staticmethod
-    def task(session: Session, request: str, workspace: Path) -> str:
-        """The request, Holo's notes from earlier requests, and the model as it stands."""
+    def keep_references(workspace: Path, references: list[Path]) -> list[str]:
+        """Copy the request's images into the workspace's references/; returns their workspace paths."""
+        folder = workspace / REFERENCES
+        folder.mkdir(exist_ok=True)
+        for path in references:
+            shutil.copyfile(path, folder / path.name)
+        return [f"{REFERENCES}/{path.name}" for path in references]
+
+    @staticmethod
+    def task(session: Session, request: str, workspace: Path, attached: list[str]) -> str:
+        """The request, the user's reference images, Holo's notes from earlier requests, and the model as it stands."""
         parts = [f"# Request\n{request}"]
+        kept = sorted((workspace / REFERENCES).glob("*"), key=lambda p: p.stat().st_mtime)
+        earlier = [path for p in kept if (path := f"{REFERENCES}/{p.name}") not in attached]
+        if attached or earlier:
+            lines = [f"- {path} (attached to this request)" for path in attached]
+            lines += [f"- {path} (from an earlier request)" for path in earlier]
+            parts.append(
+                "# Reference images from the user\n"
+                + "\n".join(lines)
+                + "\nThey stay in your workspace: `view_image` shows one again whenever you need it."
+            )
         notes = workspace / "notes.md"
         if notes.is_file():
             parts.append(f"# Your notes (notes.md, from earlier requests on this build)\n{notes.read_text()}")

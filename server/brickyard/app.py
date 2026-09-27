@@ -8,6 +8,7 @@ import inspect
 import json
 import logging
 import os
+import re
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 from typing import Any, Literal
@@ -29,16 +30,21 @@ WEB_DIST = Path(__file__).resolve().parents[2] / "web" / "dist"
 HEARTBEAT_S = 15
 SHUTDOWN_S = 3
 SHEET_TIMEOUT_S = 90
+MAX_REFERENCES = 2
+MAX_REFERENCE_BYTES = 8_000_000
+REFERENCE = re.compile(r"data:(image/(?:jpeg|png|webp));base64,(.+)", re.DOTALL)
 log = logging.getLogger("brickyard")
 
 
 class NewBuild(BaseModel):
     prompt: str
     builder: str = next(iter(BUILDERS))
+    images: list[str] = []
 
 
 class Say(BaseModel):
     text: str
+    images: list[str] = []
 
 
 class AgentSay(BaseModel):
@@ -92,7 +98,34 @@ def idle(session: Session) -> Session:
     return session
 
 
-def start(session: Session, request: str) -> None:
+def references(images: list[str]) -> list[tuple[bytes, str]]:
+    """The user's reference images, sent as data URLs, as bytes and media type."""
+    if len(images) > MAX_REFERENCES:
+        raise HTTPException(400, f"at most {MAX_REFERENCES} images per message")
+    decoded = []
+    for image in images:
+        match = REFERENCE.fullmatch(image)
+        if not match:
+            raise HTTPException(400, "images must be JPEG, PNG or WebP data URLs")
+        try:
+            data = base64.b64decode(match[2], validate=True)
+        except ValueError:
+            raise HTTPException(400, "an image is not valid base64") from None
+        if len(data) > MAX_REFERENCE_BYTES:
+            raise HTTPException(400, f"images must be under {MAX_REFERENCE_BYTES // 1_000_000} MB")
+        decoded.append((data, match[1]))
+    return decoded
+
+
+async def ask(session: Session, text: str, images: list[tuple[bytes, str]]) -> None:
+    """Post the user's message with its images to the chat, then start the builder on it."""
+    idle(session)
+    urls = [store.save_image(data, mime) for data, mime in images]
+    await session.say(text, role="user", images=urls)
+    start(session, text, [store.image(Path(url).name) for url in urls])
+
+
+def start(session: Session, request: str, references: list[Path]) -> None:
     idle(session)
     if session.build.builder not in BUILDERS:
         session.build.builder = next(iter(BUILDERS))
@@ -101,7 +134,7 @@ def start(session: Session, request: str) -> None:
     async def run() -> None:
         await session.set_status("building")
         try:
-            await builder.run(session, request)
+            await builder.run(session, request, references)
             await session.set_status("done")
         except asyncio.CancelledError:
             await session.say("Stopped.", role="system")
@@ -125,11 +158,11 @@ def list_builds() -> list[dict]:
 async def create_build(body: NewBuild) -> dict:
     if body.builder not in BUILDERS:
         raise HTTPException(400, f"unknown builder {body.builder}; available: {list(BUILDERS)}")
+    images = references(body.images)
     build = Build(prompt=body.prompt, builder=body.builder, name=body.prompt[:48] or "Untitled build")
     store.save(build)
     session = session_for(build.id)
-    await session.say(body.prompt, role="user")
-    start(session, body.prompt)
+    await ask(session, body.prompt, images)
     return build.summary()
 
 
@@ -140,9 +173,8 @@ async def get_build(build_id: str) -> Response:
 
 @app.post("/api/builds/{build_id}/messages")
 async def post_message(build_id: str, body: Say) -> dict:
-    session = idle(session_for(build_id))
-    await session.say(body.text, role="user")
-    start(session, body.text)
+    session = session_for(build_id)
+    await ask(session, body.text, references(body.images))
     return session.build.summary()
 
 

@@ -74,8 +74,8 @@ export default function App() {
     setFollowing(s >= last);
   };
 
-  const create = async (prompt: string) => {
-    const created = await api.create(prompt);
+  const create = async (prompt: string, images: string[]) => {
+    const created = await api.create(prompt, images);
     open(created.id);
     setLeft("chat");
     refreshBuilds();
@@ -125,8 +125,8 @@ export default function App() {
               loading={loading}
               thinking={thinking}
               onCreate={create}
-              onSay={async (text) => {
-                if (build) await api.say(build.id, text);
+              onSay={async (text, images) => {
+                if (build) await api.say(build.id, text, images);
               }}
             />
           ) : (

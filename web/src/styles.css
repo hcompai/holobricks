@@ -278,6 +278,7 @@ aside {
   display: block;
   width: 88px;
   aspect-ratio: 1;
+  object-fit: cover;
 }
 
 .lightbox {
@@ -354,27 +355,15 @@ aside {
 }
 
 .composer {
-  border: 1px solid var(--stroke-strong);
-  border-radius: var(--radius-large);
-  padding: 8px;
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  border: 1px solid var(--stroke-strong);
+  border-radius: var(--radius-large);
 }
 
 .composer:focus-within {
   border-color: var(--stroke-focus);
-}
-
-.modes {
-  display: flex;
-  gap: 4px;
-}
-
-.modes button {
-  font-size: 12px;
-  line-height: 16px;
-  padding: 3px 8px;
 }
 
 .composer textarea {
@@ -384,16 +373,66 @@ aside {
   font: inherit;
   color: inherit;
   background: transparent;
-  height: 56px;
+  field-sizing: content;
+  min-height: 96px;
+  max-height: 240px;
+  padding: 10px 12px 44px;
+}
+
+.attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 12px 0;
+}
+
+.attachment {
+  position: relative;
+}
+
+.attachment img {
+  display: block;
+  width: 48px;
+  height: 48px;
+  object-fit: cover;
+  border-radius: var(--radius-medium);
+  border: 1px solid var(--stroke-default);
+}
+
+.attachment button {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--background-primary);
+  color: var(--text-on-primary);
+  border: 2px solid var(--background-card);
+}
+
+.round {
+  position: absolute;
+  bottom: 8px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  justify-content: center;
+  border-radius: 999px;
+}
+
+.attach {
+  left: 8px;
+  color: var(--text-secondary);
 }
 
 .send {
-  align-self: flex-end;
-  background: var(--background-primary);
+  right: 8px;
   border: none;
+  background: var(--background-primary);
   color: var(--text-on-primary);
-  font-weight: 600;
-  padding: 6px 12px;
 }
 
 .send.stop {

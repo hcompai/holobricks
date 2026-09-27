@@ -1,7 +1,8 @@
-import { ArrowUpIcon, StopIcon } from "@phosphor-icons/react";
+import { ArrowUpIcon, PlusIcon, StopIcon, XIcon } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
 import { api, GALLERY, type Build } from "./api";
 import { Lightbox } from "./Lightbox";
+import { imageFiles, reference } from "./references";
 
 const SUGGESTIONS = [
   {
@@ -50,6 +51,7 @@ const WAITING = [
   "Trying another angle",
 ];
 const WAITING_S = 4;
+const MAX_ATTACHMENTS = 2;
 
 /** A waiting line that changes every few seconds while `active`, never twice in a row. */
 function useWaitingLine(active: boolean): string {
@@ -69,22 +71,23 @@ interface Props {
   build: Build | null;
   loading: boolean;
   thinking: string;
-  onCreate: (prompt: string) => Promise<void>;
-  onSay: (text: string) => Promise<void>;
+  onCreate: (prompt: string, images: string[]) => Promise<void>;
+  onSay: (text: string, images: string[]) => Promise<void>;
 }
 
 export function ChatPanel({ build, loading, thinking, onCreate, onSay }: Props) {
   const [text, setText] = useState("");
-  const [mode, setMode] = useState<"change" | "new">("change");
+  const [attachments, setAttachments] = useState<string[]>([]);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const log = useRef<HTMLDivElement>(null);
   const thought = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
+  const picker = useRef<HTMLInputElement>(null);
   const [opened, setOpened] = useState<string | null>(null);
   const busy = build?.status === "building";
   const waiting = useWaitingLine(busy);
-  const target = (build || loading) && mode === "change" ? "change" : "new";
+  const changing = Boolean(build || loading);
 
   useEffect(() => {
     log.current?.scrollTo({ top: log.current.scrollHeight, behavior: "smooth" });
@@ -94,15 +97,25 @@ export function ChatPanel({ build, loading, thinking, onCreate, onSay }: Props) 
     thought.current?.scrollTo({ top: thought.current.scrollHeight });
   }, [thinking]);
 
-  const send = async (value = text) => {
-    const prompt = value.trim();
-    if (!prompt || sending || (target === "change" && (busy || !build))) return;
+  const attach = async (files: File[]) => {
+    if (!files.length) return;
+    try {
+      const added = await Promise.all(files.map(reference));
+      setAttachments((current) => [...current, ...added].slice(0, MAX_ATTACHMENTS));
+    } catch (e) {
+      setError(`Could not read that image: ${e instanceof Error ? e.message : e}`);
+    }
+  };
+
+  const send = async () => {
+    const prompt = text.trim();
+    if (!prompt || sending || (changing && (busy || !build))) return;
     setSending(true);
     setError("");
     try {
-      await (target === "change" ? onSay(prompt) : onCreate(prompt));
+      await (changing ? onSay(prompt, attachments) : onCreate(prompt, attachments));
       setText("");
-      setMode("change");
+      setAttachments([]);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -161,25 +174,43 @@ export function ChatPanel({ build, loading, thinking, onCreate, onSay }: Props) 
           </div>
         )}
       </div>
-      {GALLERY ? (
-        <p className="gallery-note">Read-only gallery. New builds run in the local app with Holo.</p>
-      ) : (
-        <div className="composer">
-          {(build || loading) && (
-            <div className="modes">
-              <button className={mode === "change" ? "active" : ""} onClick={() => setMode("change")}>
-                Change this build
-              </button>
-              <button className={mode === "new" ? "active" : ""} onClick={() => setMode("new")}>
-                Start a new build
-              </button>
+      {GALLERY && <p className="gallery-note">Read-only gallery. New builds run in the local app with Holo.</p>}
+      {!GALLERY && (
+        <div
+          className="composer"
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => {
+            e.preventDefault();
+            attach(imageFiles(e.dataTransfer.files));
+          }}
+        >
+          {attachments.length > 0 && (
+            <div className="attachments">
+              {attachments.map((src, i) => (
+                <div key={i} className="attachment">
+                  <img src={src} alt={`Reference ${i + 1}`} />
+                  <button
+                    title="Remove"
+                    aria-label="Remove image"
+                    onClick={() => setAttachments((current) => current.filter((_, j) => j !== i))}
+                  >
+                    <XIcon size={10} weight="bold" />
+                  </button>
+                </div>
+              ))}
             </div>
           )}
           <textarea
             ref={input}
             value={text}
-            placeholder={target === "change" ? "Describe how to change it…" : "Describe what to build…"}
+            placeholder={changing ? "Describe how to change it…" : "Describe what to build…"}
             onChange={(e) => setText(e.target.value)}
+            onPaste={(e) => {
+              const files = imageFiles(e.clipboardData.files);
+              if (!files.length) return;
+              e.preventDefault();
+              attach(files);
+            }}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
@@ -187,20 +218,44 @@ export function ChatPanel({ build, loading, thinking, onCreate, onSay }: Props) 
               }
             }}
           />
-          {busy && build && target === "change" ? (
-            <button className="send stop" onClick={() => api.stop(build.id)}>
-              <StopIcon size={14} weight="fill" />
-              Stop
+          <input
+            ref={picker}
+            type="file"
+            accept="image/*"
+            multiple
+            hidden
+            onChange={(e) => {
+              attach(imageFiles(e.target.files));
+              e.target.value = "";
+            }}
+          />
+          <button
+            className="round attach"
+            title="Attach reference images"
+            aria-label="Attach reference images"
+            disabled={attachments.length >= MAX_ATTACHMENTS}
+            onClick={() => picker.current?.click()}
+          >
+            <PlusIcon size={14} weight="bold" />
+          </button>
+          {busy && build ? (
+            <button className="round send stop" title="Stop" aria-label="Stop" onClick={() => api.stop(build.id)}>
+              <StopIcon size={12} weight="fill" />
             </button>
           ) : (
-            <button className="send" disabled={!text.trim() || sending} onClick={() => send()}>
-              Send
+            <button
+              className="round send"
+              title="Send"
+              aria-label="Send"
+              disabled={!text.trim() || sending}
+              onClick={send}
+            >
               <ArrowUpIcon size={14} weight="bold" />
             </button>
           )}
-          {error && <p className="composer-error">{error}</p>}
         </div>
       )}
+      {error && <p className="composer-error">{error}</p>}
       <Lightbox src={opened} onClose={() => setOpened(null)} />
     </div>
   );
