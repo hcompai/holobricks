@@ -209,7 +209,7 @@ class Films:
         except Exception as e:
             log.exception("film %s of build %s failed", film.id, film.build.id)
             film.status = "error"
-            film.error = str(e)
+            film.error = "Film rendering failed. Check server logs for details."
         finally:
             if film.encoder and film.encoder.returncode is None:
                 film.encoder.kill()
