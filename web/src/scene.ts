@@ -266,7 +266,8 @@ export class BrickScene {
     room.dispose();
     pmrem.dispose();
     this.sun.castShadow = true;
-    this.sun.shadow.mapSize.set(SHADOW_MAP, SHADOW_MAP);
+    // The export canvas is at most 800px; avoid a 2048px shadow pass for every GIF frame.
+    this.sun.shadow.mapSize.setScalar(options.replay ? 512 : SHADOW_MAP);
     this.sun.shadow.bias = -0.0005;
     this.scene.add(this.sky, this.sun, this.sun.target);
 
@@ -319,7 +320,7 @@ export class BrickScene {
     const camera = this.sun.shadow.camera;
     Object.assign(camera, { left: -r, right: r, top: r, bottom: -r, near: r, far: 3 * r });
     camera.updateProjectionMatrix();
-    this.sun.shadow.normalBias = (2 * r) / SHADOW_MAP;
+    this.sun.shadow.normalBias = (2 * r) / this.sun.shadow.mapSize.x;
     this.renderer.shadowMap.needsUpdate = true;
   }
 
