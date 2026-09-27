@@ -12,7 +12,7 @@ from typing import Protocol
 
 import PIL.Image
 
-from brickyard.model import Box, Build, Camera, Message, Placement, Step, footprint
+from brickyard.model import Box, Build, Camera, Message, Placement, Step
 from brickyard.viewer import Viewers
 
 log = logging.getLogger("brickyard")
@@ -184,14 +184,6 @@ class Session:
         for queue in self.subscribers:
             for event in events:
                 queue.put_nowait(event)
-
-    async def rewind(self, steps: int) -> None:
-        """Keep only the first `steps` steps and their pieces."""
-        self.build.steps = self.build.steps[:steps]
-        self.build.pieces = [p for p in self.build.pieces if p.step < steps]
-        self.build.updated = time.time()
-        self.build.width, self.build.depth = footprint(self.build.pieces)
-        self._publish({"type": "rewind", "steps": steps, "width": self.build.width, "depth": self.build.depth})
 
     def think(self, text: str, reset: bool = False) -> None:
         """Stream the builder's live reasoning; ephemeral, never persisted."""

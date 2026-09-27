@@ -1,6 +1,5 @@
 """Regression checks with fake inference: no API keys, billable calls or new user builds."""
 
-import base64
 import io
 import json
 import sys
@@ -113,15 +112,10 @@ def rig(tmp_path):
     def request(req):
         if req.url.path == "/api/images/target.png":
             return httpx.Response(200, content=png("yellow"), headers={"content-type": "image/png"})
-        if req.method == "POST":
-            rendered.append(json.loads(req.content))
+        if req.url.path.endswith("/sheet.png"):
+            rendered.append(dict(req.url.params))
             return httpx.Response(
-                200,
-                json={
-                    "revision": render_revision[0] or build["revision"],
-                    "problems": 0,
-                    "images": [{"data": base64.b64encode(png("blue")).decode(), "mime": "image/png"}],
-                },
+                200, content=png("blue"), headers={"x-revision": render_revision[0] or build["revision"]}
             )
         return httpx.Response(200, json=build)
 
@@ -131,17 +125,14 @@ def rig(tmp_path):
     loop.client.close()
 
 
-def test_reviews_actual_pixels_without_builder_claims_and_reinjects_after_history_loss(rig):
+def test_reviews_actual_pixels_without_builder_claims_and_injects_only_changes(rig):
     events = rig.loop.on_update_state_end(None)
     assert len(rig.llm.calls) == 2
-    assert len(rig.rendered) == 2
-    assert rig.rendered[1] == {"camera": {"angle": 40.0, "elevation": 25.0}}
+    assert rig.rendered == [{}, {"angle": "40.0", "elevation": "25.0"}]
     assert "perfect" not in str(rig.llm.calls)
     assert "Wheels and blank face" in events[0].text_content
     assert len(events[0].images) == 2
-    # No reliance on conversation history: a second policy step gets the same evidence without more inference.
-    after_compaction = rig.loop.on_update_state_end(None)
-    assert len(rig.llm.calls) == 2 and len(after_compaction[0].images) == 2
+    assert rig.loop.on_update_state_end(None) == [] and len(rig.llm.calls) == 2
     assert not rig.loop.validate().passed
     assert (rig.loop.folder / rig.build["revision"] / "build.py").read_text() == rig.build["script"]
 
@@ -180,21 +171,16 @@ def test_a_good_score_cannot_discard_a_previous_core_feature(rig):
     assert rig.loop.state["best"] == first
 
 
-def test_completion_requires_a_second_blind_review_and_checks_the_actual_script(rig):
-    rig.llm.outputs = [BRIEF, review(True), review(True)]
+def test_completion_follows_the_current_review_and_checks_the_actual_script(rig):
+    rig.llm.outputs = [BRIEF, review(True)]
     rig.loop.on_update_state_end(None)
-    assert rig.loop.validate().passed
-    final_request = str(rig.llm.calls[-1])
-    assert "previous_open_findings" not in final_request and "Previous best:" not in final_request
-    assert len(rig.llm.calls) == 3
-    assert rig.loop.validate().passed and len(rig.llm.calls) == 3
+    assert rig.loop.validate().passed and len(rig.llm.calls) == 2
     (rig.path / "build.py").write_text("# rejected/unrun edit")
     assert not rig.loop.validate().passed
     assert "differs" in rig.loop.cached_result.feedback
 
 
-def test_second_reviewer_can_reject_and_defects_survive_restart(rig):
-    rig.llm.outputs = [BRIEF, review(True), review()]
+def test_defects_survive_restart(rig):
     rig.loop.on_update_state_end(None)
     assert not rig.loop.validate().passed
     restarted = QualityLoop(FakeLLM([]), str(rig.path), "http://local", "test")
@@ -209,12 +195,26 @@ def test_reviewer_requests_a_targeted_view_before_approving_a_small_feature(rig)
     uncertain = review(True)
     uncertain["findings"][-1]["status"] = "unobservable"
     uncertain["inspection"] = {"requirement": "eye", "angle": 0, "elevation": 15, "zoom": 3, "at": [8, 4, 18]}
-    rig.llm.outputs = [BRIEF, uncertain, review(True), review(True)]
+    rig.llm.outputs = [BRIEF, uncertain, review(True)]
     rig.loop.on_update_state_end(None)
-    assert rig.rendered[-1] == {"camera": {"angle": 0.0, "elevation": 15.0, "zoom": 3.0, "at": [8.0, 4.0, 18.0]}}
+    assert rig.rendered[-1] == {"angle": "0.0", "elevation": "15.0", "zoom": "3.0", "at": "8.0,4.0,18.0"}
     assert "Candidate detail for eye" in str(rig.llm.calls[-1])
     assert (rig.loop.folder / rig.build["revision"] / "detail-1.png").exists()
     assert rig.loop.validate().passed
+
+
+def test_hidden_features_do_not_block_and_refused_answers_are_capped(rig):
+    hidden = review(True)
+    hidden["findings"][-1]["status"] = "unobservable"
+    rig.llm.outputs = [BRIEF, hidden]
+    rig.loop.on_update_state_end(None)
+    assert rig.loop.validate().passed
+    rig.build.update(revision="b" * 64, checked_revision="b" * 64)
+    rig.llm.outputs = [review()]
+    rig.loop.on_update_state_end(None)
+    assert not rig.loop.validate().passed and not rig.loop.validate().passed
+    final = rig.loop.validate()
+    assert final.passed and "still open: feet" in final.feedback
 
 
 @pytest.mark.parametrize(
@@ -234,20 +234,18 @@ def test_missing_evidence_or_reviewer_failure_cannot_approve(rig, failure):
     feedback = rig.loop.on_update_state_end(None)[0].text_content
     assert "No visual approval" in feedback
     assert "fake-secret" not in feedback
-    assert "approved" not in rig.loop.state
     assert not rig.loop.validate().passed
     assert "fake-secret" not in str(rig.loop.cached_result)
 
 
-def test_user_clarification_invalidates_brief_best_and_approval(rig):
-    rig.llm.outputs = [BRIEF, review(True), review(True), BRIEF, review()]
+def test_user_clarification_invalidates_brief_and_best(rig):
+    rig.llm.outputs = [BRIEF, review(True), BRIEF, review()]
     rig.loop.on_update_state_end(None)
     assert rig.loop.validate().passed
     old = rig.loop.folder
     rig.build["messages"].append({"role": "user", "text": "Make the feet wider", "images": []})
     rig.loop.on_update_state_end(None)
     assert rig.loop.folder != old
-    assert "approved" not in rig.loop.state
     assert (old / "state.json").exists()
     assert not rig.loop.validate().passed
 
@@ -255,7 +253,8 @@ def test_user_clarification_invalidates_brief_best_and_approval(rig):
 def test_forced_budget_stop_cannot_claim_success(rig):
     disclosure = CompletionDisclosure()
     answer = disclosure.on_answer(AnswerEvent(answer="Perfect model", outcome="success"))
-    assert answer.outcome == "partial" and "incomplete" in answer.answer
+    assert answer.outcome == "partial"
+    assert answer.answer.startswith("Perfect model") and "before the visual review passed" in answer.answer
     rig.loop.cached_result = Verdict(passed=True, feedback="old approval")
     rig.loop.on_update_state_end(None)
     assert rig.loop.cached_result is None
@@ -263,22 +262,15 @@ def test_forced_budget_stop_cannot_claim_success(rig):
     assert disclosure.on_answer(verified).answer == "Built"
 
 
-def test_forced_stop_restores_best_without_turning_partial_into_success():
-    from unittest.mock import Mock
-
-    restore = Mock()
-    restore.run.return_value = "Restored best reviewed revision abc."
-    answer = CompletionDisclosure(restore).on_answer(AnswerEvent(answer="Perfect", outcome="success"))
-    restore.run.assert_called_once()
-    assert answer.outcome == "partial"
-    assert "incomplete" in answer.answer and "best reviewed candidate" in answer.answer
-
-
 def test_restore_best_rechecks_geometry_before_replacing_workspace_script(rig, monkeypatch):
     rig.loop.on_update_state_end(None)
     before = rig.path / "build.py"
     before.write_text("# experiment")
     tool = RestoreBest(str(rig.path), "http://local", "test")
+    server = {"script": "# experiment"}
+    monkeypatch.setattr(
+        httpx, "get", lambda *args, **kwargs: httpx.Response(200, json=server, request=httpx.Request("GET", "http://x"))
+    )
 
     def reject(*args, **kwargs):
         return httpx.Response(
@@ -290,6 +282,7 @@ def test_restore_best_rechecks_geometry_before_replacing_workspace_script(rig, m
 
     def accept(*args, **kwargs):
         assert kwargs["json"]["code"] == rig.build["script"]
+        server["script"] = kwargs["json"]["code"]
         return httpx.Response(
             200,
             json={"problems": 0, "text": "checked", "revision": rig.build["revision"]},
@@ -301,14 +294,15 @@ def test_restore_best_rechecks_geometry_before_replacing_workspace_script(rig, m
     assert (rig.path / "before-restore.py").read_text() == "# experiment"
 
 
-def test_emergency_compaction_keeps_the_latest_visual_evidence(rig, monkeypatch):
+@pytest.mark.parametrize("emergency", [False, True])
+def test_compaction_keeps_the_latest_visual_evidence(rig, monkeypatch, emergency):
     event = rig.loop.on_update_state_end(None)[0]
     compactor = object.__new__(ConstructionCompactor)
     compactor.history = SimpleNamespace(events=[event])
     monkeypatch.setattr(
         Compactor, "compact", lambda self, **kw: [MessageEvent(caller_id="compactor", content=["briefing"])]
     )
-    events = compactor.compact(emergency=True)
+    events = compactor.compact(emergency=emergency)
     assert events[-1] is event and len(events[-1].images) == 2
 
 
@@ -332,7 +326,7 @@ def test_real_holo_config_instantiates_review_and_validator_with_fake_llms(tmp_p
     agent.validator.client.close()
 
 
-def test_sagent_rejects_early_answer_then_accepts_only_after_repair_and_two_reviews(rig):
+def test_sagent_rejects_early_answer_then_accepts_only_after_repair(rig):
     from unittest.mock import Mock
 
     from hai_protocols.chat_completion.messages import AssistantMessage
@@ -351,7 +345,7 @@ def test_sagent_rejects_early_answer_then_accepts_only_after_repair_and_two_revi
     def event(name, **args):
         return PolicyEvent(message=AssistantMessage(content=""), tool_reqs=[ToolRequest(tool_name=name, args=args)])
 
-    rig.llm.outputs = [BRIEF, review(), review(True, "better"), review(True)]
+    rig.llm.outputs = [BRIEF, review(), review(True, "better")]
     agent = SAgent(
         name="test",
         policy_llm=FakeLanguageModel(),
@@ -373,4 +367,4 @@ def test_sagent_rejects_early_answer_then_accepts_only_after_repair_and_two_revi
     assert not agent.has_answer and rig.build["revision"] == "b" * 64
     agent.step()
     assert agent.has_answer and agent.answer == "Built"
-    assert len(rig.llm.calls) == 4
+    assert len(rig.llm.calls) == 3

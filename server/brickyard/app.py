@@ -243,10 +243,12 @@ async def get_sheet(
         inside = None if box is None else Box.of([int(v) for v in box.split(",")])
     except (ValidationError, ValueError) as e:
         raise HTTPException(400, str(e)) from e
-    png = await session_for(build_id).render(camera, inside, timeout=SHEET_TIMEOUT_S)
+    session = session_for(build_id)
+    revision = session.build.revision
+    png = await session.render(camera, inside, timeout=SHEET_TIMEOUT_S)
     if png is None:
         raise HTTPException(503, "no viewer rendered the build; build the web app and install Chrome")
-    return Response(png, media_type="image/png")
+    return Response(png, media_type="image/png", headers={"X-Revision": revision})
 
 
 @app.put("/api/builds/{build_id}/renders/{request}")

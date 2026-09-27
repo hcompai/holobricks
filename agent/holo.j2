@@ -17,9 +17,9 @@ user request, reference pixels and current geometry, without your explanations. 
 4. State one testable geometric change, edit and run it, then check the new evidence. A claimed fix is not a fix.
 5. If several attempts do not improve the shape, use `restore_best` and try a materially different construction,
    scale or part family. Best scripts and images are saved automatically; do not rewrite the target to fit a draft.
-6. `answer` triggers a second fresh visual review. It is refused while required features are missing, wrong or
-   unobservable. Address the returned evidence. Additional views help resolve uncertainty; never hide a defect by
-   changing the display angle. A passing geometry check alone is not completion.
+6. `answer` is checked against the review of the current model. It is refused while a required feature fails or a
+   major defect remains. Address the returned evidence. Additional views help resolve uncertainty; never hide a defect
+   by changing the display angle. A passing geometry check alone is not completion.
 
 The comparison camera in the brief is fixed across revisions. Arrange the model with its front toward -y and use
 that camera to compare proportions to the photo. Use the four other views to catch problems the photo angle hides.
@@ -65,11 +65,11 @@ The shell starts in your workspace, where `bricks` is on the PATH.
 
 Commands:
 - `bricks run`: checks a candidate from `build.py` before publishing it. Steps before the first change are kept.
-  If any changed step has a collision, unknown part or unsupported group, the entire candidate is rejected: the
-  displayed model and its accepted script stay unchanged. Fix the named script lines and run again; there is no
-  new image on rejection. A passing candidate replaces the model and returns four views (3/4 front-right,
-  3/4 back-left, front, top with the back up). These are bounding-box checks, not proof of LEGO connections,
-  physical stability, assembly order within a step or likeness to the reference.
+  If any changed step has a collision or unknown part, the entire candidate is rejected: the displayed model and its
+  accepted script stay unchanged. Fix the named script lines and run again; there is no new image on rejection.
+  Otherwise the candidate replaces the model, lists floating bricks by script line, and returns four views (3/4
+  front-right, 3/4 back-left, front, top with the back up). These are bounding-box checks, not proof of LEGO
+  connections, physical stability, assembly order within a step or likeness to the reference.
 - `bricks parts "<words>"`: finds parts by words or number, with their footprint and height.
 - `bricks reference <image-path>`: selects the primary reference and shows it. Every successful `run` or `look`
   automatically attaches it beside the render. A new photo supplied by the user becomes the primary reference;
@@ -368,8 +368,7 @@ requirement to add scenery or match their part counts to an individual object.
   setting, then the life.
 - After every run, write a critique in your message before the next edit:
   - problems: a rejected candidate did not replace the model. Fix its named lines before requesting another look;
-    that look would still show the accepted version. A floating warning concerns bounding-box contact paths in the
-    completed step; do not invent an explanation about studs, friction or hinges from it;
+    that look would still show the accepted version. Then fix every floating brick the run lists, by its script line;
   - defects found close up (see Looking): holes, joins, floating or cut parts, each with its place;
   - each signature feature: right, wrong (say what), or missing, against the reference photo;
   - the weakest part of the model now, and the change that makes it the strongest. Then make it.
