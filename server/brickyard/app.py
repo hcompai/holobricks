@@ -24,7 +24,7 @@ from pydantic import BaseModel, ValidationError
 from brickyard import catalog, ldraw, shopping
 from brickyard.builders import BUILDERS
 from brickyard.model import Box, Build, Camera, Message
-from brickyard.session import Session, Store
+from brickyard.session import Builder, Session, Store
 from brickyard.viewer import Viewers
 from brickyard.workbench import Workbench
 
@@ -40,7 +40,7 @@ log = logging.getLogger("brickyard")
 
 class NewBuild(BaseModel):
     prompt: str
-    builder: str = next(iter(BUILDERS))
+    builder: str = "holo"
     images: list[str] = []
 
 
@@ -135,9 +135,22 @@ def references(images: list[str]) -> list[tuple[bytes, str]]:
     return decoded
 
 
+def require_builder(name: str) -> Builder:
+    if name == "holo" and name not in BUILDERS:
+        raise HTTPException(
+            503, "Holo is not configured on this server. Your request was not started; no demo was substituted."
+        )
+    if name not in BUILDERS:
+        raise HTTPException(400, f"unknown builder {name}; available: {list(BUILDERS)}")
+    return BUILDERS[name]
+
+
 async def ask(session: Session, text: str, images: list[tuple[bytes, str]]) -> None:
     """Post the user's message with its images to the chat, then start the builder on it."""
     idle(session)
+    # Imported, hand-scripted builds can be continued by Holo, never by the scripted demo.
+    name = session.build.builder if session.build.builder in BUILDERS else "holo"
+    require_builder(name)  # Check before saving images, messages or changing the saved builder.
     urls = [store.save_image(data, mime) for data, mime in images]
     await session.say(text, role="user", images=urls)
     start(session, text, [store.image(Path(url).name) for url in urls])
@@ -145,9 +158,9 @@ async def ask(session: Session, text: str, images: list[tuple[bytes, str]]) -> N
 
 def start(session: Session, request: str, references: list[Path]) -> None:
     idle(session)
-    if session.build.builder not in BUILDERS:
-        session.build.builder = next(iter(BUILDERS))
-    builder = BUILDERS[session.build.builder]
+    name = session.build.builder if session.build.builder in BUILDERS else "holo"
+    builder = require_builder(name)
+    session.build.builder = name
 
     async def run() -> None:
         await session.set_status("building")
@@ -179,8 +192,7 @@ def list_builds() -> list[dict]:
 
 @app.post("/api/builds")
 async def create_build(body: NewBuild) -> dict:
-    if body.builder not in BUILDERS:
-        raise HTTPException(400, f"unknown builder {body.builder}; available: {list(BUILDERS)}")
+    require_builder(body.builder)
     images = references(body.images)
     build = Build(prompt=body.prompt, builder=body.builder, name=body.prompt[:48] or "Untitled build")
     store.save(build)

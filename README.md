@@ -32,13 +32,18 @@ Hot reload: `cd web && npm run dev` (http://127.0.0.1:5173).
 
 | Variable | Default |
 | --- | --- |
-| `HAI_ROOT` | unset: new builds use a scripted demo instead of Holo |
+| `HAI_ROOT` | unset: Holo is unavailable; new builds return an error instead of substituting a demo |
 | `HAI_API_KEY`, `HAI_BASE_URL` | for Holo: your key, and `https://api.hcompany.ai/v1/models` |
 | `LINKUP_API_KEY` | for Holo's image search |
 | `HOLO_MODEL` | `holo4-27b` |
 | `BRICKYARD_PORT` | `8000`, on 127.0.0.1 only (no auth) |
 | `BRICKYARD_DATA`, `BRICKYARD_LDRAW` | `./data`, `./ldraw` |
 | `BRICKYARD_CHROME` | the Chrome or Chromium found on the machine, for renders |
+
+The chat's **New build** action always requests Holo. If this server is not configured for Holo, the prompt stays
+in the composer and an error is shown; no construction is created. The scripted cottage remains available for
+development only through an explicit `POST /api/builds` with `{"prompt":"demo","builder":"demo"}`.
+Continuing a saved Holo build also requires Holo; an unavailable engine never falls back to the cottage.
 
 ## Holo, for now
 
