@@ -43,6 +43,7 @@ compactor:
   _target_: quality.ConstructionCompactor
   trigger_tokens: ${compactor_trigger_tokens}
   passthrough_images: ${max_images}
+  passthrough_user_images: ${max_images.message}
   passthrough_actions: 10
   passthrough_arg_paths: true
   max_briefing_paths: 30

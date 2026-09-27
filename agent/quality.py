@@ -13,8 +13,6 @@ from typing import Literal
 import httpx
 from hai_protocols.chat_completion.messages import ImageContentChunk, SystemMessage, TextContentChunk, UserMessage
 from hai_protocols.chat_completion.request import ChatCompletionRequest
-from hai_protocols.image.encoding import MediaType
-from hai_protocols.image.serializable_image import SerializableImage
 from hai_protocols.image.source import Base64ImageSource
 from pydantic import BaseModel, ConfigDict, Field
 from sagent.core.events import AnswerEvent, MessageEvent
@@ -415,14 +413,7 @@ class QualityLoop(Validator):
             if shown == self.shown:
                 return events
             self.shown = shown
-            content: list = [self.feedback(brief, report)]
-            if self.targets:
-                _, data, mime = self.targets[0]
-                content += ["Primary target", SerializableImage.from_bytes(data, MediaType(mime))]
-            sheet = self.folder / build["revision"] / "sheet.png"
-            if sheet.exists():
-                content += ["Current geometry", SerializableImage.from_bytes(sheet.read_bytes(), MediaType.PNG)]
-            return [MessageEvent(caller_id="construction-review", content=content), *events]
+            return [MessageEvent(caller_id="construction-review", content=[self.feedback(brief, report)]), *events]
         except Exception as e:  # noqa: BLE001 -- provider failures must fail closed without killing the builder
             detail = str(e) if isinstance(e, ReviewUnavailable) else type(e).__name__
             error = f"Construction review unavailable: {detail}. No visual approval was issued."
@@ -544,7 +535,7 @@ class CompletionDisclosure(Callback):
 
 
 class ConstructionCompactor(Compactor):
-    """Compacted history keeps the latest target, geometry and review, which are injected only when they change."""
+    """Compacted history keeps the latest review, which is injected only when it changes."""
 
     def compact(self, *, emergency: bool = False) -> list:
         latest = next(

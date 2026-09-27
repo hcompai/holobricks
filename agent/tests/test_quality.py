@@ -13,6 +13,8 @@ from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from hai_protocols.image.encoding import MediaType
+from hai_protocols.image.serializable_image import SerializableImage
 from quality import (
     CompletionDisclosure,
     ConstructionCompactor,
@@ -20,7 +22,7 @@ from quality import (
     RestoreBest,
     Verdict,
 )
-from sagent.core.events import AnswerEvent, MessageEvent
+from sagent.core.events import AnswerEvent, EventRecord, MessageEvent
 from sagent.lib.callbacks.compactor import Compactor
 
 
@@ -138,7 +140,7 @@ def test_reviews_actual_pixels_without_builder_claims_and_injects_only_changes(r
     assert rig.rendered == [{}, {"angle": "40.0", "elevation": "25.0"}]
     assert "perfect" not in str(rig.llm.calls)
     assert "Wheels and blank face" in events[0].text_content
-    assert len(events[0].images) == 2
+    assert not events[0].images
     assert rig.loop.on_update_state_end(None) == [] and len(rig.llm.calls) == 2
     assert not rig.loop.validate().passed
     assert (rig.loop.folder / rig.build["revision"] / "build.py").read_text() == rig.build["script"]
@@ -359,7 +361,7 @@ def test_restore_best_rechecks_geometry_before_replacing_workspace_script(rig, m
 
 
 @pytest.mark.parametrize("emergency", [False, True])
-def test_compaction_keeps_the_latest_visual_evidence(rig, monkeypatch, emergency):
+def test_compaction_keeps_the_latest_review(rig, monkeypatch, emergency):
     event = rig.loop.on_update_state_end(None)[0]
     compactor = object.__new__(ConstructionCompactor)
     compactor.history = SimpleNamespace(events=[event])
@@ -367,7 +369,7 @@ def test_compaction_keeps_the_latest_visual_evidence(rig, monkeypatch, emergency
         Compactor, "compact", lambda self, **kw: [MessageEvent(caller_id="compactor", content=["briefing"])]
     )
     events = compactor.compact(emergency=emergency)
-    assert events[-1] is event and len(events[-1].images) == 2
+    assert events[-1] is event
 
 
 def test_real_holo_config_instantiates_review_and_validator_with_fake_llms(tmp_path, monkeypatch):
@@ -388,6 +390,18 @@ def test_real_holo_config_instantiates_review_and_validator_with_fake_llms(tmp_p
     assert isinstance(agent.callbacks[-1], CompletionDisclosure)
     assert agent.select_tool("restore_best") is not None
     agent.validator.client.close()
+
+    photos = [SerializableImage.from_bytes(png(color), MediaType.PNG) for color in ("red", "yellow")]
+    compactor = agent.callbacks[0]
+    compactor.skill = lambda events: "summary"
+    compactor.on_event(EventRecord(event=MessageEvent(caller_id="user", content=["Build this", *photos])))
+    for _ in range(2):
+        events = compactor.compact()
+        for event in events:
+            compactor.on_event(EventRecord(event=event))
+            agent.history.append(EventRecord(event=event))
+    kept = agent.history.events[-1].images
+    assert [image.pil_image.getpixel((0, 0)) for image in kept] == [(255, 0, 0), (255, 255, 0)]
 
 
 def test_sagent_rejects_early_answer_then_accepts_only_after_repair(rig):

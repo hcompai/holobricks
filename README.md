@@ -78,9 +78,9 @@ your tab + headless Chrome  <── steps, renders ──>  brickyard server  �
   geometry is then reviewed in a fresh context: primary references, four model views, a fixed comparison camera
   and the best previous candidate. The reviewer can request up to two focused views for small or occluded features.
   It receives no builder explanations. User photos take precedence over builder-selected references.
-- The brief, individual failed requirements and current target/model images are reinjected before every policy call,
-  including after compaction. Reviews and candidate scripts/images are saved under `.brickyard-quality/` in each
-  workspace, separated by request/reference content. `restore_best` rechecks the best saved script before restoring
+- The brief and review are reinjected as text when they change, and after compaction. The user's photos stay in the
+  builder's view through its message-image budget, including after compaction. Reviews and candidate scripts/images
+  are saved under `.brickyard-quality/` in each workspace, separated by request/reference content. `restore_best` rechecks the best saved script before restoring
   it. Repeated non-improvements prompt a change of scale, part family or construction approach.
 - Verified completion requires checked, nonempty geometry matching the current script, no unresolved support
   warnings, and a passing visual review. The refusal limit may stop the loop, but that answer is marked partial and
