@@ -6,6 +6,18 @@ export const REPLAY_FORMATS = {
   landscape: { label: "Landscape · 16:9", width: 800, height: 450 },
 };
 export type ReplayFormat = keyof typeof REPLAY_FORMATS;
+export const REPLAY_SECONDS = [8, 12, 20];
+export const HOLO_MODEL = "HOLO4";
+
+const MAX_FRAMES = 121;
+const SPIN_FRAMES = 30;
+/** GIF delays are whole hundredths of a second. */
+const TICK_MS = 10;
+const MIN_FRAME_MS = 100;
+const START_HOLD_MS = 300;
+const SPIN_MS = 3000;
+const FRONT_HOLD_MS = 1000;
+
 export interface ReplayFrame {
   pieces: number;
   delay: number;
@@ -13,17 +25,20 @@ export interface ReplayFrame {
   turn?: number;
 }
 
+/** Only Holo builds may credit HOLO4 / H Company. */
+export const brandable = (build: Build) => build.builder === "holo";
+
 /** Bounded assembly, then a three-second orbit and a one-second front hold, within the requested duration. */
 export function planReplay(pieces: number, seconds: number, stepEnds: readonly number[] = [pieces]): ReplayFrame[] {
-  if (!Number.isSafeInteger(pieces) || pieces < 1 || ![8, 12, 20].includes(seconds)) {
+  if (!Number.isSafeInteger(pieces) || pieces < 1 || !REPLAY_SECONDS.includes(seconds)) {
     throw new Error("Choose a nonempty model and an 8, 12 or 20 second replay.");
   }
-  const spinFrames = 30;
-  const ticks = seconds * 100 - 430; // GIF timing is in hundredths of a second.
-  const count = Math.min(pieces, 120 - spinFrames - 1, Math.ceil(ticks / 10));
-  const frames: ReplayFrame[] = [{ pieces: 0, delay: 300 }];
+  const assemblyMs = seconds * 1000 - START_HOLD_MS - SPIN_MS - FRONT_HOLD_MS;
+  const ticks = assemblyMs / TICK_MS;
+  const count = Math.min(pieces, MAX_FRAMES - SPIN_FRAMES - 2, Math.ceil(assemblyMs / MIN_FRAME_MS));
+  const frames: ReplayFrame[] = [{ pieces: 0, delay: START_HOLD_MS }];
   for (let i = 1; i <= count; i++) {
-    const delay = (Math.round((i * ticks) / count) - Math.round(((i - 1) * ticks) / count)) * 10;
+    const delay = (Math.round((i * ticks) / count) - Math.round(((i - 1) * ticks) / count)) * TICK_MS;
     // Give each saved step equal screen time: a tiled base must not consume the whole clip.
     const position = i * stepEnds.length;
     const step = Math.min(Math.floor(position / count), stepEnds.length - 1);
@@ -33,8 +48,8 @@ export function planReplay(pieces: number, seconds: number, stepEnds: readonly n
     if (frames.at(-1)!.pieces === visible) frames.at(-1)!.delay += delay;
     else frames.push({ pieces: visible, delay });
   }
-  for (let i = 0; i < spinFrames; i++) frames.push({ pieces, delay: 100, turn: i / spinFrames });
-  frames.push({ pieces, delay: 1000, turn: 0 });
+  for (let i = 0; i < SPIN_FRAMES; i++) frames.push({ pieces, delay: SPIN_MS / SPIN_FRAMES, turn: i / SPIN_FRAMES });
+  frames.push({ pieces, delay: FRONT_HOLD_MS, turn: 0 });
   return frames;
 }
 
@@ -55,7 +70,8 @@ export function replayFilename(name: string): string {
 }
 
 export function replayCaption(build: Build, branded: boolean): string {
-  const author = branded && build.builder === "holo" ? "HOLO4 by H Company" : "Brickyard";
+  const author = branded ? `${HOLO_MODEL} by H Company` : "Brickyard";
   const state = build.status === "building" ? " · work in progress" : "";
-  return `${build.name} — ${build.pieces.length.toLocaleString()} LEGO pieces, built with ${author}${state}. Assembly replay. ${branded && build.builder === "holo" ? "#HOLO4 " : ""}#Brickyard #LEGO`;
+  const tags = branded ? `#${HOLO_MODEL} #Brickyard #LEGO` : "#Brickyard #LEGO";
+  return `${build.name}: ${build.pieces.length.toLocaleString()} LEGO pieces, built with ${author}${state}. Assembly replay. ${tags}`;
 }

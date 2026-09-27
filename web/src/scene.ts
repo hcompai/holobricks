@@ -378,7 +378,7 @@ export class BrickScene {
     this.renderer.domElement.remove();
   }
 
-  private resize() {
+  resize() {
     const { clientWidth: w, clientHeight: h } = this.container;
     if (!w || !h) return;
     this.renderer.setSize(w, h);
@@ -501,10 +501,10 @@ export class BrickScene {
     this.controls.autoRotate = spin;
   }
 
-  /** Draw a replay in an isolated scene. Framing uses the complete model, even while pieces are hidden. */
+  /** Draw a replay in an isolated scene, reusing the last render when nothing changed. Framing uses the complete model, even while pieces are hidden. */
   replayFrame(step: number): HTMLCanvasElement {
     if (this.visibleStep !== step) this.setVisibleStep(step);
-    this.draw();
+    if (this.dirty) this.draw();
     return this.renderer.domElement;
   }
 

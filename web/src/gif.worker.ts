@@ -4,9 +4,9 @@ export type EncodeRequest =
   { type: "frame"; rgba: ArrayBuffer; width: number; height: number; delay: number } | { type: "finish" };
 export type EncodeReply = { type: "ready" } | { type: "done"; bytes: ArrayBuffer } | { type: "error"; message: string };
 
+/** X's GIF upload limit. */
+const MAX_MB = 15;
 const gif = GIFEncoder();
-// Bound encoded memory as well as frame count. Never accumulate raw RGBA frames.
-const MAX_BYTES = 30 * 1024 * 1024;
 self.onmessage = ({ data }: MessageEvent<EncodeRequest>) => {
   try {
     if (data.type === "frame") {
@@ -18,7 +18,9 @@ self.onmessage = ({ data }: MessageEvent<EncodeRequest>) => {
         repeat: 0,
         dispose: 1,
       });
-      if (gif.bytesView().byteLength > MAX_BYTES) throw new Error("GIF exceeds 30 MB. Try a shorter replay.");
+      if (gif.bytesView().byteLength > MAX_MB * 1024 * 1024) {
+        throw new Error(`GIF exceeds ${MAX_MB} MB. Try a shorter replay.`);
+      }
       self.postMessage({ type: "ready" } satisfies EncodeReply);
     } else {
       gif.finish();
