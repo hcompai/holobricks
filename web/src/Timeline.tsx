@@ -1,4 +1,4 @@
-import { PauseIcon, PlayIcon, SkipBackIcon, SkipForwardIcon } from "@phosphor-icons/react";
+import { FilmStripIcon, PauseIcon, PlayIcon, SkipBackIcon, SkipForwardIcon } from "@phosphor-icons/react";
 import { type CSSProperties, useEffect } from "react";
 import type { Build } from "./api";
 
@@ -13,9 +13,10 @@ interface Props {
   onStep: (step: number) => void;
   onPlay: (playing: boolean) => void;
   onSpeed: (speed: number) => void;
+  onReplay: () => void;
 }
 
-export function Timeline({ build, loading, step, playing, speed, onStep, onPlay, onSpeed }: Props) {
+export function Timeline({ build, loading, step, playing, speed, onStep, onPlay, onSpeed, onReplay }: Props) {
   const steps = build?.steps ?? [];
   const last = steps.length - 1;
   const current = Math.min(step, last);
@@ -39,6 +40,7 @@ export function Timeline({ build, loading, step, playing, speed, onStep, onPlay,
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (document.querySelector("dialog[open]")) return;
       if (e.key !== " " || e.repeat || e.ctrlKey || e.metaKey || e.altKey || steps.length < 2) return;
       if (e.target instanceof Element && e.target.closest("input, textarea, select, button, a, [contenteditable]"))
         return;
@@ -90,6 +92,9 @@ export function Timeline({ build, loading, step, playing, speed, onStep, onPlay,
       <span className={`status ${build?.status ?? "idle"}`} aria-live="polite">
         {build?.status === "building" ? "Building…" : failed ? "Failed" : finished ? "Finished" : ""}
       </span>
+      <button className="timeline-export" onClick={onReplay} disabled={loading || !build?.pieces.length}>
+        <FilmStripIcon size={16} /> Export GIF
+      </button>
     </div>
   );
 }

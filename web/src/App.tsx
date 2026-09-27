@@ -1,11 +1,12 @@
 import { PlusIcon } from "@phosphor-icons/react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, GALLERY, type BuildSummary } from "./api";
+import { api, GALLERY, type Build, type BuildSummary } from "./api";
 import { ChatPanel } from "./ChatPanel";
 import { DownloadMenu } from "./DownloadMenu";
 import { LibraryPanel } from "./LibraryPanel";
 import { PartsPanel } from "./PartsPanel";
 import { Timeline } from "./Timeline";
+import { ReplayExport } from "./ReplayExport";
 import { useBuild } from "./useBuild";
 import { ThemeToggle } from "./ThemeToggle";
 import { type Framing, ViewControls, Viewer, type ViewerHandle } from "./Viewer";
@@ -31,6 +32,10 @@ export default function App() {
   const [speed, setSpeed] = useState(1);
   const [framing, setFraming] = useState<Framing>({ view: "iso" });
   const [spin, setSpin] = useState(false);
+  const [exportBuild, setExportBuild] = useState<Build | null>(null);
+  const exportReplay = () => {
+    if (build?.pieces.length) setExportBuild(structuredClone(build));
+  };
   const last = (build?.steps.length ?? 0) - 1;
 
   const refreshBuilds = useCallback(() => {
@@ -139,7 +144,13 @@ export default function App() {
         )}
         <span className="spacer" />
         <ThemeToggle />
-        {build && <DownloadMenu build={build} image={() => viewer.current?.image() ?? Promise.resolve(null)} />}
+        {build && (
+          <DownloadMenu
+            build={build}
+            image={() => viewer.current?.image() ?? Promise.resolve(null)}
+            onReplay={exportReplay}
+          />
+        )}
       </header>
       <aside>
         <div className="aside-bar">
@@ -254,9 +265,11 @@ export default function App() {
               setPlaying(p);
             }}
             onSpeed={setSpeed}
+            onReplay={exportReplay}
           />
         )}
       </main>
+      {exportBuild && <ReplayExport build={exportBuild} onClose={() => setExportBuild(null)} />}
     </div>
   );
 }

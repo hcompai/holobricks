@@ -10,6 +10,7 @@
 - **Chat** to describe a model; Holo, a sagent agent, writes a Python build script, and every run rebuilds the model, streams the new steps and shows Holo the render.
 - **Every brick is checked**: no overlaps, resting on something; the model grows as large as it needs.
 - **Replay** the steps, browse the parts list, download the `.ldr`.
+- **Share** an assembly GIF from the timeline or download menu, with optional HOLO4 / H Company branding for Holo builds.
 
 Gallery for the H team: [brickyard-h-company.vercel.app](https://brickyard-h-company.vercel.app) (Vercel login).
 
@@ -80,9 +81,19 @@ scripts/deploy-gallery.sh --preview                                             
 
 Open a regenerated showcase once in the app to refresh its thumbnail before deploying.
 
+## Timeline GIFs
+
+Open a build with pieces and choose **Export GIF** in the timeline (also available in the download menu). Preview the model, choose square (640×640), portrait (640×800) or landscape (800×450), a camera, and an 8, 12 or 20 second duration. Generate, then download the looping GIF or use **Share…** on browsers that support sharing files. Copy the suggested caption and attach the file to a social post; platform support for GIF uploads varies.
+
+The export replays a frozen copy of saved assembly steps, with equal time per nonempty step. Every duration includes a three-second full rotation of the complete snapshot starting from the front, followed by a one-second front-view hold. The assembly uses the selected camera; the finale keeps a fixed distance fitted to every angle so the model stays in frame. It is not a recording of the agent's revisions or elapsed work. In-progress builds are labelled accordingly; scripted showcases use Brickyard branding, not Holo attribution. It works in the static gallery too, without an inference call or upload service.
+
+Frames render in a separate WebGL scene, leaving the live viewer and builder alone. A worker encodes one frame at a time, capped at 121 frames and 30 MB; exports can be cancelled. Missing parts block export rather than silently producing a partial model. Longer replays may group multiple pieces into a frame.
+
 ## Tests
 
 ```bash
 cd server && uv run pytest -q && uv run ruff check .
-cd web && npm run typecheck
+cd web && npm ci && npx playwright install chromium && npm test && npm run build
 ```
+
+The browser tests use offline geometry and mocked build APIs, including a decoded GIF check, cancellation/retry, a live snapshot, missing parts and file sharing. They do not call Holo or require a running server.
