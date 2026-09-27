@@ -32,7 +32,12 @@ def png(width: int, height: int) -> bytes:
 
 
 @pytest.fixture
-def bench(tmp_path):
+def bench(tmp_path, monkeypatch):
+    # These preexisting tests exercise geometry/script semantics. Real catalog gating
+    # is exercised separately in test_catalog and test_construction_loop.
+    monkeypatch.setattr(
+        "brickyard.catalog.validate", lambda pieces, *args: {"valid": True, "pieces": len(pieces), "issues": []}
+    )
     return Workbench(Session(Build(), Store(tmp_path)))
 
 

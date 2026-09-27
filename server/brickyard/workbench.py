@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 
 from pydantic import BaseModel, ValidationError
 
-from brickyard import ldraw
+from brickyard import catalog, ldraw
 from brickyard.model import (
     FACINGS,
     ROTATIONS,
@@ -226,7 +226,10 @@ class Workbench:
         problems = len(rejected) + len(warnings)
         lines = []
         if placements:
-            step = await self.session.step(title, placements, "" if key and problems else key)
+            try:
+                step = await self.session.step(title, placements, "" if key and problems else key)
+            except catalog.ValidationError as exc:
+                return self.catalog_rejection(exc.report)
             new = [p for p in self.pieces if p.step == step.index]
             lines.append(f"Step {step.index + 1} '{title}': placed {len(new)} pieces as #{new[0].id}-#{new[-1].id}.")
         if rejected:
@@ -297,7 +300,12 @@ class Workbench:
                 + "\nFix the named lines in your script and run again. No candidate render was published.",
                 problems=errors + floating,
             )
-        self.session.commit_script(candidate, kept_steps)
+        try:
+            report = await self.session.commit_script(candidate, kept_steps)
+        except catalog.ValidationError as exc:
+            return self.catalog_rejection(exc.report)
+        if report:
+            lines.append(catalog.describe(report))
         problems = floating
         lines += ["Placed, but check these floating bricks, by script line:", *reports] if reports else []
         lines.append("Steps: pieces, then where they sit in studs (x, y) and plates (z, bottom to top):")
@@ -311,6 +319,20 @@ class Workbench:
             kind=seen.kind,
             caption=seen.caption,
             problems=problems,
+        )
+
+    @staticmethod
+    def catalog_rejection(report: dict) -> Result:
+        retry = any(issue["code"] == "catalog_unavailable" for issue in report["issues"])
+        return Result(
+            "Candidate rejected; the model and accepted script did not change.\n"
+            + catalog.describe(report)
+            + (
+                "\nRetry the catalog check; do not change the design to bypass an unavailable source."
+                if retry
+                else "\nChoose verified part/color combinations matching the reference, edit the script and run again."
+            ),
+            problems=len(report["issues"]),
         )
 
     def _fixed(self) -> int:
@@ -364,6 +386,29 @@ class Workbench:
         hits = await asyncio.to_thread(lambda: [part_line(p) for p in ldraw.search(query)])
         text = "\n".join(hits) if hits else f"No parts match '{query}'. Try fewer or simpler words."
         return Result(text, note=f"Searched parts for '{query}'")
+
+    async def catalog_colors(self, part: str) -> Result:
+        resolved = ldraw.resolve(part)
+        if not resolved or resolved not in ldraw.catalog():
+            return Result("Unknown complete part; use bricks parts.", problems=1)
+        try:
+            record = await asyncio.to_thread(
+                catalog.Catalog(self.session.store.root.parent / "bricklink-catalog").resolve, resolved
+            )
+        except ValueError as exc:
+            return Result(str(exc), problems=1)
+        choices = catalog.available_colors(record)
+        return Result(
+            f"{resolved} → BrickLink {record.item}. Verified colors (use these LDraw codes in the script):\n"
+            + ", ".join(f"{c['color']} {c['name']}" for c in choices),
+            problems=0 if choices else 1,
+        )
+
+    async def check_catalog(self) -> Result:
+        report = await asyncio.to_thread(
+            catalog.validate, self.pieces, self.session.store.root.parent / "bricklink-catalog"
+        )
+        return Result(catalog.describe(report), problems=len(report["issues"]))
 
     async def rename(self, name: str) -> Result:
         await self.session.rename(name.strip()[:60] or "Untitled build")

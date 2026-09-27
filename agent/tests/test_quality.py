@@ -3,6 +3,7 @@
 import io
 import json
 import sys
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -108,8 +109,12 @@ def rig(tmp_path):
     loop = QualityLoop(llm, str(tmp_path), "http://local", "test")
     rendered = []
     render_revision = [None]
+    inventory = {"valid": True, "issues": [], "pieces": 1,
+                 "validation": {"status": "verified", "valid_until": time.time() + 86400}}
 
     def request(req):
+        if req.url.path.endswith("/bom/validation"):
+            return httpx.Response(inventory.get("http_status", 200), json={"revision": build["revision"], **inventory})
         if req.url.path == "/api/images/target.png":
             return httpx.Response(200, content=png("yellow"), headers={"content-type": "image/png"})
         if req.url.path.endswith("/sheet.png"):
@@ -121,7 +126,9 @@ def rig(tmp_path):
 
     loop.client.close()
     loop.client = httpx.Client(transport=httpx.MockTransport(request))
-    yield SimpleNamespace(loop=loop, llm=llm, build=build, rendered=rendered, stale=render_revision, path=tmp_path)
+    yield SimpleNamespace(
+        loop=loop, llm=llm, build=build, rendered=rendered, stale=render_revision, path=tmp_path, inventory=inventory
+    )
     loop.client.close()
 
 
@@ -178,6 +185,47 @@ def test_completion_follows_the_current_review_and_checks_the_actual_script(rig)
     (rig.path / "build.py").write_text("# rejected/unrun edit")
     assert not rig.loop.validate().passed
     assert "differs" in rig.loop.cached_result.feedback
+
+
+@pytest.mark.parametrize("failure", ["invalid", "stale", "partial", "old_revision", "malformed", "outage"])
+def test_catalog_failure_cannot_be_waived_by_visual_approval_or_refusal_cap(rig, failure):
+    rig.llm.outputs = [BRIEF, review(True)]
+    rig.loop.on_update_state_end(None)
+    if failure == "invalid":
+        rig.inventory.update(
+            valid=False,
+            issues=[
+                {
+                    "part": "32146.dat",
+                    "color": 14,
+                    "reason": "Yellow not recorded",
+                    "available_colors": [{"color": 0, "name": "Black"}],
+                }
+            ],
+        )
+    elif failure == "stale":
+        rig.inventory["validation"]["valid_until"] = time.time() - 1
+    elif failure == "partial":
+        rig.inventory["pieces"] = 0
+    elif failure == "old_revision":
+        rig.inventory["revision"] = "old"
+    elif failure == "outage":
+        rig.inventory["http_status"] = 503
+    else:
+        rig.inventory["validation"] = None
+    for _ in range(5):
+        assert not rig.loop.validate().passed
+    if failure == "invalid":
+        assert "0 Black" in rig.loop.cached_result.feedback
+    assert len(rig.llm.calls) == 2
+    rig.inventory.clear()
+    rig.inventory.update(
+        valid=True,
+        issues=[],
+        pieces=1,
+        validation={"status": "verified", "valid_until": time.time() + 86400},
+    )
+    assert rig.loop.validate().passed
 
 
 def test_defects_survive_restart(rig):

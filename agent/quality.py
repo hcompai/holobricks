@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import math
 import time
 from pathlib import Path
 from typing import Literal
@@ -420,6 +421,51 @@ class QualityLoop(Validator):
     def validate(self) -> Verdict:
         try:
             build = self.fetch()
+        except Exception:  # noqa: BLE001 -- hard gate, do not leak provider details
+            return self.verdict(
+                False,
+                "Current model unavailable; completion cannot be verified. Retry.",
+            )
+        # Catalog validity is deterministic evidence, independent of visual scores or the visual refusal cap.
+        # Always recheck, including inherited models and catalog evidence that expired during a long run.
+        try:
+            response = self.client.get(self.url + "/bom/validation")
+            response.raise_for_status()
+            inventory = response.json()
+            if inventory.get("revision") != build["revision"]:
+                return self.verdict(
+                    False,
+                    "The model changed during catalog validation. Check the current revision.",
+                )
+            if inventory.get("valid") is not True:
+                lines = [
+                    ("Completion refused: repair the returned part/color errors and run build.py again. "
+                     "If the catalog is unavailable, retry without changing the design.")
+                ]
+                for issue in inventory.get("issues", []):
+                    lines.append(f"{issue.get('part', '')} color {issue.get('color', '')}: {issue['reason']}")
+                    if choices := issue.get("available_colors"):
+                        lines.append(
+                            "Verified LDraw colors: " + ", ".join(f"{c['color']} {c['name']}" for c in choices)
+                        )
+                return self.verdict(False, "\n".join(lines))
+            if (
+                inventory["pieces"] != len(build["pieces"])
+                or inventory["issues"]
+                or inventory["validation"]["status"] != "verified"
+                or not math.isfinite(inventory["validation"]["valid_until"])
+                or inventory["validation"]["valid_until"] <= time.time()
+            ):
+                return self.verdict(
+                    False,
+                    "Inventory evidence is stale or incomplete. Retry the catalog check.",
+                )
+        except Exception:  # noqa: BLE001 -- hard gate, do not leak provider details
+            return self.verdict(
+                False,
+                "Catalog validation unavailable. Retry; an unchecked inventory cannot complete.",
+            )
+        try:
             brief = self.prepare(build)
             if not build["pieces"] or build.get("checked_revision") != build["revision"]:
                 return self.verdict(

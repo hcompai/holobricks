@@ -7,13 +7,13 @@ import json
 import math
 import time
 import uuid
-from collections import Counter
 from collections.abc import Iterable
+from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, Field, computed_field
 
-from brickyard import ldraw
+from brickyard import catalog, ldraw
 
 Matrix = tuple[float, float, float, float, float, float, float, float, float]
 IDENTITY: Matrix = (1, 0, 0, 0, 1, 0, 0, 0, 1)
@@ -114,21 +114,29 @@ class Build(BaseModel):
             lines.append(f"0 STEP {step.title}".rstrip())
         return "\n".join(lines) + "\n"
 
-    def bom(self) -> list[dict]:
-        """Bill of materials: one line per part and color, most used first."""
+    def bom(self, catalog_folder: Path | None = None) -> dict:
+        """Only a complete verified BOM may be presented, including for legacy/imported builds."""
+        report = catalog.require(self.pieces, catalog_folder)
         palette = ldraw.colors()
-        counts = Counter((p.part, p.color) for p in self.pieces)
-        return [
+        lines = [
             {
-                "part": part,
-                "title": ldraw.info(part).title,
-                "color": color,
-                "colorName": palette.get(color, (str(color), "#888888"))[0],
-                "hex": palette.get(color, (str(color), "#888888"))[1],
-                "count": n,
+                "part": row["part"],
+                "title": row["title"],
+                "color": row["color"],
+                "colorName": row["color_name"],
+                "hex": palette[row["color"]][1],
+                "count": row["count"],
+                "bricklinkPart": row["bricklink_part"],
+                "bricklinkColor": row["bricklink_color"],
             }
-            for (part, color), n in counts.most_common()
+            for row in sorted(report["inventory"], key=lambda row: -row["count"])
         ]
+        return {
+            "revision": self.revision,
+            "pieces": len(self.pieces),
+            "validation": catalog.validity(report),
+            "lines": lines,
+        }
 
 
 class Placement(BaseModel):

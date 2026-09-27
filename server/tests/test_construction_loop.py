@@ -7,14 +7,14 @@ from itertools import permutations
 
 import pytest
 
-from brickyard import client, ldraw
-from brickyard.model import Build, Piece
+from brickyard import catalog, client, ldraw
+from brickyard.model import Build, Piece, place
 from brickyard.session import Session, Store
 from brickyard.workbench import Workbench
 
 
 @pytest.fixture
-def bench(tmp_path, monkeypatch):
+def bench(tmp_path, monkeypatch, offline_catalog):
     if not ldraw.LDRAW.exists():
         pytest.skip("LDraw library not downloaded")
     session = Session(Build(), Store(tmp_path))
@@ -23,6 +23,137 @@ def bench(tmp_path, monkeypatch):
 
 
 CORE = 'step("Core")\nbrick("3001", 0, 0, 0, 4)\n'
+
+
+@pytest.mark.parametrize("entry", ["workbench_add", "direct_step", "direct_script_commit"])
+def test_no_publication_path_can_accept_invalid_catalog_pairs(bench, entry):
+    async def run():
+        await bench.run_script(CORE)
+        before = bench.session.build.model_dump_json()
+        queue = bench.session.subscribe()
+        if entry == "workbench_add":
+            result = await bench.add("Invalid", [{"part": "3001", "x": 5, "y": 0, "z": 0, "color": 503}])
+            assert result.problems and "Verified choices" in result.text
+        elif entry == "direct_step":
+            with pytest.raises(catalog.ValidationError):
+                await bench.session.step("Invalid", [place("3001.dat", 5, 0, 0, 503)])
+        else:
+            candidate = bench.session.build.model_copy(deep=True)
+            candidate.pieces[0].color = 503
+            with pytest.raises(catalog.ValidationError):
+                await bench.session.commit_script(candidate, 0)
+        assert bench.session.build.model_dump_json() == before
+        assert bench.session.store.load(bench.session.build.id).model_dump_json() == before
+        assert queue.empty()
+
+    asyncio.run(run())
+
+
+def test_inherited_invalid_inventory_blocks_even_a_valid_direct_addition(bench):
+    async def run():
+        await bench.run_script(CORE)
+        bench.session.build.pieces[0].color = 503  # legacy data from before validation existed
+        bench.session.store.save(bench.session.build)
+        before = bench.session.build.model_dump_json()
+        queue = bench.session.subscribe()
+        with pytest.raises(catalog.ValidationError):
+            await bench.session.step("Valid new brick", [place("3001.dat", 5, 0, 0, 4)])
+        assert bench.session.build.model_dump_json() == before
+        assert bench.session.store.load(bench.session.build.id).model_dump_json() == before
+        assert queue.empty()
+
+    asyncio.run(run())
+
+
+def test_automatically_inserted_glass_must_also_have_a_verified_catalog_color(bench, offline_catalog):
+    offline_catalog["60601"] = {}  # frame exists in white, but no verified color for its glass insert
+
+    async def run():
+        await bench.run_script(CORE)
+        before = bench.session.build.model_dump_json()
+        queue = bench.session.subscribe()
+        result = await bench.add("Window", [{"part": "60592", "x": 5, "y": 0, "z": 0, "color": 15}])
+        assert result.problems and "60601.dat" in result.text
+        assert bench.session.build.model_dump_json() == before and queue.empty()
+
+    asyncio.run(run())
+
+
+def test_failed_direct_save_preserves_accepted_model_and_stream(bench, monkeypatch):
+    async def run():
+        await bench.run_script(CORE)
+        before = bench.session.build.model_dump_json()
+        queue = bench.session.subscribe()
+
+        def fail(_):
+            raise OSError("disk unavailable")
+
+        monkeypatch.setattr(bench.session.store, "save", fail)
+        with pytest.raises(OSError):
+            await bench.session.step("Valid", [place("3001.dat", 5, 0, 0, 4)])
+        assert bench.session.build.model_dump_json() == before and queue.empty()
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("color,status", [(4, "done"), (503, "error")])
+def test_builder_exit_does_not_bypass_final_inventory_check(bench, monkeypatch, color, status):
+    from brickyard import app
+
+    class LegacyBuilder:
+        async def run(self, session, *_):
+            # Deliberately simulate an imported model or builder bypassing normal tools.
+            session.build.add_step("Legacy", [place("3001.dat", 0, 0, 0, color)])
+
+    monkeypatch.setitem(app.BUILDERS, "demo", LegacyBuilder())
+    monkeypatch.setattr(app.viewers, "release", lambda *_: asyncio.sleep(0))
+
+    async def run():
+        app.start(bench.session, "test", [])
+        await bench.session.task
+        assert bench.session.build.status == status
+        if status == "error":
+            assert "Known colors" in bench.session.build.messages[-1].text
+
+    asyncio.run(run())
+
+
+def test_real_bom_gate_rejects_a_known_piece_in_an_unverified_color_atomically(bench):
+    async def run():
+        assert not (await bench.run_script(CORE)).problems
+        saved = bench.session.build.model_dump_json()
+        queue = bench.session.subscribe()
+        result = await bench.run_script(CORE.replace(", 4)", ", 503)"))
+        assert result.problems == 1 and "Known colors" in result.text
+        assert "14 Yellow" in result.text
+        assert bench.session.build.model_dump_json() == saved
+        assert bench.session.store.load(bench.session.build.id).model_dump_json() == saved
+        assert queue.empty() and not result.images
+        assert not (await bench.run_script(CORE.replace(", 4)", ", 14)"))).problems
+        choices = await bench.catalog_colors("3001")
+        assert not choices.problems and "14 Yellow" in choices.text
+        assert not (await bench.check_catalog()).problems
+
+    asyncio.run(run())
+
+
+def test_catalog_outage_does_not_commit_or_replace_the_accepted_script(bench, monkeypatch):
+    from brickyard import catalog
+
+    async def run():
+        await bench.run_script(CORE)
+        saved = bench.session.build.model_dump_json()
+
+        def unavailable(*args):
+            raise catalog.CatalogUnavailable("Catalog temporarily unavailable")
+
+        monkeypatch.setattr(catalog.Catalog, "get", unavailable)
+        result = await bench.run_script(CORE.replace(", 4)", ", 14)"))
+        assert result.problems and "temporarily unavailable" in result.text
+        assert "do not change the design" in result.text
+        assert bench.session.build.model_dump_json() == saved
+
+    asyncio.run(run())
 
 
 def test_same_count_geometry_changes_cannot_answer_an_old_render(tmp_path):

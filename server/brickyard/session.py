@@ -12,6 +12,7 @@ from typing import Protocol
 
 import PIL.Image
 
+from brickyard import catalog
 from brickyard.model import Box, Build, Camera, Message, Placement, Step
 from brickyard.viewer import Viewers
 
@@ -143,24 +144,37 @@ class Session:
         self._publish({"type": "message", "message": message.model_dump()})
 
     async def step(self, title: str, placements: list[Placement], key: str | None = None) -> Step:
-        """Add placements as one step of the build."""
-        step = self.build.add_step(title, placements, key)
+        """Validate the whole candidate before any builder can save or stream a direct addition."""
+        candidate = self.build.model_copy(deep=True)
+        step = candidate.add_step(title, placements, key)
+        await self.validate_parts(candidate)
+        candidate.updated = time.time()
+        candidate.checked_revision = None
+        # Persist first: a failed validation/save must leave the live model and event stream unchanged.
+        self.store.save(candidate)
+        for name in ("pieces", "steps", "width", "depth", "updated", "checked_revision"):
+            setattr(self.build, name, getattr(candidate, name))
         pieces = [p for p in self.build.pieces if p.step == step.index]
-        self.build.updated = time.time()
-        self._publish(
-            {
-                "type": "step",
-                "step": step.model_dump(),
-                "pieces": [p.model_dump() for p in pieces],
-                "width": self.build.width,
-                "depth": self.build.depth,
-            }
-        )
+        for queue in self.subscribers:
+            queue.put_nowait(
+                {
+                    "type": "step",
+                    "step": step.model_dump(),
+                    "pieces": [p.model_dump() for p in pieces],
+                    "width": self.build.width,
+                    "depth": self.build.depth,
+                }
+            )
         await asyncio.sleep(0)
         return step
 
-    def commit_script(self, candidate: Build, kept: int) -> None:
+    async def validate_parts(self, candidate: Build) -> dict:
+        return await asyncio.to_thread(catalog.require, candidate.pieces, self.store.root.parent / "bricklink-catalog")
+
+    async def commit_script(self, candidate: Build, kept: int) -> dict | None:
         """Persist checked geometry once, then publish its changed steps without yielding halfway through."""
+        # An explicit clear may publish an empty model, but it cannot become a purchasable BOM.
+        report = await self.validate_parts(candidate) if candidate.pieces else None
         candidate.checked_revision = candidate.revision
         changes = {
             name: getattr(candidate, name)
@@ -184,6 +198,7 @@ class Session:
         for queue in self.subscribers:
             for event in events:
                 queue.put_nowait(event)
+        return report
 
     def think(self, text: str, reset: bool = False) -> None:
         """Stream the builder's live reasoning; ephemeral, never persisted."""

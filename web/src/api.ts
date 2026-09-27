@@ -53,6 +53,16 @@ export interface BomLine {
   colorName: string;
   hex: string;
   count: number;
+  bricklinkPart: string;
+  bricklinkColor: number;
+}
+
+export interface Bom {
+  revision: string;
+  pieces: number;
+  validation: { status: "verified"; valid_until: number };
+  lines: BomLine[];
+  error?: string;
 }
 
 /** One view the builder asks for: seen from compass `angle` (0 front, 90 right), `elevation` degrees up, `zoom` times closer, centered on `at` (studs, studs, plates). */
@@ -146,7 +156,7 @@ const post = (url: string, body: unknown) =>
 export const api = {
   builds: () => json<BuildSummary[]>(fetch(urls.builds)),
   build: (id: string) => json<Build>(fetch(urls.build(id))),
-  bom: (id: string) => json<BomLine[]>(fetch(urls.bom(id))),
+  bom: (id: string) => json<Bom>(fetch(urls.bom(id), { cache: "no-store" })),
   thumbnailUrl: (id: string, version: number) => `${urls.thumbnail(id)}?v=${version}`,
   /** A chat image as WebP with its short side at most 240 pixels. */
   smallImageUrl: (url: string) => url.replace(/[^/]+$/, "small/$&.webp"),
