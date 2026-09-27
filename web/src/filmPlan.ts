@@ -22,9 +22,8 @@ export interface FilmOptions {
   fps: number;
   /** Jittered renders averaged into each frame, for antialiasing and soft shadows. */
   samples: number;
+  /** The H Company mark in the corner. */
   branded: boolean;
-  /** A large corner title, naming each side of a comparison. */
-  label?: string;
   /** A tilt-shift blur above and below the model. */
   dof?: boolean;
 }

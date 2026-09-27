@@ -10,7 +10,6 @@ import {
   fall,
   filmSteps,
   frameCount,
-  HOLO_MODEL,
   landed,
   planFilm,
   started,
@@ -22,13 +21,11 @@ import { BrickScene, towardCamera, type Motion } from "./scene";
 
 const FONT = '"Plus Jakarta Sans Variable", system-ui, sans-serif';
 const BACKDROP = "#eceef3";
-const SHADE = "236, 238, 243";
 const INK = "#1c1c26";
-const MUTED = "#5d5d6c";
-const ACCENT = "#f76808";
+const MUTED = "#8a8a96";
 const FOV = 28;
-/** Share of the frame's height kept clear of the model for the lower third. */
-const CAPTION = 0.17;
+/** Share of the frame's height kept clear of the model for the caption line. */
+const CAPTION = 0.12;
 const MARGIN = 1.08;
 const HERO_ANGLE = 35;
 const ORBIT_DEGREES = 55;
@@ -229,8 +226,8 @@ export class FilmRenderer {
   async prepare() {
     await Promise.all([
       this.scene.setPieces(this.ranked),
-      document.fonts.load(`800 30px ${FONT}`),
-      document.fonts.load(`700 16px ${FONT}`),
+      document.fonts.load(`600 26px ${FONT}`),
+      document.fonts.load(`500 26px ${FONT}`),
     ]);
     this.boxes = this.scene.stepBoxes();
     this.final = new Hull();
@@ -468,12 +465,12 @@ export class FilmRenderer {
     camera.clearViewOffset();
   }
 
-  /** A vignette, the corner title, and the lower third: what is being built and how many pieces have landed. */
+  /** A vignette, the H mark when branded, and one caption line: what is being built and how many pieces are in. */
   private overlay(time: number) {
-    const { width, height, branded, label } = this.options;
+    const { width, height, branded } = this.options;
     const { plan, ctx } = this;
     const unit = Math.min(width, height) / 1080;
-    const margin = 56 * unit;
+    const margin = 72 * unit;
     ctx.globalAlpha = 1;
     ctx.textAlign = "left";
     ctx.drawImage(this.scene.renderer.domElement, 0, 0, width, height);
@@ -487,70 +484,66 @@ export class FilmRenderer {
       Math.hypot(width, height) * 0.6,
     );
     vignette.addColorStop(0, "rgba(20, 20, 40, 0)");
-    vignette.addColorStop(1, "rgba(20, 20, 40, 0.1)");
+    vignette.addColorStop(1, "rgba(20, 20, 40, 0.08)");
     ctx.fillStyle = vignette;
     ctx.fillRect(0, 0, width, height);
-
-    ctx.fillStyle = ACCENT;
-    ctx.fillRect(margin, margin, 30 * unit, 6 * unit);
-    ctx.fillStyle = INK;
-    ctx.font = `800 ${(label ? 50 : 34) * unit}px ${FONT}`;
-    this.text(label ?? (branded ? HOLO_MODEL : this.build.name), margin, margin + (label ? 62 : 46) * unit, width / 2);
-    ctx.fillStyle = MUTED;
-    ctx.font = `700 ${14 * unit}px ${FONT}`;
-    this.spaced(branded ? "H COMPANY · BRICKYARD" : "BRICKYARD", margin, margin + (label ? 92 : 72) * unit);
-
-    const band = CAPTION * height * 1.3;
-    const shade = ctx.createLinearGradient(0, height - band, 0, height);
-    shade.addColorStop(0, `rgba(${SHADE}, 0)`);
-    shade.addColorStop(0.55, `rgba(${SHADE}, 0.82)`);
-    shade.addColorStop(1, `rgba(${SHADE}, 0.92)`);
-    ctx.fillStyle = shade;
-    ctx.fillRect(0, height - band, width, band);
+    if (branded) this.mark(margin, margin, 34 * unit);
 
     const total = plan.order.length;
     const done = landed(plan, time);
-    let kicker = "BUILDING";
     let title = this.build.name;
     let since = time;
     if (done === total) {
-      kicker = `COMPLETE · ${plan.steps.length} ${plan.steps.length === 1 ? "STEP" : "STEPS"}`;
       since = time - (plan.starts[total - 1] + plan.flight);
     } else if (started(plan, time) > 0) {
       let step = this.captions[0];
       for (const s of this.captions) if (s.start <= time) step = s;
-      kicker = `STEP ${step.number} OF ${plan.steps.length}`;
       title = step.title;
       since = time - step.start;
     }
-    const base = height - margin - 18 * unit;
-    const right = width - margin;
-    ctx.fillStyle = INK;
-    ctx.font = `800 ${52 * unit}px ${FONT}`;
-    ctx.textAlign = "right";
-    ctx.fillText(done.toLocaleString("en-US"), right, base - 20 * unit);
-    const counter = Math.max(ctx.measureText(total.toLocaleString("en-US")).width, 120 * unit);
+    const base = height - margin;
+    ctx.font = `500 ${26 * unit}px ${FONT}`;
     ctx.fillStyle = MUTED;
-    ctx.font = `700 ${14 * unit}px ${FONT}`;
-    this.spaced(
-      `OF ${total.toLocaleString("en-US")} ${total === 1 ? "PIECE" : "PIECES"}`,
-      right,
-      base + 6 * unit,
-      "right",
-    );
+    const unitLabel = total === 1 ? " piece" : " pieces";
+    const suffix = ctx.measureText(unitLabel).width;
+    ctx.textAlign = "right";
+    ctx.fillText(unitLabel, width - margin, base);
+    ctx.fillStyle = INK;
+    ctx.font = `600 ${26 * unit}px ${FONT}`;
+    const counter = this.digits(done.toLocaleString("en-US"), width - margin - suffix, base) + suffix;
 
     ctx.globalAlpha = Math.min(1, since / FADE_S);
-    this.spaced(kicker, margin, base - 62 * unit);
-    ctx.fillStyle = INK;
-    ctx.font = `700 ${30 * unit}px ${FONT}`;
-    this.text(title, margin, base - 20 * unit, width - margin * 3 - counter);
+    ctx.textAlign = "left";
+    this.text(title, margin, base, width - margin * 3 - counter);
     ctx.globalAlpha = 1;
+  }
 
-    const bar = base + 16 * unit;
-    ctx.fillStyle = "rgba(28, 28, 38, 0.12)";
-    ctx.fillRect(margin, bar, width - margin * 2, 4 * unit);
-    ctx.fillStyle = ACCENT;
-    ctx.fillRect(margin, bar, ((width - margin * 2) * done) / total, 4 * unit);
+  /** The H Company mark, a disc and an H, `size` tall with its top left at (x, y). */
+  private mark(x: number, y: number, size: number) {
+    const { ctx } = this;
+    const s = size / 600;
+    ctx.fillStyle = "#000";
+    ctx.beginPath();
+    ctx.arc(x + 300 * s, y + 300 * s, 300 * s, 0, 2 * Math.PI);
+    ctx.fill();
+    ctx.fillRect(x + 838 * s, y + 195 * s, 54 * s, 220 * s);
+    ctx.fillRect(x + 981 * s, y + 195 * s, 54 * s, 220 * s);
+    ctx.fillRect(x + 838 * s, y + 282 * s, 197 * s, 45 * s);
+  }
+
+  /** Right-aligned at `right` with every digit in the same width, so a changing count does not jitter. */
+  private digits(value: string, right: number, y: number): number {
+    const { ctx } = this;
+    const cell = ctx.measureText("0").width;
+    const widths = [...value].map((c) => (c >= "0" && c <= "9" ? cell : ctx.measureText(c).width));
+    const width = widths.reduce((a, b) => a + b, 0);
+    ctx.textAlign = "center";
+    let x = right - width;
+    [...value].forEach((c, i) => {
+      ctx.fillText(c, x + widths[i] / 2, y);
+      x += widths[i];
+    });
+    return width;
   }
 
   private text(value: string, x: number, y: number, width: number) {
@@ -558,14 +551,6 @@ export class FilmRenderer {
     while (label.length && this.ctx.measureText(label).width > width) label = label.slice(0, -1);
     if (label !== value) label = `${label.slice(0, -1)}…`;
     this.ctx.fillText(label, x, y);
-  }
-
-  private spaced(value: string, x: number, y: number, align: CanvasTextAlign = "left") {
-    this.ctx.letterSpacing = "0.12em";
-    this.ctx.textAlign = align;
-    this.ctx.fillText(value, x, y);
-    this.ctx.letterSpacing = "0px";
-    this.ctx.textAlign = "left";
   }
 
   dispose() {

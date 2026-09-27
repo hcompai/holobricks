@@ -16,8 +16,8 @@ export async function runFilmJob(job: string) {
     const [spec, build] = await Promise.all([api.film(job), api.filmBuild(job)]);
     film = new FilmRenderer(build, document.createElement("canvas"), new AbortController().signal);
     await film.prepare();
-    const { samples, label, ...options } = spec.options;
-    film.configure({ ...options, label: label ?? undefined, samples: samples ?? 1 });
+    const { samples, ...options } = spec.options;
+    film.configure({ ...options, samples: samples ?? 1 });
     const deadline = spec.budget * 1000 * BUDGET_SHARE;
     if (samples === null) film.calibrate(deadline - performance.now());
     let current = film.samples;

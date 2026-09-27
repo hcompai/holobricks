@@ -51,6 +51,7 @@ RGB_TO_YUV = "scale=out_color_matrix=bt709:out_range=tv"
 CLICK_GAP_S = 0.045
 """At most one landing click this often, however many pieces land."""
 RATE = 48000
+FFMPEG_FAILED = "ffmpeg failed to encode the film; see the server log."
 
 
 class FilmError(Exception):
@@ -71,8 +72,7 @@ class FilmOptions(BaseModel):
     samples: int | None = Field(None, ge=1, le=64, description="renders averaged per frame; default fits the budget")
     budget: float = Field(900, gt=0, le=6 * 3600, description="seconds of rendering to spend on samples")
     gif: bool = True
-    branded: bool | None = Field(None, description="HOLO4 / H Company branding; default for Holo builds only")
-    label: str | None = Field(None, max_length=40, description="a large corner title, naming a comparison's side")
+    branded: bool | None = Field(None, description="the H Company mark; default for Holo builds only")
     clicks: bool = Field(False, description="a soft click as pieces land")
     dof: bool = Field(False, description="tilt-shift blur")
 
@@ -136,7 +136,6 @@ class Film:
                 "fps": o.fps,
                 "samples": o.samples,
                 "branded": self.branded,
-                "label": o.label,
                 "dof": o.dof,
             },
             "files": self.files,
@@ -199,17 +198,22 @@ class Films:
                 if film.error:
                     raise FilmError(film.error)
                 if film.encoder and await film.encoder.wait():
-                    raise FilmError(f"ffmpeg failed: {_tail(film.folder / 'ffmpeg.log')}")
+                    log.error("ffmpeg failed: %s", _tail(film.folder / "ffmpeg.log"))
+                    raise FilmError(FFMPEG_FAILED)
                 film.elapsed = time.monotonic() - start
             film.status = "encoding"
             await self._finish(film)
             film.status = "done"
         except asyncio.CancelledError:
             film.status = "cancelled"
-        except Exception as e:
+        except FilmError as e:
+            log.warning("film %s of build %s failed: %s", film.id, film.build.id, e)
+            film.status = "error"
+            film.error = str(e)
+        except Exception:
             log.exception("film %s of build %s failed", film.id, film.build.id)
             film.status = "error"
-            film.error = "Film rendering failed. Check server logs for details."
+            film.error = "The film failed to render; see the server log."
         finally:
             if film.encoder and film.encoder.returncode is None:
                 film.encoder.kill()
@@ -286,7 +290,8 @@ def _ffmpeg(*args: str | Path) -> None:
         [ffmpeg() or "ffmpeg", "-v", "error", "-y", *map(str, args)], capture_output=True, text=True, check=False
     )
     if result.returncode:
-        raise FilmError(f"ffmpeg failed: {result.stderr.strip()[-500:]}")
+        log.error("ffmpeg failed: %s", result.stderr.strip()[-500:])
+        raise FilmError(FFMPEG_FAILED)
 
 
 def _tail(path: Path) -> str:
@@ -339,15 +344,6 @@ def clicks(landings: list[int], fps: int, path: Path) -> None:
         out.writeframes(samples.tobytes())
 
 
-def compose(first: Path, second: Path, out: Path, vertical: bool, audio: bool) -> None:
-    """Both films side by side (or stacked when `vertical`), split by a thin line."""
-    stack, line = ("vstack", "x=0:y=ih/2-2:w=iw:h=4") if vertical else ("hstack", "x=iw/2-2:y=0:w=4:h=ih")
-    video = f"[0:v][1:v]{stack}=inputs=2,drawbox={line}:color=0x1c1c26@0.2:t=fill[v]"
-    sound = ";[0:a][1:a]amix=inputs=2:normalize=0[a]" if audio else ""
-    mapping = ("-map", "[v]", *(("-map", "[a]", "-c:a", "aac", "-b:a", "160k") if audio else ()))
-    _ffmpeg("-i", first, "-i", second, "-filter_complex", video + sound, *mapping, *X264, out)
-
-
 def stem(name: str) -> str:
     """A file name for a build, like the web app's downloads."""
     safe = re.sub(r'[\x00-\x1f<>:"/\\|?*]', "-", name)[:100].rstrip(". ").strip()
@@ -378,9 +374,9 @@ def _render(client: httpx.Client, build: str, options: FilmOptions, out: Path, n
     return job
 
 
-def _report(path: Path, job: dict | None = None) -> None:
-    stats = f" · {job['frames']} frames · {job['samples']} samples · {job['elapsed']:.0f} s rendering" if job else ""
-    print(f"{path} · {path.stat().st_size / 2**20:.1f} MB{stats}")
+def _report(path: Path, job: dict) -> None:
+    stats = f"{job['frames']} frames · {job['samples']} samples · {job['elapsed']:.0f} s rendering"
+    print(f"{path} · {path.stat().st_size / 2**20:.1f} MB · {stats}")
 
 
 def main() -> None:
@@ -388,8 +384,6 @@ def main() -> None:
         prog="brickyard-film", description="Render a build's film to MP4 and GIF on a running Brickyard server."
     )
     parser.add_argument("build", help="build id")
-    parser.add_argument("--vs", metavar="BUILD", help="film a second build the same way and put the two side by side")
-    parser.add_argument("--labels", nargs=2, metavar=("FIRST", "SECOND"), help="comparison titles; default: names")
     parser.add_argument("--aspect", choices=list(ASPECTS), default="16:9")
     parser.add_argument("--seconds", type=int, default=20)
     parser.add_argument("--fps", type=int, default=60)
@@ -401,40 +395,22 @@ def main() -> None:
     parser.add_argument("--out", type=Path, default=Path())
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
-    common = {"seconds": args.seconds, "fps": args.fps, "samples": args.samples, "clicks": args.clicks, "dof": args.dof}
     url = os.environ.get("BRICKYARD_URL", "http://127.0.0.1:8000")
     with httpx.Client(base_url=url, timeout=60) as client:
         names = {b["id"]: b["name"] for b in client.get("/api/builds").json()}
-        for build in filter(None, (args.build, args.vs)):
-            if build not in names:
-                sys.exit(f"brickyard-film: no build {build} on {url}")
-        if not args.vs:
-            options = FilmOptions(aspect=args.aspect, budget=args.minutes * 60, gif=args.gif, **common)
-            job = _render(client, args.build, options, args.out, stem(names[args.build]))
-            for kind in job["files"]:
-                _report(args.out / f"{stem(names[args.build])}.{kind}", job)
-            return
-        if ffmpeg() is None:
-            sys.exit("brickyard-film: comparisons need ffmpeg here (set BRICKYARD_FFMPEG)")
-        width, height = ASPECTS[args.aspect]
-        vertical = height > width
-        half = {"width": width, "height": height // 2} if vertical else {"width": width // 2, "height": height}
-        builds = (args.build, args.vs)
-        labels = args.labels or [names[b] for b in builds]
-        halves = []
-        for build, label in zip(builds, labels, strict=True):
-            options = FilmOptions(
-                aspect=args.aspect, **half, budget=args.minutes * 30, gif=False, branded=False, label=label, **common
-            )
-            name = f"{stem(names[build])}-{uuid.uuid4().hex[:6]}"
-            halves.append((_render(client, build, options, args.out, name), args.out / f"{name}.mp4"))
-    both = stem(f"{names[args.build]} vs {names[args.vs]}")
-    video, animation = args.out / f"{both}.mp4", args.out / f"{both}.gif"
-    compose(halves[0][1], halves[1][1], video, vertical, args.clicks)
-    for job, path in halves:
-        _report(path, job)
-        path.unlink()
-    _report(video)
-    if args.gif:
-        gif(video, animation)
-        _report(animation)
+        if args.build not in names:
+            sys.exit(f"brickyard-film: no build {args.build} on {url}")
+        options = FilmOptions(
+            aspect=args.aspect,
+            seconds=args.seconds,
+            fps=args.fps,
+            samples=args.samples,
+            budget=args.minutes * 60,
+            gif=args.gif,
+            clicks=args.clicks,
+            dof=args.dof,
+        )
+        name = stem(names[args.build])
+        job = _render(client, args.build, options, args.out, name)
+    for kind in job["files"]:
+        _report(args.out / f"{name}.{kind}", job)

@@ -135,7 +135,6 @@ export interface FilmJob {
     fps: number;
     samples: number | null;
     branded: boolean;
-    label: string | null;
     dof: boolean;
   };
   files: Partial<Record<"mp4" | "gif", { size: number; width: number; height: number; fps: number }>>;

@@ -122,7 +122,7 @@ test("without a film server, the browser makes a looping GIF and leaves the view
   await page.getByRole("button", { name: "Export film", exact: true }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByRole("button", { name: "Generate GIF", exact: true })).toBeEnabled();
-  const branding = dialog.getByRole("checkbox", { name: "HOLO4 / H Company branding" });
+  const branding = dialog.getByRole("checkbox", { name: "H Company logo" });
   const branded = await preview(page);
   await branding.uncheck();
   await expect.poll(async () => (await preview(page)).frame).not.toBe(branded.frame);
@@ -199,7 +199,7 @@ test("the server renders MP4 and GIF with progress, cancellation and retry, from
     samples: 12,
     budget: 900,
     elapsed: 0,
-    options: { width: 1920, height: 1080, seconds: 20, fps: 60, samples: null, branded: true, label: null, dof: false },
+    options: { width: 1920, height: 1080, seconds: 20, fps: 60, samples: null, branded: true, dof: false },
     files:
       status === "done"
         ? {

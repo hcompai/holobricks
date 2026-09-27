@@ -9,7 +9,6 @@ import {
   FILM_SECONDS,
   filmCaption,
   filmFilename,
-  HOLO_MODEL,
   type FilmAspect,
   type FilmOptions,
 } from "./filmPlan";
@@ -275,8 +274,8 @@ export function FilmExport({ build, onClose }: Props) {
             </label>
             {brandable(build) && (
               <label className="film-branding">
-                <input type="checkbox" checked={branded} onChange={(e) => update(setBranded, e.target.checked)} />
-                {HOLO_MODEL} / H Company branding
+                <input type="checkbox" checked={branded} onChange={(e) => update(setBranded, e.target.checked)} />H
+                Company logo
               </label>
             )}
           </fieldset>

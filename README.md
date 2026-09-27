@@ -15,7 +15,7 @@
 - **Catalog-checked inventory**: construction and shopping verify every part/color pair against BrickLink's
   Known colors. Unverified combinations are rejected with repair choices; only complete verified inventories
   produce canonical BrickLink XML. See [SHOPPING.md](SHOPPING.md) for freshness and availability limits.
-- **Share** a build film (MP4 + GIF) from the timeline or download menu, with optional HOLO4 / H Company branding for Holo builds.
+- **Share** a build film (MP4 + GIF) from the timeline or download menu, with an optional H Company logo for Holo builds.
 
 Gallery for the H team: [brickyard-h-company.vercel.app](https://brickyard-h-company.vercel.app) (Vercel login).
 
@@ -160,19 +160,18 @@ Open a regenerated showcase once in the app to refresh its thumbnail before depl
 
 ## Build films
 
-Choose **Export film** in the timeline (or the download menu): bricks drop in step by step, the camera cranes up with the model, then the finished build takes a full turn and holds. A lower third names each step and counts the pieces.
+Choose **Export film** in the timeline (or the download menu): bricks drop in step by step, the camera cranes up with the model, then the finished build takes a full turn and holds. One caption line names each step and counts the pieces; Holo builds can carry the H Company logo.
 
 With Chrome and ffmpeg on the server, the dialog renders a 1080p, 60 fps MP4 (H.264, CRF 18) and a GIF under 15 MB (X's limit), with progress and cancellation. The static gallery has no server, so it makes a 640 px GIF in the browser instead.
 
 Every frame is a pure function of the build, the options, its index and its sample count: the server's headless Chrome runs the same film code as the browser, averaging jittered renders per frame for antialiasing and soft shadows, then ambient occlusion and tone mapping. Samples per frame are measured to fit a time budget (15 minutes by default), and drop one at a time if rendering falls behind.
 
 ```bash
-brickyard-film hogwarts --aspect 16:9 --seconds 20                  # Hogwarts-build.mp4 + .gif
-brickyard-film a2e2cd2aff --vs 6eb28d127e --labels Holo "Opus 5.5"  # side by side, same timing
-brickyard-film --help                                               # fps, samples, --minutes, --clicks, --dof
+brickyard-film hogwarts --aspect 16:9 --seconds 20  # Hogwarts-build.mp4 + .gif
+brickyard-film --help                               # fps, samples, --minutes, --clicks, --dof
 ```
 
-The CLI drives a running server (`BRICKYARD_URL`, default `http://127.0.0.1:8000`). Films replay a frozen copy of the saved steps, not the agent's working history; missing parts fail the film rather than show a partial model. Only Holo builds may carry HOLO4 / H Company branding.
+The CLI drives a running server (`BRICKYARD_URL`, default `http://127.0.0.1:8000`). Films replay a frozen copy of the saved steps, not the agent's working history; missing parts fail the film rather than show a partial model. Only Holo builds may carry the H Company logo.
 
 ## Tests
 
