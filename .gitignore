@@ -1,4 +1,6 @@
 ldraw/
+shadow/
+.shadow-*/
 .ldraw.*/
 data/
 docs/*

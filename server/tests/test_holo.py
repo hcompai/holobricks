@@ -105,7 +105,7 @@ for x in range(0, 32, 2):
 def test_a_script_rebuilds_from_its_first_changed_step_and_names_the_lines_of_its_problems(bench, monkeypatch):
     monkeypatch.setattr(bench.session, "render", lambda camera=None, box=None: asyncio.sleep(0))
     first = asyncio.run(bench.run_script(HOUSE))
-    assert first.problems == 0 and "roof top 18" in first.text, first.text
+    assert first.problems == 1 and "roof top 18" in first.text and "disconnected_model" in first.text, first.text
     assert [s.title for s in bench.session.build.steps] == ["Walls", "Roof", "Paving"]
     walls = [p for p in bench.pieces if p.step == 0]
 

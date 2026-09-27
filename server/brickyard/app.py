@@ -21,7 +21,7 @@ from fastapi.responses import FileResponse, PlainTextResponse, Response, Streami
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ValidationError
 
-from brickyard import catalog, ldraw, shopping
+from brickyard import assembly, catalog, ldraw, shopping
 from brickyard.builders import BUILDERS
 from brickyard.film import Film, FilmError, FilmOptions, Films, FilmStart, stem
 from brickyard.model import Box, Build, Camera, Message
@@ -73,6 +73,7 @@ TOOLS = {
     "parts": Workbench.find_parts,
     "colors": Workbench.catalog_colors,
     "check": Workbench.check_catalog,
+    "assembly": Workbench.assembly_plan,
     "name": Workbench.rename,
 }
 
@@ -375,6 +376,19 @@ async def validate_materials(build_id: str) -> dict:
     build = session_for(build_id).build.model_copy(deep=True)
     report = await asyncio.to_thread(catalog.validate, build.pieces, store.root.parent / "bricklink-catalog")
     return report | {"revision": build.revision, "validation": catalog.validity(report) if report["valid"] else None}
+
+
+@app.get("/api/builds/{build_id}/assembly")
+async def assembly_report(build_id: str) -> dict:
+    session = session_for(build_id)
+    build = session.build.model_copy(deep=True)
+    folder = store.root.parent / "workspaces" / build_id / ".brickyard-assembly"
+    plan = await asyncio.to_thread(assembly.cached_plan, folder, build)
+    report = await asyncio.to_thread(assembly.check, build, plan)
+    if session.build.revision != build.revision:
+        raise HTTPException(409, "The model changed during assembly validation; retry.")
+    await asyncio.to_thread(assembly.save_report, folder, report)
+    return report.model_dump()
 
 
 @app.get("/api/builds/{build_id}/download.ldr")

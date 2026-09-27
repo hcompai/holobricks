@@ -115,7 +115,11 @@ def rig(tmp_path):
     inventory = {"valid": True, "issues": [], "pieces": 1,
                  "validation": {"status": "verified", "valid_until": time.time() + 86400}}
 
+    physical = {"status": "verified", "pieces": 1, "evidence": "connector-proof", "plan": {"root": "model"}}
+
     def request(req):
+        if req.url.path.endswith("/assembly"):
+            return httpx.Response(physical.get("http_status", 200), json={"revision": build["revision"], **physical})
         if req.url.path.endswith("/bom/validation"):
             return httpx.Response(inventory.get("http_status", 200), json={"revision": build["revision"], **inventory})
         if req.url.path.startswith("/api/images/"):
@@ -130,7 +134,7 @@ def rig(tmp_path):
     loop.client.close()
     loop.client = httpx.Client(transport=httpx.MockTransport(request))
     yield SimpleNamespace(
-        loop=loop, llm=llm, build=build, rendered=rendered, stale=render_revision, path=tmp_path, inventory=inventory
+        loop=loop, llm=llm, build=build, rendered=rendered, stale=render_revision, path=tmp_path, inventory=inventory, physical=physical
     )
     loop.client.close()
 
@@ -485,3 +489,12 @@ def test_refusal_limit_can_stop_but_cannot_claim_verified_success(rig):
     )
     assert answer.outcome == "partial"
     assert "quality remains unverified" in answer.answer
+
+
+def test_assembly_gate_cannot_be_waived_by_visual_refusals(rig):
+    rig.loop.refusals = 99
+    rig.physical.update(status="unverified", issues=[{"code": "blocked_insertion", "message": "Roof blocks piece", "moving": [2], "obstacles": [3]}])
+    verdict = rig.loop.validate()
+    assert not verdict.passed and "Roof blocks piece" in verdict.feedback
+    rig.physical.update(status="verified", http_status=503)
+    assert not rig.loop.validate().passed

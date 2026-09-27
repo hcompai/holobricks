@@ -74,6 +74,19 @@ Commands:
 - `bricks colors <part>`: returns the colors actually recorded for that part in BrickLink, as LDraw codes
   to use in your script. Choose from these before settling a palette; the global color list is not a promise
   that every part exists in every color. Mold and printed-part suffixes must not be guessed or removed.
+- `bricks assembly [plan.json]`: checks a real assembly order, separately from your drawing steps.
+  Every `bricks run` returns current assembly evidence and names parts blocking insertion.
+  Repair those errors before finishing. A ready-to-print manual requires a verified current plan.
+  The checker supports rigid stud/socket connections and straight insertion, not every LEGO joint.
+  Never treat unsupported as verified, or claim strength/hand-access certification.
+  To suggest subassemblies, write JSON with `revision`, `root`, and `groups`.
+  Each group has `id`, `title`, and `operations`; each operation introduces exactly one
+  `{"part": INSTANCE_ID}` or `{"assembly": CHILD_ID}`. Use every physical instance once,
+  attach each child once, and include no cycles. Positions come from the model, not the plan.
+  Omit `approach` to let the checker select and test it. Inspect `.brickyard-assembly/assembly-report.json`
+  and the accepted `assembly-plan.json`. Reorder a roof after its trapped parts, construct a connected
+  unit separately, or change impossible connections. Do not simplify the requested subject merely
+  to bypass missing connector support; report the limitation if it prevents a printable guide.
 - `bricks check`: checks every current part/color pair. `bricks run` also applies this catalog check to the
   whole candidate before publication and rejects unverified combinations, including inherited pieces.
   Repair the named pairs using the returned verified colors or a different verified part matching the photo.
@@ -129,7 +142,7 @@ bay, an arch, a tree, a lamp, a balustrade. Write each element once as a functio
 vary it with seeded randomness so no two copies are the same. Stack parts on the heights your functions return and on
 `top()`, never on hand-counted ones.
 
-- `step(title)`: starts a manual step; the calls after it go into it. Titles are what the user reads in the timeline,
+- `step(title)`: starts a drawing step; the calls after it go into it. Titles are what the user reads in the timeline,
   so name what the step adds: "Quay wall in dressed stone", not "Walls 2".
 - `brick(part, x, y, z, color, rotation=0)`: places one part covering studs x to x+W-1 and y to y+D-1, its bottom at
   plate height z, turned 0, 90, 180 or 270 degrees.
@@ -139,57 +152,18 @@ vary it with seeded randomness so no two copies are the same. Stack parts on the
   in the others, and unchanged steps are kept. Use it directly (`random.choice`), not a `random.Random` of your own.
 
 ```python
-import random
-
-STONE = [19, 19, 19, 28, 78]
-RUNS = {1: "3005", 2: "3004", 3: "3622", 4: "3010"}
-
-def course(x, y, z, length, axis="x", glass=()):
-    """One course of 1-wide bricks in random lengths and shades, so joints never line up; `glass` spots are windows."""
-    i = 0
-    while i < length:
-        n = 1 if i in glass else min([random.choice([1, 2, 2, 3, 4]), length - i] + [g - i for g in glass if g > i])
-        color = random.choice([46, 46, 40]) if i in glass else random.choice(STONE)
-        at, turn = ((x + i, y), 0) if axis == "x" else ((x, y + i), 90)
-        brick(RUNS[n], *at, z, color, turn)
-        i += n
-
-def tower(x, y, w, d, z, courses):
-    """A hollow tower with windows on every other course; returns its top."""
-    for c in range(courses):
-        k = z + 3 * c
-        across, along = (set(range(1, w - 1, 2)), set(range(1, d - 2, 2))) if c % 2 else ((), ())
-        course(x, y, k, w, glass=across)
-        course(x, y + d - 1, k, w, glass=across)
-        course(x, y + 1, k, d - 2, "y", glass=along)
-        course(x + w - 1, y + 1, k, d - 2, "y", glass=along)
-    return z + 3 * courses
-
-def tree(x, y, z):
-    """A trunk of round bricks and a crown of leaves, each tree its own height and turn."""
-    trunk = random.randint(3, 5)
-    for k in range(trunk):
-        brick("3062b", x, y, z + 3 * k, 70)
-    crown = z + 3 * trunk
-    brick("2417", x - 2, y - 2, crown, random.choice([2, 288, 10]), random.choice([0, 90]))
-    brick("2423", x - 1, y - 1, crown + 1, random.choice([2, 288, 10]), random.choice([0, 90]))
-    brick("15470", x, y, crown + 2, random.choice([10, 27]))
-
-step("Watchtower in weathered stone, lit windows on every other storey")
-roof = tower(4, 18, 6, 6, 0, 8)
-step("Spire of stacked cones")
-brick("3958", 4, 18, roof, 72)
-brick("272", 5, 19, roof + 1, 72)
-brick("3942c", 6, 20, top(6, 20), 72)
-brick("3957a", 6, 20, top(6, 20), 0)
-step("Trees, each one different")
-for x, y in ((22, 20), (26, 9), (14, 26)):
-    tree(x, y, 0)
-step("A winding path of mixed stone")
-x = 16
-for y in range(0, 17):
-    x = max(8, min(20, x + random.choice([-1, 0, 0, 1])))
-    brick("3069b", x, y, 0, random.choice([71, 72, 19]))
+# A connected miniature lookout. Drawing steps can contain many pieces;
+# the assembly planner will determine a separate, physically checked order.
+step("Plate foundation")
+brick("3020", 0, 0, 0, 15)
+step("Two supporting piers")
+for z in (1, 4):
+    for x in (0, 3):
+        brick("3005", x, 0, z, 15)
+step("Roof beam and cap")
+brick("3001", 0, 0, 7, 4)
+brick("3020", 0, 0, 10, 15)
+print("roof height", top(0, 0))
 ```
 
 ## Coordinates and rules
@@ -199,7 +173,8 @@ for y in range(0, 17):
 - A part placed at (x, y) covers studs x to x+W-1 and y to y+D-1, with W x D as listed at rotation 0. Rotation 90 or
   270 swaps W and D.
 - Every model starts from bare ground, with no baseplate, that runs as far as the model needs: x and y start at 0 and
-  have no end. Parts on the ground use z=0. To stack, put the upper part at z = lower z + lower height.
+  have no end. Parts on the ground use z=0. Ground is not a physical LEGO connection: join separate
+  elements with real plates/bricks. To stack, put the upper part at z = lower z + lower height.
 - Slopes at rotation 0 descend toward the front (-y), at 180 toward the back (+y), at 90 toward -x, at 270 toward +x.
 - Parts must not go below x or y 0, must not overlap other pieces, and must rest on something directly under them
   (or hang from something directly above). Runs name every brick that does not, with its script line.

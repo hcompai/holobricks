@@ -471,6 +471,25 @@ class QualityLoop(Validator):
                 False,
                 "Catalog validation unavailable. Retry; an unchecked inventory cannot complete.",
             )
+        # Independent physical evidence cannot be waived by the visual retry cap.
+        try:
+            response = self.client.get(self.url + "/assembly")
+            response.raise_for_status()
+            physical = response.json()
+            if (
+                physical.get("status") != "verified"
+                or physical.get("revision") != build["revision"]
+                or physical.get("pieces") != len(build["pieces"])
+                or not physical.get("evidence")
+                or not physical.get("plan")
+            ):
+                issues = "\n".join(
+                    f"{i.get('code')}: {i.get('message')} Moving {i.get('moving')}; obstacles {i.get('obstacles')}."
+                    for i in physical.get("issues", [])
+                )
+                return self.verdict(False, "Assembly is not verified. Run bricks assembly; repair the model or propose a subassembly plan.\n" + issues)
+        except Exception:  # noqa: BLE001 -- transport failures never imply physical approval
+            return self.verdict(False, "Assembly validation unavailable. Retry bricks assembly; do not claim the model is ready to build.")
         try:
             brief = self.prepare(build)
             if not build["pieces"] or build.get("checked_revision") != build["revision"]:

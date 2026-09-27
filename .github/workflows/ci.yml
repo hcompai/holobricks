@@ -15,6 +15,11 @@ jobs:
           path: ldraw
           key: ldraw-complete-v1
       - run: test -d ldraw || scripts/fetch-ldraw.sh
+      - uses: actions/cache@v4
+        with:
+          path: shadow
+          key: ldcad-shadow-9b1131fb1991f8c0bfc072325e4e12f6271aba35
+      - run: python3 scripts/fetch-connectors.py
       - uses: actions/setup-node@v4
         with:
           node-version: 24

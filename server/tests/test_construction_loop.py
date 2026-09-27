@@ -241,7 +241,8 @@ def test_commit_saves_only_the_complete_revision_and_preserves_chat(bench, monke
 
         monkeypatch.setattr(bench.session.store, "save", record)
         code = CORE + 'step("Top")\nbrick("3001", 0, 0, 3, 15)\nstep("Side")\nbrick("3001", 5, 0, 0, 14)\n'
-        assert not (await bench.run_script(code)).problems
+        result = await bench.run_script(code)
+        assert result.problems == 1 and "disconnected_model" in result.text
         assert len(snapshots) == 1
         assert len(snapshots[0].steps) == len(snapshots[0].pieces) == 3
         assert snapshots[0].script == code
