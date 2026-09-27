@@ -57,6 +57,7 @@ def test_catalog_outage_does_not_commit_or_replace_the_accepted_script(bench, mo
         monkeypatch.setattr(catalog.Catalog, "get", unavailable)
         result = await bench.run_script(CORE.replace(", 4)", ", 14)"))
         assert result.problems and "temporarily unavailable" in result.text
+        assert "do not change the design" in result.text
         assert bench.session.build.model_dump_json() == saved
 
     asyncio.run(run())

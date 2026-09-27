@@ -43,7 +43,7 @@ export async function prepareShopping(build: Build, signal: AbortSignal): Promis
   if (result.error) throw new Error(result.error);
   if (result.version !== 3 || result.validation?.status !== "verified")
     throw new Error("This parts list needs catalog validation. Update the server or regenerate this gallery.");
-  if (result.validation.valid_until * 1000 <= Date.now())
+  if (!Number.isFinite(result.validation.valid_until) || result.validation.valid_until * 1000 <= Date.now())
     throw new Error("This parts list needs a fresh catalog check. Reopen Shop bricks or regenerate this gallery.");
   if (
     !/^[a-f0-9]{64}$/.test(result.id) ||

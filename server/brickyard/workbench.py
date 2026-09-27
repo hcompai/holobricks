@@ -302,10 +302,15 @@ class Workbench:
                 catalog.validate, candidate.pieces, self.session.store.root.parent / "bricklink-catalog"
             )
             if not report["valid"]:
+                retry = any(issue["code"] == "catalog_unavailable" for issue in report["issues"])
                 return Result(
                     "Candidate rejected; the model and accepted script did not change.\n"
                     + catalog.describe(report)
-                    + "\nChoose verified part/color combinations matching the reference, edit the script and run again.",
+                    + (
+                        "\nRetry the catalog check; do not change the design to bypass an unavailable source."
+                        if retry
+                        else "\nChoose verified part/color combinations matching the reference, edit the script and run again."
+                    ),
                     problems=len(report["issues"]),
                 )
             lines.append(catalog.describe(report))

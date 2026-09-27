@@ -359,7 +359,12 @@ def shopping_file(filename: str) -> FileResponse:
     if not path.is_file():
         raise HTTPException(404, "No such parts list.")
     package = json.loads(path.with_suffix(".json").read_text())
-    if package.get("version") != 3 or package.get("validation", {}).get("valid_until", 0) <= time.time():
+    validation = package.get("validation", {})
+    if (
+        package.get("version") != 3
+        or validation.get("status") != "verified"
+        or validation.get("valid_until", 0) <= time.time()
+    ):
         raise HTTPException(410, "This parts list needs a fresh catalog check. Reopen Shop bricks.")
     suffix = path.suffix
     return FileResponse(

@@ -178,17 +178,22 @@ test("catalog rejections explain the invalid combinations and offer no shopping 
   await expect(dialog.getByRole("link", { name: "View or download parts" })).toHaveCount(0);
 });
 
-for (const legacy of [true, false]) {
-  test(`rejects ${legacy ? "unvalidated legacy" : "expired"} shopping packages`, async ({ page }) => {
+for (const state of ["legacy", "expired", "missing expiry"]) {
+  test(`rejects ${state} shopping packages`, async ({ page }) => {
     await mock(page);
     const pack = packageFor(fixture());
     await page.route("**/api/builds/shop-test/shopping", (route) =>
       route.fulfill({
-        json: legacy ? { ...pack, version: 2 } : { ...pack, validation: { status: "verified", valid_until: 1 } },
+        json:
+          state === "legacy"
+            ? { ...pack, version: 2 }
+            : { ...pack, validation: { status: "verified", valid_until: state === "expired" ? 1 : undefined } },
       }),
     );
     await page.getByRole("button", { name: "Shop bricks", exact: true }).click();
-    await expect(page.getByRole("alert")).toContainText(legacy ? "needs catalog validation" : "fresh catalog check");
+    await expect(page.getByRole("alert")).toContainText(
+      state === "legacy" ? "needs catalog validation" : "fresh catalog check",
+    );
     await expect(page.getByRole("button", { name: "Copy for HoloTab" })).toHaveCount(0);
   });
 }
