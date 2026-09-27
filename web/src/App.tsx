@@ -1,13 +1,13 @@
-import { DownloadSimpleIcon } from "@phosphor-icons/react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api, GALLERY, type BuildSummary } from "./api";
 import { ChatPanel } from "./ChatPanel";
+import { DownloadMenu } from "./DownloadMenu";
 import { LibraryPanel } from "./LibraryPanel";
 import { PartsPanel } from "./PartsPanel";
 import { Timeline } from "./Timeline";
 import { useBuild } from "./useBuild";
 import { ThemeToggle } from "./ThemeToggle";
-import { type Framing, ViewControls, Viewer } from "./Viewer";
+import { type Framing, ViewControls, Viewer, type ViewerHandle } from "./Viewer";
 
 const STEP_MS = 700;
 
@@ -17,7 +17,8 @@ function initialBuildId(): string | null {
 
 export default function App() {
   const [buildId, setBuildId] = useState<string | null>(initialBuildId);
-  const { build, thinking, renderRequest } = useBuild(buildId);
+  const { build, loading, thinking, renderRequest } = useBuild(buildId);
+  const viewer = useRef<ViewerHandle>(null);
   const [builds, setBuilds] = useState<BuildSummary[]>([]);
   const [left, setLeft] = useState<"chat" | "library">(GALLERY ? "library" : "chat");
   const [center, setCenter] = useState<"model" | "parts">("model");
@@ -89,6 +90,7 @@ export default function App() {
           <img className="brand-icon" src="/brick.png" alt="" />
           Brickyard
         </button>
+        {loading && <span className="title">{builds.find((b) => b.id === buildId)?.name}</span>}
         {build && (
           <>
             <span className="title">{build.name}</span>
@@ -103,12 +105,7 @@ export default function App() {
         )}
         <span className="spacer" />
         <ThemeToggle />
-        {build && (
-          <a className="button primary" href={api.downloadUrl(build.id)} download={`${build.name}.ldr`}>
-            <DownloadSimpleIcon size={16} weight="bold" />
-            Download .ldr
-          </a>
-        )}
+        {build && <DownloadMenu build={build} image={() => viewer.current?.image() ?? Promise.resolve(null)} />}
       </header>
       <aside>
         <div className="aside-bar">
@@ -125,6 +122,7 @@ export default function App() {
           {left === "chat" ? (
             <ChatPanel
               build={build}
+              loading={loading}
               thinking={thinking}
               onCreate={create}
               onSay={async (text) => {
@@ -157,7 +155,15 @@ export default function App() {
         </div>
         <div className="stage">
           <div className={center === "model" ? "pane" : "pane hidden"}>
-            <Viewer build={build} step={visibleStep} renderRequest={renderRequest} framing={framing} spin={spin} />
+            <Viewer
+              ref={viewer}
+              build={build}
+              loading={loading}
+              step={visibleStep}
+              renderRequest={renderRequest}
+              framing={framing}
+              spin={spin}
+            />
           </div>
           {center === "parts" && build && (
             <div className="pane">

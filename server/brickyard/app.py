@@ -134,8 +134,8 @@ async def create_build(body: NewBuild) -> dict:
 
 
 @app.get("/api/builds/{build_id}")
-async def get_build(build_id: str) -> Build:
-    return session_for(build_id).build
+async def get_build(build_id: str) -> Response:
+    return Response(session_for(build_id).build.model_dump_json(), media_type="application/json")
 
 
 @app.post("/api/builds/{build_id}/messages")

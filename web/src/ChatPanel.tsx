@@ -67,12 +67,13 @@ function useWaitingLine(active: boolean): string {
 
 interface Props {
   build: Build | null;
+  loading: boolean;
   thinking: string;
   onCreate: (prompt: string) => Promise<void>;
   onSay: (text: string) => Promise<void>;
 }
 
-export function ChatPanel({ build, thinking, onCreate, onSay }: Props) {
+export function ChatPanel({ build, loading, thinking, onCreate, onSay }: Props) {
   const [text, setText] = useState("");
   const [mode, setMode] = useState<"change" | "new">("change");
   const [sending, setSending] = useState(false);
@@ -83,7 +84,7 @@ export function ChatPanel({ build, thinking, onCreate, onSay }: Props) {
   const [opened, setOpened] = useState<string | null>(null);
   const busy = build?.status === "building";
   const waiting = useWaitingLine(busy);
-  const target = build && mode === "change" ? "change" : "new";
+  const target = (build || loading) && mode === "change" ? "change" : "new";
 
   useEffect(() => {
     log.current?.scrollTo({ top: log.current.scrollHeight, behavior: "smooth" });
@@ -95,7 +96,7 @@ export function ChatPanel({ build, thinking, onCreate, onSay }: Props) {
 
   const send = async (value = text) => {
     const prompt = value.trim();
-    if (!prompt || sending || (busy && target === "change")) return;
+    if (!prompt || sending || (target === "change" && (busy || !build))) return;
     setSending(true);
     setError("");
     try {
@@ -114,7 +115,7 @@ export function ChatPanel({ build, thinking, onCreate, onSay }: Props) {
   return (
     <div className="chat">
       <div className="chat-log" ref={log}>
-        {!build ? (
+        {loading ? null : !build ? (
           <div className="chat-intro">
             <h2>What should we build?</h2>
             <p>Describe a model. The builder designs it in real LDraw bricks, step by step, while you watch.</p>
@@ -164,7 +165,7 @@ export function ChatPanel({ build, thinking, onCreate, onSay }: Props) {
         <p className="gallery-note">Read-only gallery. New builds run in the local app with Holo.</p>
       ) : (
         <div className="composer">
-          {build && (
+          {(build || loading) && (
             <div className="modes">
               <button className={mode === "change" ? "active" : ""} onClick={() => setMode("change")}>
                 Change this build

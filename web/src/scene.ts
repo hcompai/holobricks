@@ -510,6 +510,20 @@ export class BrickScene {
     return new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
   }
 
+  /** The user's view as they see it, on the viewer's backdrop. */
+  image(): Promise<Blob | null> {
+    this.draw();
+    const source = this.renderer.domElement;
+    const canvas = document.createElement("canvas");
+    canvas.width = source.width;
+    canvas.height = source.height;
+    const ctx = canvas.getContext("2d")!;
+    ctx.fillStyle = getComputedStyle(this.container).backgroundColor;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(source, 0, 0);
+    return new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+  }
+
   thumbnail(size = 320): Promise<Blob | null> {
     return this.offscreen(size, [{ direction: VIEW_DIRECTIONS.iso, x: 0, y: 0 }]);
   }

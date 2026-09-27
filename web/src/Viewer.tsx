@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { type Ref, useEffect, useImperativeHandle, useRef } from "react";
 import { ArrowsClockwiseIcon } from "@phosphor-icons/react";
 import { api, GALLERY, type Build, type RenderRequest } from "./api";
 import { BrickScene, type View } from "./scene";
@@ -41,15 +41,22 @@ export function ViewControls({
   );
 }
 
+export interface ViewerHandle {
+  /** The current view as a PNG. */
+  image: () => Promise<Blob | null>;
+}
+
 interface Props {
+  ref?: Ref<ViewerHandle>;
   build: Build | null;
+  loading: boolean;
   step: number;
   renderRequest: RenderRequest | null;
   framing: Framing;
   spin: boolean;
 }
 
-export function Viewer({ build, step, renderRequest, framing, spin }: Props) {
+export function Viewer({ ref, build, loading, step, renderRequest, framing, spin }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const scene = useRef<BrickScene | null>(null);
   const framedBuild = useRef<string | null>(null);
@@ -63,6 +70,8 @@ export function Viewer({ build, step, renderRequest, framing, spin }: Props) {
     scene.current = s;
     return () => s.dispose();
   }, []);
+
+  useImperativeHandle(ref, () => ({ image: () => scene.current?.image() ?? Promise.resolve(null) }), []);
 
   useEffect(() => {
     const s = scene.current;
@@ -110,7 +119,7 @@ export function Viewer({ build, step, renderRequest, framing, spin }: Props) {
   return (
     <div className="viewer">
       <div className="viewer-canvas" ref={container} />
-      {!build && (
+      {!build && !loading && (
         <div className="viewer-empty">
           {GALLERY ? "Pick a build from the library." : "Describe a model in the chat to start building."}
         </div>

@@ -38,6 +38,8 @@ function apply(build: Build, event: BuildEvent): Build {
 
 export interface LiveBuild {
   build: Build | null;
+  /** A build is open but its snapshot has not arrived yet. */
+  loading: boolean;
   /** The tail of the builder's current reasoning, streamed live. */
   thinking: string;
   /** The latest render the builder asked a viewer for. */
@@ -81,12 +83,14 @@ export function useBuild(id: string | null): LiveBuild {
         },
       );
     };
+    let connected = false;
     const source = api.events(id);
     source.onmessage = (e) => {
       if (!active) return;
       const event = JSON.parse(e.data) as BuildEvent;
       if (event.type === "hello") {
-        resync();
+        if (connected || event.build.status === "building") resync();
+        connected = true;
         return;
       }
       if (event.type === "build" && event.build.status === "building") setThinking("");
@@ -101,11 +105,13 @@ export function useBuild(id: string | null): LiveBuild {
       if (pending) pending.push(event);
       else if (current) setBuild((current = apply(current, event)));
     };
+    resync();
     return () => {
       active = false;
       source.close();
     };
   }, [id]);
 
-  return { build, thinking, renderRequest };
+  const current = build?.id === id ? build : null;
+  return { build: current, loading: id !== null && !current, thinking, renderRequest };
 }
