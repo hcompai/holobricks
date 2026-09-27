@@ -121,13 +121,18 @@ export function Viewer(props: Props) {
   useEffect(() => {
     const s = scene.current;
     if (!s || !build || !renderRequest || answered.current.has(renderRequest.request)) return;
-    const { request, camera, box, pieces } = renderRequest;
+    const { request, camera, box, pieces, revision } = renderRequest;
     if (build.pieces.length !== pieces) return;
-    answered.current.add(request);
-    s.setPieces(build.pieces)
-      .then(() => (camera ? s.view(camera, box) : s.sheet(box)))
-      .then((png) => png && api.putRender(build.id, request, png, pieces))
-      .catch((error) => console.error("Could not answer a render request", error));
+    s.renderBuild(build.pieces, revision, camera, box)
+      .then(async (png) => {
+        if (!png || answered.current.has(request)) return;
+        const response = await api.putRender(build.id, request, png, pieces, revision);
+        if (response.ok && (await response.json()).accepted) answered.current.add(request);
+      })
+      .catch((error) => {
+        answered.current.delete(request);
+        console.error("Could not answer a render request", error);
+      });
   }, [renderRequest, build?.id, build?.pieces]);
 
   useEffect(() => scene.current?.setVisibleStep(step), [step]);

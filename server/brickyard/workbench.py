@@ -13,7 +13,19 @@ from dataclasses import dataclass, field
 from pydantic import BaseModel, ValidationError
 
 from brickyard import ldraw
-from brickyard.model import FACINGS, ROTATIONS, Box, Camera, Piece, Placement, bounds, grid, place, with_accessories
+from brickyard.model import (
+    FACINGS,
+    ROTATIONS,
+    Box,
+    Camera,
+    Piece,
+    Placement,
+    bounds,
+    footprint,
+    grid,
+    place,
+    with_accessories,
+)
 from brickyard.session import Session
 
 STUD_HEIGHT = 4
@@ -143,14 +155,14 @@ class Workbench:
         def name(what: int | str) -> str:
             return what if isinstance(what, str) else f"#{what} {_where(indexed[what][0])}"
 
-        accepted: list[tuple[Placement, tuple]] = []
+        accepted: list[tuple[Placement, tuple, str, bool]] = []
         rejected, warnings = [], []
         candidates: list[tuple[str, Placement, bool]] = []
         for n, brick in enumerate(bricks, 1):
             label = f"{brick.label or f'brick {n}'} ({brick.part} at x={brick.x} y={brick.y} z={brick.z})"
             part = ldraw.resolve(brick.part)
             if part is None:
-                rejected.append(f"{label}: unknown part; use find_parts")
+                rejected.append(f"{label}: unknown part; use bricks parts")
             elif brick.color not in ldraw.colors():
                 rejected.append(f"{label}: unknown color {brick.color}")
             elif brick.rotation not in ROTATIONS:
@@ -176,12 +188,29 @@ class Workbench:
             if hit:
                 rejected.append(f"{label}: overlaps {name(hit[1])}, which fills up to z={_top(hit[0])}")
                 continue
-            if needs_support and not any(_touches(box, other) for other, _ in neighbors):
-                warnings.append(f"{label}: floating, nothing directly under or above it")
-            accepted.append((placement, box))
+            accepted.append((placement, box, label, needs_support))
             for cell in _cells(box):
                 batch.setdefault(cell, []).append((box, f"{label} of this step"))
-        return [p for placement, _ in accepted for p in with_accessories(placement)], rejected, warnings
+
+        # A step is a batch: later lines may support earlier ones. Seed contact paths at the ground or
+        # earlier steps, so two touching bricks floating together cannot validate each other.
+        supported, pending = set(), []
+        for _, box, _, needs_support in accepted:
+            if not needs_support or any(isinstance(who, int) and _touches(box, other) for other, who in near(box)):
+                supported.add(id(box))
+                pending.append(box)
+        while pending:
+            box = pending.pop()
+            for other, who in near(box):
+                if isinstance(who, str) and id(other) not in supported and _touches(box, other):
+                    supported.add(id(other))
+                    pending.append(other)
+        warnings = [
+            f"{label}: floating, no vertical contact path to the ground or an earlier step (bounding-box check)"
+            for _, box, label, _ in accepted
+            if id(box) not in supported
+        ]
+        return [p for placement, _, _, _ in accepted for p in with_accessories(placement)], rejected, warnings
 
     async def add(
         self, title: str, bricks: list[dict], mounted: list[Placement] = (), key: str | None = None
@@ -208,30 +237,49 @@ class Workbench:
         return Result("\n".join(lines), note=note, problems=problems)
 
     async def run_script(self, code: str) -> Result:
-        """Rebuild the model from `code`: steps up to the first changed one stay, the rest are rebuilt and checked."""
+        """Check changed steps in memory; publish the whole revision only if every step passes."""
         build = self.session.build
-        build.script = code
         fixed = self._fixed()
         out = await _execute(code, await asyncio.to_thread(self._taken, fixed))
         printed = f"\nThe script printed:\n{out['printed']}" if out.get("printed") else ""
         if "error" in out:
-            self.session.store.save(build)
-            return Result(f"The script stopped, so the model did not change.\n{out['error']}{printed}", problems=1)
+            return Result(
+                f"The script stopped, so the model and accepted script did not change.\n{out['error']}{printed}",
+                problems=1,
+            )
         steps = out["steps"]
         keys = [_digest(s) for s in steps]
         old = [s.key for s in build.steps[fixed:]]
         same = 0
         while same < min(len(old), len(keys)) and old[same] == keys[same]:
             same += 1
-        await self.session.rewind(fixed + same)
+        kept_steps = fixed + same
+        candidate = build.model_copy(
+            update={
+                "script": code,
+                "steps": build.steps[:kept_steps],
+                "pieces": [p for p in build.pieces if p.step < kept_steps],
+            }
+        )
+        candidate.width, candidate.depth = footprint(candidate.pieces)
+        # This workbench is only a geometry checker. No session method publishes or saves the candidate.
+        draft = Workbench(Session(candidate, self.session.store))
         source = code.splitlines()
         problems, reports = 0, []
-        for s, key in zip(steps[same:], keys[same:], strict=True):
+        for n, (s, key) in enumerate(zip(steps[same:], keys[same:], strict=True), kept_steps + 1):
             bricks = [b | {"label": _line(source, b["line"])} for b in s["bricks"]]
-            result = await self.add(s["title"], bricks, key=key)
-            if result.problems:
-                problems += result.problems
-                reports.append(result.text)
+            try:
+                parsed = [Brick.model_validate(b) for b in bricks]
+            except ValidationError as e:
+                problems += 1
+                reports.append(f"Step {n} '{s['title']}': invalid bricks: {e.errors(include_url=False)}")
+                continue
+            placements, rejected, warnings = await asyncio.to_thread(draft._check, parsed)
+            if placements:
+                candidate.add_step(s["title"], placements, key)
+            if rejected or warnings:
+                problems += len(rejected) + len(warnings)
+                reports.append(f"Step {n} '{s['title']}':\n" + _first(rejected + warnings))
         kept = (
             ""
             if not same
@@ -240,7 +288,19 @@ class Workbench:
             else f"kept steps {fixed + 1} to {fixed + same}, "
         )
         lines = [f"Ran the script: {kept}rebuilt {len(steps) - same} steps."]
-        lines += ["Problems, by script line:", *reports] if reports else ["No problems: every brick fits and rests."]
+        if problems:
+            return Result(
+                "Candidate rejected; the model and accepted script did not change.\n"
+                + "\n".join(lines + ["Problems, by script line:", *reports])
+                + printed
+                + "\nFix the named lines in your script and run again. No candidate render was published.",
+                problems=problems,
+            )
+        self.session.commit_script(candidate, kept_steps)
+        lines.append(
+            "Changed steps passed bounding-box overlap and ground-contact checks. "
+            "LEGO connections, physical stability and reference likeness are not verified."
+        )
         lines.append("Steps: pieces, then where they sit in studs (x, y) and plates (z, bottom to top):")
         lines.append(await asyncio.to_thread(self.describe))
         pieces = sum(p.part != BASEPLATE for p in self.pieces)
