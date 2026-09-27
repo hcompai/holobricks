@@ -427,12 +427,13 @@ def main() -> None:
             )
             name = f"{stem(names[build])}-{uuid.uuid4().hex[:6]}"
             halves.append((_render(client, build, options, args.out, name), args.out / f"{name}.mp4"))
-    both = args.out / f"{stem(names[args.build])}-vs-{stem(names[args.vs])}"
-    compose(halves[0][1], halves[1][1], both.with_suffix(".mp4"), vertical, args.clicks)
+    both = stem(f"{names[args.build]} vs {names[args.vs]}")
+    video, animation = args.out / f"{both}.mp4", args.out / f"{both}.gif"
+    compose(halves[0][1], halves[1][1], video, vertical, args.clicks)
     for job, path in halves:
         _report(path, job)
         path.unlink()
-    _report(both.with_suffix(".mp4"))
+    _report(video)
     if args.gif:
-        gif(both.with_suffix(".mp4"), both.with_suffix(".gif"))
-        _report(both.with_suffix(".gif"))
+        gif(video, animation)
+        _report(animation)
