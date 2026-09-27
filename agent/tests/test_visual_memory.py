@@ -223,6 +223,21 @@ def test_stale_render_is_neither_archived_nor_reattached_as_current(rig):
     assert ImageLibrary(rig.path).data(old_render) == png("blue")  # history is still accessible
 
 
+def test_restore_best_rehydrates_the_matching_archived_sheet_without_new_render(rig):
+    rig.llm.outputs = [BRIEF, review(True), review(False, "worse")]
+    rig.loop.on_update_state_end(None)
+    first = rig.build["revision"]
+    rig.build.update(revision="b" * 64, checked_revision="b" * 64)
+    rig.loop.on_update_state_end(None)
+    rendered = len(rig.rendered)
+    rig.build.update(revision=first, checked_revision=first)
+    rig.loop.on_update_state_end(None)
+    packet = rig.loop.images.packet()
+    assert len(rig.rendered) == rendered
+    assert colors(packet.images) == [(255, 255, 0), (0, 0, 255)]
+    assert f"geometry revision {first}" in packet.text_content
+
+
 def test_modified_archive_fails_integrity_check(tmp_path):
     library = ImageLibrary(tmp_path)
     image_id = library.remember(png("red"), kind="reference", source="photo.png")

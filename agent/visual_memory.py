@@ -237,6 +237,18 @@ class ImageLibrary:
         ]
         images = self.targets()
         render = state["images"].get(state.get("render"))
+        if not render or render["revision"] != state["revision"]:
+            # restore_best can return to a previously reviewed revision without requesting another render.
+            render = next(
+                (
+                    e
+                    for e in reversed(list(state["images"].values()))
+                    if e["kind"] == "render"
+                    and e["revision"] == state["revision"]
+                    and e["label"] == "four standard views"
+                ),
+                None,
+            )
         if render and render["revision"] == state["revision"]:
             images.append(self.image(render["id"]))
         else:
