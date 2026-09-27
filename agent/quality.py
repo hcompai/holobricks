@@ -188,6 +188,7 @@ class QualityLoop(Validator):
         self.targets: list[tuple[str, bytes, str]] = []
         self.shown = ""
         self.refusals = 0
+        self.failed: dict[str, str] = {}
         self.unchanged = 0
         self.previous_revision = ""
 
@@ -324,10 +325,8 @@ class QualityLoop(Validator):
             report = self.ask(REVIEW_PROMPT, payload, images, Review)
             if sorted(f.requirement for f in report.findings) != sorted(r.id for r in brief.requirements):
                 raise ReviewUnavailable("Review did not check every requirement exactly once; approval withheld")
-            if report.inspection is None and report.reference_inspection is None:
+            if report.inspection is None and report.reference_inspection is None or inspection == 2:
                 break
-            if inspection == 2:
-                raise ReviewUnavailable("Inspection budget exhausted with an unresolved evidence request")
             if report.inspection:
                 if report.inspection.requirement not in {r.id for r in brief.requirements}:
                     raise ReviewUnavailable("Inspection requested an unknown requirement")
@@ -364,6 +363,19 @@ class QualityLoop(Validator):
         self.save()
         return report
 
+    def review(self, build: dict, brief: Brief, *, retry: bool = False) -> Review:
+        """The review of the current revision; a failed one is retried only when `retry` is set."""
+        revision = build["revision"]
+        if saved := self.state["reviews"].get(revision):
+            return Review.model_validate(saved)
+        if revision in self.failed and not retry:
+            raise ReviewUnavailable(self.failed[revision])
+        try:
+            return self.inspect(build, brief)
+        except Exception as e:
+            self.failed[revision] = str(e) if isinstance(e, ReviewUnavailable) else type(e).__name__
+            raise
+
     def feedback(self, brief: Brief, report: Review | None) -> str:
         text = "Construction brief (persistent; grounded in the request/reference):\n" + brief.model_dump_json()
         if report:
@@ -393,8 +405,7 @@ class QualityLoop(Validator):
                     raise ReviewUnavailable(
                         "Current geometry has not passed script checks. Run build.py before review."
                     )
-                saved = self.state["reviews"].get(build["revision"])
-                report = Review.model_validate(saved) if saved else self.inspect(build, brief)
+                report = self.review(build, brief)
             if self.unchanged == 5:
                 events.append(
                     MessageEvent(
@@ -487,8 +498,7 @@ class QualityLoop(Validator):
                     "The draft may be viewed, but a visual score cannot dismiss construction warnings. "
                     "Fix the reported script lines and run again.",
                 )
-            saved = self.state["reviews"].get(build["revision"])
-            report = Review.model_validate(saved) if saved else self.inspect(build, brief)
+            report = self.review(build, brief, retry=True)
             if report.ready():
                 return self.verdict(
                     True,
