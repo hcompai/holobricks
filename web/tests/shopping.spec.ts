@@ -2,6 +2,17 @@ import { expect, test, type Page } from "@playwright/test";
 import { createHash } from "node:crypto";
 import type { Build } from "../src/api";
 
+const VERIFIED_XML = `<INVENTORY>
+  <ITEM>
+    <ITEMTYPE>P</ITEMTYPE>
+    <ITEMID>3001</ITEMID>
+    <COLOR>3</COLOR>
+    <MINQTY>2</MINQTY>
+    <CONDITION>N</CONDITION>
+  </ITEM>
+</INVENTORY>
+`;
+
 function fixture(): Build {
   return {
     id: "shop-test",
@@ -64,6 +75,8 @@ async function mock(page: Page, build = fixture(), failures = 0) {
         ? route.fulfill({ status: 503, json: { detail: "Could not prepare your parts. Please retry." } })
         : route.fulfill({ json: pack });
     }
+    if (path === `/api/shopping/${pack.id}.xml`)
+      return route.fulfill({ contentType: "application/xml", body: VERIFIED_XML });
     if (path === "/api/builds")
       return route.fulfill({ json: [{ ...build, pieces: build.pieces.length, steps: 1, thumbnail: 9999999999999 }] });
     if (path === "/api/builds/shop-test") return route.fulfill({ json: build });
@@ -90,7 +103,10 @@ test("one copy hands HoloTab a frozen, private-data-free shopping task", async (
   await dialog.getByRole("button", { name: "Copy for HoloTab" }).click();
   const prompt = await page.evaluate(() => navigator.clipboard.readText());
   expect(prompt).toContain(`/api/shopping/${pack.id}.html`);
-  expect(prompt).toContain(`/api/shopping/${pack.id}.xml`);
+  expect(prompt.match(/```xml\n([\s\S]*?)```/)?.[1]).toBe(VERIFIED_XML);
+  expect(prompt).toContain("no download, local file access, file picker or user upload is needed");
+  expect(prompt).toContain("Upload BrickLink XML format");
+  expect(prompt).toContain("an inaccessible link must not interrupt");
   expect(prompt).toContain("2 pieces, 1 part/color combinations");
   expect(prompt).toContain("instead of importing again");
   expect(prompt).toContain("Do not rewrite the XML");
@@ -136,6 +152,56 @@ test("failed preparation retries and clipboard denial gives selectable text with
   expect(await text.evaluate((el: HTMLTextAreaElement) => el.selectionEnd - el.selectionStart)).toBeGreaterThan(500);
   await expect(dialog.getByRole("status")).not.toContainText("Copied!");
   await expect(text).toHaveValue(/Expected inventory: 2 pieces/);
+  expect(await text.inputValue()).toContain(VERIFIED_XML);
+});
+
+test("XML loading failure blocks handoff until a complete retry succeeds", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await mock(page);
+  let attempts = 0;
+  await page.route("**/api/shopping/*.xml", (route) =>
+    ++attempts === 1
+      ? route.fulfill({ status: 503 })
+      : route.fulfill({ contentType: "application/xml", body: VERIFIED_XML }),
+  );
+  await page.getByRole("button", { name: "Shop bricks", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("alert")).toContainText("couldn’t load your verified parts XML");
+  await expect(dialog.getByRole("button", { name: "Copy for HoloTab" })).toHaveCount(0);
+  await expect(dialog.getByRole("link", { name: "View or download parts" })).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Try again" }).click();
+  await dialog.getByRole("button", { name: "Copy for HoloTab" }).click();
+  const prompt = await page.evaluate(() => navigator.clipboard.readText());
+  expect(prompt.match(/```xml\n([\s\S]*?)```/)?.[1]).toBe(VERIFIED_XML);
+  expect(attempts).toBe(2);
+});
+
+for (const xml of ["<INVENTORY><ITEM>", VERIFIED_XML.replace("<MINQTY>2</MINQTY>", "<MINQTY>1</MINQTY>")]) {
+  test(`incomplete XML cannot enter the clipboard (${xml.length} bytes)`, async ({ page }) => {
+    await mock(page);
+    await page.route("**/api/shopping/*.xml", (route) => route.fulfill({ contentType: "application/xml", body: xml }));
+    await page.getByRole("button", { name: "Shop bricks", exact: true }).click();
+    await expect(page.getByRole("alert")).toContainText("incomplete or does not match");
+    await expect(page.getByRole("button", { name: "Copy for HoloTab" })).toHaveCount(0);
+  });
+}
+
+test("an open dialog cannot copy XML after its validation expires", async ({ page }) => {
+  const { pack } = await mock(page);
+  await page.getByRole("button", { name: "Shop bricks", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  const copy = dialog.getByRole("button", { name: "Copy for HoloTab" });
+  await expect(copy).toBeEnabled();
+  await page.evaluate(
+    (now) => {
+      Date.now = () => now;
+    },
+    (pack.validation.valid_until + 1) * 1000,
+  );
+  await copy.click();
+  await expect(dialog.getByRole("alert")).toContainText("fresh catalog check");
+  await expect(copy).toHaveCount(0);
+  await expect(dialog.getByRole("link", { name: "View or download parts" })).toHaveCount(0);
 });
 
 test("shopping waits for a nonempty finished build", async ({ page }) => {

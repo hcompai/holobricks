@@ -1,9 +1,15 @@
 # Shopping with HoloTab
 
 **Shop bricks → install HoloTab if needed → copy → paste and send.** Brickyard verifies
-all part/color pairs before offering the handoff. HoloTab receives a frozen BrickLink
-Wanted List XML, imports its exact contents, checks stock and delivered cost, and
+all part/color pairs before offering the handoff. The Copy button loads the canonical
+server-generated XML in the background and embeds its exact contents directly in the
+shopping prompt. HoloTab pastes it into **Upload BrickLink XML format**, continues the
+import confirmation, checks stock and delivered cost, and
 prepares carts for the user to review and pay. No extension trigger is required.
+There is no user upload/file picker step, and HoloTab does not need local file access
+or a working localhost link. The saved inventory link is optional reference material.
+The prompt includes the validation expiry; an already open dialog also checks expiry
+before copying. A failed, malformed or incomplete XML load never enables the handoff.
 
 ## One catalog gate for construction and purchasing
 
@@ -85,8 +91,10 @@ Offline tests exercise the real catalog validator using explicit source fixtures
 identity/type/status, aliases, print suffixes, Known vs All colors, name/code conversion,
 ambiguous mappings, stale/corrupt cache, HTTP errors, timeout budgets and exact quantities.
 Construction tests prove rejected pairs and outages cannot replace the accepted model.
-API and gallery tests prove no partial file escapes; browser tests cover validated XML
-handoffs, blocking errors, legacy/expired packages, clipboard feedback and mobile layout.
+API and gallery tests prove no partial file escapes; browser tests compare the actual
+clipboard XML with the server snapshot, cover XML-load retry and partial-response rejection,
+blocking errors, legacy/expired packages, expiry while the dialog is open, clipboard
+feedback and mobile layout.
 
 The saved Microduck audit found 7 unverified part/color combinations (25 pieces), despite
 all part geometries existing in LDraw. It is intentionally blocked until those choices

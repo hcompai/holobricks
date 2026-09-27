@@ -44,6 +44,9 @@ export function ShopDialog({ build, preview, onClose }: Props) {
   useEffect(() => {
     const controller = new AbortController();
     setError("");
+    setPack(null);
+    setCopied(false);
+    setManual(false);
     prepareShopping(build, controller.signal).then(
       (result) => {
         if (!controller.signal.aborted) setPack(result);
@@ -65,6 +68,13 @@ export function ShopDialog({ build, preview, onClose }: Props) {
 
   const copy = async () => {
     if (!pack) return;
+    if (pack.validation.valid_until * 1000 <= Date.now()) {
+      setError("This parts list needs a fresh catalog check. Please try again.");
+      setPack(null);
+      setCopied(false);
+      setManual(false);
+      return;
+    }
     setCopying(true);
     try {
       await navigator.clipboard.writeText(shoppingPrompt(pack));
@@ -118,7 +128,7 @@ export function ShopDialog({ build, preview, onClose }: Props) {
           </span>
           <div>
             <b>Copy your shopping request</b>
-            <p>Your exact parts list and instructions are included.</p>
+            <p>Your verified parts XML is included. No file to upload.</p>
           </div>
         </li>
         <li>
