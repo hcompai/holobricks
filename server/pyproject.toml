@@ -19,6 +19,7 @@ dev = [
 
 [project.scripts]
 brickyard = "brickyard.app:main"
+brickyard-film = "brickyard.film:main"
 brickyard-gallery = "brickyard.gallery:main"
 bricks = "brickyard.client:main"
 

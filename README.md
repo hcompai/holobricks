@@ -15,7 +15,7 @@
 - **Catalog-checked inventory**: construction and shopping verify every part/color pair against BrickLink's
   Known colors. Unverified combinations are rejected with repair choices; only complete verified inventories
   produce canonical BrickLink XML. See [SHOPPING.md](SHOPPING.md) for freshness and availability limits.
-- **Share** an assembly GIF from the timeline or download menu, with optional HOLO4 / H Company branding for Holo builds.
+- **Share** a build film (MP4 + GIF) from the timeline or download menu, with optional HOLO4 / H Company branding for Holo builds.
 
 Gallery for the H team: [brickyard-h-company.vercel.app](https://brickyard-h-company.vercel.app) (Vercel login).
 
@@ -158,13 +158,21 @@ scripts/deploy-gallery.sh --preview                                             
 
 Open a regenerated showcase once in the app to refresh its thumbnail before deploying.
 
-## Timeline GIFs
+## Build films
 
-Open a build with pieces and choose **Export GIF** in the timeline (also available in the download menu). Preview the model, choose square (640×640), portrait (640×800) or landscape (800×450), a camera, and an 8, 12 or 20 second duration. Generate, then download the looping GIF or use **Share…** on browsers that support sharing files. Copy the suggested caption and attach the file to a social post; platform support for GIF uploads varies.
+Choose **Export film** in the timeline (or the download menu): bricks drop in step by step, the camera cranes up with the model, then the finished build takes a full turn and holds. A lower third names each step and counts the pieces.
 
-The export replays a frozen copy of saved assembly steps, with equal time per nonempty step. Every duration includes a three-second full rotation of the complete snapshot starting from the front, followed by a one-second front-view hold. The assembly uses the selected camera; the finale keeps a fixed distance fitted to every angle so the model stays in frame. It is not a recording of the agent's revisions or elapsed work. In-progress builds are labelled accordingly; scripted showcases use Brickyard branding, not Holo attribution. It works in the static gallery too, without an inference call or upload service.
+With Chrome and ffmpeg on the server, the dialog renders a 1080p, 60 fps MP4 (H.264, CRF 18) and a GIF under 15 MB (X's limit), with progress and cancellation. The static gallery has no server, so it makes a 640 px GIF in the browser instead.
 
-Frames render in a separate WebGL scene, leaving the live viewer and builder alone. A worker encodes one frame at a time, capped at 121 frames and 15 MB (X's GIF limit); exports can be cancelled. Missing parts block export rather than silently producing a partial model. Longer replays may group multiple pieces into a frame.
+Every frame is a pure function of the build, the options and its index: the server's headless Chrome runs the same film code as the browser, averaging jittered renders per frame for antialiasing and soft shadows, then ambient occlusion and tone mapping. Samples per frame are picked to fit a time budget (15 minutes by default).
+
+```bash
+brickyard-film hogwarts --aspect 16:9 --seconds 20                  # Hogwarts-build.mp4 + .gif
+brickyard-film a2e2cd2aff --vs 6eb28d127e --labels Holo "Opus 5.5"  # side by side, same timing
+brickyard-film --help                                               # fps, samples, --minutes, --clicks, --dof
+```
+
+The CLI drives a running server (`BRICKYARD_URL`, default `http://127.0.0.1:8000`). Films replay a frozen copy of the saved steps, not the agent's working history; missing parts fail the film rather than show a partial model. Only Holo builds may carry HOLO4 / H Company branding.
 
 ## Tests
 
@@ -173,4 +181,4 @@ cd server && uv run pytest -q && uv run ruff check .
 cd web && npm ci && npx playwright install chromium && npm test && npm run build
 ```
 
-The browser tests use offline geometry and mocked build APIs, including a decoded GIF check, cancellation/retry, a live snapshot, missing parts and file sharing. They do not call Holo or require a running server.
+The browser tests use offline geometry and mocked build APIs, including a decoded in-browser GIF, the server film flow with cancellation/retry, a live snapshot, missing parts and file sharing. The server tests render a tiny film end to end when Chrome, ffmpeg and the built web app are present.

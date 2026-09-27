@@ -73,7 +73,7 @@ export function DownloadMenu({ build, image, onReplay }: Props) {
               onReplay();
             }}
           >
-            <FilmStripIcon size={16} /> Export timeline GIF
+            <FilmStripIcon size={16} /> Export timeline film
           </button>
         </div>
       )}

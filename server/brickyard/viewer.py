@@ -29,13 +29,53 @@ def chrome() -> str | None:
     return None
 
 
+class Tab:
+    """A headless Chrome on one page, with its own throwaway profile."""
+
+    def __init__(self, process: asyncio.subprocess.Process, profile: tempfile.TemporaryDirectory):
+        self.process = process
+        self.profile = profile
+
+    @classmethod
+    async def open(cls, binary: str, url: str, *flags: str) -> Tab:
+        profile = tempfile.TemporaryDirectory(prefix="brickyard-viewer-")
+        process = await asyncio.create_subprocess_exec(
+            binary,
+            "--headless=new",
+            f"--user-data-dir={profile.name}",
+            "--no-first-run",
+            "--no-default-browser-check",
+            "--mute-audio",
+            "--window-size=1280,800",
+            *flags,
+            url,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        return cls(process, profile)
+
+    @property
+    def running(self) -> bool:
+        return self.process.returncode is None
+
+    async def close(self) -> None:
+        if self.running:
+            self.process.terminate()
+            try:
+                await asyncio.wait_for(self.process.wait(), STOP_S)
+            except TimeoutError:
+                self.process.kill()
+                await self.process.wait()
+        self.profile.cleanup()
+
+
 class Viewers:
     """One hidden viewer per build that asks for a render, open until released or IDLE_S after its last render."""
 
     def __init__(self, url: str):
         self.url = url
         self.binary = chrome()
-        self._open: dict[str, tuple[asyncio.subprocess.Process, tempfile.TemporaryDirectory]] = {}
+        self._open: dict[str, Tab] = {}
         self._idle: dict[str, asyncio.TimerHandle] = {}
         self._lock = asyncio.Lock()
         if self.binary is None:
@@ -47,21 +87,8 @@ class Viewers:
             return
         async with self._lock:
             opened = self._open.get(build_id)
-            if opened is None or opened[0].returncode is not None:
-                profile = tempfile.TemporaryDirectory(prefix="brickyard-viewer-")
-                process = await asyncio.create_subprocess_exec(
-                    self.binary,
-                    "--headless=new",
-                    f"--user-data-dir={profile.name}",
-                    "--no-first-run",
-                    "--no-default-browser-check",
-                    "--mute-audio",
-                    "--window-size=1280,800",
-                    f"{self.url}/?build={build_id}&renderer=1",
-                    stdout=asyncio.subprocess.DEVNULL,
-                    stderr=asyncio.subprocess.DEVNULL,
-                )
-                self._open[build_id] = (process, profile)
+            if opened is None or not opened.running:
+                self._open[build_id] = await Tab.open(self.binary, f"{self.url}/?build={build_id}&renderer=1")
             if timer := self._idle.pop(build_id, None):
                 timer.cancel()
             self._idle[build_id] = asyncio.get_running_loop().call_later(
@@ -72,17 +99,8 @@ class Viewers:
         if timer := self._idle.pop(build_id, None):
             timer.cancel()
         opened = self._open.pop(build_id, None)
-        if opened is None:
-            return
-        process, profile = opened
-        if process.returncode is None:
-            process.terminate()
-            try:
-                await asyncio.wait_for(process.wait(), STOP_S)
-            except TimeoutError:
-                process.kill()
-                await process.wait()
-        profile.cleanup()
+        if opened is not None:
+            await opened.close()
 
     async def stop(self) -> None:
         await asyncio.gather(*(self.release(build_id) for build_id in list(self._open)))
