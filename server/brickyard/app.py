@@ -23,6 +23,7 @@ from pydantic import BaseModel, ValidationError
 
 from brickyard import catalog, ldraw, shopping
 from brickyard.builders import BUILDERS
+from brickyard.film import Film, FilmError, FilmOptions, Films, FilmStart, stem
 from brickyard.model import Box, Build, Camera, Message
 from brickyard.session import Builder, Session, Store
 from brickyard.viewer import Viewers
@@ -58,9 +59,14 @@ class AgentSay(BaseModel):
     role: Literal["assistant", "thinking"] = "assistant"
 
 
+class FilmFailure(BaseModel):
+    message: str
+
+
 store = Store()
 sessions: dict[str, Session] = {}
 viewers = Viewers(f"http://127.0.0.1:{os.environ.get('BRICKYARD_PORT', '8000')}")
+films = Films(WEB_DIST)
 TOOLS = {
     "run": Workbench.run_script,
     "look": Workbench.look,
@@ -86,7 +92,7 @@ async def lifespan(_: FastAPI):
     for task in running:
         task.cancel()
     await asyncio.gather(*running, return_exceptions=True)
-    await viewers.stop()
+    await asyncio.gather(viewers.stop(), films.stop())
 
 
 app = FastAPI(title="Brickyard", lifespan=lifespan)
@@ -420,6 +426,87 @@ def shopping_file(filename: str) -> FileResponse:
         media_type={".xml": "application/xml", ".html": "text/html", ".json": "application/json"}[suffix],
         filename=f"brickyard-{filename[:12]}-parts.xml" if suffix == ".xml" else None,
         headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"},
+    )
+
+
+@app.get("/api/films")
+def film_support() -> dict:
+    reason = films.missing()
+    return {"available": reason is None, "reason": reason}
+
+
+@app.post("/api/builds/{build_id}/film")
+async def create_film(build_id: str, body: FilmOptions, request: Request) -> dict:
+    """Film a snapshot of the build; the server's own address serves the page its headless tab renders."""
+    if reason := films.missing():
+        raise HTTPException(503, reason)
+    build = session_for(build_id).build.model_copy(deep=True)
+    if not build.pieces:
+        raise HTTPException(400, "this build has no pieces to film")
+    host, port = request.scope["server"]
+    host = f"[{host}]" if ":" in host else host
+    return films.create(build, body, f"http://{host}:{port}").summary()
+
+
+def film_job(job: str) -> Film:
+    film = films.get(job)
+    if film is None:
+        raise HTTPException(404, f"no film {job}")
+    return film
+
+
+@app.get("/api/films/{job}")
+def get_film(job: str) -> dict:
+    return film_job(job).summary()
+
+
+@app.get("/api/films/{job}/build")
+def film_build(job: str) -> Response:
+    return Response(film_job(job).build.model_dump_json(), media_type="application/json")
+
+
+@app.post("/api/films/{job}/start")
+async def start_film(job: str, body: FilmStart) -> dict:
+    film = film_job(job)
+    try:
+        await films.start(film, body)
+    except FilmError as e:
+        raise HTTPException(409, str(e)) from e
+    return film.summary()
+
+
+@app.put("/api/films/{job}/frames/{index}")
+async def film_frame(job: str, index: int, samples: int, request: Request) -> dict:
+    film = film_job(job)
+    try:
+        await films.frame(film, index, samples, await request.body())
+    except FilmError as e:
+        raise HTTPException(409, str(e)) from e
+    return {"ok": True}
+
+
+@app.post("/api/films/{job}/fail")
+def fail_film(job: str, body: FilmFailure) -> dict:
+    films.fail(film_job(job), body.message)
+    return {"ok": True}
+
+
+@app.delete("/api/films/{job}")
+def cancel_film(job: str) -> dict:
+    films.forget(film_job(job))
+    return {"ok": True}
+
+
+@app.get("/api/films/{job}/film.{kind}")
+def film_file(job: str, kind: Literal["mp4", "gif"]) -> FileResponse:
+    film = film_job(job)
+    if kind not in film.files:
+        raise HTTPException(404, f"film {job} has no {kind} yet")
+    name = f"{stem(film.build.name)}.{kind}"
+    return FileResponse(
+        film.folder / f"film.{kind}",
+        media_type="video/mp4" if kind == "mp4" else "image/gif",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(name)}"},
     )
 
 

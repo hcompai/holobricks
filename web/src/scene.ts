@@ -55,7 +55,7 @@ const SHEET_LIGHT: Light = {
 };
 
 /** From the model toward a camera seen from compass `angle` (0 front, 90 right) and `elevation` degrees up. */
-function towardCamera(angle: number, elevation: number): THREE.Vector3 {
+export function towardCamera(angle: number, elevation: number): THREE.Vector3 {
   const a = THREE.MathUtils.degToRad(angle);
   const e = THREE.MathUtils.degToRad(Math.min(elevation, 89.9));
   return new THREE.Vector3(Math.sin(a) * Math.cos(e), Math.sin(e), Math.cos(a) * Math.cos(e));
@@ -81,45 +81,54 @@ function clippingPlanes(box: THREE.Box3): THREE.Plane[] {
   ];
 }
 
-const lineMaterials = new WeakMap<THREE.Material, THREE.Material>();
-const edges = new Map<THREE.Material, { opacity: number; transparent: boolean; depthWrite: boolean }>();
+/** One scene's instanced edge materials, faded together. */
+class Edges {
+  private copies = new Map<THREE.Material, THREE.Material>();
+  private base = new Map<THREE.Material, { opacity: number; transparent: boolean; depthWrite: boolean }>();
 
-/** Scale every edge line's opacity by `fade`, 1 being the LDraw colors as defined. */
-function fadeEdges(fade: number) {
-  for (const [material, base] of edges) {
-    const transparent = base.transparent || fade < 1;
-    if (material.transparent !== transparent) {
-      material.transparent = transparent;
-      material.needsUpdate = true;
+  /** Scale every edge line's opacity by `fade`, 1 being the LDraw colors as defined. */
+  fade(fade: number) {
+    for (const [material, base] of this.base) {
+      const transparent = base.transparent || fade < 1;
+      if (material.transparent !== transparent) {
+        material.transparent = transparent;
+        material.needsUpdate = true;
+      }
+      material.depthWrite = fade < 1 ? false : base.depthWrite;
+      material.visible = fade > 0;
+      if (material instanceof THREE.ShaderMaterial) material.uniforms.opacity.value = base.opacity * fade;
+      else material.opacity = base.opacity * fade;
     }
-    material.depthWrite = fade < 1 ? false : base.depthWrite;
-    material.visible = fade > 0;
-    if (material instanceof THREE.ShaderMaterial) material.uniforms.opacity.value = base.opacity * fade;
-    else material.opacity = base.opacity * fade;
   }
-}
 
-/** A copy of an edge material that reads each instance's transform from the instanceMatrix attribute. */
-function instancedLine(material: THREE.Material): THREE.Material {
-  let copy = lineMaterials.get(material);
-  if (!copy) {
-    copy = material.clone();
-    copy.defines = { ...copy.defines, USE_INSTANCING: "" };
-    edges.set(copy, {
-      opacity: copy instanceof THREE.ShaderMaterial ? copy.uniforms.opacity.value : copy.opacity,
-      transparent: copy.transparent,
-      depthWrite: copy.depthWrite,
-    });
-    if (copy instanceof THREE.ShaderMaterial) {
-      copy.clipping = true;
-      copy.vertexShader = copy.vertexShader.replace(
-        /vec4\( (position|control0|control1|position \+ direction), 1\.0 \)/g,
-        "instanceMatrix * $&",
-      );
+  /** A copy of an edge material that reads each instance's transform from the instanceMatrix attribute. */
+  instanced = (material: THREE.Material): THREE.Material => {
+    let copy = this.copies.get(material);
+    if (!copy) {
+      copy = material.clone();
+      copy.defines = { ...copy.defines, USE_INSTANCING: "" };
+      this.base.set(copy, {
+        opacity: copy instanceof THREE.ShaderMaterial ? copy.uniforms.opacity.value : copy.opacity,
+        transparent: copy.transparent,
+        depthWrite: copy.depthWrite,
+      });
+      if (copy instanceof THREE.ShaderMaterial) {
+        copy.clipping = true;
+        copy.vertexShader = copy.vertexShader.replace(
+          /vec4\( (position|control0|control1|position \+ direction), 1\.0 \)/g,
+          "instanceMatrix * $&",
+        );
+      }
+      this.copies.set(material, copy);
     }
-    lineMaterials.set(material, copy);
+    return copy;
+  };
+
+  dispose() {
+    for (const copy of this.copies.values()) copy.dispose();
+    this.copies.clear();
+    this.base.clear();
   }
-  return copy;
 }
 
 function pieceMatrix(p: Piece, target: THREE.Matrix4): THREE.Matrix4 {
@@ -133,6 +142,9 @@ interface Instanced {
   matrices: THREE.InstancedBufferAttribute;
 }
 
+/** Moves a piece away from its slot: `matrix` holds its placed transform and `size` its largest dimension, in LDraw units. */
+export type Motion = (piece: Piece, matrix: THREE.Matrix4, size: number) => void;
+
 /** Every piece of one part+color, one instanced draw per template sub-mesh, ordered by step so a count hides later steps. */
 class Batch {
   private pieces: Piece[] = [];
@@ -140,31 +152,68 @@ class Batch {
   private capacity = 0;
   private visible = 0;
   private bounds: THREE.Box3;
+  private size: number;
+  /** The pieces drawn away from their slots, as a range of indices. */
+  private moved = [0, 0];
 
   constructor(
     private template: THREE.Group,
     private root: THREE.Group,
+    private materials: { mesh: (m: THREE.Material) => THREE.Material; line: (m: THREE.Material) => THREE.Material },
   ) {
     template.updateMatrixWorld(true);
     this.bounds = new THREE.Box3().setFromObject(template);
+    const size = this.bounds.getSize(new THREE.Vector3());
+    this.size = Math.max(size.x, size.y, size.z);
   }
 
   set(pieces: Piece[], step: number) {
     this.pieces = [...pieces].sort((a, b) => a.step - b.step || a.id - b.id);
     if (this.pieces.length > this.capacity) this.allocate(2 ** Math.ceil(Math.log2(this.pieces.length)));
-    const matrix = new THREE.Matrix4();
-    const world = new THREE.Matrix4();
-    this.pieces.forEach((p, i) => {
-      pieceMatrix(p, matrix);
-      for (const o of this.objects) world.multiplyMatrices(matrix, o.local).toArray(o.matrices.array, i * 16);
-    });
-    for (const o of this.objects) o.matrices.needsUpdate = true;
+    this.moved = [0, this.pieces.length];
+    this.pose(0, 0);
     this.show(step);
   }
 
+  /** Draw the pieces of steps `first` up to `last` (excluded) where `motion` moves them, and all others in their slots. */
+  pose(first: number, last: number, motion?: Motion) {
+    const from = this.firstAfter(first - 1);
+    const to = this.firstAfter(last - 1);
+    const matrix = new THREE.Matrix4();
+    const world = new THREE.Matrix4();
+    const write = (i: number, moving: boolean) => {
+      const p = this.pieces[i];
+      pieceMatrix(p, matrix);
+      if (moving) motion?.(p, matrix, this.size);
+      for (const o of this.objects) world.multiplyMatrices(matrix, o.local).toArray(o.matrices.array, i * 16);
+    };
+    const [a, b] = this.moved;
+    for (let i = a; i < b; i++) if (i < from || i >= to) write(i, false);
+    for (let i = from; i < to; i++) write(i, true);
+    this.moved = [from, to];
+    const start = Math.min(a, from);
+    const end = Math.max(b, to);
+    if (end <= start) return;
+    for (const o of this.objects) {
+      o.matrices.addUpdateRange(start * 16, (end - start) * 16);
+      o.matrices.needsUpdate = true;
+    }
+  }
+
+  /** The index of the first piece of a step after `step`. */
+  private firstAfter(step: number): number {
+    let lo = 0;
+    let hi = this.pieces.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (this.pieces[mid].step > step) hi = mid;
+      else lo = mid + 1;
+    }
+    return lo;
+  }
+
   show(step: number) {
-    this.visible = this.pieces.findIndex((p) => p.step > step);
-    if (this.visible < 0) this.visible = this.pieces.length;
+    this.visible = this.firstAfter(step);
     for (const { object } of this.objects) {
       if (object instanceof THREE.InstancedMesh) object.count = this.visible;
       else (object.geometry as THREE.InstancedBufferGeometry).instanceCount = this.visible;
@@ -176,6 +225,16 @@ class Batch {
     const matrix = new THREE.Matrix4();
     const box = new THREE.Box3();
     for (const p of this.pieces) target.union(box.copy(this.bounds).applyMatrix4(pieceMatrix(p, matrix)));
+  }
+
+  /** Grow each step's box in `steps` by its pieces, in the root's local space. */
+  expandSteps(steps: THREE.Box3[]) {
+    const matrix = new THREE.Matrix4();
+    const box = new THREE.Box3();
+    for (const p of this.pieces) {
+      box.copy(this.bounds).applyMatrix4(pieceMatrix(p, matrix));
+      (steps[p.step] ??= new THREE.Box3()).union(box);
+    }
   }
 
   dispose() {
@@ -195,7 +254,9 @@ class Batch {
       let object: THREE.Mesh | THREE.LineSegments;
       let matrices: THREE.InstancedBufferAttribute;
       if (source instanceof THREE.Mesh) {
-        const mesh = new THREE.InstancedMesh(source.geometry, source.material, capacity);
+        const { mesh: look } = this.materials;
+        const material = Array.isArray(source.material) ? source.material.map(look) : look(source.material);
+        const mesh = new THREE.InstancedMesh(source.geometry, material, capacity);
         mesh.castShadow = ![source.material].flat().some((m) => m.transparent);
         mesh.receiveShadow = true;
         object = mesh;
@@ -207,9 +268,8 @@ class Batch {
         for (const group of source.geometry.groups) geometry.addGroup(group.start, group.count, group.materialIndex);
         matrices = new THREE.InstancedBufferAttribute(new Float32Array(capacity * 16), 16);
         geometry.setAttribute("instanceMatrix", matrices);
-        const material = Array.isArray(source.material)
-          ? source.material.map(instancedLine)
-          : instancedLine(source.material);
+        const { line } = this.materials;
+        const material = Array.isArray(source.material) ? source.material.map(line) : line(source.material);
         object = new THREE.LineSegments(geometry, material);
       }
       object.frustumCulled = false;
@@ -220,13 +280,23 @@ class Batch {
   }
 }
 
+export interface SceneOptions {
+  signal?: AbortSignal;
+  /** False when the caller sizes and draws every frame: no render loop or container tracking. */
+  interactive?: boolean;
+  onError?: (error: Error) => void;
+  /** The material meshes draw with, given their LDraw one. */
+  material?: (material: THREE.Material) => THREE.Material;
+}
+
 /** Three.js scene holding LDraw pieces; each part+color is fetched and parsed once, then drawn instanced. */
 export class BrickScene {
-  private renderer: THREE.WebGLRenderer;
-  private scene = new THREE.Scene();
-  private camera = new THREE.PerspectiveCamera(35, 1, 1, 100000);
-  private sun = new THREE.DirectionalLight();
-  private sky = new THREE.HemisphereLight(0xffffff, 0x6f6f6f);
+  /** Exposed for offline renderers that compose their own passes; the live view only goes through methods. */
+  readonly renderer: THREE.WebGLRenderer;
+  readonly scene = new THREE.Scene();
+  readonly camera = new THREE.PerspectiveCamera(35, 1, 1, 100000);
+  readonly sun = new THREE.DirectionalLight();
+  readonly sky = new THREE.HemisphereLight(0xffffff, 0x6f6f6f);
   private sunDistance = 1;
   private dirty = true;
   private shadowsStale = true;
@@ -244,18 +314,22 @@ export class BrickScene {
   private shown: Piece[] | null = null;
   /** Set once the user orbits or zooms, so live framing stops fighting them. */
   userMoved = false;
-  private resizeObserver: ResizeObserver;
+  private resizeObserver = new ResizeObserver(() => this.resize());
   private frame = 0;
   private disposed = false;
   private environment: THREE.WebGLRenderTarget;
   private framing: { view: View; width: number; depth: number } = { view: "iso", width: 32, depth: 32 };
+  private edges = new Edges();
+  private materialsFor: ConstructorParameters<typeof Batch>[2];
 
   constructor(
     private container: HTMLElement,
-    private options: { replay?: boolean; signal?: AbortSignal; onError?: (error: Error) => void } = {},
+    private options: SceneOptions = {},
   ) {
+    const interactive = options.interactive ?? true;
+    this.materialsFor = { mesh: options.material ?? ((m) => m), line: this.edges.instanced };
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
-    this.renderer.setPixelRatio(options.replay ? 1 : Math.min(window.devicePixelRatio, 2));
+    this.renderer.setPixelRatio(interactive ? Math.min(window.devicePixelRatio, 2) : 1);
     this.renderer.toneMapping = THREE.NeutralToneMapping;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.autoUpdate = false;
@@ -268,8 +342,7 @@ export class BrickScene {
     room.dispose();
     pmrem.dispose();
     this.sun.castShadow = true;
-    // The export canvas is at most 800px; avoid a 2048px shadow pass for every GIF frame.
-    this.sun.shadow.mapSize.setScalar(options.replay ? 512 : SHADOW_MAP);
+    this.sun.shadow.mapSize.setScalar(SHADOW_MAP);
     this.sun.shadow.bias = -0.0005;
     this.scene.add(this.sky, this.sun, this.sun.target);
 
@@ -288,7 +361,7 @@ export class BrickScene {
     if (options.signal?.aborted) this.lifetime.abort();
     this.renderer.domElement.addEventListener("webglcontextlost", this.contextLost);
 
-    this.resizeObserver = new ResizeObserver(() => this.resize());
+    if (!interactive) return;
     this.resizeObserver.observe(container);
     this.resize();
     this.frameView("iso", 32, 32);
@@ -297,7 +370,7 @@ export class BrickScene {
       this.controls.update();
       if (this.dirty) this.draw();
     };
-    if (!options.replay) tick();
+    tick();
   }
 
   /** The user's view: sunlit with shadows, edges faded by how many pixels a stud covers. */
@@ -310,10 +383,14 @@ export class BrickScene {
   }
 
   private adaptEdges(height: number) {
-    const distance = this.camera.position.distanceTo(this.controls.target);
+    this.fadeEdges(this.camera.position.distanceTo(this.controls.target), height);
+  }
+
+  /** Fade edges by how many pixels a stud covers `distance` away in a `height`-pixel frame. */
+  fadeEdges(distance: number, height: number) {
     const pixels = (STUD * height) / (2 * distance * Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)));
     const { opacity, fromPixels, toPixels } = EDGE_FADE;
-    fadeEdges(opacity * THREE.MathUtils.smoothstep(pixels, fromPixels, toPixels));
+    this.edges.fade(opacity * THREE.MathUtils.smoothstep(pixels, fromPixels, toPixels));
   }
 
   /** Aim the sun's shadow camera at the whole model and redraw its shadow map on the next render. */
@@ -340,11 +417,34 @@ export class BrickScene {
   }
 
   /** The world-space bounds of every piece, empty with none. */
-  private modelBox(): THREE.Box3 {
+  modelBox(): THREE.Box3 {
     this.root.updateMatrixWorld(true);
     const box = new THREE.Box3();
     for (const batch of this.batches.values()) batch.expand(box);
     return box.applyMatrix4(this.root.matrixWorld);
+  }
+
+  /** The world-space bounds of each step's pieces, indexed by step. */
+  stepBoxes(): THREE.Box3[] {
+    this.root.updateMatrixWorld(true);
+    const steps: THREE.Box3[] = [];
+    for (const batch of this.batches.values()) batch.expandSteps(steps);
+    for (const box of steps) box?.applyMatrix4(this.root.matrixWorld);
+    return steps;
+  }
+
+  /** Draw the pieces of steps `first` up to `last` (excluded) where `motion` moves them, in the pieces' LDraw space. */
+  pose(first: number, last: number, motion: Motion) {
+    for (const batch of this.batches.values()) batch.pose(first, last, motion);
+    this.dirty = true;
+  }
+
+  /** Size the drawing buffer in pixels, for callers that draw every frame themselves. */
+  setSize(width: number, height: number) {
+    this.renderer.setSize(width, height, false);
+    this.camera.aspect = width / height;
+    this.camera.updateProjectionMatrix();
+    this.dirty = true;
   }
 
   dispose() {
@@ -372,15 +472,8 @@ export class BrickScene {
         });
       }
       for (const geometry of geometries) geometry.dispose();
-      for (const material of materials) {
-        const line = lineMaterials.get(material);
-        if (line) {
-          edges.delete(line);
-          line.dispose();
-          lineMaterials.delete(material);
-        }
-        material.dispose();
-      }
+      for (const material of materials) material.dispose();
+      this.edges.dispose();
     });
     this.renderer.dispose();
     this.renderer.forceContextLoss();
@@ -541,7 +634,7 @@ export class BrickScene {
       const template = templates[i];
       if (!template) return;
       let batch = this.batches.get(key);
-      if (!batch) this.batches.set(key, (batch = new Batch(template, this.root)));
+      if (!batch) this.batches.set(key, (batch = new Batch(template, this.root, this.materialsFor)));
       batch.set(group, this.visibleStep);
     });
     this.shown = pieces;
@@ -563,35 +656,6 @@ export class BrickScene {
 
   setSpin(spin: boolean) {
     this.controls.autoRotate = spin;
-  }
-
-  /** Draw a replay in an isolated scene, reusing the last render when nothing changed. Framing uses the complete model, even while pieces are hidden. */
-  replayFrame(step: number): HTMLCanvasElement {
-    if (this.visibleStep !== step) this.setVisibleStep(step);
-    if (this.dirty) this.draw();
-    return this.renderer.domElement;
-  }
-
-  /** A fixed-distance orbit starting at the front, fitted to the model's full swept bounds. */
-  frameReplayOrbit(turn: number) {
-    const box = this.modelBox();
-    if (box.isEmpty()) return;
-    const center = box.getCenter(new THREE.Vector3());
-    const size = box.getSize(new THREE.Vector3());
-    const radius = Math.hypot(size.x, size.z) / 2;
-    // The envelope encloses every yaw, so long/wide models neither clip nor pulse in size.
-    const envelope = new THREE.Box3(
-      new THREE.Vector3(center.x - radius, box.min.y, center.z - radius),
-      new THREE.Vector3(center.x + radius, box.max.y, center.z + radius),
-    );
-    this.aim(VIEW_DIRECTIONS.front, this.framing.width, this.framing.depth, 1, undefined, envelope);
-    this.camera.position
-      .sub(center)
-      .applyAxisAngle(new THREE.Vector3(0, 1, 0), turn * Math.PI * 2)
-      .add(center);
-    this.camera.lookAt(center);
-    this.controls.update();
-    this.dirty = true;
   }
 
   frameView(view: View, width: number, depth: number) {

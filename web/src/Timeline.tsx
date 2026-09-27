@@ -93,7 +93,7 @@ export function Timeline({ build, loading, step, playing, speed, onStep, onPlay,
         {build?.status === "building" ? "Building…" : failed ? "Failed" : finished ? "Finished" : ""}
       </span>
       <button className="timeline-export" onClick={onReplay} disabled={loading || !build?.pieces.length}>
-        <FilmStripIcon size={16} /> Export GIF
+        <FilmStripIcon size={16} /> Export film
       </button>
     </div>
   );

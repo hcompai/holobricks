@@ -104,6 +104,42 @@ export type BuildEvent =
   | { type: "thinking"; text: string; reset: boolean }
   | ({ type: "render" } & RenderRequest);
 
+export type FilmStatus = "queued" | "rendering" | "encoding" | "done" | "error" | "cancelled";
+
+/** What the server renders: frame sizes and timing for the film page, plus the encodes it makes from them. */
+export interface FilmRequest {
+  aspect: "16:9" | "1:1" | "9:16";
+  seconds: number;
+  fps?: number;
+  gif?: boolean;
+  branded?: boolean;
+}
+
+export interface FilmJob {
+  id: string;
+  build: string;
+  name: string;
+  status: FilmStatus;
+  /** Share of frames rendered, 0 to 1. */
+  progress: number;
+  error: string | null;
+  frames: number;
+  samples: number | null;
+  /** Rendering time budget in seconds, spent on samples when none are set. */
+  budget: number;
+  elapsed: number;
+  options: {
+    width: number;
+    height: number;
+    seconds: number;
+    fps: number;
+    samples: number | null;
+    branded: boolean;
+    dof: boolean;
+  };
+  files: Partial<Record<"mp4" | "gif", { size: number; width: number; height: number; fps: number }>>;
+}
+
 /** A static, read-only export of chosen builds (`vite build --mode gallery`), served without the Python server. */
 export const GALLERY = import.meta.env.MODE === "gallery";
 
@@ -183,4 +219,27 @@ export const api = {
       signal: AbortSignal.timeout(8000),
     }),
   putThumbnail: (id: string, png: Blob) => fetch(`/api/builds/${id}/thumbnail.png`, { method: "PUT", body: png }),
+  /** Why the server cannot render films, or null when it can. */
+  filmsUnavailable: async (): Promise<string | null> => {
+    if (GALLERY) return "The gallery has no server.";
+    try {
+      const { available, reason } = await json<{ available: boolean; reason: string | null }>(fetch("/api/films"));
+      return available ? null : (reason ?? "Films are unavailable.");
+    } catch {
+      return "The server does not render films.";
+    }
+  },
+  createFilm: (id: string, request: FilmRequest) => json<FilmJob>(post(`/api/builds/${id}/film`, request)),
+  film: (job: string) => json<FilmJob>(fetch(`/api/films/${job}`)),
+  filmBuild: (job: string) => json<Build>(fetch(`/api/films/${job}/build`)),
+  startFilm: (job: string, body: { frames: number; samples: number; landings: number[] }) =>
+    json<FilmJob>(post(`/api/films/${job}/start`, body)),
+  putFrame: (job: string, index: number, rgba: Uint8ClampedArray, samples: number) =>
+    fetch(`/api/films/${job}/frames/${index}?samples=${samples}`, {
+      method: "PUT",
+      body: rgba as Uint8ClampedArray<ArrayBuffer>,
+    }),
+  failFilm: (job: string, message: string) => post(`/api/films/${job}/fail`, { message }),
+  cancelFilm: (job: string) => fetch(`/api/films/${job}`, { method: "DELETE" }),
+  filmUrl: (job: string, format: "mp4" | "gif") => `/api/films/${job}/film.${format}`,
 };

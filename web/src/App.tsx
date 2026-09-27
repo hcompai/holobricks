@@ -7,7 +7,7 @@ import { LibraryPanel } from "./LibraryPanel";
 import { PartsPanel } from "./PartsPanel";
 import { ShopDialog } from "./ShopDialog";
 import { Timeline } from "./Timeline";
-import { ReplayExport } from "./ReplayExport";
+import { FilmExport } from "./FilmExport";
 import { useBuild } from "./useBuild";
 import { ThemeToggle } from "./ThemeToggle";
 import { type Framing, ViewControls, Viewer, type ViewerHandle } from "./Viewer";
@@ -287,7 +287,7 @@ export default function App() {
           />
         )}
       </main>
-      {exportBuild && <ReplayExport build={exportBuild} onClose={() => setExportBuild(null)} />}
+      {exportBuild && <FilmExport build={exportBuild} onClose={() => setExportBuild(null)} />}
       {shopping && <ShopDialog build={shopping.build} preview={shopping.preview} onClose={() => setShopping(null)} />}
     </div>
   );
