@@ -1,5 +1,8 @@
+import io
 import time
+from pathlib import Path
 
+import PIL.Image
 import pytest
 from fastapi.testclient import TestClient
 
@@ -56,7 +59,9 @@ def test_gallery_export_holds_every_file_the_static_site_reads(tmp_path):
     from brickyard.session import Store
 
     store = Store(tmp_path / "data")
-    image = store.save_image(b"png", "image/png")
+    png = io.BytesIO()
+    PIL.Image.new("RGB", (800, 600), "red").save(png, "PNG")
+    image = store.save_image(png.getvalue(), "image/png")
     pieces = [place("3001.dat", 0, 0, 0, 4), place("3024.dat", 0, 0, 3, 15)]
     build = Build(
         status="done",
@@ -69,7 +74,9 @@ def test_gallery_export_holds_every_file_the_static_site_reads(tmp_path):
     assert [b["id"] for b in json.loads((out / "builds.json").read_text())] == [build.id]
     exported = Build.model_validate_json((out / "builds" / f"{build.id}.json").read_text())
     shown = exported.messages[0].images[0]
-    assert shown.startswith("/gallery/") and (out.parent / shown.lstrip("/")).read_bytes() == b"png"
+    assert shown.startswith("/gallery/") and (out.parent / shown.lstrip("/")).read_bytes() == png.getvalue()
+    with PIL.Image.open(out / "images" / "small" / f"{Path(shown).name}.webp") as small:
+        assert small.size == (320, 240)
     assert all((out / "parts" / p.part).exists() for p in exported.pieces)
     assert (out / "builds" / f"{build.id}.bom.json").exists() and (out / "LDConfig.ldr").exists()
 
@@ -88,6 +95,57 @@ def test_changing_a_hand_scripted_build_hands_it_to_a_live_builder(tmp_path, mon
     with TestClient(app_module.app) as client:
         changed = client.post(f"/api/builds/{build.id}/messages", json={"text": "add a tree"}).json()
     assert changed["builder"] == next(iter(BUILDERS))
+
+
+def test_reference_images_reach_the_chat_and_the_builder_within_holos_image_budget(tmp_path, monkeypatch):
+    import base64
+    import re
+    from pathlib import Path
+
+    from brickyard import app as app_module
+    from brickyard.builders import BUILDERS
+    from brickyard.session import Store
+
+    seen = []
+
+    class Recorder:
+        name = "demo"
+
+        async def run(self, session, request, references):
+            seen.append([p.read_bytes() for p in references])
+
+    holo = (Path(__file__).resolve().parents[2] / "agent" / "holo.yaml").read_text()
+    assert app_module.MAX_REFERENCES == int(re.search(r"^  message: (\d+)$", holo, re.MULTILINE).group(1))
+    monkeypatch.setattr(app_module, "store", Store(tmp_path))
+    monkeypatch.setitem(BUILDERS, "demo", Recorder())
+    photo = "data:image/jpeg;base64," + base64.b64encode(b"jpeg").decode()
+    with TestClient(app_module.app) as client:
+        body = {"prompt": "a barn", "builder": "demo"}
+        assert client.post("/api/builds", json=body | {"images": [photo] * 3}).status_code == 400
+        assert client.post("/api/builds", json=body | {"images": ["data:text/plain;base64,aGk="]}).status_code == 400
+        created = client.post("/api/builds", json=body | {"images": [photo]}).json()
+        for _ in range(50):
+            if seen:
+                break
+            time.sleep(0.05)
+        message = client.get(f"/api/builds/{created['id']}").json()["messages"][0]
+        assert client.get(message["images"][0]).content == b"jpeg"
+    assert len(Store(tmp_path).summaries()) == 1
+    assert seen == [[b"jpeg"]]
+
+
+def test_a_build_left_building_by_a_dead_server_is_done_after_a_restart(tmp_path, monkeypatch):
+    from brickyard import app as app_module
+    from brickyard.model import Build
+    from brickyard.session import Store
+
+    store = Store(tmp_path)
+    monkeypatch.setattr(app_module, "store", store)
+    build = Build(prompt="Tower Bridge", status="building")
+    store.save(build)
+    with TestClient(app_module.app) as client:
+        served = client.get(f"/api/builds/{build.id}").json()
+    assert served["status"] == "done" and served["messages"][-1]["text"] == "Stopped: the server restarted."
 
 
 def test_an_idle_build_rewritten_on_disk_is_served_fresh(tmp_path, monkeypatch):

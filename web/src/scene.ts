@@ -3,7 +3,7 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { LDrawLoader } from "three/examples/jsm/loaders/LDrawLoader.js";
 import { LDrawConditionalLineMaterial } from "three/examples/jsm/materials/LDrawConditionalLineMaterial.js";
-import { api, type Camera, type Piece } from "./api";
+import { api, type Box, type Camera, type Piece } from "./api";
 
 export type View = "iso" | "isoBack" | "front" | "top";
 
@@ -24,6 +24,34 @@ const SHEET: { view: View; label: string }[] = [
 const BACKDROP = "#f6f6f9";
 const STUD = 20;
 const PLATE = 8;
+const SHADOW_MAP = 2048;
+/** Edge opacity by how many pixels a stud covers: none where a stud's lines would pile into a dark film, crisp up close. */
+const EDGE_FADE = { opacity: 0.6, fromPixels: 3, toPixels: 30 };
+
+interface Light {
+  sun: THREE.Vector3;
+  intensity: number;
+  sky: number;
+  environment: number;
+  shadow: number;
+}
+
+/** The user's view: a sun from the upper left, so the default camera sees the shadows it casts. */
+const VIEW_LIGHT: Light = {
+  sun: new THREE.Vector3(-0.5, 1, 0.6).normalize(),
+  intensity: 2.6,
+  sky: 0.3,
+  environment: 0.35,
+  shadow: 0.85,
+};
+/** The builder's renders: a sun behind the camera and no shadows, so every face reads clearly. */
+const SHEET_LIGHT: Light = {
+  sun: new THREE.Vector3(0.5, 1, 0.8).normalize(),
+  intensity: 1.6,
+  sky: 0.5,
+  environment: 0.55,
+  shadow: 0,
+};
 
 /** From the model toward a camera seen from compass `angle` (0 front, 90 right) and `elevation` degrees up. */
 function towardCamera(angle: number, elevation: number): THREE.Vector3 {
@@ -32,7 +60,43 @@ function towardCamera(angle: number, elevation: number): THREE.Vector3 {
   return new THREE.Vector3(Math.sin(a) * Math.cos(e), Math.sin(e), Math.cos(a) * Math.cos(e));
 }
 
+/** The world-space volume of `box`, whose studs and plates are whole cells. */
+function worldBox(box: Box): THREE.Box3 {
+  return new THREE.Box3(
+    new THREE.Vector3(box.x0 * STUD, box.z0 * PLATE, -(box.y1 + 1) * STUD),
+    new THREE.Vector3((box.x1 + 1) * STUD, (box.z1 + 1) * PLATE, -box.y0 * STUD),
+  );
+}
+
+/** Planes that keep only what lies inside `box`. */
+function clippingPlanes(box: THREE.Box3): THREE.Plane[] {
+  return [
+    new THREE.Plane(new THREE.Vector3(1, 0, 0), -box.min.x),
+    new THREE.Plane(new THREE.Vector3(-1, 0, 0), box.max.x),
+    new THREE.Plane(new THREE.Vector3(0, 1, 0), -box.min.y),
+    new THREE.Plane(new THREE.Vector3(0, -1, 0), box.max.y),
+    new THREE.Plane(new THREE.Vector3(0, 0, 1), -box.min.z),
+    new THREE.Plane(new THREE.Vector3(0, 0, -1), box.max.z),
+  ];
+}
+
 const lineMaterials = new WeakMap<THREE.Material, THREE.Material>();
+const edges = new Map<THREE.Material, { opacity: number; transparent: boolean; depthWrite: boolean }>();
+
+/** Scale every edge line's opacity by `fade`, 1 being the LDraw colors as defined. */
+function fadeEdges(fade: number) {
+  for (const [material, base] of edges) {
+    const transparent = base.transparent || fade < 1;
+    if (material.transparent !== transparent) {
+      material.transparent = transparent;
+      material.needsUpdate = true;
+    }
+    material.depthWrite = fade < 1 ? false : base.depthWrite;
+    material.visible = fade > 0;
+    if (material instanceof THREE.ShaderMaterial) material.uniforms.opacity.value = base.opacity * fade;
+    else material.opacity = base.opacity * fade;
+  }
+}
 
 /** A copy of an edge material that reads each instance's transform from the instanceMatrix attribute. */
 function instancedLine(material: THREE.Material): THREE.Material {
@@ -40,8 +104,17 @@ function instancedLine(material: THREE.Material): THREE.Material {
   if (!copy) {
     copy = material.clone();
     copy.defines = { ...copy.defines, USE_INSTANCING: "" };
+    edges.set(copy, {
+      opacity: copy instanceof THREE.ShaderMaterial ? copy.uniforms.opacity.value : copy.opacity,
+      transparent: copy.transparent,
+      depthWrite: copy.depthWrite,
+    });
     if (copy instanceof THREE.ShaderMaterial) {
-      copy.vertexShader = copy.vertexShader.replace(/vec4\( (position|control0|control1|position \+ direction), 1\.0 \)/g, "instanceMatrix * $&");
+      copy.clipping = true;
+      copy.vertexShader = copy.vertexShader.replace(
+        /vec4\( (position|control0|control1|position \+ direction), 1\.0 \)/g,
+        "instanceMatrix * $&",
+      );
     }
     lineMaterials.set(material, copy);
   }
@@ -122,6 +195,8 @@ class Batch {
       let matrices: THREE.InstancedBufferAttribute;
       if (source instanceof THREE.Mesh) {
         const mesh = new THREE.InstancedMesh(source.geometry, source.material, capacity);
+        mesh.castShadow = ![source.material].flat().some((m) => m.transparent);
+        mesh.receiveShadow = true;
         object = mesh;
         matrices = mesh.instanceMatrix;
       } else {
@@ -131,7 +206,9 @@ class Batch {
         for (const group of source.geometry.groups) geometry.addGroup(group.start, group.count, group.materialIndex);
         matrices = new THREE.InstancedBufferAttribute(new Float32Array(capacity * 16), 16);
         geometry.setAttribute("instanceMatrix", matrices);
-        const material = Array.isArray(source.material) ? source.material.map(instancedLine) : instancedLine(source.material);
+        const material = Array.isArray(source.material)
+          ? source.material.map(instancedLine)
+          : instancedLine(source.material);
         object = new THREE.LineSegments(geometry, material);
       }
       object.frustumCulled = false;
@@ -147,6 +224,11 @@ export class BrickScene {
   private renderer: THREE.WebGLRenderer;
   private scene = new THREE.Scene();
   private camera = new THREE.PerspectiveCamera(35, 1, 1, 100000);
+  private sun = new THREE.DirectionalLight();
+  private sky = new THREE.HemisphereLight(0xffffff, 0x6f6f6f);
+  private sunDistance = 1;
+  private dirty = true;
+  private shadowsStale = true;
   private controls: OrbitControls;
   private loader = new LDrawLoader();
   private root = new THREE.Group();
@@ -156,6 +238,8 @@ export class BrickScene {
   private materials: Promise<void>;
   private visibleStep = Infinity;
   private loading: Promise<void> = Promise.resolve();
+  private wanted: Piece[] | null = null;
+  private shown: Piece[] | null = null;
   /** Set once the user orbits or zooms, so live framing stops fighting them. */
   userMoved = false;
   private resizeObserver: ResizeObserver;
@@ -166,14 +250,16 @@ export class BrickScene {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.toneMapping = THREE.NeutralToneMapping;
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.autoUpdate = false;
     container.appendChild(this.renderer.domElement);
 
     const pmrem = new THREE.PMREMGenerator(this.renderer);
     this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-    this.scene.environmentIntensity = 0.55;
-    const sun = new THREE.DirectionalLight(0xffffff, 1.6);
-    sun.position.set(0.5, 1, 0.8);
-    this.scene.add(new THREE.HemisphereLight(0xffffff, 0x6f6f6f, 0.5), sun);
+    this.sun.castShadow = true;
+    this.sun.shadow.mapSize.set(SHADOW_MAP, SHADOW_MAP);
+    this.sun.shadow.bias = -0.0005;
+    this.scene.add(this.sky, this.sun, this.sun.target);
 
     this.root.rotation.x = Math.PI;
     this.scene.add(this.root);
@@ -181,6 +267,7 @@ export class BrickScene {
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
     this.controls.addEventListener("start", () => (this.userMoved = true));
+    this.controls.addEventListener("change", () => (this.dirty = true));
     this.controls.autoRotateSpeed = 1.2;
 
     this.loader.smoothNormals = true;
@@ -194,9 +281,53 @@ export class BrickScene {
     const tick = () => {
       this.frame = requestAnimationFrame(tick);
       this.controls.update();
-      this.renderer.render(this.scene, this.camera);
+      if (this.dirty) this.draw();
     };
     tick();
+  }
+
+  /** The user's view: sunlit with shadows, edges faded by how many pixels a stud covers. */
+  private draw() {
+    this.dirty = false;
+    if (this.shadowsStale) this.fitShadows();
+    this.light(VIEW_LIGHT);
+    const distance = this.camera.position.distanceTo(this.controls.target);
+    const height = this.renderer.getDrawingBufferSize(new THREE.Vector2()).y;
+    const pixels = (STUD * height) / (2 * distance * Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)));
+    const { opacity, fromPixels, toPixels } = EDGE_FADE;
+    fadeEdges(opacity * THREE.MathUtils.smoothstep(pixels, fromPixels, toPixels));
+    this.renderer.render(this.scene, this.camera);
+  }
+
+  /** Aim the sun's shadow camera at the whole model and redraw its shadow map on the next render. */
+  private fitShadows() {
+    this.shadowsStale = false;
+    const sphere = this.modelBox().getBoundingSphere(new THREE.Sphere());
+    const r = Math.max(sphere.radius, STUD);
+    this.sun.target.position.copy(sphere.center);
+    this.sun.target.updateMatrixWorld();
+    this.sunDistance = 2 * r;
+    const camera = this.sun.shadow.camera;
+    Object.assign(camera, { left: -r, right: r, top: r, bottom: -r, near: r, far: 3 * r });
+    camera.updateProjectionMatrix();
+    this.sun.shadow.normalBias = (2 * r) / SHADOW_MAP;
+    this.renderer.shadowMap.needsUpdate = true;
+  }
+
+  private light({ sun, intensity, sky, environment, shadow }: Light) {
+    this.sun.position.copy(this.sun.target.position).addScaledVector(sun, this.sunDistance);
+    this.sun.intensity = intensity;
+    this.sun.shadow.intensity = shadow;
+    this.sky.intensity = sky;
+    this.scene.environmentIntensity = environment;
+  }
+
+  /** The world-space bounds of every piece, empty with none. */
+  private modelBox(): THREE.Box3 {
+    this.root.updateMatrixWorld(true);
+    const box = new THREE.Box3();
+    for (const batch of this.batches.values()) batch.expand(box);
+    return box.applyMatrix4(this.root.matrixWorld);
   }
 
   dispose() {
@@ -212,6 +343,7 @@ export class BrickScene {
     if (!w || !h) return;
     this.renderer.setSize(w, h);
     this.camera.aspect = w / h;
+    this.dirty = true;
     this.camera.updateProjectionMatrix();
     if (!this.userMoved) this.frameView(this.framing.view, this.framing.width, this.framing.depth);
   }
@@ -237,9 +369,12 @@ export class BrickScene {
     return template;
   }
 
-  /** Show exactly these pieces; calls apply in order, and each resolves once its pieces are drawn. */
+  /** Show exactly these pieces; calls apply in order, skipping any a later call superseded, and each resolves once its turn is drawn. */
   setPieces(pieces: Piece[]): Promise<void> {
-    this.loading = this.loading.catch(() => undefined).then(() => this.apply(pieces));
+    this.wanted = pieces;
+    this.loading = this.loading
+      .catch(() => undefined)
+      .then(() => (this.wanted === pieces && this.shown !== pieces ? this.apply(pieces) : undefined));
     return this.loading;
   }
 
@@ -271,11 +406,14 @@ export class BrickScene {
       if (!batch) this.batches.set(key, (batch = new Batch(template, this.root)));
       batch.set(group, this.visibleStep);
     });
+    this.shown = pieces;
+    this.dirty = this.shadowsStale = true;
   }
 
   setVisibleStep(step: number) {
     this.visibleStep = step;
     for (const batch of this.batches.values()) batch.show(step);
+    this.dirty = this.shadowsStale = true;
   }
 
   setSpin(spin: boolean) {
@@ -287,12 +425,16 @@ export class BrickScene {
     this.aim(VIEW_DIRECTIONS[view], width, depth);
   }
 
-  /** Point the camera along `direction` so the whole model (or the empty baseplate) fills the frame, then close in `zoom` times on `at`. */
-  private aim(direction: THREE.Vector3, width: number, depth: number, zoom = 1, at?: THREE.Vector3) {
-    this.root.updateMatrixWorld(true);
-    const box = new THREE.Box3();
-    for (const batch of this.batches.values()) batch.expand(box);
-    box.applyMatrix4(this.root.matrixWorld);
+  /** Point the camera along `direction` so the whole model (or the empty baseplate, or `focus`) fills the frame, then close in `zoom` times on `at`. */
+  private aim(
+    direction: THREE.Vector3,
+    width: number,
+    depth: number,
+    zoom = 1,
+    at?: THREE.Vector3,
+    focus?: THREE.Box3,
+  ) {
+    const box = focus ? focus.clone() : this.modelBox();
     if (box.isEmpty()) {
       box.set(new THREE.Vector3(0, 0, -depth * 20), new THREE.Vector3(width * 20, 40, 0));
     }
@@ -319,14 +461,17 @@ export class BrickScene {
     this.camera.updateProjectionMatrix();
     this.controls.target.copy(target);
     this.controls.update();
+    this.dirty = true;
   }
 
-  /** Square renders of the whole model into a 2D canvas, leaving the user's camera and timeline untouched. */
+  /** Square renders of the whole model, or only of what lies in `box`, into a 2D canvas, leaving the user's camera and timeline untouched. */
   private offscreen(
     size: number,
     tiles: { direction: THREE.Vector3; zoom?: number; at?: THREE.Vector3; x: number; y: number; label?: string }[],
     columns = 1,
+    box: Box | null = null,
   ) {
+    const focus = box ? worldBox(box) : undefined;
     const { position, near, far } = this.camera;
     const saved = { position: position.clone(), target: this.controls.target.clone(), near, far };
     const pixelRatio = this.renderer.getPixelRatio();
@@ -337,11 +482,14 @@ export class BrickScene {
     const ctx = canvas.getContext("2d")!;
 
     this.setVisibleStep(Infinity);
+    this.renderer.clippingPlanes = focus ? clippingPlanes(focus) : [];
     this.renderer.setPixelRatio(1);
     this.renderer.setSize(size * 2, size * 2, false);
+    fadeEdges(1);
+    this.light(SHEET_LIGHT);
     this.camera.aspect = 1;
     for (const tile of tiles) {
-      this.aim(tile.direction, 32, 32, tile.zoom, tile.at);
+      this.aim(tile.direction, 32, 32, tile.zoom, tile.at, focus);
       this.renderer.render(this.scene, this.camera);
       ctx.fillStyle = BACKDROP;
       ctx.fillRect(tile.x, tile.y, size, size);
@@ -356,6 +504,7 @@ export class BrickScene {
     }
 
     this.setVisibleStep(visibleStep);
+    this.renderer.clippingPlanes = [];
     this.renderer.setPixelRatio(pixelRatio);
     this.resize();
     Object.assign(this.camera, { near: saved.near, far: saved.far });
@@ -363,28 +512,45 @@ export class BrickScene {
     this.camera.updateProjectionMatrix();
     this.controls.target.copy(saved.target);
     this.controls.update();
-    this.renderer.render(this.scene, this.camera);
+    this.dirty = true;
     return new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
+  }
+
+  /** The user's view as they see it, on the viewer's backdrop. */
+  image(): Promise<Blob | null> {
+    this.draw();
+    const source = this.renderer.domElement;
+    const canvas = document.createElement("canvas");
+    canvas.width = source.width;
+    canvas.height = source.height;
+    const ctx = canvas.getContext("2d")!;
+    ctx.fillStyle = getComputedStyle(this.container).backgroundColor;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(source, 0, 0);
+    return new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
   }
 
   thumbnail(size = 320): Promise<Blob | null> {
     return this.offscreen(size, [{ direction: VIEW_DIRECTIONS.iso, x: 0, y: 0 }]);
   }
 
-  /** The four labelled views a builder looks at to check its work. */
-  sheet(size = 384): Promise<Blob | null> {
+  /** The four labelled views a builder looks at to check its work, of the model or only of `box`. */
+  sheet(box: Box | null = null, size = 384): Promise<Blob | null> {
     const tiles = SHEET.map((s, i) => ({
       direction: VIEW_DIRECTIONS[s.view],
       label: s.label,
       x: (i % 2) * size,
       y: Math.floor(i / 2) * size,
     }));
-    return this.offscreen(size, tiles, 2);
+    return this.offscreen(size, tiles, 2, box);
   }
 
   /** The one view a builder asks for, with the build's x and y in studs and z in plates. */
-  view(camera: Camera, size = 768): Promise<Blob | null> {
-    const at = camera.at ? new THREE.Vector3(camera.at[0] * STUD, camera.at[2] * PLATE, -camera.at[1] * STUD) : undefined;
-    return this.offscreen(size, [{ direction: towardCamera(camera.angle, camera.elevation), zoom: camera.zoom, at, x: 0, y: 0 }]);
+  view(camera: Camera, box: Box | null = null, size = 768): Promise<Blob | null> {
+    const at = camera.at
+      ? new THREE.Vector3(camera.at[0] * STUD, camera.at[2] * PLATE, -camera.at[1] * STUD)
+      : undefined;
+    const tile = { direction: towardCamera(camera.angle, camera.elevation), zoom: camera.zoom, at, x: 0, y: 0 };
+    return this.offscreen(size, [tile], 1, box);
   }
 }

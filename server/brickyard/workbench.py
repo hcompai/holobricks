@@ -10,11 +10,10 @@ import sys
 import tempfile
 from dataclasses import dataclass, field
 
-import httpx
 from pydantic import BaseModel, ValidationError
 
-from brickyard import ldraw, reference
-from brickyard.model import FACINGS, ROTATIONS, Camera, Piece, Placement, bounds, grid, place, with_accessories
+from brickyard import ldraw
+from brickyard.model import FACINGS, ROTATIONS, Box, Camera, Piece, Placement, bounds, grid, place, with_accessories
 from brickyard.session import Session
 
 STUD_HEIGHT = 4
@@ -40,9 +39,6 @@ class Brick(BaseModel):
 class Picture:
     data: bytes
     mime: str
-    title: str = ""
-    url: str = ""
-    """Where the image came from, for images found on the web."""
 
 
 @dataclass
@@ -134,9 +130,8 @@ class Workbench:
     ) -> tuple[list[Placement], list[str], list[str]]:
         """Placements that fit, plus rejection and warning lines, for a batch checked against itself and the build.
 
-        Mounted placements hang on a wall, so they only have to stay in bounds and clear of other pieces.
+        Mounted placements hang on a wall, so they only have to stay at x, y >= 0 and clear of other pieces.
         """
-        width, depth = self.session.build.width * ldraw.STUD, self.session.build.depth * ldraw.STUD
         indexed = self._index()
         batch: dict[tuple[int, int], list[tuple[tuple, str]]] = {}
 
@@ -173,10 +168,8 @@ class Workbench:
                 candidates.append((label, p, False))
         for label, placement, needs_support in candidates:
             box = bounds(placement)
-            if box[0][0] < -EPS or box[0][2] < -EPS or box[1][0] > width + EPS or box[1][2] > depth + EPS:
-                rejected.append(
-                    f"{label}: outside the {self.session.build.width}x{self.session.build.depth} build area"
-                )
+            if box[0][0] < -EPS or box[0][2] < -EPS:
+                rejected.append(f"{label}: x and y start at 0")
                 continue
             neighbors = near(box)
             hit = next(((other, what) for other, what in neighbors if _collides(box, other)), None)
@@ -284,12 +277,17 @@ class Workbench:
                 out.append([x, y, max(1, w), max(1, d), z, max(1, _top((lo, hi)) - z)])
         return out
 
-    async def look(self, note: str = "Looked at the model", camera: dict | None = None) -> Result:
+    async def look(
+        self, note: str = "Looked at the model", camera: dict | None = None, box: list[int] | None = None
+    ) -> Result:
         try:
             view = None if camera is None else Camera.model_validate(camera)
-        except ValidationError as e:
-            return Result(f"Could not set the camera: {e}", problems=1)
-        png = await self.session.render(view)
+            inside = None if box is None else Box.of(box)
+        except (ValidationError, ValueError, TypeError) as e:
+            return Result(f"Could not set the view: {e}", problems=1)
+        if inside and not any(inside.holds(p) for p in self.pieces):
+            return Result(f"No pieces in the box {inside}.", problems=1)
+        png = await self.session.render(view, inside)
         summary = await asyncio.to_thread(self.summary)
         if png is None:
             return Result(f"No viewer is open, so no image this time.\n{summary}", note=f"{note} (no viewer open)")
@@ -298,23 +296,10 @@ class Workbench:
         if view:
             center = f", centered on x {view.at[0]:g}, y {view.at[1]:g}, z {view.at[2]:g}" if view.at else ""
             caption = f"The view from {view.angle:g} degrees, {view.elevation:g} up, zoom {view.zoom:g}{center}."
+        if inside:
+            n = sum(inside.holds(p) for p in self.pieces)
+            caption = f"Only the {n} pieces in the box {inside}. {caption}"
         return Result(summary, images=[Picture(png, "image/png")], kind="render", caption=caption)
-
-    async def find_reference(self, query: str) -> Result:
-        try:
-            photos = await reference.search(query)
-        except (httpx.HTTPError, ValueError) as e:
-            return Result(f"Reference search failed ({e}). Build from what you know.")
-        if not photos:
-            return Result(f"No photos for '{query}'. Try a more common name, or build from what you know.")
-        titles = "; ".join(p.title for p in photos)
-        await self.session.say(f"Found reference photos for '{query}': {titles}", role="tool")
-        return Result(
-            f"Found {len(photos)} photos from Wikipedia for '{query}'.",
-            images=[Picture(p.data, p.mime, p.title, p.url) for p in photos],
-            kind="reference",
-            caption=f"Reference photos for '{query}'.",
-        )
 
     async def find_parts(self, query: str) -> Result:
         hits = await asyncio.to_thread(lambda: [part_line(p) for p in ldraw.search(query)])

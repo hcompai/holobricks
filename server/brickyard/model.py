@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import math
 import time
 import uuid
 from collections import Counter
+from collections.abc import Iterable
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -52,9 +54,11 @@ class Build(BaseModel):
     name: str = "Untitled build"
     prompt: str = ""
     builder: str = "demo"
-    width: int = 32
-    depth: int = 32
+    width: int = 0
+    depth: int = 0
     created: float = Field(default_factory=time.time)
+    updated: float = 0
+    """When the pieces last changed, in seconds; 0 when unknown."""
     status: Literal["idle", "building", "done", "error"] = "idle"
     pieces: list[Piece] = []
     steps: list[Step] = []
@@ -69,6 +73,7 @@ class Build(BaseModel):
             "builder": self.builder,
             "status": self.status,
             "created": self.created,
+            "updated": self.updated,
             "pieces": len(self.pieces),
             "steps": len(self.steps),
             "width": self.width,
@@ -121,6 +126,37 @@ class Camera(BaseModel):
     """1 frames the whole model; 4 shows a quarter of its width."""
     at: tuple[float, float, float] | None = None
     """The point (x, y in studs, z in plates) at the center of the view; the model's center when unset."""
+
+
+class Box(BaseModel):
+    """Studs x0 to x1 and y0 to y1, plates z0 to z1, all included."""
+
+    x0: int
+    y0: int
+    z0: int
+    x1: int
+    y1: int
+    z1: int
+
+    @classmethod
+    def of(cls, values: list[int]) -> Box:
+        if len(values) != 6:
+            raise ValueError("a box is six numbers: x0 y0 z0 x1 y1 z1")
+        x0, y0, z0, x1, y1, z1 = values
+        return cls(x0=min(x0, x1), y0=min(y0, y1), z0=min(z0, z1), x1=max(x0, x1), y1=max(y0, y1), z1=max(z0, z1))
+
+    def holds(self, p: Placement | Piece) -> bool:
+        """Whether any of the piece lies inside the box."""
+        lo, hi = bounds(p)
+        near = (
+            (self.x0 * ldraw.STUD, (self.x1 + 1) * ldraw.STUD),
+            (-(self.z1 + 1) * ldraw.PLATE, -self.z0 * ldraw.PLATE),
+            (self.y0 * ldraw.STUD, (self.y1 + 1) * ldraw.STUD),
+        )
+        return all(lo[k] < b - 0.5 and hi[k] > a + 0.5 for k, (a, b) in enumerate(near))
+
+    def __str__(self) -> str:
+        return f"x {self.x0}-{self.x1}, y {self.y0}-{self.y1}, z {self.z0}-{self.z1}"
 
 
 def place(part: str, x: int, y: int, z: int, color: int, rotation: int = 0) -> Placement:
@@ -183,6 +219,14 @@ def baseplate(color: int) -> Placement:
 
 
 Vec = tuple[float, float, float]
+
+
+def footprint(pieces: Iterable[Placement | Piece]) -> tuple[int, int]:
+    """Studs from x 0 and y 0 to the far sides of the pieces, (0, 0) for none."""
+    far = [bounds(p)[1] for p in pieces]
+    width = max((math.ceil((h[0] - 0.5) / ldraw.STUD) for h in far), default=0)
+    depth = max((math.ceil((h[2] - 0.5) / ldraw.STUD) for h in far), default=0)
+    return width, depth
 
 
 def bounds(p: Placement | Piece) -> tuple[Vec, Vec]:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 
 from brickyard.model import Placement, baseplate, place, with_accessories
 from brickyard.session import Session
@@ -82,7 +83,7 @@ class DemoBuilder:
         await session.step(title, pieces)
         await asyncio.sleep(self.delay)
 
-    async def run(self, session: Session, request: str) -> None:
+    async def run(self, session: Session, request: str, references: list[Path]) -> None:
         if session.build.pieces:
             await session.say("The demo builder only knows one cottage, and it is already built.")
             return

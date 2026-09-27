@@ -764,7 +764,7 @@ async def traffic(kit: Kit) -> None:
 
 
 async def build() -> Kit:
-    kit = Kit("paris", "Paris, the Seine at Saint-Germain", PROMPT, W, D)
+    kit = Kit("paris", "Paris, the Seine at Saint-Germain", PROMPT)
     rng = random.Random(7)
     houses = blocks()
     built = set().union(*(_footprint(b) for b in houses.values()))

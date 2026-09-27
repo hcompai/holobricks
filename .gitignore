@@ -4,6 +4,8 @@ data/
 docs/*
 !docs/brickyard.jpg
 !docs/brick.png
+!docs/hogwarts-build-log.md
+!docs/hogwarts/
 node_modules/
 web/dist/
 .venv/
@@ -12,6 +14,5 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 *.tsbuildinfo
-!docs/brickyard.jpg
 .vercel/
 .env*

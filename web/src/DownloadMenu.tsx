@@ -1,0 +1,71 @@
+import { CubeIcon, DownloadSimpleIcon, ImageIcon } from "@phosphor-icons/react";
+import { useEffect, useRef, useState } from "react";
+import { api, type Build } from "./api";
+
+interface Props {
+  build: Build;
+  image: () => Promise<Blob | null>;
+}
+
+/** An icon button opening the build's downloads: the LDraw model, or the view as a PNG. */
+export function DownloadMenu({ build, image }: Props) {
+  const [open, setOpen] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const outside = (e: PointerEvent) => {
+      if (!root.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const escape = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("pointerdown", outside);
+    document.addEventListener("keydown", escape);
+    return () => {
+      document.removeEventListener("pointerdown", outside);
+      document.removeEventListener("keydown", escape);
+    };
+  }, [open]);
+
+  const saveImage = async () => {
+    setOpen(false);
+    const png = await image();
+    if (!png) return;
+    const url = URL.createObjectURL(png);
+    Object.assign(document.createElement("a"), { href: url, download: `${build.name}.png` }).click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
+  return (
+    <div className="menu" ref={root}>
+      <button
+        className={open ? "icon-button active" : "icon-button"}
+        onClick={() => setOpen(!open)}
+        title="Download"
+        aria-label="Download"
+        aria-haspopup="menu"
+        aria-expanded={open}
+      >
+        <DownloadSimpleIcon size={16} weight="bold" />
+      </button>
+      {open && (
+        <div className="menu-list" role="menu">
+          <a
+            role="menuitem"
+            href={api.downloadUrl(build.id)}
+            download={`${build.name}.ldr`}
+            onClick={() => setOpen(false)}
+          >
+            <CubeIcon size={16} />
+            Download .ldr
+          </a>
+          <button role="menuitem" onClick={saveImage}>
+            <ImageIcon size={16} />
+            Download image
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}

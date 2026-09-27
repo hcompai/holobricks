@@ -1,7 +1,8 @@
-import { ArrowUpIcon, StopIcon } from "@phosphor-icons/react";
+import { ArrowUpIcon, PlusIcon, StopIcon, XIcon } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
 import { api, GALLERY, type Build } from "./api";
 import { Lightbox } from "./Lightbox";
+import { imageFiles, reference } from "./references";
 
 const SUGGESTIONS = [
   {
@@ -33,42 +34,97 @@ const SUGGESTIONS = [
 
 const BUILDER_LABELS: Record<string, string> = { holo: "Holo", demo: "Scripted demo", claude: "Claude" };
 
-interface Props {
-  build: Build | null;
-  thinking: string;
-  onCreate: (prompt: string) => Promise<void>;
-  onSay: (text: string) => Promise<void>;
+const WAITING = [
+  "Sorting the parts bin",
+  "Counting studs",
+  "Studying the photos",
+  "Hunting for the right slope",
+  "Checking every join",
+  "Stacking plates",
+  "Snapping bricks together",
+  "Walking around the model",
+  "Measuring twice",
+  "Rummaging for a 1x1 round",
+  "Squinting at the render",
+  "Lining up the courses",
+  "Looking for gaps",
+  "Trying another angle",
+];
+const WAITING_S = 4;
+const MAX_ATTACHMENTS = 2;
+
+/** A waiting line that changes every few seconds while `active`, never twice in a row. */
+function useWaitingLine(active: boolean): string {
+  const [line, setLine] = useState(() => Math.floor(Math.random() * WAITING.length));
+  useEffect(() => {
+    if (!active) return;
+    const timer = setInterval(
+      () => setLine((i) => (i + 1 + Math.floor(Math.random() * (WAITING.length - 1))) % WAITING.length),
+      WAITING_S * 1000,
+    );
+    return () => clearInterval(timer);
+  }, [active]);
+  return WAITING[line];
 }
 
-export function ChatPanel({ build, thinking, onCreate, onSay }: Props) {
+interface Props {
+  build: Build | null;
+  loading: boolean;
+  thinking: string;
+  onCreate: (prompt: string, images: string[]) => Promise<void>;
+  onSay: (text: string, images: string[]) => Promise<void>;
+}
+
+export function ChatPanel({ build, loading, thinking, onCreate, onSay }: Props) {
   const [text, setText] = useState("");
-  const [mode, setMode] = useState<"change" | "new">("change");
+  const [attachments, setAttachments] = useState<string[]>([]);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const log = useRef<HTMLDivElement>(null);
   const thought = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
+  const picker = useRef<HTMLInputElement>(null);
   const [opened, setOpened] = useState<string | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const scrolled = useRef<string | null>(null);
   const busy = build?.status === "building";
-  const target = build && mode === "change" ? "change" : "new";
+  const waiting = useWaitingLine(busy);
+  const changing = Boolean(build || loading);
 
   useEffect(() => {
-    log.current?.scrollTo({ top: log.current.scrollHeight, behavior: "smooth" });
-  }, [build?.messages.length, busy]);
+    const jump = scrolled.current !== (build?.id ?? null);
+    scrolled.current = build?.id ?? null;
+    log.current?.scrollTo({ top: log.current.scrollHeight, behavior: jump ? "instant" : "smooth" });
+  }, [build?.id, build?.messages.length, busy]);
+
+  const home = !build && !loading;
+  useEffect(() => {
+    if (home) input.current?.focus();
+  }, [home]);
 
   useEffect(() => {
     thought.current?.scrollTo({ top: thought.current.scrollHeight });
   }, [thinking]);
 
-  const send = async (value = text) => {
-    const prompt = value.trim();
-    if (!prompt || sending || (busy && target === "change")) return;
+  const attach = async (files: File[]) => {
+    if (!files.length) return;
+    try {
+      const added = await Promise.all(files.map(reference));
+      setAttachments((current) => [...current, ...added].slice(0, MAX_ATTACHMENTS));
+    } catch (e) {
+      setError(`Could not read that image: ${e instanceof Error ? e.message : e}`);
+    }
+  };
+
+  const send = async () => {
+    const prompt = text.trim();
+    if ((!prompt && !attachments.length) || sending || (changing && (busy || !build))) return;
     setSending(true);
     setError("");
     try {
-      await (target === "change" ? onSay(prompt) : onCreate(prompt));
+      await (changing ? onSay(prompt, attachments) : onCreate(prompt, attachments));
       setText("");
-      setMode("change");
+      setAttachments([]);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -81,7 +137,7 @@ export function ChatPanel({ build, thinking, onCreate, onSay }: Props) {
   return (
     <div className="chat">
       <div className="chat-log" ref={log}>
-        {!build ? (
+        {loading ? null : !build ? (
           <div className="chat-intro">
             <h2>What should we build?</h2>
             <p>Describe a model. The builder designs it in real LDraw bricks, step by step, while you watch.</p>
@@ -105,8 +161,18 @@ export function ChatPanel({ build, thinking, onCreate, onSay }: Props) {
             <div key={`${m.at}-${m.role}`} className={`msg ${m.role}`}>
               {m.text}
               {m.images?.map((src) => (
-                <button key={src} className="msg-render" onClick={() => setOpened(src)} title="Open the render">
-                  <img src={src} alt="The render Holo saw" />
+                <button
+                  key={src}
+                  className="msg-render"
+                  onClick={() => setOpened(src)}
+                  title={m.role === "user" ? "Open the image" : "Open the render"}
+                >
+                  <img
+                    src={api.smallImageUrl(src)}
+                    alt={m.role === "user" ? "Your reference image" : `The render ${who} saw`}
+                    loading="lazy"
+                    decoding="async"
+                  />
                 </button>
               ))}
             </div>
@@ -114,9 +180,10 @@ export function ChatPanel({ build, thinking, onCreate, onSay }: Props) {
         )}
         {busy && (
           <div className="msg assistant thinking">
-            <div className="thinking-head">
-              <span className="pulse" />
-              {who} is {thinking ? "thinking" : "working"}…
+            <div className="thinking-head" title={`${who} is ${thinking ? "thinking" : "working"}`}>
+              <span key={waiting} className="shimmer">
+                {waiting}
+              </span>
             </div>
             {thinking && (
               <div className="thinking-text" ref={thought}>
@@ -126,46 +193,95 @@ export function ChatPanel({ build, thinking, onCreate, onSay }: Props) {
           </div>
         )}
       </div>
-      {GALLERY ? (
-        <p className="gallery-note">Read-only gallery. New builds run in the local app with Holo.</p>
-      ) : (
-        <div className="composer">
-          {build && (
-            <div className="modes">
-              <button className={mode === "change" ? "active" : ""} onClick={() => setMode("change")}>
-                Change this build
-              </button>
-              <button className={mode === "new" ? "active" : ""} onClick={() => setMode("new")}>
-                Start a new build
-              </button>
+      {GALLERY && <p className="gallery-note">Read-only gallery. New builds run in the local app with Holo.</p>}
+      {!GALLERY && (
+        <div
+          className={dragging ? "composer dragging" : "composer"}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragging(true);
+          }}
+          onDragLeave={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false);
+          }}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDragging(false);
+            attach(imageFiles(e.dataTransfer.files));
+          }}
+        >
+          {attachments.length > 0 && (
+            <div className="attachments">
+              {attachments.map((src, i) => (
+                <div key={i} className="attachment">
+                  <img src={src} alt={`Reference ${i + 1}`} />
+                  <button
+                    title="Remove"
+                    aria-label="Remove image"
+                    onClick={() => setAttachments((current) => current.filter((_, j) => j !== i))}
+                  >
+                    <XIcon size={10} weight="bold" />
+                  </button>
+                </div>
+              ))}
             </div>
           )}
           <textarea
             ref={input}
             value={text}
-            placeholder={target === "change" ? "Describe how to change it…" : "Describe what to build…"}
+            placeholder={changing ? "Describe how to change it…" : "Describe what to build…"}
             onChange={(e) => setText(e.target.value)}
+            onPaste={(e) => {
+              const files = imageFiles(e.clipboardData.files);
+              if (!files.length) return;
+              e.preventDefault();
+              attach(files);
+            }}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
+              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
                 e.preventDefault();
                 send();
               }
             }}
           />
-          {busy && build && target === "change" ? (
-            <button className="send stop" onClick={() => api.stop(build.id)}>
-              <StopIcon size={14} weight="fill" />
-              Stop
+          <input
+            ref={picker}
+            type="file"
+            accept="image/*"
+            multiple
+            hidden
+            onChange={(e) => {
+              attach(imageFiles(e.target.files));
+              e.target.value = "";
+            }}
+          />
+          <button
+            className="round attach"
+            title="Attach reference images"
+            aria-label="Attach reference images"
+            disabled={attachments.length >= MAX_ATTACHMENTS}
+            onClick={() => picker.current?.click()}
+          >
+            <PlusIcon size={14} weight="bold" />
+          </button>
+          {busy && build ? (
+            <button className="round send stop" title="Stop" aria-label="Stop" onClick={() => api.stop(build.id)}>
+              <StopIcon size={12} weight="fill" />
             </button>
           ) : (
-            <button className="send" disabled={!text.trim() || sending} onClick={() => send()}>
-              Send
+            <button
+              className="round send"
+              title="Send"
+              aria-label="Send"
+              disabled={(!text.trim() && !attachments.length) || sending}
+              onClick={send}
+            >
               <ArrowUpIcon size={14} weight="bold" />
             </button>
           )}
-          {error && <p className="composer-error">{error}</p>}
         </div>
       )}
+      {error && <p className="composer-error">{error}</p>}
       <Lightbox src={opened} onClose={() => setOpened(null)} />
     </div>
   );
