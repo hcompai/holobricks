@@ -244,18 +244,27 @@ export class BrickScene {
   userMoved = false;
   private resizeObserver: ResizeObserver;
   private frame = 0;
+  private disposed = false;
+  private environment: THREE.WebGLRenderTarget;
   private framing: { view: View; width: number; depth: number } = { view: "iso", width: 32, depth: 32 };
 
-  constructor(private container: HTMLElement) {
+  constructor(
+    private container: HTMLElement,
+    private options: { replay?: boolean; signal?: AbortSignal } = {},
+  ) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.setPixelRatio(options.replay ? 1 : Math.min(window.devicePixelRatio, 2));
     this.renderer.toneMapping = THREE.NeutralToneMapping;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.autoUpdate = false;
     container.appendChild(this.renderer.domElement);
 
     const pmrem = new THREE.PMREMGenerator(this.renderer);
-    this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    const room = new RoomEnvironment();
+    this.environment = pmrem.fromScene(room, 0.04);
+    this.scene.environment = this.environment.texture;
+    room.dispose();
+    pmrem.dispose();
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(SHADOW_MAP, SHADOW_MAP);
     this.sun.shadow.bias = -0.0005;
@@ -283,7 +292,7 @@ export class BrickScene {
       this.controls.update();
       if (this.dirty) this.draw();
     };
-    tick();
+    if (!options.replay) tick();
   }
 
   /** The user's view: sunlit with shadows, edges faded by how many pixels a stud covers. */
@@ -331,10 +340,40 @@ export class BrickScene {
   }
 
   dispose() {
+    if (this.disposed) return;
+    this.disposed = true;
     cancelAnimationFrame(this.frame);
     this.resizeObserver.disconnect();
     this.controls.dispose();
+    for (const batch of this.batches.values()) batch.dispose();
+    this.batches.clear();
+    this.environment.dispose();
+    this.sun.shadow.dispose();
+    // Parsing may still be in flight when an export is cancelled. Release its resources too.
+    void Promise.allSettled(this.templates.values()).then((results) => {
+      const geometries = new Set<THREE.BufferGeometry>();
+      const materials = new Set<THREE.Material>(this.loader.materials);
+      for (const result of results) {
+        if (result.status !== "fulfilled") continue;
+        result.value.traverse((object) => {
+          if (!(object instanceof THREE.Mesh || object instanceof THREE.LineSegments)) return;
+          geometries.add(object.geometry);
+          for (const material of [object.material].flat()) materials.add(material);
+        });
+      }
+      for (const geometry of geometries) geometry.dispose();
+      for (const material of materials) {
+        const line = lineMaterials.get(material);
+        if (line) {
+          edges.delete(line);
+          line.dispose();
+          lineMaterials.delete(material);
+        }
+        material.dispose();
+      }
+    });
     this.renderer.dispose();
+    if (this.options.replay) this.renderer.forceContextLoss();
     this.renderer.domElement.remove();
   }
 
@@ -355,7 +394,10 @@ export class BrickScene {
     if (!template) {
       let text = this.parts.get(part);
       if (!text) {
-        text = fetch(api.partUrl(part)).then((r) => r.text());
+        text = fetch(api.partUrl(part), { signal: this.options.signal }).then((r) => {
+          if (!r.ok) throw new Error(`Could not load part ${part} (${r.status})`);
+          return r.text();
+        });
         this.parts.set(part, text);
       }
       template = Promise.all([text, this.materials]).then(
@@ -389,11 +431,13 @@ export class BrickScene {
     const templates = await Promise.all(
       [...groups.values()].map(([p]) =>
         this.template(p.part, p.color).catch((error) => {
+          if (this.options.replay) throw error;
           console.error(`Could not load ${p.part} in color ${p.color}`, error);
           return null;
         }),
       ),
     );
+    if (this.disposed) return;
     for (const [key, batch] of this.batches) {
       if (groups.has(key)) continue;
       batch.dispose();
@@ -418,6 +462,13 @@ export class BrickScene {
 
   setSpin(spin: boolean) {
     this.controls.autoRotate = spin;
+  }
+
+  /** Draw a replay in an isolated scene. Framing uses the complete model, even while pieces are hidden. */
+  replayFrame(step: number): HTMLCanvasElement {
+    this.setVisibleStep(step);
+    this.draw();
+    return this.renderer.domElement;
   }
 
   frameView(view: View, width: number, depth: number) {

@@ -37,3 +37,5 @@ jobs:
           npm ci
           npm run format:check
           npm run build
+          npx playwright install --with-deps chromium
+          npm test

@@ -1,14 +1,15 @@
-import { CubeIcon, DownloadSimpleIcon, ImageIcon } from "@phosphor-icons/react";
+import { CubeIcon, DownloadSimpleIcon, FilmStripIcon, ImageIcon } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
 import { api, type Build } from "./api";
 
 interface Props {
   build: Build;
   image: () => Promise<Blob | null>;
+  onReplay: () => void;
 }
 
 /** An icon button opening the build's downloads: the LDraw model, or the view as a PNG. */
-export function DownloadMenu({ build, image }: Props) {
+export function DownloadMenu({ build, image, onReplay }: Props) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
 
@@ -63,6 +64,16 @@ export function DownloadMenu({ build, image }: Props) {
           <button role="menuitem" onClick={saveImage}>
             <ImageIcon size={16} />
             Download image
+          </button>
+          <button
+            role="menuitem"
+            disabled={!build.pieces.length}
+            onClick={() => {
+              setOpen(false);
+              onReplay();
+            }}
+          >
+            <FilmStripIcon size={16} /> Export timeline GIF
           </button>
         </div>
       )}
