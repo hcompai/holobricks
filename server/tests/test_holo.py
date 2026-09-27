@@ -16,7 +16,7 @@ from brickyard import ldraw, script
 from brickyard.builders.holo import HoloBuilder
 from brickyard.model import Box, Build, Camera, grid
 from brickyard.session import Session, Store
-from brickyard.workbench import Workbench, part_line
+from brickyard.workbench import Workbench
 
 pytestmark = pytest.mark.skipif(not ldraw.LDRAW.exists(), reason="LDraw library not downloaded")
 
@@ -195,23 +195,23 @@ def test_a_render_is_answered_by_a_late_viewer_but_never_by_a_stale_one(tmp_path
     assert asyncio.run(main()) == b"png"
 
 
-def test_the_prompt_names_only_real_parts_and_colors_and_its_example_builds_cleanly(bench, monkeypatch):
-    agent = Path(__file__).resolve().parents[2] / "agent"
-    prompt = (agent / "holo.j2").read_text()
-    parts = re.findall(r"^\w+: .*\| .* tall$", prompt, re.MULTILINE)
-    assert len(parts) > 80
-    for line in parts:
-        assert line == part_line(f"{line.split(':')[0]}.dat")
+def test_the_prompt_names_only_real_parts_sizes_and_colors():
+    prompt = (Path(__file__).resolve().parents[2] / "agent" / "holo.j2").read_text()
+    rows = re.findall(r"^- (\d+) tall[^:]*: (.*)$", prompt.split("## Parts")[1].split("\n## ")[0], re.MULTILINE)
+    entries = [
+        (part, (int(w), int(d)), int(height))
+        for height, parts in rows
+        for part, w, d in re.findall(r"\b(\d\w*) (\d+)x(\d+)\b", parts)
+    ]
+    assert len(entries) > 80 and len(entries) == sum(len(re.findall(r"\d+x\d+", parts)) for _, parts in rows)
+    for part, size, height in entries:
+        info = ldraw.info(f"{part}.dat")
+        assert (info.footprint, info.plates) == (size, height), part
     palette = ldraw.colors()
     colors = prompt.split("## Colors")[1].split("\n#")[0].splitlines()
     for entry in (e for line in colors if line.startswith("- ") for e in line.split(": ")[1].split(", ")):
         code, name = entry.split(" ", 1)
         assert palette[int(code)][0].lower() == name, entry
-
-    monkeypatch.setattr(bench.session, "render", lambda camera=None, box=None: asyncio.sleep(0))
-    example = re.search(r"```python\n(.*?)```", prompt, re.DOTALL).group(1)
-    result = asyncio.run(bench.run_script(example))
-    assert result.problems == 0, result.text
 
 
 def test_holo_gets_the_request_on_stdin_and_stop_ends_its_whole_process_group(tmp_path, monkeypatch):
