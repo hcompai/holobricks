@@ -1,43 +1,31 @@
 import type { Build } from "./api";
 import type { EncodeReply, EncodeRequest } from "./gif.worker";
-import { planReplay, REPLAY_FORMATS, replayPieces, type ReplayFormat } from "./replayPlan";
+import { HOLO_MODEL, planReplay, REPLAY_FORMATS, replayPieces, type ReplayFormat } from "./replayPlan";
 import { BrickScene, type View } from "./scene";
 
 const FONT = '"Plus Jakarta Sans Variable", system-ui, sans-serif';
+const MARGIN = 32;
+const FOOTER = 90;
 
-/** A private renderer: no live viewer, inference, camera or build mutations. */
+/** Renders GIF frames from its own offscreen scene, leaving the live viewer and build untouched. */
 export class ReplayRenderer {
   private host = document.createElement("div");
   private scene: BrickScene;
   private ordered;
-  private viewHeight: number;
-  private header: number;
   private ctx: CanvasRenderingContext2D;
-  private size;
+  private size = REPLAY_FORMATS.square;
+  private header = 0;
+  private viewHeight = 0;
+  private view: View = "iso";
 
   constructor(
-    canvas: HTMLCanvasElement,
+    private canvas: HTMLCanvasElement,
     private build: Build,
-    format: ReplayFormat,
-    private view: View,
     private signal: AbortSignal,
   ) {
-    this.size = REPLAY_FORMATS[format];
-    const { width, height } = this.size;
-    canvas.width = width;
-    canvas.height = height;
-    this.header = height === 450 ? 100 : 130;
-    this.viewHeight = height - this.header - 90;
     this.ctx = canvas.getContext("2d", { willReadFrequently: true })!;
     this.ordered = replayPieces(build.pieces);
-    Object.assign(this.host.style, {
-      position: "fixed",
-      left: "-10000px",
-      top: "0",
-      width: `${width - 48}px`,
-      height: `${this.viewHeight}px`,
-      pointerEvents: "none",
-    });
+    Object.assign(this.host.style, { position: "fixed", left: "-10000px", top: "0", pointerEvents: "none" });
     this.host.setAttribute("aria-hidden", "true");
     document.body.appendChild(this.host);
     try {
@@ -51,31 +39,53 @@ export class ReplayRenderer {
   async prepare() {
     await Promise.all([this.scene.setPieces(this.ordered.rendered), document.fonts.load(`600 24px ${FONT}`)]);
     this.signal.throwIfAborted();
-    this.scene.frameView(this.view, this.build.width, this.build.depth);
   }
 
-  draw(count: number, branded: boolean, turn?: number) {
+  setFormat(format: ReplayFormat) {
+    this.size = REPLAY_FORMATS[format];
+    const { width, height } = this.size;
+    this.canvas.width = width;
+    this.canvas.height = height;
+    this.header = this.compact ? 100 : 130;
+    this.viewHeight = height - this.header - FOOTER;
+    Object.assign(this.host.style, { width: `${width - 48}px`, height: `${this.viewHeight}px` });
+    this.scene.resize();
+  }
+
+  setView(view: View) {
+    this.view = view;
+    this.scene.frameView(view, this.build.width, this.build.depth);
+  }
+
+  /** The complete model from the chosen camera. */
+  preview(branded: boolean) {
+    this.draw(this.build.pieces.length, branded);
+  }
+
+  private get compact() {
+    return this.size.height < this.size.width;
+  }
+
+  private draw(count: number, branded: boolean, turn?: number) {
     this.signal.throwIfAborted();
     if (turn !== undefined) this.scene.frameReplayOrbit(turn);
     const { width, height } = this.size;
     const ctx = this.ctx;
-    const margin = 32;
     ctx.fillStyle = "#f6f6f9";
     ctx.fillRect(0, 0, width, height);
     ctx.fillStyle = "#f76808";
-    ctx.fillRect(margin, 24, 26, 5);
-    const holo = branded && this.build.builder === "holo";
+    ctx.fillRect(MARGIN, 24, 26, 5);
     ctx.fillStyle = "#1c1c26";
     ctx.font = `800 26px ${FONT}`;
-    ctx.fillText(holo ? "HOLO4" : "Brickyard", margin, 61);
+    ctx.fillText(branded ? HOLO_MODEL : "Brickyard", MARGIN, 61);
     ctx.textAlign = "right";
     ctx.font = `600 12px ${FONT}`;
     ctx.fillStyle = "#636371";
-    ctx.fillText(holo ? "H COMPANY / BRICKYARD" : "ASSEMBLY REPLAY", width - margin, 56);
+    ctx.fillText(branded ? "H COMPANY / BRICKYARD" : "ASSEMBLY REPLAY", width - MARGIN, 56);
     ctx.textAlign = "left";
     ctx.fillStyle = "#1c1c26";
-    ctx.font = `600 ${height === 450 ? 18 : 23}px ${FONT}`;
-    this.text(this.build.name, margin, height === 450 ? 90 : 102, width - margin * 2);
+    ctx.font = `600 ${this.compact ? 18 : 23}px ${FONT}`;
+    this.text(this.build.name, MARGIN, this.compact ? 90 : 102, width - MARGIN * 2);
     ctx.drawImage(this.scene.replayFrame(count - 1), 24, this.header, width - 48, this.viewHeight);
     const piece = this.ordered.ordered[count - 1];
     const step = piece ? this.build.steps.findIndex((s) => s.index === piece.step) : -1;
@@ -87,26 +97,26 @@ export class ReplayRenderer {
           : (this.build.steps[step]?.title ?? "Assembling");
     ctx.font = `600 15px ${FONT}`;
     ctx.fillStyle = "#1c1c26";
-    this.text(label, margin, height - 62, width - margin * 2 - 150);
+    this.text(label, MARGIN, height - 62, width - MARGIN * 2 - 150);
     ctx.textAlign = "right";
     ctx.font = `500 13px ${FONT}`;
     ctx.fillText(
       `${count.toLocaleString()} / ${this.build.pieces.length.toLocaleString()} pieces`,
-      width - margin,
+      width - MARGIN,
       height - 62,
     );
     ctx.textAlign = "left";
     ctx.fillStyle = "#e2e2e9";
-    ctx.fillRect(margin, height - 47, width - margin * 2, 4);
+    ctx.fillRect(MARGIN, height - 47, width - MARGIN * 2, 4);
     ctx.fillStyle = "#f76808";
-    ctx.fillRect(margin, height - 47, ((width - margin * 2) * count) / this.build.pieces.length, 4);
+    ctx.fillRect(MARGIN, height - 47, ((width - MARGIN * 2) * count) / this.build.pieces.length, 4);
     ctx.font = `500 11px ${FONT}`;
     ctx.fillStyle = "#636371";
-    ctx.fillText("ASSEMBLY REPLAY", margin, height - 22);
+    ctx.fillText("ASSEMBLY REPLAY", MARGIN, height - 22);
     ctx.textAlign = "right";
     ctx.fillText(
       this.build.status === "building" ? "WORK IN PROGRESS" : `SNAPSHOT · ${this.build.steps.length} STEPS`,
-      width - margin,
+      width - MARGIN,
       height - 22,
     );
     ctx.textAlign = "left";
@@ -119,6 +129,7 @@ export class ReplayRenderer {
     this.ctx.fillText(label, x, y);
   }
 
+  /** Encode the replay; whatever the outcome, the preview returns to the complete model. */
   async encode(
     seconds: number,
     branded: boolean,
@@ -155,8 +166,6 @@ export class ReplayRenderer {
         else worker.postMessage(message, transfer);
       });
     try {
-      // A previous export/cancellation may have left the private camera mid-orbit.
-      this.scene.frameView(this.view, this.build.width, this.build.depth);
       const frames = planReplay(this.build.pieces.length, seconds, this.ordered.stepEnds);
       for (const [i, frame] of frames.entries()) {
         signal.throwIfAborted();
@@ -171,6 +180,10 @@ export class ReplayRenderer {
       return new Blob([reply.bytes], { type: "image/gif" });
     } finally {
       worker.terminate();
+      if (!this.signal.aborted) {
+        this.setView(this.view);
+        this.preview(branded);
+      }
     }
   }
 

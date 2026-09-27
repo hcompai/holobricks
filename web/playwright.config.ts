@@ -2,8 +2,8 @@ import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./tests",
-  // CPU-only runners need shader warm-up plus the 30-frame turntable finale.
-  timeout: 300000,
+  // Software-rendered WebGL on CPU-only runners is slow to warm up.
+  timeout: 120000,
   expect: { timeout: 30000 },
   workers: 1,
   use: {

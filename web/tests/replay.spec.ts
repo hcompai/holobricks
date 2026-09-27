@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import { decompressFrames, parseGIF } from "gifuct-js";
 import type { Build } from "../src/api";
-import { planReplay, replayFilename, replayPieces } from "../src/replayPlan";
+import { planReplay, replayFilename, replayPieces, replaySpin } from "../src/replayPlan";
 
 // Offline test geometry, deliberately independent of the LDraw install and inference server.
 const part = `0 FILE main.ldr
@@ -36,8 +36,6 @@ function fixture(): Build {
     depth: 2,
     messages: [],
     steps: Array.from({ length: 4 }, (_, index) => ({ index, title: `Layer ${index + 1}` })),
-    // Eight pieces still exercise every color/step and the real encoder, without making
-    // CPU-only CI render two dozen full-size frames for each lifecycle assertion.
     pieces: Array.from({ length: 8 }, (_, id) => ({
       id,
       part: "test-brick",
@@ -49,8 +47,12 @@ function fixture(): Build {
   };
 }
 
+const SPIN = 3;
+const PIECES = fixture().pieces.length;
+
 async function mock(page: Page, build = fixture(), missingPart = false) {
   const mutations: string[] = [];
+  const parts: string[] = [];
   await page.addInitScript(() => {
     class Events {
       onmessage: ((event: { data: string }) => void) | null = null;
@@ -75,13 +77,50 @@ async function mock(page: Page, build = fixture(), missingPart = false) {
       });
     if (path === "/api/builds/export-test") return route.fulfill({ json: build });
     if (path === "/api/ldconfig") return route.fulfill({ body: colors });
-    if (path.startsWith("/api/parts/")) return route.fulfill({ body: part, status: missingPart ? 404 : 200 });
+    if (path.startsWith("/api/parts/")) {
+      parts.push(path);
+      return route.fulfill({ body: part, status: missingPart ? 404 : 200 });
+    }
     return route.fulfill({ status: 404 });
   });
   await page.goto("/?build=export-test");
   await expect(page.getByRole("button", { name: "Export GIF", exact: true })).toBeEnabled();
-  return mutations;
+  await setSpin(page, SPIN);
+  return { mutations, parts };
 }
+
+/** Same module URL as the app's import, so this reaches the running app. */
+const setSpin = (page: Page, frames: number) =>
+  page.evaluate(async (frames) => {
+    const plan = "/src/replayPlan.ts";
+    (await import(plan)).replaySpin.frames = frames;
+  }, frames);
+
+async function downloadGif(page: Page, path: string) {
+  const link = page.getByRole("dialog").getByRole("link", { name: "Download GIF" });
+  await expect(link).toBeVisible({ timeout: 60000 });
+  const pending = page.waitForEvent("download");
+  await link.click();
+  const download = await pending;
+  await download.saveAs(path);
+  const bytes = await readFile(path);
+  const gif = parseGIF(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+  return { download, bytes, gif };
+}
+
+/** Hashes of the whole preview and of its model area, which excludes the text's antialiasing noise. */
+const preview = (page: Page) =>
+  page
+    .getByRole("dialog")
+    .getByLabel("Assembly replay preview")
+    .evaluate(async (canvas: HTMLCanvasElement) => {
+      const hash = async (y: number, height: number) => {
+        const { data } = canvas.getContext("2d")!.getImageData(0, y, canvas.width, height);
+        const digest = await crypto.subtle.digest("SHA-256", data);
+        return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
+      };
+      return { frame: await hash(0, canvas.height), model: await hash(140, canvas.height - 240) };
+    });
 
 test("timing covers a single brick and very large timelines without unbounded frames", () => {
   for (const count of [1, 2, 24, 50000])
@@ -123,42 +162,43 @@ test("timing covers a single brick and very large timelines without unbounded fr
 test("downloads a decodable looping GIF, preserves the viewer, and shares the actual file", async ({ page }, info) => {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
-  const mutations = await mock(page);
+  const { mutations, parts } = await mock(page);
   await expect(page.locator(".brick-loader")).toHaveCount(0);
   await page.getByRole("slider", { name: "Step", exact: true }).fill("1");
   await page.getByRole("button", { name: "Export GIF", exact: true }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByRole("button", { name: "Generate GIF", exact: true })).toBeEnabled();
+  const loads = parts.length;
+  const branding = dialog.getByRole("checkbox", { name: "HOLO4 / H Company branding" });
+  const branded = await preview(page);
+  await branding.uncheck();
+  await expect.poll(async () => (await preview(page)).frame).not.toBe(branded.frame);
+  expect((await preview(page)).model).toBe(branded.model);
+  await branding.check();
   // Even when assembly is viewed from above, the finale must turn and finish at the front.
   await dialog.getByRole("combobox", { name: "Camera", exact: true }).selectOption("top");
-  await expect(dialog.getByRole("button", { name: "Generate GIF", exact: true })).toBeEnabled();
+  await expect.poll(async () => (await preview(page)).model).not.toBe(branded.model);
+  expect(parts).toHaveLength(loads);
+  await expect(page.locator('body > div[aria-hidden="true"]')).toHaveCount(1);
   await dialog.screenshot({ path: info.outputPath("preview.png") });
   const before = await page
     .locator(".viewer-canvas canvas")
     .evaluate((canvas: HTMLCanvasElement) => canvas.toDataURL());
   await dialog.getByRole("button", { name: "Generate GIF", exact: true }).click();
-  const downloadLink = dialog.getByRole("link", { name: "Download GIF" });
-  await expect(downloadLink).toBeVisible({ timeout: 180000 });
-  const pendingDownload = page.waitForEvent("download");
-  await downloadLink.click();
-  const download = await pendingDownload;
-  const path = info.outputPath("assembly.gif");
-  await download.saveAs(path);
+  const { download, bytes, gif } = await downloadGif(page, info.outputPath("assembly.gif"));
   expect(download.suggestedFilename()).toBe("A little LEGO tower-assembly.gif");
-  const bytes = await readFile(path);
-  const gif = parseGIF(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
   expect(gif.lsd.width).toBe(640);
   expect(gif.lsd.height).toBe(640);
   const frames = decompressFrames(gif, true);
-  expect(frames).toHaveLength(40);
+  expect(frames).toHaveLength(1 + PIECES + SPIN + 1);
   expect(frames.reduce((sum, f) => sum + f.delay, 0)).toBe(12000);
   expect(frames.at(-1)!.delay).toBe(1000);
-  // Check actual decoded model-area pixels, not just a changing progress label.
   const modelPixels = (f: (typeof frames)[number]) => f.patch.slice(640 * 4 * 140, 640 * 4 * 520);
+  const [assembled, front, turning] = [frames[PIECES], frames[PIECES + 1], frames[PIECES + 2]].map(modelPixels);
   expect(modelPixels(frames[0])).not.toEqual(modelPixels(frames.at(-1)!));
-  expect(modelPixels(frames[8])).not.toEqual(modelPixels(frames[9]));
-  expect(modelPixels(frames[9])).not.toEqual(modelPixels(frames[16]));
-  expect(modelPixels(frames[9])).toEqual(modelPixels(frames.at(-1)!));
+  expect(assembled).not.toEqual(front);
+  expect(front).not.toEqual(turning);
+  expect(front).toEqual(modelPixels(frames.at(-1)!));
   expect(bytes.includes(Buffer.from("NETSCAPE2.0"))).toBe(true);
   await expect(dialog.getByText("File sharing is unavailable", { exact: false })).toBeVisible();
   await page.evaluate(() => {
@@ -193,10 +233,12 @@ test("downloads a decodable looping GIF, preserves the viewer, and shares the ac
   expect(errors).toEqual([]);
 });
 
-test("a live snapshot stays frozen, cancellation can retry, and closing releases its renderer", async ({ page }) => {
+test("a live snapshot stays frozen, cancellation can retry, and closing releases its renderer", async ({
+  page,
+}, info) => {
   const build = fixture();
   build.status = "building";
-  const mutations = await mock(page, build);
+  const { mutations } = await mock(page, build);
   await page.getByRole("button", { name: "Export GIF", exact: true }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByRole("button", { name: "Generate GIF", exact: true })).toBeEnabled();
@@ -214,13 +256,19 @@ test("a live snapshot stays frozen, cancellation can retry, and closing releases
   await expect(dialog.getByLabel("Suggested caption")).toContainText("8 LEGO pieces");
   await expect(dialog.getByLabel("Suggested caption")).toContainText("work in progress");
   await dialog.getByRole("combobox", { name: "Format", exact: true }).selectOption("portrait");
-  await expect(dialog.getByRole("button", { name: "Generate GIF", exact: true })).toBeEnabled();
+  await expect(dialog.getByLabel("Assembly replay preview")).toHaveJSProperty("height", 800);
+  const still = await preview(page);
+  await setSpin(page, replaySpin.frames);
   await dialog.getByRole("button", { name: "Generate GIF", exact: true }).click();
+  await expect(dialog.getByText(/Creating GIF… [1-9]/)).toBeVisible();
   await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(dialog.getByRole("button", { name: "Generate GIF", exact: true })).toBeEnabled();
   await expect(dialog.getByRole("link", { name: "Download GIF" })).toHaveCount(0);
+  expect((await preview(page)).model).toBe(still.model);
+  await setSpin(page, SPIN);
   await dialog.getByRole("button", { name: "Generate GIF", exact: true }).click();
-  await expect(dialog.getByRole("link", { name: "Download GIF" })).toBeVisible({ timeout: 180000 });
+  const { gif } = await downloadGif(page, info.outputPath("portrait.gif"));
+  expect([gif.lsd.width, gif.lsd.height]).toEqual([640, 800]);
   await expect(dialog.getByText("640 × 800", { exact: false })).toBeVisible();
   await dialog.getByRole("button", { name: "Close export" }).click();
   await expect(page.locator('body > div[aria-hidden="true"]')).toHaveCount(0);

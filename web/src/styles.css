@@ -785,7 +785,6 @@ main {
 
 .replay-dialog::backdrop {
   background: #11182788;
-  backdrop-filter: blur(4px);
 }
 
 .replay-heading,

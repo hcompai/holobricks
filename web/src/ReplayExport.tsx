@@ -2,7 +2,15 @@ import { CopyIcon, DownloadSimpleIcon, ShareNetworkIcon, XIcon } from "@phosphor
 import { useEffect, useRef, useState } from "react";
 import type { Build } from "./api";
 import { ReplayRenderer } from "./replay";
-import { REPLAY_FORMATS, replayCaption, replayFilename, type ReplayFormat } from "./replayPlan";
+import {
+  brandable,
+  HOLO_MODEL,
+  REPLAY_FORMATS,
+  REPLAY_SECONDS,
+  replayCaption,
+  replayFilename,
+  type ReplayFormat,
+} from "./replayPlan";
 import type { View } from "./scene";
 
 interface Props {
@@ -19,7 +27,7 @@ export function ReplayExport({ build, onClose }: Props) {
   const [format, setFormat] = useState<ReplayFormat>("square");
   const [view, setView] = useState<View>("iso");
   const [seconds, setSeconds] = useState(12);
-  const [branded, setBranded] = useState(build.builder === "holo");
+  const [branded, setBranded] = useState(brandable(build));
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -31,6 +39,10 @@ export function ReplayExport({ build, onClose }: Props) {
   const caption = replayCaption(build, branded);
   const size = REPLAY_FORMATS[format];
   const canShare = !!file && !!navigator.canShare?.({ files: [file] });
+  const update = <T,>(set: (value: T) => void, value: T) => {
+    set(value);
+    setFile(null);
+  };
 
   useEffect(() => {
     dialog.current?.showModal();
@@ -60,14 +72,12 @@ export function ReplayExport({ build, onClose }: Props) {
       setError("Loading the model timed out. Check the connection and retry.");
     }, 45000);
     try {
-      engine = new ReplayRenderer(canvas.current!, build, format, view, controller.signal);
+      engine = new ReplayRenderer(canvas.current!, build, controller.signal);
       renderer.current = engine;
       void engine
         .prepare()
         .then(() => {
-          if (controller.signal.aborted) return;
-          engine!.draw(build.pieces.length, branded);
-          setReady(true);
+          if (!controller.signal.aborted) setReady(true);
         })
         .catch((e: unknown) => {
           if (!controller.signal.aborted) setError(e instanceof Error ? e.message : "Could not load this model.");
@@ -84,7 +94,19 @@ export function ReplayExport({ build, onClose }: Props) {
       engine?.dispose();
       renderer.current = null;
     };
-  }, [build, format, view, branded, retry]);
+  }, [build, retry]);
+
+  useEffect(() => {
+    if (ready) renderer.current?.setFormat(format);
+  }, [ready, format]);
+
+  useEffect(() => {
+    if (ready) renderer.current?.setView(view);
+  }, [ready, view]);
+
+  useEffect(() => {
+    if (ready) renderer.current?.preview(branded);
+  }, [ready, format, view, branded]);
 
   const generate = async () => {
     if (!renderer.current || !ready || busy) return;
@@ -150,7 +172,7 @@ export function ReplayExport({ build, onClose }: Props) {
             <legend className="sr-only">GIF settings</legend>
             <label>
               Format
-              <select value={format} onChange={(e) => setFormat(e.target.value as ReplayFormat)}>
+              <select value={format} onChange={(e) => update(setFormat, e.target.value as ReplayFormat)}>
                 {Object.entries(REPLAY_FORMATS).map(([key, value]) => (
                   <option key={key} value={key}>
                     {value.label}
@@ -160,14 +182,8 @@ export function ReplayExport({ build, onClose }: Props) {
             </label>
             <label>
               Duration
-              <select
-                value={seconds}
-                onChange={(e) => {
-                  setSeconds(Number(e.target.value));
-                  setFile(null);
-                }}
-              >
-                {[8, 12, 20].map((s) => (
+              <select value={seconds} onChange={(e) => update(setSeconds, Number(e.target.value))}>
+                {REPLAY_SECONDS.map((s) => (
                   <option key={s} value={s}>
                     {s} seconds
                   </option>
@@ -176,17 +192,17 @@ export function ReplayExport({ build, onClose }: Props) {
             </label>
             <label>
               Camera
-              <select value={view} onChange={(e) => setView(e.target.value as View)}>
+              <select value={view} onChange={(e) => update(setView, e.target.value as View)}>
                 <option value="iso">Front three-quarter</option>
                 <option value="isoBack">Back three-quarter</option>
                 <option value="front">Front</option>
                 <option value="top">Top</option>
               </select>
             </label>
-            {build.builder === "holo" && (
+            {brandable(build) && (
               <label className="replay-branding">
-                <input type="checkbox" checked={branded} onChange={(e) => setBranded(e.target.checked)} />
-                HOLO4 / H Company branding
+                <input type="checkbox" checked={branded} onChange={(e) => update(setBranded, e.target.checked)} />
+                {HOLO_MODEL} / H Company branding
               </label>
             )}
           </fieldset>

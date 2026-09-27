@@ -129,7 +129,7 @@ Open a build with pieces and choose **Export GIF** in the timeline (also availab
 
 The export replays a frozen copy of saved assembly steps, with equal time per nonempty step. Every duration includes a three-second full rotation of the complete snapshot starting from the front, followed by a one-second front-view hold. The assembly uses the selected camera; the finale keeps a fixed distance fitted to every angle so the model stays in frame. It is not a recording of the agent's revisions or elapsed work. In-progress builds are labelled accordingly; scripted showcases use Brickyard branding, not Holo attribution. It works in the static gallery too, without an inference call or upload service.
 
-Frames render in a separate WebGL scene, leaving the live viewer and builder alone. A worker encodes one frame at a time, capped at 121 frames and 30 MB; exports can be cancelled. Missing parts block export rather than silently producing a partial model. Longer replays may group multiple pieces into a frame.
+Frames render in a separate WebGL scene, leaving the live viewer and builder alone. A worker encodes one frame at a time, capped at 121 frames and 15 MB (X's GIF limit); exports can be cancelled. Missing parts block export rather than silently producing a partial model. Longer replays may group multiple pieces into a frame.
 
 ## Tests
 
