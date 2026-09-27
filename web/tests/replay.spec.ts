@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import { decompressFrames, parseGIF } from "gifuct-js";
 import type { Build } from "../src/api";
-import { planReplay, replayFilename, replayPieces, replaySpin } from "../src/replayPlan";
+import { planReplay, replayFilename, replayPieces } from "../src/replayPlan";
 
 // Offline test geometry, deliberately independent of the LDraw install and inference server.
 const part = `0 FILE main.ldr
@@ -47,7 +47,6 @@ function fixture(): Build {
   };
 }
 
-const SPIN = 3;
 const PIECES = fixture().pieces.length;
 
 async function mock(page: Page, build = fixture(), missingPart = false) {
@@ -85,16 +84,8 @@ async function mock(page: Page, build = fixture(), missingPart = false) {
   });
   await page.goto("/?build=export-test");
   await expect(page.getByRole("button", { name: "Export GIF", exact: true })).toBeEnabled();
-  await setSpin(page, SPIN);
   return { mutations, parts };
 }
-
-/** Same module URL as the app's import, so this reaches the running app. */
-const setSpin = (page: Page, frames: number) =>
-  page.evaluate(async (frames) => {
-    const plan = "/src/replayPlan.ts";
-    (await import(plan)).replaySpin.frames = frames;
-  }, frames);
 
 async function downloadGif(page: Page, path: string) {
   const link = page.getByRole("dialog").getByRole("link", { name: "Download GIF" });
@@ -190,11 +181,12 @@ test("downloads a decodable looping GIF, preserves the viewer, and shares the ac
   expect(gif.lsd.width).toBe(640);
   expect(gif.lsd.height).toBe(640);
   const frames = decompressFrames(gif, true);
-  expect(frames).toHaveLength(1 + PIECES + SPIN + 1);
+  const plan = planReplay(PIECES, 12, replayPieces(fixture().pieces).stepEnds);
+  expect(frames.map((f) => f.delay)).toEqual(plan.map((f) => f.delay));
   expect(frames.reduce((sum, f) => sum + f.delay, 0)).toBe(12000);
-  expect(frames.at(-1)!.delay).toBe(1000);
   const modelPixels = (f: (typeof frames)[number]) => f.patch.slice(640 * 4 * 140, 640 * 4 * 520);
-  const [assembled, front, turning] = [frames[PIECES], frames[PIECES + 1], frames[PIECES + 2]].map(modelPixels);
+  const spin = plan.findIndex((f) => f.turn === 0);
+  const [assembled, front, turning] = frames.slice(spin - 1, spin + 2).map(modelPixels);
   expect(modelPixels(frames[0])).not.toEqual(modelPixels(frames.at(-1)!));
   expect(assembled).not.toEqual(front);
   expect(front).not.toEqual(turning);
@@ -258,14 +250,15 @@ test("a live snapshot stays frozen, cancellation can retry, and closing releases
   await dialog.getByRole("combobox", { name: "Format", exact: true }).selectOption("portrait");
   await expect(dialog.getByLabel("Assembly replay preview")).toHaveJSProperty("height", 800);
   const still = await preview(page);
-  await setSpin(page, replaySpin.frames);
+  // Hold the encoder's script so the export is still running after its first frame.
+  await page.route("**/gif.worker*", () => {});
   await dialog.getByRole("button", { name: "Generate GIF", exact: true }).click();
-  await expect(dialog.getByText(/Creating GIF… [1-9]/)).toBeVisible();
+  await expect.poll(async () => (await preview(page)).model).not.toBe(still.model);
   await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(dialog.getByRole("button", { name: "Generate GIF", exact: true })).toBeEnabled();
   await expect(dialog.getByRole("link", { name: "Download GIF" })).toHaveCount(0);
   expect((await preview(page)).model).toBe(still.model);
-  await setSpin(page, SPIN);
+  await page.unroute("**/gif.worker*");
   await dialog.getByRole("button", { name: "Generate GIF", exact: true }).click();
   const { gif } = await downloadGif(page, info.outputPath("portrait.gif"));
   expect([gif.lsd.width, gif.lsd.height]).toEqual([640, 800]);

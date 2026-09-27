@@ -8,10 +8,9 @@ export const REPLAY_FORMATS = {
 export type ReplayFormat = keyof typeof REPLAY_FORMATS;
 export const REPLAY_SECONDS = [8, 12, 20];
 export const HOLO_MODEL = "HOLO4";
-/** Turntable frames in the finale; browser tests lower it so software-rendered encodes stay short. */
-export const replaySpin = { frames: 30 };
 
 const MAX_FRAMES = 121;
+const SPIN_FRAMES = 30;
 /** GIF delays are whole hundredths of a second. */
 const TICK_MS = 10;
 const MIN_FRAME_MS = 100;
@@ -34,10 +33,9 @@ export function planReplay(pieces: number, seconds: number, stepEnds: readonly n
   if (!Number.isSafeInteger(pieces) || pieces < 1 || !REPLAY_SECONDS.includes(seconds)) {
     throw new Error("Choose a nonempty model and an 8, 12 or 20 second replay.");
   }
-  const spinFrames = replaySpin.frames;
   const assemblyMs = seconds * 1000 - START_HOLD_MS - SPIN_MS - FRONT_HOLD_MS;
   const ticks = assemblyMs / TICK_MS;
-  const count = Math.min(pieces, MAX_FRAMES - spinFrames - 2, Math.ceil(assemblyMs / MIN_FRAME_MS));
+  const count = Math.min(pieces, MAX_FRAMES - SPIN_FRAMES - 2, Math.ceil(assemblyMs / MIN_FRAME_MS));
   const frames: ReplayFrame[] = [{ pieces: 0, delay: START_HOLD_MS }];
   for (let i = 1; i <= count; i++) {
     const delay = (Math.round((i * ticks) / count) - Math.round(((i - 1) * ticks) / count)) * TICK_MS;
@@ -50,7 +48,7 @@ export function planReplay(pieces: number, seconds: number, stepEnds: readonly n
     if (frames.at(-1)!.pieces === visible) frames.at(-1)!.delay += delay;
     else frames.push({ pieces: visible, delay });
   }
-  for (let i = 0; i < spinFrames; i++) frames.push({ pieces, delay: SPIN_MS / spinFrames, turn: i / spinFrames });
+  for (let i = 0; i < SPIN_FRAMES; i++) frames.push({ pieces, delay: SPIN_MS / SPIN_FRAMES, turn: i / SPIN_FRAMES });
   frames.push({ pieces, delay: FRONT_HOLD_MS, turn: 0 });
   return frames;
 }
