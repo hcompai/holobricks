@@ -100,6 +100,12 @@ async function mock(page: Page, build = fixture(), failures = 0) {
     if (path === "/api/builds")
       return route.fulfill({ json: [{ ...build, pieces: build.pieces.length, steps: 1, thumbnail: 9999999999999 }] });
     if (path === "/api/builds/shop-test") return route.fulfill({ json: build });
+    if (path === "/api/builds/shop-test/state") {
+      const snapshot = { ...build, revision: packageFor(build).revision };
+      const token = JSON.stringify(snapshot);
+      const after = new URL(request.url()).searchParams.get("after");
+      return route.fulfill({ json: { token, build: token === after ? null : snapshot, renders: [] } });
+    }
     if (path === "/api/ldconfig") return route.fulfill({ body: "0 !COLOUR Yellow CODE 14 VALUE #F2CD37 EDGE #333333" });
     if (path.startsWith("/api/parts/"))
       return route.fulfill({ body: "0 FILE brickyard.ldr\n3 14 0 0 0 80 0 0 0 -24 0\n0 NOFILE" });
@@ -122,11 +128,8 @@ test("a recolor with the same piece count revalidates the BOM and removes the ol
   await expect(page.getByRole("cell", { name: "3001 / 3", exact: true })).toBeVisible();
   verified = false;
   build.pieces[0].color = 503;
-  // Reconnection fetches the same build with the same quantity, but different colors.
-  await page.evaluate(() => {
-    for (let i = 0; i < 2; i++)
-      (window as any).events.onmessage({ data: JSON.stringify({ type: "hello", build: { status: "done" } }) });
-  });
+  // Finished builds release their event stream. The independent snapshot poll must
+  // still detect changed colors even when the number of pieces remains identical.
   await expect(page.getByRole("alert")).toContainText("could not be verified");
   await expect(page.getByRole("cell", { name: "3001 / 3", exact: true })).toHaveCount(0);
 });
@@ -150,7 +153,8 @@ for (const failure of ["legacy", "expired", "incomplete", "revision"] as const) 
 
 test("one copy hands HoloTab a frozen, private-data-free shopping task", async ({ page, context }, info) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
-  const { pack, requests } = await mock(page);
+  const build = fixture();
+  const { pack, requests } = await mock(page, build);
   await page.getByRole("button", { name: "Shop bricks", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Make it real." });
   await expect(dialog.getByRole("button", { name: "Copy for HoloTab" })).toBeEnabled();
@@ -179,9 +183,10 @@ test("one copy hands HoloTab a frozen, private-data-free shopping task", async (
     new RegExp(`${pack.id}\\.html$`),
   );
   // A live rewind after the handoff must never change the copied order.
-  await page.evaluate(() =>
-    (window as any).events.onmessage({ data: JSON.stringify({ type: "rewind", steps: 0, width: 0, depth: 0 }) }),
-  );
+  build.pieces = [];
+  build.steps = [];
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await expect(page.locator(".timeline")).toHaveCount(0);
   await dialog.getByRole("button", { name: "Copy again" }).click();
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(prompt);
   await page.setViewportSize({ width: 390, height: 844 });
