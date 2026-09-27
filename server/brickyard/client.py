@@ -74,6 +74,10 @@ def main() -> None:
     look.add_argument("--zoom", type=float, help="1 frames the whole model, 4 a quarter of its width")
     look.add_argument("--at", type=float, nargs=3, metavar=("X", "Y", "Z"), help="center of the view, studs and plates")
     tools.add_parser("parts", help="search LDraw parts by words or number").add_argument("query")
+    tools.add_parser("colors", help="verified BrickLink colors for a part, returned as LDraw codes").add_argument(
+        "part"
+    )
+    tools.add_parser("check", help="verify every part/color pair in the current bill of materials")
     tools.add_parser("reference", help="pair this reference image with every construction render").add_argument("image")
     tools.add_parser("name", help="name the build").add_argument("name")
     args = parser.parse_args()
@@ -91,6 +95,10 @@ def main() -> None:
         out = call("run", code=Path(args.script).read_text())
     elif args.tool == "parts":
         out = call("parts", query=args.query)
+    elif args.tool == "colors":
+        out = call("colors", part=args.part)
+    elif args.tool == "check":
+        out = call("check")
     elif args.tool == "name":
         out = call("name", name=args.name)
     else:

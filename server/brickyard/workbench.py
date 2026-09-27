@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 
 from pydantic import BaseModel, ValidationError
 
-from brickyard import ldraw
+from brickyard import catalog, ldraw
 from brickyard.model import (
     FACINGS,
     ROTATIONS,
@@ -297,6 +297,18 @@ class Workbench:
                 + "\nFix the named lines in your script and run again. No candidate render was published.",
                 problems=errors + floating,
             )
+        if candidate.pieces:
+            report = await asyncio.to_thread(
+                catalog.validate, candidate.pieces, self.session.store.root.parent / "bricklink-catalog"
+            )
+            if not report["valid"]:
+                return Result(
+                    "Candidate rejected; the model and accepted script did not change.\n"
+                    + catalog.describe(report)
+                    + "\nChoose verified part/color combinations matching the reference, edit the script and run again.",
+                    problems=len(report["issues"]),
+                )
+            lines.append(catalog.describe(report))
         self.session.commit_script(candidate, kept_steps)
         problems = floating
         lines += ["Placed, but check these floating bricks, by script line:", *reports] if reports else []
@@ -364,6 +376,29 @@ class Workbench:
         hits = await asyncio.to_thread(lambda: [part_line(p) for p in ldraw.search(query)])
         text = "\n".join(hits) if hits else f"No parts match '{query}'. Try fewer or simpler words."
         return Result(text, note=f"Searched parts for '{query}'")
+
+    async def catalog_colors(self, part: str) -> Result:
+        resolved = ldraw.resolve(part)
+        if not resolved or resolved not in ldraw.catalog():
+            return Result("Unknown complete part; use bricks parts.", problems=1)
+        try:
+            record = await asyncio.to_thread(
+                catalog.Catalog(self.session.store.root.parent / "bricklink-catalog").resolve, resolved
+            )
+        except ValueError as exc:
+            return Result(str(exc), problems=1)
+        choices = catalog.available_colors(record)
+        return Result(
+            f"{resolved} → BrickLink {record.item}. Verified colors (use these LDraw codes in the script):\n"
+            + ", ".join(f"{c['color']} {c['name']}" for c in choices),
+            problems=0 if choices else 1,
+        )
+
+    async def check_catalog(self) -> Result:
+        report = await asyncio.to_thread(
+            catalog.validate, self.pieces, self.session.store.root.parent / "bricklink-catalog"
+        )
+        return Result(catalog.describe(report), problems=len(report["issues"]))
 
     async def rename(self, name: str) -> Result:
         await self.session.rename(name.strip()[:60] or "Untitled build")

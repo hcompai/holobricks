@@ -12,6 +12,9 @@
   previous model. Checks use bounding boxes; they do not certify LEGO connections or physical stability.
 - **Replay** the steps, browse the parts list, download the `.ldr`.
 - **Shop bricks**: copy a ready-made request into HoloTab, which can import the saved parts list on BrickLink and prepare carts for you to review and pay. Includes a HoloTab install link; no extension integration or API key is required.
+- **Catalog-checked inventory**: construction and shopping verify every part/color pair against BrickLink's
+  Known colors. Unverified combinations are rejected with repair choices; only complete verified inventories
+  produce canonical BrickLink XML. See [SHOPPING.md](SHOPPING.md) for freshness and availability limits.
 - **Share** an assembly GIF from the timeline or download menu, with optional HOLO4 / H Company branding for Holo builds.
 
 Gallery for the H team: [brickyard-h-company.vercel.app](https://brickyard-h-company.vercel.app) (Vercel login).
@@ -56,6 +59,9 @@ your tab + headless Chrome  <── steps, renders ──>  brickyard server  �
 - `bricks reference <image-path>` pins a photo alongside subsequent `run`/`look` renders. New user attachments select
   the first supplied image automatically; the other images remain available with `view_image`. The build loop starts
   with a compact silhouette and repairs one identified defect at a time before adding detail or scenery.
+- `bricks colors <part>` lists verified colors as LDraw codes; `bricks check` audits the current inventory.
+  `bricks run` applies the same catalog check before publishing a candidate. Cold lookups use the public catalog;
+  cached evidence is reused for 24 hours. Network failures cannot authorize an unverified purchasing list.
 - For references it has `web_search` (Linkup pages, then image URLs) and `view_image`: it downloads the photos it wants into its workspace with `curl` and looks at them, all through the build.
 - Renders come from a viewer: the server keeps a hidden Chrome on each build that asks for renders (until its run ends, or 10 idle minutes), so it renders whether or not your tab is open. It serves `web/dist`: rebuild it (`npm run build`) after web changes.
 - Its workspace keeps `notes.md` (its memory, fed back with each request), the reference photos, and `showcase/` (`agent/showcase`: the showcase renders and sources).
@@ -75,7 +81,8 @@ your tab + headless Chrome  <── steps, renders ──>  brickyard server  �
 - This loop intentionally spends additional Holo calls on quality: one brief per target, one review per changed
   geometry, additional calls for requested detail views, and a final independent review. Its scores are subjective
   model judgments, not a measured improvement guarantee. Bounding-box checks do **not** verify clutch connections,
-  physical stability, part/color availability for purchase, or every assembly step.
+  physical stability or every assembly step. Catalog checks verify recorded part/color combinations,
+  not current seller stock or delivered prices.
 - sagent comes from a local hai checkout recent enough for Linkup's `include_images`: set `HAI_ROOT` to it, with its venv synced (`cd hai && uv sync`).
 
 ```bash

@@ -31,6 +31,8 @@ function packageFor(build: Build) {
     ...[...p.pos, ...p.rot].map((v) => Math.round(v * 1_000_000)),
   ]);
   return {
+    version: 3,
+    validation: { status: "verified", valid_until: Date.now() / 1000 + 86400 },
     id: "b".repeat(64),
     build_id: build.id,
     name: build.name,
@@ -88,11 +90,11 @@ test("one copy hands HoloTab a frozen, private-data-free shopping task", async (
   await dialog.getByRole("button", { name: "Copy for HoloTab" }).click();
   const prompt = await page.evaluate(() => navigator.clipboard.readText());
   expect(prompt).toContain(`/api/shopping/${pack.id}.html`);
-  expect(prompt).toContain(`/api/shopping/${pack.id}.ldr`);
+  expect(prompt).toContain(`/api/shopping/${pack.id}.xml`);
   expect(prompt).toContain("2 pieces, 1 part/color combinations");
   expect(prompt).toContain("instead of importing again");
-  expect(prompt).toContain("3069b → BrickLink 3069");
-  expect(prompt).toContain("keeping the existing quantities and already converted BrickLink colors");
+  expect(prompt).toContain("Do not rewrite the XML");
+  expect(prompt).toContain("do not edit the verified inventory to make it pass");
   expect(prompt).toContain("do not place orders or submit payment");
   expect(prompt).not.toContain("PRIVATE REQUEST");
   expect(prompt).not.toContain("/download.ldr");
@@ -153,3 +155,40 @@ test("a stale preparation cannot expose a mismatched shopping link", async ({ pa
   await expect(dialog.getByRole("button", { name: "Copy for HoloTab" })).toHaveCount(0);
   await expect(dialog.getByRole("link", { name: "View or download parts" })).toHaveCount(0);
 });
+
+test("catalog rejections explain the invalid combinations and offer no shopping handoff", async ({ page }) => {
+  await mock(page);
+  await page.route("**/api/builds/shop-test/shopping", (route) =>
+    route.fulfill({
+      status: 422,
+      json: {
+        detail: {
+          message: "Some bricks could not be verified in their chosen colors.",
+          issues: [
+            { part: "3001.dat", color_name: "Very Light Grey", count: 2, reason: "Color not recorded for this part." },
+          ],
+        },
+      },
+    }),
+  );
+  await page.getByRole("button", { name: "Shop bricks", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("alert")).toContainText("2 × 3001.dat · Very Light Grey");
+  await expect(dialog.getByRole("button", { name: "Copy for HoloTab" })).toHaveCount(0);
+  await expect(dialog.getByRole("link", { name: "View or download parts" })).toHaveCount(0);
+});
+
+for (const legacy of [true, false]) {
+  test(`rejects ${legacy ? "unvalidated legacy" : "expired"} shopping packages`, async ({ page }) => {
+    await mock(page);
+    const pack = packageFor(fixture());
+    await page.route("**/api/builds/shop-test/shopping", (route) =>
+      route.fulfill({
+        json: legacy ? { ...pack, version: 2 } : { ...pack, validation: { status: "verified", valid_until: 1 } },
+      }),
+    );
+    await page.getByRole("button", { name: "Shop bricks", exact: true }).click();
+    await expect(page.getByRole("alert")).toContainText(legacy ? "needs catalog validation" : "fresh catalog check");
+    await expect(page.getByRole("button", { name: "Copy for HoloTab" })).toHaveCount(0);
+  });
+}

@@ -14,7 +14,7 @@ from brickyard.workbench import Workbench
 
 
 @pytest.fixture
-def bench(tmp_path, monkeypatch):
+def bench(tmp_path, monkeypatch, offline_catalog):
     if not ldraw.LDRAW.exists():
         pytest.skip("LDraw library not downloaded")
     session = Session(Build(), Store(tmp_path))
@@ -23,6 +23,43 @@ def bench(tmp_path, monkeypatch):
 
 
 CORE = 'step("Core")\nbrick("3001", 0, 0, 0, 4)\n'
+
+
+def test_real_bom_gate_rejects_a_known_piece_in_an_unverified_color_atomically(bench):
+    async def run():
+        assert not (await bench.run_script(CORE)).problems
+        saved = bench.session.build.model_dump_json()
+        queue = bench.session.subscribe()
+        result = await bench.run_script(CORE.replace(", 4)", ", 503)"))
+        assert result.problems == 1 and "Known colors" in result.text
+        assert "14 Yellow" in result.text
+        assert bench.session.build.model_dump_json() == saved
+        assert bench.session.store.load(bench.session.build.id).model_dump_json() == saved
+        assert queue.empty() and not result.images
+        assert not (await bench.run_script(CORE.replace(", 4)", ", 14)"))).problems
+        choices = await bench.catalog_colors("3001")
+        assert not choices.problems and "14 Yellow" in choices.text
+        assert not (await bench.check_catalog()).problems
+
+    asyncio.run(run())
+
+
+def test_catalog_outage_does_not_commit_or_replace_the_accepted_script(bench, monkeypatch):
+    from brickyard import catalog
+
+    async def run():
+        await bench.run_script(CORE)
+        saved = bench.session.build.model_dump_json()
+
+        def unavailable(*args):
+            raise catalog.CatalogUnavailable("Catalog temporarily unavailable")
+
+        monkeypatch.setattr(catalog.Catalog, "get", unavailable)
+        result = await bench.run_script(CORE.replace(", 4)", ", 14)"))
+        assert result.problems and "temporarily unavailable" in result.text
+        assert bench.session.build.model_dump_json() == saved
+
+    asyncio.run(run())
 
 
 def test_same_count_geometry_changes_cannot_answer_an_old_render(tmp_path):

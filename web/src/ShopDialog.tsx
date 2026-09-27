@@ -131,13 +131,13 @@ export function ShopDialog({ build, preview, onClose }: Props) {
       </ol>
       {error ? (
         <div className="shop-error" role="alert">
-          <p>{error}</p>
+          <p style={{ whiteSpace: "pre-line" }}>{error}</p>
           <button onClick={() => setAttempt((n) => n + 1)}>Try again</button>
         </div>
       ) : (
         <button className="shop-copy" disabled={!pack || copying} onClick={copy}>
           {copied ? <CheckIcon size={18} /> : <CopyIcon size={18} />}
-          {!pack ? "Preparing your parts…" : copied ? "Copy again" : "Copy for HoloTab"}
+          {!pack ? "Verifying your parts and colors…" : copied ? "Copy again" : "Copy for HoloTab"}
         </button>
       )}
       <p className="shop-feedback" role="status">

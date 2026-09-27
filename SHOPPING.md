@@ -1,70 +1,95 @@
 # Shopping with HoloTab
 
-After a nonempty build finishes, **Shop bricks** opens a preview and a short handoff:
-install HoloTab in Chrome if needed, copy the prepared request, then paste and send it
-in HoloTab. The request includes a saved parts-list page, its download, and the buying
-procedure. Clipboard failures expose selectable text. No extension detection or automatic
-task launch is claimed; Brickyard only reports that the request was copied.
+**Shop bricks → install HoloTab if needed → copy → paste and send.** Brickyard verifies
+all part/color pairs before offering the handoff. HoloTab receives a frozen BrickLink
+Wanted List XML, imports its exact contents, checks stock and delivered cost, and
+prepares carts for the user to review and pay. No extension trigger is required.
 
-## Use the merchant's bulk importer
+## One catalog gate for construction and purchasing
 
-BrickLink accepts LDraw `.ldr` files directly in its [Wanted List file importer](https://www.bricklink.com/help.asp?helpID=207).
-We export every placed piece and preserve its color and transform, including
-legacy pieces without matching step metadata. The purchasing file normalizes two
-verified catalog aliases: `3069b.dat` → `3069.dat` and `6143.dat` → `3941.dat`.
-BrickLink lists them under [3069](https://www.bricklink.com/v2/catalog/catalogitem.page?P=3069)
-and [3941](https://www.bricklink.com/v2/catalog/catalogitem.page?P=3941); the official
-LDraw files also document these aliases. Both import targets are valid LDraw references.
-We never remove mold/print suffixes generically, change the source model, or treat
-LDraw color codes as BrickLink XML codes. The inventory page shows both the source
-reference and import reference. Other parts still require native importer verification.
-HoloTab downloads this file,
-uses the native importer, verifies the resulting quantities and colors, then uses
-[Buy All / Auto-select / Create Carts](https://www.bricklink.com/help.asp?helpID=2445).
+`server/brickyard/catalog.py` owns validation. The model cannot assert its own catalog
+correctness, and the HoloTab prompt does not perform ID translation.
 
-The generated request tells HoloTab to report unresolved items rather than silently
-omit or substitute them, use the delivery country from the account (ask when absent),
-review shipping/minimums/existing cart contents, and leave payment to the user. Its
-stable Wanted List name allows interrupted sessions to resume without uploading the
-same quantities twice. Actual login, upload and checkout still depend on HoloTab and
-the merchant; copying a request is not evidence of a completed order.
+1. Require a recognized complete LDraw part and explicit LDraw color (never 16/24).
+2. Read explicit BrickLink references from the official part's `!KEYWORDS` metadata.
+   Otherwise query the exact part ID. Never strip mold/print suffixes or search for a
+   visually similar substitute. Multiple references must converge on one canonical ID.
+3. Verify an active PART entry in BrickLink's public catalog. A different returned ID
+   requires a documented catalog alias. Unknowns, ambiguous references and missing
+   entries fail validation.
+4. Match the LDraw color name against this part's **Known** colors, obtaining the
+   canonical BrickLink numeric color ID. LDraw [deliberately uses BrickLink names](https://www.ldraw.org/article/547.html).
+   Only case, spaces/hyphens/underscores and Gray/Grey spelling are normalized. There is
+   no RGB approximation or assumption that the two numeric color systems match.
+   The All colors selector and seller listings are not manufacturing evidence.
+5. Every source lot must pass. Aggregate only then by canonical part/color, preserve
+   every quantity, and generate XML with ITEMTYPE P, ITEMID, COLOR, MINQTY and CONDITION N.
+   No omitted lots, partial exports or automatic substitutions.
+
+`bricks run` checks the whole candidate (including unchanged and inherited pieces)
+before publication. Failure preserves the accepted model and script, returns each bad
+pair and the verified LDraw color choices, and allows Holo to repair its script.
+`bricks colors <part>` lets Holo choose a valid palette first; `bricks check` audits the
+current build. Existing/manual/demo builds are revalidated before purchasing too.
+The ordinary viewer's BOM is a design inventory; only the gated XML is a verified
+purchasing inventory. Legacy designs may contain unverified pairs and need correction.
+
+## Data freshness and failure behavior
+
+The default provider reads public BrickLink catalog pages, without account credentials
+or extra API keys. Catalog HTML is cached under `data/bricklink-catalog` with its requested
+ID, source URL, fetch time and SHA-256. Each response is bounded, parsed without executing
+JavaScript, and must match the expected identity and Known colors structure. Cache reads
+reparse and check the hash; entries expire after 24 hours. Cached parts are reused across
+runs/colors/builds. Cold requests are serialized and limited to two per second; a BOM
+check has a 60-second budget (plus an in-flight request). Retries continue from the cache.
+
+Network errors, rate limits, changed/truncated pages, unavailable mappings and expired
+cache entries **cannot** produce a successful validation. A fresh cache can serve an
+offline check; a stale cache cannot. This public-page adapter can be replaced by an
+authenticated catalog API without changing the validation or XML contract. The HTML
+adapter's maintenance dependency is explicit: site changes may block shopping until
+it is updated; there is no fallback that invents a match.
+
+Catalog membership does not promise current stock, quantity, condition, price, one
+specific mold within a catalog family, or physical buildability. HoloTab checks actual
+seller inventory and shipping; unresolved items stop the handoff instead of being
+silently substituted. Printed assembly instructions are not included.
 
 ## Saved inventory contract
 
-- `POST /api/builds/{id}/shopping` takes `{ "revision": "..." }` and rejects a busy,
-  unfinished, empty or changed build. Invalid parts and unspecified colors are rejected.
-- The response includes a content-addressed package ID, source model revision, piece
-  and lot counts, and the inventory. Files live in `data/shopping/{id}.{json,html,ldr}`
-  and are served by `GET /api/shopping/{filename}`. Retries are idempotent and subsequent
-  model edits do not change previously copied links.
-- Package version 2 includes `inventory[].import_part` and counts lots by import
-  reference/color. Reopening **Shop bricks** creates the corrected package; previously
-  copied version 1 files stay immutable. Regenerate static galleries to publish the fix.
-  The handoff also explains how to repair these specific aliases in an earlier rejected
-  import without changing quantities or already translated BrickLink colors.
-- No chat, source scripts, reference photos or credentials are included in these files.
-- Gallery export produces the same files under `gallery/shopping`, with a per-build
-  `gallery/builds/{id}.shopping.json` manifest. No live API is needed. Older gallery
-  exports need regeneration; the UI explains when shopping files are missing. Keep old
-  deployment files if previously copied gallery links must survive a gallery replacement.
-- The importer documents a 204,800-byte upload limit. Larger inventories are rejected
-  explicitly; we never truncate a shopping list.
-
-This feature prepares an inventory, not a certified kit. It does not provide live
-stock/prices, proof of physical buildability, printable instructions, native HoloTab
-launch, or a unified payment across sellers. Printed instructions are explicitly
-marked as not included in the shopping dialog.
+- `GET /api/builds/{id}/bom/validation` returns the checked revision, every issue,
+  verified source lots, canonical IDs, evidence and available colors for repairs.
+- `POST /api/builds/{id}/shopping` takes `{ "revision": "..." }`. It rejects busy,
+  unfinished, empty or changed builds, and returns structured HTTP 422 issues if any
+  catalog check fails. Slow catalog IO runs outside the server event loop.
+- Successful version 3 packages contain the source revision, counts, canonical
+  inventory, evidence and validation expiry. Files are content-addressed
+  `data/shopping/{id}.{json,html,xml}`. Repeated preparation with the same evidence
+  is idempotent; source edits or refreshed evidence cannot change saved files.
+- Downloads require a current version 3 validation. Expired or older unvalidated
+  packages return 410 with instructions to reopen Shop bricks. Old files are retained
+  for evidence, not served as verified purchases. Already downloaded copies cannot be
+  revoked. Responses use no-store to permit freshness checks.
+- Gallery export runs the same validation and emits an error manifest for invalid
+  builds. It includes XML and evidence for valid ones; the frontend refuses legacy or
+  expired packages. Regenerate static galleries at least daily for fresh handoffs.
+  Static files themselves remain dated snapshots, not a live stock/catalog service.
+- Files exclude chat, source scripts, reference photos and credentials. Model geometry
+  is unchanged by catalog normalization. XML is generated and escaped by an XML library.
+- The documented 204,800-byte import bound is enforced without truncation.
 
 ## Verification
 
-Server tests cover exact import counts, colors and transforms; orphaned-step pieces;
-the Microduck's three rejected tile colors; documented aliases and untouched variants;
-revision conflicts; repeat requests; immutable links; invalid/incomplete inventories;
-the file-size bound; HTML escaping; private-data exclusion; and static gallery files.
-Browser tests cover the real clipboard, link handoff, live updates after copying,
-mobile layout, clipboard fallback, retry, and disabled/stale shopping states.
+Offline tests exercise the real catalog validator using explicit source fixtures:
+identity/type/status, aliases, print suffixes, Known vs All colors, name/code conversion,
+ambiguous mappings, stale/corrupt cache, HTTP errors, timeout budgets and exact quantities.
+Construction tests prove rejected pairs and outages cannot replace the accepted model.
+API and gallery tests prove no partial file escapes; browser tests cover validated XML
+handoffs, blocking errors, legacy/expired packages, clipboard feedback and mobile layout.
 
-For a full product acceptance run, paste the copied request into the released HoloTab
-extension and verify the importer resolves every lot and prepares the expected carts.
-Stop before submitting payment. This merchant/extension run is separate from automated
-tests, which do not access an account, create a Wanted List or buy anything.
+The saved Microduck audit found 7 unverified part/color combinations (25 pieces), despite
+all part geometries existing in LDraw. It is intentionally blocked until those choices
+are repaired. No inference run, model recolor, merchant account change or purchase was
+performed to make this test pass. Authenticated import/cart acceptance in the released
+HoloTab extension remains separate product QA.

@@ -29,7 +29,7 @@ def export(store: Store, ids: list[str], site: Path) -> Path:
         (out / "builds" / f"{build.id}.bom.json").write_text(json.dumps(build.bom()))
         (out / "builds" / f"{build.id}.ldr").write_text(build.to_ldraw())
         try:
-            package = shopping.save(build, out / "shopping")
+            package = shopping.save(build, out / "shopping", store.root.parent / "bricklink-catalog")
         except ValueError as exc:
             package = {"error": str(exc)}
         (out / "builds" / f"{build.id}.shopping.json").write_text(json.dumps(package))

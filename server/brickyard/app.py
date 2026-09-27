@@ -9,6 +9,7 @@ import json
 import logging
 import os
 import re
+import time
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 from typing import Any, Literal
@@ -19,7 +20,7 @@ from fastapi.responses import FileResponse, PlainTextResponse, Response, Streami
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ValidationError
 
-from brickyard import ldraw, shopping
+from brickyard import catalog, ldraw, shopping
 from brickyard.builders import BUILDERS
 from brickyard.model import Box, Build, Camera, Message
 from brickyard.session import Session, Store
@@ -63,6 +64,8 @@ TOOLS = {
     "run": Workbench.run_script,
     "look": Workbench.look,
     "parts": Workbench.find_parts,
+    "colors": Workbench.catalog_colors,
+    "check": Workbench.check_catalog,
     "name": Workbench.rename,
 }
 
@@ -313,6 +316,13 @@ async def bill_of_materials(build_id: str) -> list[dict]:
     return session_for(build_id).build.bom()
 
 
+@app.get("/api/builds/{build_id}/bom/validation")
+async def validate_materials(build_id: str) -> dict:
+    build = session_for(build_id).build.model_copy(deep=True)
+    report = await asyncio.to_thread(catalog.validate, build.pieces, store.root.parent / "bricklink-catalog")
+    return report | {"revision": build.revision}
+
+
 @app.get("/api/builds/{build_id}/download.ldr")
 async def download(build_id: str) -> PlainTextResponse:
     build = session_for(build_id).build
@@ -326,24 +336,37 @@ async def prepare_shopping(build_id: str, request: ShoppingRequest) -> dict:
     if session.build.revision != request.revision:
         raise HTTPException(409, "Your model changed. Close this window and try again to shop the latest version.")
     try:
-        return shopping.save(session.build, store.root.parent / "shopping")
+        async with session.lock:
+            return await asyncio.to_thread(
+                shopping.save,
+                session.build.model_copy(deep=True),
+                store.root.parent / "shopping",
+                store.root.parent / "bricklink-catalog",
+            )
+    except shopping.ValidationError as exc:
+        raise HTTPException(422, {"message": str(exc), "issues": exc.report["issues"]}) from exc
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
 
 
 @app.get("/api/shopping/{filename}")
 def shopping_file(filename: str) -> FileResponse:
+    if re.fullmatch(r"[a-f0-9]{64}\.ldr", filename):
+        raise HTTPException(410, "This older parts list was not catalog-validated. Reopen Shop bricks to check it.")
     if not shopping.PACKAGE_FILE.fullmatch(filename):
         raise HTTPException(404, "No such parts list.")
     path = store.root.parent / "shopping" / filename
     if not path.is_file():
         raise HTTPException(404, "No such parts list.")
+    package = json.loads(path.with_suffix(".json").read_text())
+    if package.get("version") != 3 or package.get("validation", {}).get("valid_until", 0) <= time.time():
+        raise HTTPException(410, "This parts list needs a fresh catalog check. Reopen Shop bricks.")
     suffix = path.suffix
     return FileResponse(
         path,
-        media_type={".ldr": "text/plain", ".html": "text/html", ".json": "application/json"}[suffix],
-        filename=f"brickyard-{filename[:12]}-parts.ldr" if suffix == ".ldr" else None,
-        headers={"Cache-Control": "private, max-age=31536000, immutable", "X-Content-Type-Options": "nosniff"},
+        media_type={".xml": "application/xml", ".html": "text/html", ".json": "application/json"}[suffix],
+        filename=f"brickyard-{filename[:12]}-parts.xml" if suffix == ".xml" else None,
+        headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"},
     )
 
 
