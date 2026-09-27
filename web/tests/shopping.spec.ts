@@ -186,7 +186,7 @@ test("one copy hands HoloTab a frozen, private-data-free shopping task", async (
   build.pieces = [];
   build.steps = [];
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
-  await expect(page.locator(".timeline")).toHaveCount(0);
+  await expect(page.locator(".timeline")).toContainText("No steps yet");
   await dialog.getByRole("button", { name: "Copy again" }).click();
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(prompt);
   await page.setViewportSize({ width: 390, height: 844 });
