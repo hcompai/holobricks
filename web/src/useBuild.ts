@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, GALLERY, type Build, type BuildEvent, type RenderRequest } from "./api";
+import { api, GALLERY, HttpError, type Build, type BuildEvent, type RenderRequest } from "./api";
 
 const THINKING_CHARS = 1500;
 
@@ -7,8 +7,8 @@ function apply(build: Build, event: BuildEvent): Build {
   switch (event.type) {
     case "hello":
     case "build": {
-      const { name, prompt, builder, status, created, width, depth } = event.build;
-      return { ...build, name, prompt, builder, status, created, width, depth };
+      const { name, prompt, builder, status, created, updated, width, depth } = event.build;
+      return { ...build, name, prompt, builder, status, created, updated, width, depth };
     }
     case "message":
       if (build.messages.some((m) => m.at === event.message.at && m.text === event.message.text)) return build;
@@ -44,28 +44,39 @@ export interface LiveBuild {
   thinking: string;
   /** The latest render the builder asked a viewer for. */
   renderRequest: RenderRequest | null;
+  /** Why the build could not be opened; null while it loads or once it has. */
+  error: string | null;
 }
+
+const failure = (e: unknown) =>
+  e instanceof HttpError && e.status === 404 ? "Build not found" : "Couldn't load this build";
 
 /** The open build, kept live by its event stream; every (re)connect resyncs from a snapshot and replays what arrived meanwhile. */
 export function useBuild(id: string | null): LiveBuild {
   const [build, setBuild] = useState<Build | null>(null);
   const [thinking, setThinking] = useState("");
   const [renderRequest, setRenderRequest] = useState<RenderRequest | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setBuild(null);
     setThinking("");
     setRenderRequest(null);
+    setError(null);
     if (!id) return;
     let active = true;
+    let current: Build | null = null;
+    const failed = (e: unknown) => {
+      console.error(e);
+      if (active && !current) setError(failure(e));
+    };
     if (GALLERY) {
-      api.build(id).then((fetched) => active && setBuild(fetched), console.error);
+      api.build(id).then((fetched) => active && setBuild((current = fetched)), failed);
       return () => {
         active = false;
       };
     }
     let pending: BuildEvent[] | null = null;
-    let current: Build | null = null;
     let sync = 0;
     const resync = () => {
       const mine = ++sync;
@@ -77,9 +88,9 @@ export function useBuild(id: string | null): LiveBuild {
           pending = null;
           setBuild(current);
         },
-        (error) => {
+        (e) => {
           if (mine === sync) pending = null;
-          console.error(error);
+          failed(e);
         },
       );
     };
@@ -113,5 +124,5 @@ export function useBuild(id: string | null): LiveBuild {
   }, [id]);
 
   const current = build?.id === id ? build : null;
-  return { build: current, loading: id !== null && !current, thinking, renderRequest };
+  return { build: current, loading: id !== null && !current && !error, thinking, renderRequest, error };
 }

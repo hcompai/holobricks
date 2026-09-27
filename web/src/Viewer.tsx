@@ -1,6 +1,7 @@
-import { type Ref, useEffect, useImperativeHandle, useRef } from "react";
+import { type Ref, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { ArrowsClockwiseIcon } from "@phosphor-icons/react";
 import { api, GALLERY, type Build, type RenderRequest } from "./api";
+import { BrickLoader } from "./BrickLoader";
 import { BrickScene, type View } from "./scene";
 
 const VIEWS: { id: View; label: string }[] = [
@@ -28,12 +29,17 @@ export function ViewControls({
   return (
     <div className="tabs">
       {VIEWS.map((v) => (
-        <button key={v.id} className={framing.view === v.id ? "active" : ""} onClick={() => onFrame({ view: v.id })}>
+        <button
+          key={v.id}
+          className={framing.view === v.id ? "active" : ""}
+          aria-pressed={framing.view === v.id}
+          onClick={() => onFrame({ view: v.id })}
+        >
           {v.label}
         </button>
       ))}
       <span className="tabs-sep" />
-      <button className={spin ? "active" : ""} onClick={() => onSpin(!spin)}>
+      <button className={spin ? "active" : ""} aria-pressed={spin} onClick={() => onSpin(!spin)}>
         <ArrowsClockwiseIcon size={14} weight="bold" />
         Spin
       </button>
@@ -49,19 +55,25 @@ export interface ViewerHandle {
 interface Props {
   ref?: Ref<ViewerHandle>;
   build: Build | null;
-  loading: boolean;
+  /** What is opening, shown until its pieces are drawn; null when no build is open. */
+  opening: string | null;
   step: number;
   renderRequest: RenderRequest | null;
   framing: Framing;
   spin: boolean;
+  /** Whether the library's thumbnail shows the current pieces; undefined until the library loads. */
+  thumbnailFresh: boolean | undefined;
+  onThumbnail: () => void;
 }
 
-export function Viewer({ ref, build, loading, step, renderRequest, framing, spin }: Props) {
+export function Viewer(props: Props) {
+  const { ref, build, opening, step, renderRequest, framing, spin, thumbnailFresh, onThumbnail } = props;
   const container = useRef<HTMLDivElement>(null);
   const scene = useRef<BrickScene | null>(null);
   const framedBuild = useRef<string | null>(null);
   const thumbnailed = useRef(new Set<string>());
   const answered = useRef(new Set<string>());
+  const [drawn, setDrawn] = useState<string | null>(null);
   const width = build?.width || 32;
   const depth = build?.depth || 32;
 
@@ -77,22 +89,34 @@ export function Viewer({ ref, build, loading, step, renderRequest, framing, spin
     const s = scene.current;
     if (!s) return;
     let current = true;
-    s.setPieces(build?.pieces ?? []).then(async () => {
-      if (!current || !build || !build.pieces.length) return;
+    if (!build) setDrawn(null);
+    s.setPieces(build?.pieces ?? []).then(() => {
+      if (!current || !build) return;
+      setDrawn(build.id);
+      if (!build.pieces.length) return;
       if (framedBuild.current !== build.id || !s.userMoved) {
         framedBuild.current = build.id;
         s.frameView(framing.view, width, depth);
-      }
-      if (!GALLERY && build.status === "done" && !thumbnailed.current.has(build.id)) {
-        thumbnailed.current.add(build.id);
-        const png = await s.thumbnail();
-        if (png) await api.putThumbnail(build.id, png);
       }
     });
     return () => {
       current = false;
     };
   }, [build?.id, build?.pieces, build?.status]);
+
+  useEffect(() => {
+    const s = scene.current;
+    if (GALLERY || !s || !build?.pieces.length || build.status !== "done" || thumbnailFresh !== false) return;
+    const version = `${build.id}:${build.updated}`;
+    if (thumbnailed.current.has(version)) return;
+    thumbnailed.current.add(version);
+    s.setPieces(build.pieces)
+      .then(() => s.thumbnail())
+      .then(async (png) => {
+        if (png && (await api.putThumbnail(build.id, png)).ok) onThumbnail();
+      })
+      .catch((error) => console.error("Could not save the thumbnail", error));
+  }, [build?.id, build?.status, build?.updated, thumbnailFresh]);
 
   useEffect(() => {
     const s = scene.current;
@@ -119,7 +143,8 @@ export function Viewer({ ref, build, loading, step, renderRequest, framing, spin
   return (
     <div className="viewer">
       <div className="viewer-canvas" ref={container} />
-      {!build && !loading && (
+      {opening && drawn !== build?.id && <BrickLoader label={opening} />}
+      {!build && !opening && (
         <div className="viewer-empty">
           {GALLERY ? "Pick a build from the library." : "Describe a model in the chat to start building."}
         </div>

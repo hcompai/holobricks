@@ -30,11 +30,14 @@ export interface BuildSummary {
   builder: string;
   status: Status;
   created: number;
+  /** When the pieces last changed, in seconds; 0 when unknown. */
+  updated: number;
   pieces: number;
   steps: number;
   width: number;
   depth: number;
-  thumbnail?: boolean;
+  /** When the thumbnail was saved, in milliseconds; null when there is none. */
+  thumbnail?: number | null;
 }
 
 export interface Build extends Omit<BuildSummary, "pieces" | "steps" | "thumbnail"> {
@@ -113,6 +116,15 @@ const GALLERY_URLS: typeof LIVE_URLS = {
 
 const urls = GALLERY ? GALLERY_URLS : LIVE_URLS;
 
+export class HttpError extends Error {
+  constructor(
+    readonly status: number,
+    detail: string,
+  ) {
+    super(`${status}: ${detail}`);
+  }
+}
+
 async function json<T>(response: Promise<Response>): Promise<T> {
   const r = await response;
   if (!r.ok) {
@@ -122,7 +134,7 @@ async function json<T>(response: Promise<Response>): Promise<T> {
       const parsed = JSON.parse(body).detail;
       if (parsed) detail = typeof parsed === "string" ? parsed : JSON.stringify(parsed);
     } catch {}
-    throw new Error(`${r.status}: ${detail}`);
+    throw new HttpError(r.status, detail);
   }
   return r.json() as Promise<T>;
 }
@@ -134,7 +146,9 @@ export const api = {
   builds: () => json<BuildSummary[]>(fetch(urls.builds)),
   build: (id: string) => json<Build>(fetch(urls.build(id))),
   bom: (id: string) => json<BomLine[]>(fetch(urls.bom(id))),
-  thumbnailUrl: urls.thumbnail,
+  thumbnailUrl: (id: string, version: number) => `${urls.thumbnail(id)}?v=${version}`,
+  /** A chat image as WebP with its short side at most 240 pixels. */
+  smallImageUrl: (url: string) => url.replace(/[^/]+$/, "small/$&.webp"),
   downloadUrl: urls.download,
   partUrl: urls.part,
   ldconfigUrl: urls.ldconfig,

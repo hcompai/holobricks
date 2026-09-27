@@ -85,13 +85,22 @@ export function ChatPanel({ build, loading, thinking, onCreate, onSay }: Props) 
   const input = useRef<HTMLTextAreaElement>(null);
   const picker = useRef<HTMLInputElement>(null);
   const [opened, setOpened] = useState<string | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const scrolled = useRef<string | null>(null);
   const busy = build?.status === "building";
   const waiting = useWaitingLine(busy);
   const changing = Boolean(build || loading);
 
   useEffect(() => {
-    log.current?.scrollTo({ top: log.current.scrollHeight, behavior: "smooth" });
-  }, [build?.messages.length, busy]);
+    const jump = scrolled.current !== (build?.id ?? null);
+    scrolled.current = build?.id ?? null;
+    log.current?.scrollTo({ top: log.current.scrollHeight, behavior: jump ? "instant" : "smooth" });
+  }, [build?.id, build?.messages.length, busy]);
+
+  const home = !build && !loading;
+  useEffect(() => {
+    if (home) input.current?.focus();
+  }, [home]);
 
   useEffect(() => {
     thought.current?.scrollTo({ top: thought.current.scrollHeight });
@@ -158,7 +167,12 @@ export function ChatPanel({ build, loading, thinking, onCreate, onSay }: Props) 
                   onClick={() => setOpened(src)}
                   title={m.role === "user" ? "Open the image" : "Open the render"}
                 >
-                  <img src={src} alt={m.role === "user" ? "Your reference image" : `The render ${who} saw`} />
+                  <img
+                    src={api.smallImageUrl(src)}
+                    alt={m.role === "user" ? "Your reference image" : `The render ${who} saw`}
+                    loading="lazy"
+                    decoding="async"
+                  />
                 </button>
               ))}
             </div>
@@ -182,10 +196,17 @@ export function ChatPanel({ build, loading, thinking, onCreate, onSay }: Props) 
       {GALLERY && <p className="gallery-note">Read-only gallery. New builds run in the local app with Holo.</p>}
       {!GALLERY && (
         <div
-          className="composer"
-          onDragOver={(e) => e.preventDefault()}
+          className={dragging ? "composer dragging" : "composer"}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragging(true);
+          }}
+          onDragLeave={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false);
+          }}
           onDrop={(e) => {
             e.preventDefault();
+            setDragging(false);
             attach(imageFiles(e.dataTransfer.files));
           }}
         >
@@ -217,7 +238,7 @@ export function ChatPanel({ build, loading, thinking, onCreate, onSay }: Props) 
               attach(files);
             }}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
+              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
                 e.preventDefault();
                 send();
               }

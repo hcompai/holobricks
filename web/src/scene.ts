@@ -238,6 +238,8 @@ export class BrickScene {
   private materials: Promise<void>;
   private visibleStep = Infinity;
   private loading: Promise<void> = Promise.resolve();
+  private wanted: Piece[] | null = null;
+  private shown: Piece[] | null = null;
   /** Set once the user orbits or zooms, so live framing stops fighting them. */
   userMoved = false;
   private resizeObserver: ResizeObserver;
@@ -367,9 +369,12 @@ export class BrickScene {
     return template;
   }
 
-  /** Show exactly these pieces; calls apply in order, and each resolves once its pieces are drawn. */
+  /** Show exactly these pieces; calls apply in order, skipping any a later call superseded, and each resolves once its turn is drawn. */
   setPieces(pieces: Piece[]): Promise<void> {
-    this.loading = this.loading.catch(() => undefined).then(() => this.apply(pieces));
+    this.wanted = pieces;
+    this.loading = this.loading
+      .catch(() => undefined)
+      .then(() => (this.wanted === pieces && this.shown !== pieces ? this.apply(pieces) : undefined));
     return this.loading;
   }
 
@@ -401,6 +406,7 @@ export class BrickScene {
       if (!batch) this.batches.set(key, (batch = new Batch(template, this.root)));
       batch.set(group, this.visibleStep);
     });
+    this.shown = pieces;
     this.dirty = this.shadowsStale = true;
   }
 
