@@ -163,7 +163,8 @@ export const api = {
   downloadUrl: urls.download,
   partUrl: urls.part,
   ldconfigUrl: urls.ldconfig,
-  create: (prompt: string, images: string[] = []) => json<BuildSummary>(post("/api/builds", { prompt, images })),
+  create: (prompt: string, images: string[] = []) =>
+    json<BuildSummary>(post("/api/builds", { prompt, images, builder: "holo" })),
   say: (id: string, text: string, images: string[] = []) =>
     json<BuildSummary>(post(`/api/builds/${id}/messages`, { text, images })),
   stop: (id: string) => post(`/api/builds/${id}/stop`, {}),

@@ -84,7 +84,7 @@ def test_gallery_export_holds_every_file_the_static_site_reads(tmp_path, offline
     assert (out / "builds" / f"{build.id}.bom.json").exists() and (out / "LDConfig.ldr").exists()
 
 
-def test_changing_a_hand_scripted_build_hands_it_to_a_live_builder(tmp_path, monkeypatch):
+def test_changing_a_hand_scripted_build_hands_it_to_holo_not_demo(tmp_path, monkeypatch):
     from brickyard import app as app_module
     from brickyard.builders import BUILDERS
     from brickyard.model import Build
@@ -92,12 +92,89 @@ def test_changing_a_hand_scripted_build_hands_it_to_a_live_builder(tmp_path, mon
 
     store = Store(tmp_path)
     monkeypatch.setattr(app_module, "store", store)
-    monkeypatch.setattr(BUILDERS["demo"], "delay", 0)
+
+    class HoloRecorder:
+        name = "holo"
+
+        async def run(self, session, request, references):
+            pass
+
+    monkeypatch.setitem(BUILDERS, "holo", HoloRecorder())
     build = Build(prompt="Paris", builder="claude", status="done")
     store.save(build)
     with TestClient(app_module.app) as client:
         changed = client.post(f"/api/builds/{build.id}/messages", json={"text": "add a tree"}).json()
-    assert changed["builder"] == next(iter(BUILDERS))
+    assert changed["builder"] == "holo"
+
+
+@pytest.mark.parametrize("explicit", [False, True])
+def test_new_build_without_holo_fails_before_saving_anything(tmp_path, monkeypatch, explicit):
+    from brickyard import app as app_module
+    from brickyard.session import Store
+
+    class DemoMustNotRun:
+        name = "demo"
+
+        async def run(self, *args):
+            pytest.fail("An unavailable Holo must never substitute the demo")
+
+    store = Store(tmp_path)
+    monkeypatch.setattr(app_module, "store", store)
+    monkeypatch.setattr(app_module, "BUILDERS", {"demo": DemoMustNotRun()})
+    body = {"prompt": "Build the Citadelle de Port-Louis", "images": ["data:image/jpeg;base64,anBlZw=="]}
+    if explicit:
+        body["builder"] = "holo"
+    with TestClient(app_module.app) as client:
+        response = client.post("/api/builds", json=body)
+    assert response.status_code == 503
+    assert "Holo is not configured" in response.json()["detail"]
+    assert store.summaries() == []
+    assert not list(tmp_path.rglob("*.jpg"))
+
+
+def test_default_new_build_reaches_holo_with_verbatim_prompt_even_if_demo_is_first(tmp_path, monkeypatch):
+    from brickyard import app as app_module
+    from brickyard.session import Store
+
+    seen = []
+
+    class Recorder:
+        def __init__(self, name):
+            self.name = name
+
+        async def run(self, session, request, references):
+            seen.append((self.name, request, [p.read_bytes() for p in references]))
+
+    monkeypatch.setattr(app_module, "store", Store(tmp_path))
+    monkeypatch.setattr(app_module, "BUILDERS", {"demo": Recorder("demo"), "holo": Recorder("holo")})
+    prompt = "Construis la Citadelle de Port-Louis à Lorient"
+    with TestClient(app_module.app) as client:
+        response = client.post("/api/builds", json={"prompt": prompt, "images": ["data:image/jpeg;base64,anBlZw=="]})
+        assert response.status_code == 200 and response.json()["builder"] == "holo"
+        for _ in range(50):
+            if seen:
+                break
+            time.sleep(0.01)
+    assert seen == [("holo", prompt, [b"jpeg"])]
+
+
+@pytest.mark.parametrize("saved_builder", ["holo", "claude"])
+def test_followup_without_holo_preserves_existing_build_and_does_not_start_demo(tmp_path, monkeypatch, saved_builder):
+    from brickyard import app as app_module
+    from brickyard.model import Build
+    from brickyard.session import Store
+
+    store = Store(tmp_path)
+    monkeypatch.setattr(app_module, "store", store)
+    monkeypatch.setattr(app_module, "BUILDERS", {"demo": app_module.BUILDERS["demo"]})
+    build = Build(prompt="Citadelle", builder=saved_builder, status="done")
+    store.save(build)
+    before = build.model_dump()
+    with TestClient(app_module.app) as client:
+        response = client.post(f"/api/builds/{build.id}/messages", json={"text": "Add the entrance gate"})
+        assert response.status_code == 503
+        assert client.get(f"/api/builds/{build.id}").json() == before
+    assert store.load(build.id).model_dump() == before
 
 
 def test_reference_images_reach_the_chat_and_the_builder_within_holos_image_budget(tmp_path, monkeypatch):
