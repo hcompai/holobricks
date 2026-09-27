@@ -53,6 +53,26 @@ function packageFor(build: Build) {
   };
 }
 
+function bomFor(build: Build) {
+  return {
+    revision: packageFor(build).revision,
+    pieces: 2,
+    validation: { status: "verified", valid_until: Date.now() / 1000 + 86400 },
+    lines: [
+      {
+        part: "3001.dat",
+        title: "Brick 2 x 4",
+        color: 14,
+        colorName: "Yellow",
+        hex: "#F2CD37",
+        count: 2,
+        bricklinkPart: "3001",
+        bricklinkColor: 3,
+      },
+    ],
+  };
+}
+
 async function mock(page: Page, build = fixture(), failures = 0) {
   const pack = packageFor(build);
   const requests: any[] = [];
@@ -87,6 +107,45 @@ async function mock(page: Page, build = fixture(), failures = 0) {
   });
   await page.goto("/?build=shop-test");
   return { pack, requests };
+}
+
+test("a recolor with the same piece count revalidates the BOM and removes the old list", async ({ page }) => {
+  const build = fixture();
+  await mock(page, build);
+  let verified = true;
+  await page.route("**/api/builds/shop-test/bom", (route) =>
+    verified
+      ? route.fulfill({ json: bomFor(build) })
+      : route.fulfill({ status: 422, json: { detail: { message: "Unverified color" } } }),
+  );
+  await page.getByRole("button", { name: "Parts", exact: true }).click();
+  await expect(page.getByRole("cell", { name: "3001 / 3", exact: true })).toBeVisible();
+  verified = false;
+  build.pieces[0].color = 503;
+  // Reconnection fetches the same build with the same quantity, but different colors.
+  await page.evaluate(() => {
+    for (let i = 0; i < 2; i++)
+      (window as any).events.onmessage({ data: JSON.stringify({ type: "hello", build: { status: "done" } }) });
+  });
+  await expect(page.getByRole("alert")).toContainText("could not be verified");
+  await expect(page.getByRole("cell", { name: "3001 / 3", exact: true })).toHaveCount(0);
+});
+
+for (const failure of ["legacy", "expired", "incomplete", "revision"] as const) {
+  test(`a ${failure} BOM never appears as a parts list`, async ({ page }) => {
+    const build = fixture();
+    await mock(page, build);
+    const bom = bomFor(build);
+    if (failure === "expired") bom.validation.valid_until = 1;
+    if (failure === "incomplete") bom.lines[0].count = 1;
+    if (failure === "revision") bom.revision = "a".repeat(64);
+    await page.route("**/api/builds/shop-test/bom", (route) =>
+      route.fulfill({ json: failure === "legacy" ? bom.lines : bom }),
+    );
+    await page.getByRole("button", { name: "Parts", exact: true }).click();
+    await expect(page.getByRole("alert")).toContainText("could not be verified");
+    await expect(page.getByRole("cell", { name: "3001 / 3", exact: true })).toHaveCount(0);
+  });
 }
 
 test("one copy hands HoloTab a frozen, private-data-free shopping task", async ({ page, context }, info) => {

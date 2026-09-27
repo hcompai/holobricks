@@ -14,27 +14,19 @@ from xml.etree import ElementTree as ET
 from brickyard import catalog
 from brickyard.model import Build
 
+ValidationError = catalog.ValidationError  # preserve the public shopping exception
+
 # BrickLink documents this limit for Wanted List file uploads.
 # https://www.bricklink.com/help.asp?helpID=207
 MAX_IMPORT_BYTES = 204800
 PACKAGE_FILE = re.compile(r"[a-f0-9]{64}\.(?:json|html|xml)")
 
 
-class ValidationError(ValueError):
-    def __init__(self, report: dict):
-        self.report = report
-        super().__init__(
-            "Some bricks could not be verified in their chosen colors. Correct the parts list before shopping."
-        )
-
-
 def prepare(build: Build, catalog_folder: Path | None = None) -> tuple[dict, str]:
     """Verify the complete BOM before writing anything; never export just the valid subset."""
     if build.status != "done" or not build.pieces:
         raise ValueError("Finish your build before shopping for its bricks.")
-    report = catalog.validate(build.pieces, catalog_folder)
-    if not report["valid"]:
-        raise ValidationError(report)
+    report = catalog.require(build.pieces, catalog_folder)
     inventory = report["inventory"]
     counts: Counter[tuple[str, int]] = Counter()
     for line in inventory:
@@ -50,11 +42,7 @@ def prepare(build: Build, catalog_folder: Path | None = None) -> tuple[dict, str
         raise ValueError("This build exceeds BrickLink’s single-file import limit. Try a smaller build.")
     package = {
         "version": 3,
-        "validation": {
-            "status": "verified",
-            "policy": "bricklink-known-colors-v1",
-            "valid_until": min(line["evidence"]["fetched_at"] for line in inventory) + catalog.CACHE_TTL,
-        },
+        "validation": catalog.validity(report),
         "build_id": build.id,
         "name": build.name,
         "revision": build.revision,

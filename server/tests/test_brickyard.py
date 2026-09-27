@@ -29,7 +29,7 @@ def test_packed_part_embeds_every_subfile_under_the_names_the_viewer_resolves():
     assert all(not n.startswith(("s/", "48/")) for n in names)
 
 
-def test_demo_build_streams_to_completion_and_exports_steps(tmp_path, monkeypatch):
+def test_demo_build_streams_to_completion_and_exports_steps(tmp_path, monkeypatch, offline_catalog):
     monkeypatch.setenv("BRICKYARD_DATA", str(tmp_path))
     from brickyard import app as app_module
     from brickyard.builders import BUILDERS
@@ -49,9 +49,12 @@ def test_demo_build_streams_to_completion_and_exports_steps(tmp_path, monkeypatc
         assert {p["step"] for p in build["pieces"]} == set(range(len(build["steps"])))
         ldr = client.get(f"/api/builds/{created['id']}/download.ldr").text
         assert ldr.count("0 STEP") == len(build["steps"])
+        bom = client.get(f"/api/builds/{created['id']}/bom").json()
+        assert bom["validation"]["status"] == "verified"
+        assert sum(line["count"] for line in bom["lines"]) == len(build["pieces"])
 
 
-def test_gallery_export_holds_every_file_the_static_site_reads(tmp_path):
+def test_gallery_export_holds_every_file_the_static_site_reads(tmp_path, offline_catalog):
     import json
 
     from brickyard.gallery import export

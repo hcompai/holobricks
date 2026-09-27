@@ -26,7 +26,11 @@ def export(store: Store, ids: list[str], site: Path) -> Path:
         for message in build.messages:
             message.images = [_image(store, url, out) for url in message.images]
         (out / "builds" / f"{build.id}.json").write_text(build.model_dump_json())
-        (out / "builds" / f"{build.id}.bom.json").write_text(json.dumps(build.bom()))
+        try:
+            bom = build.bom(store.root.parent / "bricklink-catalog")
+        except ValueError as exc:
+            bom = {"error": str(exc)}
+        (out / "builds" / f"{build.id}.bom.json").write_text(json.dumps(bom))
         (out / "builds" / f"{build.id}.ldr").write_text(build.to_ldraw())
         try:
             package = shopping.save(build, out / "shopping", store.root.parent / "bricklink-catalog")

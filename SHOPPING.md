@@ -32,13 +32,19 @@ correctness, and the HoloTab prompt does not perform ID translation.
    every quantity, and generate XML with ITEMTYPE P, ITEMID, COLOR, MINQTY and CONDITION N.
    No omitted lots, partial exports or automatic substitutions.
 
-`bricks run` checks the whole candidate (including unchanged and inherited pieces)
-before publication. Failure preserves the accepted model and script, returns each bad
-pair and the verified LDraw color choices, and allows Holo to repair its script.
+The session's publication boundary checks the whole candidate (including unchanged,
+inherited and automatically added accessory pieces). Both script commits and direct
+step additions, including scripted demos/showcases, use this boundary. Failure preserves
+the accepted model, script, disk state and event stream. `bricks run` returns each bad
+pair and the verified LDraw color choices so Holo can repair its script.
 `bricks colors <part>` lets Holo choose a valid palette first; `bricks check` audits the
-current build. Existing/manual/demo builds are revalidated before purchasing too.
-The ordinary viewer's BOM is a design inventory; only the gated XML is a verified
-purchasing inventory. Legacy designs may contain unverified pairs and need correction.
+current build. Completion performs a fresh catalog check independently of the visual
+review: repeated answer attempts cannot waive an invalid or unavailable catalog check.
+The server rechecks when a builder exits before marking it done.
+
+The BOM endpoint, Parts panel, gallery BOM and purchasing XML all require full validation.
+Legacy designs may remain visible in 3D for repair, but cannot expose an unchecked or
+partially verified BOM. No operation recolors a model or substitutes geometry silently.
 
 ## Data freshness and failure behavior
 
@@ -65,7 +71,11 @@ silently substituted. Printed assembly instructions are not included.
 ## Saved inventory contract
 
 - `GET /api/builds/{id}/bom/validation` returns the checked revision, every issue,
-  verified source lots, canonical IDs, evidence and available colors for repairs.
+  verified source lots, canonical IDs, evidence, expiry and available colors for repairs.
+- `GET /api/builds/{id}/bom` returns `{revision, pieces, validation, lines}` with canonical
+  BrickLink part/color IDs. Any unverified lot returns HTTP 422 and issues, without lines.
+  This replaces the old unchecked array response. The Parts panel rechecks same-count
+  recolors, rejects mismatched revisions and clears its list when evidence expires.
 - `POST /api/builds/{id}/shopping` takes `{ "revision": "..." }`. It rejects busy,
   unfinished, empty or changed builds, and returns structured HTTP 422 issues if any
   catalog check fails. Slow catalog IO runs outside the server event loop.
@@ -90,14 +100,18 @@ silently substituted. Printed assembly instructions are not included.
 Offline tests exercise the real catalog validator using explicit source fixtures:
 identity/type/status, aliases, print suffixes, Known vs All colors, name/code conversion,
 ambiguous mappings, stale/corrupt cache, HTTP errors, timeout budgets and exact quantities.
-Construction tests prove rejected pairs and outages cannot replace the accepted model.
+Construction tests prove rejected pairs and outages cannot replace the accepted model,
+including direct step/script commits and inherited invalid pieces. The demo uses only
+catalog-recorded combinations, including red 3043 ridge slopes and green 3471 trees.
+Final-answer tests show catalog failures cannot pass even after the visual refusal cap.
 API and gallery tests prove no partial file escapes; browser tests compare the actual
 clipboard XML with the server snapshot, cover XML-load retry and partial-response rejection,
 blocking errors, legacy/expired packages, expiry while the dialog is open, clipboard
 feedback and mobile layout.
 
 The saved Microduck audit found 7 unverified part/color combinations (25 pieces), despite
-all part geometries existing in LDraw. It is intentionally blocked until those choices
-are repaired. No inference run, model recolor, merchant account change or purchase was
-performed to make this test pass. Authenticated import/cart acceptance in the released
-HoloTab extension remains separate product QA.
+all part geometries existing in LDraw. The unmodified fixture must be blocked; a separately
+repaired preview with explicit color changes passes for all 236 pieces. That one-off data
+repair is not an automatic substitution policy. Regression tests use offline source facts;
+they do not invoke Holo or change merchant accounts. Authenticated import/cart acceptance
+in the released HoloTab extension remains separate product QA.

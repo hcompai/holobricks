@@ -8,8 +8,8 @@ from pathlib import Path
 from brickyard.model import Placement, baseplate, place, with_accessories
 from brickyard.session import Session
 
-GREEN, WHITE, RED, DARK_RED, YELLOW = 2, 15, 4, 320, 14
-BROWN, LIGHT_GRAY, DARK_GRAY, DARK_GREEN = 70, 71, 72, 288
+GREEN, WHITE, RED, YELLOW = 2, 15, 4, 14
+BROWN, LIGHT_GRAY, DARK_GRAY = 70, 71, 72
 BRICKS = {4: "3010.dat", 3: "3622.dat", 2: "3004.dat", 1: "3005.dat"}
 X0, Y0, X1, Y1 = 8, 10, 23, 21
 DOOR = range(15, 17)
@@ -120,18 +120,18 @@ class DemoBuilder:
             front, back = Y0 + 2 * k, Y1 - 1 - 2 * k
             roof = []
             for x in range(X0, X1 + 1, 4):
-                roof.append(place("3037.dat", x, front, z, DARK_RED))
-                roof.append(place("3037.dat", x, back, z, DARK_RED, rotation=180))
+                roof.append(place("3037.dat", x, front, z, RED))
+                roof.append(place("3037.dat", x, back, z, RED, rotation=180))
                 roof += [place("3001.dat", x, y, z, WHITE) for y in range(front + 2, back, 2)]
             await self._step(session, f"Roof course {k + 1}", roof)
             z += 3
-        ridge = [place("3043.dat", x, Y0 + 5, z, DARK_RED) for x in range(X0, X1 + 1, 2)]
+        ridge = [place("3043.dat", x, Y0 + 5, z, RED) for x in range(X0, X1 + 1, 2)]
         await self._step(session, "Ridge", ridge)
 
         await session.say("Garden: trees in the corners, flower beds by the door, a fence along the front.")
         trees = [
-            place("3471.dat", 1, 1, 0, DARK_GREEN),
-            place("3471.dat", 26, 3, 0, DARK_GREEN),
+            place("3471.dat", 1, 1, 0, GREEN),
+            place("3471.dat", 26, 3, 0, GREEN),
             place("3470.dat", 2, 25, 0, GREEN),
             place("3470.dat", 26, 25, 0, GREEN),
         ]

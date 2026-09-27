@@ -152,7 +152,12 @@ def start(session: Session, request: str, references: list[Path]) -> None:
         await session.set_status("building")
         try:
             await builder.run(session, request, references)
+            # A builder exiting successfully is not evidence that its entire inventory is valid.
+            await session.validate_parts(session.build.model_copy(deep=True))
             await session.set_status("done")
+        except catalog.ValidationError as exc:
+            await session.say(catalog.describe(exc.report), role="system")
+            await session.set_status("error")
         except asyncio.CancelledError:
             await session.say("Stopped.", role="system")
             await session.set_status("done")
@@ -312,15 +317,20 @@ def get_thumbnail(build_id: str, v: int | None = None) -> FileResponse:
 
 
 @app.get("/api/builds/{build_id}/bom")
-async def bill_of_materials(build_id: str) -> list[dict]:
-    return session_for(build_id).build.bom()
+async def bill_of_materials(build_id: str) -> Response:
+    build = session_for(build_id).build.model_copy(deep=True)
+    try:
+        bom = await asyncio.to_thread(build.bom, store.root.parent / "bricklink-catalog")
+    except catalog.ValidationError as exc:
+        raise HTTPException(422, {"message": str(exc), "issues": exc.report["issues"]}) from exc
+    return Response(json.dumps(bom), media_type="application/json", headers={"Cache-Control": "private, no-store"})
 
 
 @app.get("/api/builds/{build_id}/bom/validation")
 async def validate_materials(build_id: str) -> dict:
     build = session_for(build_id).build.model_copy(deep=True)
     report = await asyncio.to_thread(catalog.validate, build.pieces, store.root.parent / "bricklink-catalog")
-    return report | {"revision": build.revision}
+    return report | {"revision": build.revision, "validation": catalog.validity(report) if report["valid"] else None}
 
 
 @app.get("/api/builds/{build_id}/download.ldr")

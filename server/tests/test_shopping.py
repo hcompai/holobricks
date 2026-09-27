@@ -221,16 +221,47 @@ def test_static_gallery_exports_only_validated_xml_and_blocks_invalid_models(mod
     (library / "LDConfig.ldr").write_text("0 colors")
     monkeypatch.setattr(ldraw, "LDRAW", library)
     monkeypatch.setattr(ldraw, "pack", lambda part: "0 geometry")
-    monkeypatch.setattr(Build, "bom", lambda self: [])
     store = Store(tmp_path / "data")
     model.messages = []
     store.save(model)
     out = export(store, [model.id], tmp_path / "site")
     pack = json.loads((out / "builds" / f"{model.id}.shopping.json").read_text())
     assert pack["revision"] == model.revision
+    bom = json.loads((out / "builds" / f"{model.id}.bom.json").read_text())
+    assert bom["revision"] == model.revision and bom["validation"]["status"] == "verified"
+    assert sum(line["count"] for line in bom["lines"]) == len(model.pieces)
     assert all((out / "shopping" / f"{pack['id']}.{ext}").is_file() for ext in ("html", "json", "xml"))
     model.pieces[0].color = 503
     store.save(model)
     out = export(store, [model.id], tmp_path / "invalid-site")
     assert "error" in json.loads((out / "builds" / f"{model.id}.shopping.json").read_text())
+    assert "error" in json.loads((out / "builds" / f"{model.id}.bom.json").read_text())
     assert not (out / "shopping").exists()
+
+
+def test_bom_revalidates_legacy_models_and_same_count_recolors_without_partial_lists(model, tmp_path, monkeypatch):
+    from brickyard import app as module
+
+    store = Store(tmp_path)
+    store.save(model)
+    monkeypatch.setattr(module, "store", store)
+    monkeypatch.setattr(module, "sessions", {})
+    client = TestClient(module.app)
+    url = f"/api/builds/{model.id}/bom"
+    response = client.get(url)
+    assert response.status_code == 200 and response.headers["cache-control"] == "private, no-store"
+    bom = response.json()
+    assert bom["pieces"] == 3 and bom["revision"] == model.revision
+    assert bom["lines"][0]["bricklinkPart"] == "3001" and bom["lines"][0]["bricklinkColor"] == 3
+    model.pieces[0].color = 503
+    store.save(model)
+    response = client.get(url)
+    assert response.status_code == 422
+    assert "lines" not in response.json()
+    assert response.json()["detail"]["issues"][0]["code"] == "color_not_verified"
+
+    def unavailable(*args):
+        raise catalog.CatalogUnavailable("Temporarily unavailable")
+
+    monkeypatch.setattr(catalog.Catalog, "get", unavailable)
+    assert client.get(url).json()["detail"]["issues"][0]["code"] == "catalog_unavailable"

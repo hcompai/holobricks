@@ -41,6 +41,12 @@ class UnmappedPart(ValueError):
     pass
 
 
+class ValidationError(ValueError):
+    def __init__(self, report: dict):
+        self.report = report
+        super().__init__("Some bricks could not be verified in their chosen colors. Repair the model before shopping.")
+
+
 def color_key(name: str) -> str:
     """Only spelling/separators: never nearest RGB, numeric equality, or fuzzy matching.
 
@@ -298,3 +304,19 @@ def describe(report: dict) -> str:
                 + ", ".join(f"{c['color']} {c['name']}" for c in colors)
             )
     return "\n".join(lines)
+
+
+def require(pieces, folder: Path | None = None) -> dict:
+    """The shared publication/export boundary. Never return a partial verified inventory."""
+    report = validate(pieces, folder)
+    if not report["valid"]:
+        raise ValidationError(report)
+    return report
+
+
+def validity(report: dict) -> dict:
+    return {
+        "status": "verified",
+        "policy": "bricklink-known-colors-v1",
+        "valid_until": min(row["evidence"]["fetched_at"] for row in report["inventory"]) + CACHE_TTL,
+    }

@@ -226,7 +226,10 @@ class Workbench:
         problems = len(rejected) + len(warnings)
         lines = []
         if placements:
-            step = await self.session.step(title, placements, "" if key and problems else key)
+            try:
+                step = await self.session.step(title, placements, "" if key and problems else key)
+            except catalog.ValidationError as exc:
+                return self.catalog_rejection(exc.report)
             new = [p for p in self.pieces if p.step == step.index]
             lines.append(f"Step {step.index + 1} '{title}': placed {len(new)} pieces as #{new[0].id}-#{new[-1].id}.")
         if rejected:
@@ -297,24 +300,12 @@ class Workbench:
                 + "\nFix the named lines in your script and run again. No candidate render was published.",
                 problems=errors + floating,
             )
-        if candidate.pieces:
-            report = await asyncio.to_thread(
-                catalog.validate, candidate.pieces, self.session.store.root.parent / "bricklink-catalog"
-            )
-            if not report["valid"]:
-                retry = any(issue["code"] == "catalog_unavailable" for issue in report["issues"])
-                return Result(
-                    "Candidate rejected; the model and accepted script did not change.\n"
-                    + catalog.describe(report)
-                    + (
-                        "\nRetry the catalog check; do not change the design to bypass an unavailable source."
-                        if retry
-                        else "\nChoose verified part/color combinations matching the reference, edit the script and run again."
-                    ),
-                    problems=len(report["issues"]),
-                )
+        try:
+            report = await self.session.commit_script(candidate, kept_steps)
+        except catalog.ValidationError as exc:
+            return self.catalog_rejection(exc.report)
+        if report:
             lines.append(catalog.describe(report))
-        self.session.commit_script(candidate, kept_steps)
         problems = floating
         lines += ["Placed, but check these floating bricks, by script line:", *reports] if reports else []
         lines.append("Steps: pieces, then where they sit in studs (x, y) and plates (z, bottom to top):")
@@ -328,6 +319,20 @@ class Workbench:
             kind=seen.kind,
             caption=seen.caption,
             problems=problems,
+        )
+
+    @staticmethod
+    def catalog_rejection(report: dict) -> Result:
+        retry = any(issue["code"] == "catalog_unavailable" for issue in report["issues"])
+        return Result(
+            "Candidate rejected; the model and accepted script did not change.\n"
+            + catalog.describe(report)
+            + (
+                "\nRetry the catalog check; do not change the design to bypass an unavailable source."
+                if retry
+                else "\nChoose verified part/color combinations matching the reference, edit the script and run again."
+            ),
+            problems=len(report["issues"]),
         )
 
     def _fixed(self) -> int:

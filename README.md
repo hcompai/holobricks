@@ -60,8 +60,11 @@ your tab + headless Chrome  <── steps, renders ──>  brickyard server  �
   the first supplied image automatically; the other images remain available with `view_image`. The build loop starts
   with a compact silhouette and repairs one identified defect at a time before adding detail or scenery.
 - `bricks colors <part>` lists verified colors as LDraw codes; `bricks check` audits the current inventory.
-  `bricks run` applies the same catalog check before publishing a candidate. Cold lookups use the public catalog;
-  cached evidence is reused for 24 hours. Network failures cannot authorize an unverified purchasing list.
+  The session applies the same catalog check before publishing scripts or direct step additions, including demos.
+  Completion checks the full inventory again; visual approval or repeated answer attempts cannot waive this check.
+  BOM, gallery and shopping exports all require a complete verified inventory, bound to the current revision.
+  Cold lookups use the public catalog; cached evidence is reused for 24 hours. Network failures cannot authorize
+  an unverified list. Existing invalid models stay viewable for repair, but cannot be presented as verified BOMs.
 - For references it has `web_search` (Linkup pages, then image URLs) and `view_image`: it downloads the photos it wants into its workspace with `curl` and looks at them, all through the build.
 - Renders come from a viewer: the server keeps a hidden Chrome on each build that asks for renders (until its run ends, or 10 idle minutes), so it renders whether or not your tab is open. It serves `web/dist`: rebuild it (`npm run build`) after web changes.
 - Its workspace keeps `notes.md` (its memory, fed back with each request), the reference photos, and `showcase/` (`agent/showcase`: the showcase renders and sources).
