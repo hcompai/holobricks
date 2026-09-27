@@ -476,10 +476,10 @@ async def start_film(job: str, body: FilmStart) -> dict:
 
 
 @app.put("/api/films/{job}/frames/{index}")
-async def film_frame(job: str, index: int, request: Request) -> dict:
+async def film_frame(job: str, index: int, samples: int, request: Request) -> dict:
     film = film_job(job)
     try:
-        await films.frame(film, index, await request.body())
+        await films.frame(film, index, samples, await request.body())
     except FilmError as e:
         raise HTTPException(409, str(e)) from e
     return {"ok": True}

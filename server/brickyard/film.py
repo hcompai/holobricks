@@ -235,7 +235,7 @@ class Films:
                 stderr=errors,
             )
 
-    async def frame(self, film: Film, index: int, rgba: bytes) -> None:
+    async def frame(self, film: Film, index: int, samples: int, rgba: bytes) -> None:
         width, height = film.options.size
         if film.status != "rendering" or film.encoder is None or film.encoder.stdin is None:
             raise FilmError(f"film {film.id} is not taking frames")
@@ -246,6 +246,7 @@ class Films:
         film.encoder.stdin.write(rgba)
         await film.encoder.stdin.drain()
         film.next += 1
+        film.samples = samples
         film.active = time.monotonic()
         if film.next == film.frames:
             film.encoder.stdin.close()

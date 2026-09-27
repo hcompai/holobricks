@@ -275,21 +275,22 @@ export class FilmRenderer {
 
   /** Set the most samples per frame whose estimated render time fits `budgetMs` for the whole film. */
   calibrate(budgetMs: number, most = 32): number {
-    const time = (frame: number, samples: number) => {
-      const start = performance.now();
-      this.render(frame, samples);
-      this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
-      return performance.now() - start;
-    };
-    time(this.frames - 1, 1);
     const probes = CALIBRATION.map((share) => Math.round(share * (this.frames - 1)));
-    const one = probes.reduce((sum, frame) => sum + time(frame, 1), 0) / probes.length;
-    const three = probes.reduce((sum, frame) => sum + time(frame, 3), 0) / probes.length;
-    const perSample = Math.max((three - one) / 2, 0.1);
-    const fixed = Math.max(one - perSample, 0);
-    const samples = Math.floor((budgetMs / this.frames - fixed) / perSample);
-    this.options.samples = Math.min(Math.max(samples, 1), most);
-    return this.options.samples;
+    const cost = (samples: number) =>
+      probes.reduce((sum, frame) => {
+        const start = performance.now();
+        this.pixels(frame, samples);
+        return sum + performance.now() - start;
+      }, 0) / probes.length;
+    const perFrame = budgetMs / this.frames;
+    cost(4);
+    const one = cost(1);
+    const perSample = Math.max((cost(4) - one) / 3, 0.1);
+    let samples = Math.min(Math.max(Math.floor((perFrame - one + perSample) / perSample), 1), most);
+    for (let measured = cost(samples); samples > 1 && measured > perFrame; measured = cost(samples))
+      samples = Math.max(Math.min(samples - 1, Math.floor((samples * perFrame) / measured)), 1);
+    this.options.samples = samples;
+    return samples;
   }
 
   /** How many pieces land during each frame. */
@@ -312,8 +313,8 @@ export class FilmRenderer {
     return this.canvas;
   }
 
-  pixels(i: number): ImageData {
-    this.render(i);
+  pixels(i: number, samples = this.options.samples): ImageData {
+    this.render(i, samples);
     return this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
   }
 

@@ -235,8 +235,11 @@ export const api = {
   filmBuild: (job: string) => json<Build>(fetch(`/api/films/${job}/build`)),
   startFilm: (job: string, body: { frames: number; samples: number; landings: number[] }) =>
     json<FilmJob>(post(`/api/films/${job}/start`, body)),
-  putFrame: (job: string, index: number, rgba: Uint8ClampedArray) =>
-    fetch(`/api/films/${job}/frames/${index}`, { method: "PUT", body: rgba as Uint8ClampedArray<ArrayBuffer> }),
+  putFrame: (job: string, index: number, rgba: Uint8ClampedArray, samples: number) =>
+    fetch(`/api/films/${job}/frames/${index}?samples=${samples}`, {
+      method: "PUT",
+      body: rgba as Uint8ClampedArray<ArrayBuffer>,
+    }),
   failFilm: (job: string, message: string) => post(`/api/films/${job}/fail`, { message }),
   cancelFilm: (job: string) => fetch(`/api/films/${job}`, { method: "DELETE" }),
   filmUrl: (job: string, format: "mp4" | "gif") => `/api/films/${job}/film.${format}`,

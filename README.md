@@ -164,7 +164,7 @@ Choose **Export film** in the timeline (or the download menu): bricks drop in st
 
 With Chrome and ffmpeg on the server, the dialog renders a 1080p, 60 fps MP4 (H.264, CRF 18) and a GIF under 15 MB (X's limit), with progress and cancellation. The static gallery has no server, so it makes a 640 px GIF in the browser instead.
 
-Every frame is a pure function of the build, the options and its index: the server's headless Chrome runs the same film code as the browser, averaging jittered renders per frame for antialiasing and soft shadows, then ambient occlusion and tone mapping. Samples per frame are picked to fit a time budget (15 minutes by default).
+Every frame is a pure function of the build, the options, its index and its sample count: the server's headless Chrome runs the same film code as the browser, averaging jittered renders per frame for antialiasing and soft shadows, then ambient occlusion and tone mapping. Samples per frame are measured to fit a time budget (15 minutes by default), and drop one at a time if rendering falls behind.
 
 ```bash
 brickyard-film hogwarts --aspect 16:9 --seconds 20                  # Hogwarts-build.mp4 + .gif
