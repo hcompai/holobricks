@@ -236,6 +236,47 @@ aside {
   overflow-wrap: anywhere;
 }
 
+.markdown {
+  white-space: normal;
+}
+.markdown > :first-child {
+  margin-top: 0;
+}
+.markdown > :last-child {
+  margin-bottom: 0;
+}
+.markdown :is(p, ul, ol, pre, table, blockquote) {
+  margin: 0 0 8px;
+}
+.markdown :is(ul, ol) {
+  padding-left: 20px;
+}
+.markdown :is(h1, h2, h3, h4) {
+  margin: 12px 0 6px;
+  font-size: 14px;
+}
+.markdown code {
+  font-family: "Fira Code Variable", ui-monospace, monospace;
+  font-size: 12px;
+}
+.markdown pre {
+  padding: 8px;
+  overflow-x: auto;
+  border-radius: 6px;
+  background: var(--background-page);
+}
+.markdown table {
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.markdown :is(th, td) {
+  padding: 2px 8px;
+  border: 1px solid var(--stroke-default);
+}
+.markdown a {
+  color: inherit;
+}
+
 .msg.user {
   align-self: flex-end;
   background: var(--background-muted);
