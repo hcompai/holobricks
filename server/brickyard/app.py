@@ -21,7 +21,7 @@ from pydantic import BaseModel, ValidationError
 
 from brickyard import ldraw
 from brickyard.builders import BUILDERS
-from brickyard.model import Box, Build, Camera
+from brickyard.model import Box, Build, Camera, Message
 from brickyard.session import Session, Store
 from brickyard.viewer import Viewers
 from brickyard.workbench import Workbench
@@ -65,9 +65,19 @@ TOOLS = {
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    """Builds left building by a server that died are done; on shutdown, every running build stops with the server."""
+    for summary in store.summaries():
+        if summary["status"] == "building" and (build := store.load(summary["id"])):
+            build.status = "done"
+            build.messages.append(Message(role="system", text="Stopped: the server restarted."))
+            store.save(build)
     warm = asyncio.create_task(asyncio.to_thread(lambda: (ldraw.catalog(), ldraw.colors())))
     yield
     warm.cancel()
+    running = [s.task for s in sessions.values() if s.task and not s.task.done()]
+    for task in running:
+        task.cancel()
+    await asyncio.gather(*running, return_exceptions=True)
     await viewers.stop()
 
 
@@ -151,7 +161,7 @@ def start(session: Session, request: str, references: list[Path]) -> None:
 
 @app.get("/api/builds")
 def list_builds() -> list[dict]:
-    return [b.summary() | {"thumbnail": store.thumbnail(b.id).exists()} for b in store.all()]
+    return [s | {"thumbnail": store.thumbnail_version(s["id"])} for s in store.summaries()]
 
 
 @app.post("/api/builds")
@@ -275,14 +285,16 @@ async def put_thumbnail(build_id: str, request: Request) -> dict:
 
 
 @app.get("/api/builds/{build_id}/thumbnail.png")
-def get_thumbnail(build_id: str) -> FileResponse:
+def get_thumbnail(build_id: str, v: int | None = None) -> FileResponse:
+    """Cached for good when `v`, the version from the build list, names the file."""
     try:
         path = store.thumbnail(build_id)
     except ValueError:
         path = None
     if path is None or not path.exists():
         raise HTTPException(404, "no thumbnail yet")
-    return FileResponse(path, media_type="image/png", headers={"Cache-Control": "no-cache"})
+    cache = "public, max-age=31536000, immutable" if v is not None else "no-cache"
+    return FileResponse(path, media_type="image/png", headers={"Cache-Control": cache})
 
 
 @app.get("/api/builds/{build_id}/bom")
@@ -313,6 +325,19 @@ def image(name: str) -> FileResponse:
     if path is None or not path.is_file():
         raise HTTPException(404, "no such image")
     return FileResponse(path, headers={"Cache-Control": "public, max-age=86400"})
+
+
+@app.get("/api/images/small/{name}.webp")
+def small_image(name: str) -> FileResponse:
+    try:
+        if not store.image(name).is_file():
+            raise HTTPException(404, "no such image")
+        path = store.small_image(name)
+    except ValueError:
+        raise HTTPException(404, "no such image") from None
+    except OSError as e:
+        raise HTTPException(415, f"cannot read {name}: {e}") from e
+    return FileResponse(path, media_type="image/webp", headers={"Cache-Control": "public, max-age=86400"})
 
 
 @app.get("/api/ldconfig")

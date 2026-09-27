@@ -109,7 +109,7 @@ export function ChatPanel({ build, loading, thinking, onCreate, onSay }: Props) 
 
   const send = async () => {
     const prompt = text.trim();
-    if (!prompt || sending || (changing && (busy || !build))) return;
+    if ((!prompt && !attachments.length) || sending || (changing && (busy || !build))) return;
     setSending(true);
     setError("");
     try {
@@ -152,8 +152,13 @@ export function ChatPanel({ build, loading, thinking, onCreate, onSay }: Props) 
             <div key={`${m.at}-${m.role}`} className={`msg ${m.role}`}>
               {m.text}
               {m.images?.map((src) => (
-                <button key={src} className="msg-render" onClick={() => setOpened(src)} title="Open the render">
-                  <img src={src} alt="The render Holo saw" />
+                <button
+                  key={src}
+                  className="msg-render"
+                  onClick={() => setOpened(src)}
+                  title={m.role === "user" ? "Open the image" : "Open the render"}
+                >
+                  <img src={src} alt={m.role === "user" ? "Your reference image" : `The render ${who} saw`} />
                 </button>
               ))}
             </div>
@@ -247,7 +252,7 @@ export function ChatPanel({ build, loading, thinking, onCreate, onSay }: Props) 
               className="round send"
               title="Send"
               aria-label="Send"
-              disabled={!text.trim() || sending}
+              disabled={(!text.trim() && !attachments.length) || sending}
               onClick={send}
             >
               <ArrowUpIcon size={14} weight="bold" />

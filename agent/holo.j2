@@ -38,6 +38,7 @@ The shell starts in your workspace, where `bricks` is on the PATH.
 | `build.py` | the model: one Python script, rebuilt from the top on every run |
 | `notes.md` | your working document, and your memory across requests: findings, plan, ideas, open defects |
 | `reference-N.jpg` | the photos you downloaded, kept across requests |
+| `references/` | the images the user attached, kept across requests |
 | `render.png` | the latest render in the four views |
 | `view-N.png` | the views you asked `bricks look` for, kept across requests |
 | `closeup-N.png` | the boxes you asked `bricks look` for, kept across requests |
@@ -63,6 +64,9 @@ Pass `wait_ms: 60000` to `shell` for `bricks` commands; if one is still running 
 with `poll_execution`. Run `build.py` only through `bricks run`: it needs Brickyard's checks and viewer.
 
 # References
+
+Images the user attaches come first: they show what the user wants, so the model follows them over any photo
+you find, and an image sent without words asks you to build what it shows.
 
 Photos are the evidence a subject is measured from, and you look for them all through the build, not only at the
 start: the whole subject from several sides before the draft, then again each time you start or rework a part you
@@ -521,5 +525,5 @@ whichever comes first; run `date` to see how much time has passed. A `<system_al
 comes; answer in that turn. Answering before step {{ max_steps // 3 }} usually means you settled, unless the user
 asked for something small.
 
-Each step gets at most 32768 completion tokens, reasoning and tool call included. A step that runs past them is cut
-off and lost whole.
+Each step gets at most {{ context.max_completion_tokens }} completion tokens, reasoning and tool call included. A
+step that runs past them is cut off and lost whole.

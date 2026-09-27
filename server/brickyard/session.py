@@ -5,21 +5,27 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import time
 import uuid
 from pathlib import Path
 from typing import Protocol
+
+import PIL.Image
 
 from brickyard.model import Box, Build, Camera, Message, Piece, Placement, Step, footprint
 from brickyard.viewer import Viewers
 
 log = logging.getLogger("brickyard")
 DATA = Path(os.environ.get("BRICKYARD_DATA", Path(__file__).resolve().parents[2] / "data"))
+SMALL_EDGE = 240
+"""The short side of the chat's small images, twice their size on screen."""
 
 
 class Store:
     def __init__(self, root: Path = DATA):
         self.root = root / "builds"
         self.root.mkdir(parents=True, exist_ok=True)
+        self._summaries: dict[str, tuple[int, dict]] = {}
 
     def save(self, build: Build) -> None:
         path = self.root / f"{build.id}.json"
@@ -38,6 +44,11 @@ class Store:
     def thumbnail(self, build_id: str) -> Path:
         return self._file(self.root.parent / "thumbnails", f"{build_id}.png")
 
+    def thumbnail_version(self, build_id: str) -> int | None:
+        """When the thumbnail was saved, in milliseconds; None when there is none."""
+        path = self.thumbnail(build_id)
+        return path.stat().st_mtime_ns // 1_000_000 if path.exists() else None
+
     def image(self, name: str) -> Path:
         return self._file(self.images, name)
 
@@ -52,6 +63,19 @@ class Store:
         (self.images / name).write_bytes(data)
         return f"/api/images/{name}"
 
+    def small_image(self, name: str) -> Path:
+        """The image as WebP with its short side at most SMALL_EDGE, for the chat; made on first use."""
+        path = self._file(self.images / "small", f"{name}.webp")
+        if not path.exists():
+            with PIL.Image.open(self.image(name)) as image:
+                edge = SMALL_EDGE * max(image.size) // min(image.size)
+                image.thumbnail((edge, edge))
+                path.parent.mkdir(exist_ok=True)
+                tmp = path.with_name(f"{uuid.uuid4().hex}.tmp")
+                image.save(tmp, "WEBP", quality=80)
+            tmp.replace(path)
+        return path
+
     def load(self, build_id: str) -> Build | None:
         try:
             path = self._file(self.root, f"{build_id}.json")
@@ -59,14 +83,21 @@ class Store:
             return None
         return Build.model_validate_json(path.read_text()) if path.exists() else None
 
-    def all(self) -> list[Build]:
-        builds = []
+    def summaries(self) -> list[dict]:
+        """Every build's summary, newest first; a build is parsed again only when its file changed."""
+        out = []
         for path in self.root.glob("*.json"):
-            try:
-                builds.append(Build.model_validate_json(path.read_text()))
-            except ValueError as e:
-                log.warning("skipping unreadable build %s: %s", path.name, e)
-        return sorted(builds, key=lambda b: -b.created)
+            mtime = path.stat().st_mtime_ns
+            cached = self._summaries.get(path.name)
+            if cached is None or cached[0] != mtime:
+                try:
+                    summary = Build.model_validate_json(path.read_text()).summary()
+                except ValueError as e:
+                    log.warning("skipping unreadable build %s: %s", path.name, e)
+                    continue
+                cached = self._summaries[path.name] = (mtime, summary)
+            out.append(cached[1])
+        return sorted(out, key=lambda s: -s["created"])
 
 
 class Session:
@@ -118,6 +149,7 @@ class Session:
         pieces = [Piece(id=next_id + i, step=step.index, **pl.model_dump()) for i, pl in enumerate(placements)]
         self.build.steps.append(step)
         self.build.pieces += pieces
+        self.build.updated = time.time()
         width, depth = footprint(pieces)
         self.build.width, self.build.depth = max(self.build.width, width), max(self.build.depth, depth)
         self._publish(
@@ -136,6 +168,7 @@ class Session:
         """Keep only the first `steps` steps and their pieces."""
         self.build.steps = self.build.steps[:steps]
         self.build.pieces = [p for p in self.build.pieces if p.step < steps]
+        self.build.updated = time.time()
         self.build.width, self.build.depth = footprint(self.build.pieces)
         self._publish({"type": "rewind", "steps": steps, "width": self.build.width, "depth": self.build.depth})
 

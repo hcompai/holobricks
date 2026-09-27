@@ -18,7 +18,7 @@ def export(store: Store, ids: list[str], site: Path) -> Path:
     """Write every file the viewer reads for these builds under `site/gallery`; returns that folder."""
     out = site / URL.strip("/")
     shutil.rmtree(out, ignore_errors=True)
-    for folder in ("builds", "parts", "images", "thumbnails"):
+    for folder in ("builds", "parts", "images/small", "thumbnails"):
         (out / folder).mkdir(parents=True, exist_ok=True)
     builds = [_load(store, i) for i in ids]
     summaries = []
@@ -31,7 +31,7 @@ def export(store: Store, ids: list[str], site: Path) -> Path:
         thumbnail = store.thumbnail(build.id)
         if thumbnail.exists():
             shutil.copy(thumbnail, out / "thumbnails" / f"{build.id}.png")
-        summaries.append(build.summary() | {"thumbnail": thumbnail.exists()})
+        summaries.append(build.summary() | {"thumbnail": store.thumbnail_version(build.id)})
     for part in {p.part for build in builds for p in build.pieces}:
         (out / "parts" / part).write_text(ldraw.pack(part))
     shutil.copy(ldraw.LDRAW / "LDConfig.ldr", out / "LDConfig.ldr")
@@ -51,6 +51,7 @@ def _load(store: Store, build_id: str) -> Build:
 def _image(store: Store, url: str, out: Path) -> str:
     name = url.rsplit("/", 1)[-1]
     shutil.copy(store.image(name), out / "images" / name)
+    shutil.copy(store.small_image(name), out / "images" / "small" / f"{name}.webp")
     return f"{URL}/images/{name}"
 
 

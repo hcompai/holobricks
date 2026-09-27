@@ -57,6 +57,8 @@ class Build(BaseModel):
     width: int = 0
     depth: int = 0
     created: float = Field(default_factory=time.time)
+    updated: float = 0
+    """When the pieces last changed, in seconds; 0 when unknown."""
     status: Literal["idle", "building", "done", "error"] = "idle"
     pieces: list[Piece] = []
     steps: list[Step] = []
@@ -71,6 +73,7 @@ class Build(BaseModel):
             "builder": self.builder,
             "status": self.status,
             "created": self.created,
+            "updated": self.updated,
             "pieces": len(self.pieces),
             "steps": len(self.steps),
             "width": self.width,

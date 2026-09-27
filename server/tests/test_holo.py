@@ -186,11 +186,9 @@ def test_a_render_is_answered_by_a_late_viewer_but_never_by_a_stale_one(tmp_path
     assert asyncio.run(main()) == b"png"
 
 
-def test_the_prompt_names_only_real_parts_colors_and_token_limit_and_its_example_builds_cleanly(bench, monkeypatch):
+def test_the_prompt_names_only_real_parts_and_colors_and_its_example_builds_cleanly(bench, monkeypatch):
     agent = Path(__file__).resolve().parents[2] / "agent"
     prompt = (agent / "holo.j2").read_text()
-    tokens = re.search(r"^max_completion_tokens: (\d+)$", (agent / "holo.yaml").read_text(), re.MULTILINE).group(1)
-    assert f"at most {tokens} completion tokens" in prompt
     parts = re.findall(r"^\w+: .*\| .* tall$", prompt, re.MULTILINE)
     assert len(parts) > 80
     for line in parts:

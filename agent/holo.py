@@ -41,7 +41,9 @@ class Chat(EventHandler):
 
     def _post(self, text: str, role: str) -> None:
         try:
-            httpx.post(self.url, json={"text": text, "role": role}, timeout=POST_TIMEOUT_S).raise_for_status()
+            httpx.post(
+                self.url, json={"text": text, "role": role}, timeout=POST_TIMEOUT_S
+            ).raise_for_status()
         except httpx.HTTPError as e:
             LOGGER.warning("Brickyard chat post failed: %s", e)
 
@@ -49,13 +51,19 @@ class Chat(EventHandler):
 def references() -> list[SerializableImage]:
     """The images the user attached to this request, listed in BRICKYARD_REFERENCES."""
     paths = [Path(p) for p in json.loads(os.environ.get("BRICKYARD_REFERENCES", "[]"))]
-    return [SerializableImage.from_bytes(p.read_bytes(), MEDIA_TYPES[p.suffix]) for p in paths]
+    return [
+        SerializableImage.from_bytes(p.read_bytes(), MEDIA_TYPES[p.suffix])
+        for p in paths
+    ]
 
 
 def main() -> None:
     """Build the agent from holo.yaml, overridable with key=value arguments, and run the task on stdin."""
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))
     agent = build_agent(CONFIG.stem, overrides=sys.argv[1:], config_dir=CONFIG.parent)
+    agent.policy_context["max_completion_tokens"] = (
+        agent.policy.llm.base_request.max_completion_tokens
+    )
     try:
         agent([sys.stdin.read(), *references()])
     finally:
