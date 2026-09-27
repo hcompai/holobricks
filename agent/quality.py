@@ -96,6 +96,8 @@ class Review(StrictModel):
 class Verdict(ValidatorOutput):
     passed: bool
     feedback: str
+    verified: bool = True
+    """Allowing the answer to terminate the loop is not necessarily quality approval."""
 
     def get_success(self) -> bool:
         return self.passed
@@ -475,6 +477,13 @@ class QualityLoop(Validator):
                 return self.verdict(
                     False, "build.py differs from the checked model. Run or repair it; do not finish on an old render."
                 )
+            if build.get("support_warnings", 0):
+                return self.verdict(
+                    False,
+                    f"Completion not verified: {build['support_warnings']} unresolved support warnings. "
+                    "The draft may be viewed, but a visual score cannot dismiss construction warnings. "
+                    "Fix the reported script lines and run again.",
+                )
             saved = self.state["reviews"].get(build["revision"])
             report = Review.model_validate(saved) if saved else self.inspect(build, brief)
             if report.ready():
@@ -494,11 +503,15 @@ class QualityLoop(Validator):
             remaining = "an unavailable review"
         self.refusals += 1
         if self.refusals >= MAX_REFUSALS:
-            return self.verdict(True, f"Accepted after {MAX_REFUSALS} refused answers; still open: {remaining}.")
+            return self.verdict(
+                True,
+                f"Stopped after {MAX_REFUSALS} refused answers; quality remains unverified: {remaining}.",
+                verified=False,
+            )
         return self.verdict(False, feedback)
 
-    def verdict(self, passed: bool, feedback: str) -> Verdict:
-        self.cached_result = Verdict(passed=passed, feedback=feedback)
+    def verdict(self, passed: bool, feedback: str, *, verified: bool = True) -> Verdict:
+        self.cached_result = Verdict(passed=passed, feedback=feedback, verified=verified)
         return self.cached_result
 
 
@@ -507,9 +520,13 @@ class CompletionDisclosure(Callback):
 
     def on_answer(self, answer: AnswerEvent) -> AnswerEvent:
         verdict = answer.context.get("judge_feedback")
-        if not isinstance(verdict, Verdict) or not verdict.passed:
+        if not isinstance(verdict, Verdict) or not verdict.passed or not verdict.verified:
             answer.outcome = "partial"
-            note = "Stopped at the step or time limit before the visual review passed."
+            note = (
+                verdict.feedback
+                if isinstance(verdict, Verdict) and not verdict.verified
+                else "Stopped at the step or time limit before the visual review passed."
+            )
             answer.answer = f"{answer.answer}\n\n{note}" if answer.answer else note
         return answer
 

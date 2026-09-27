@@ -42,6 +42,8 @@ class Step(BaseModel):
     title: str
     key: str | None = None
     """Digest of the script step that made it, empty if that step had problems; None when no script made it."""
+    support_warnings: int = 0
+    """Unresolved support checks. Persist them even while a draft is allowed to be displayed."""
 
 
 class Message(BaseModel):
@@ -68,6 +70,11 @@ class Build(BaseModel):
     script: str = ""
     checked_revision: str | None = None
     """Geometry that passed script checks; manual changes invalidate this by changing revision."""
+
+    @computed_field
+    @property
+    def support_warnings(self) -> int:
+        return sum(step.support_warnings for step in self.steps)
 
     @computed_field
     @property

@@ -52,10 +52,11 @@ your tab + headless Chrome  <── steps, renders ──>  brickyard server  �
 ```
 
 - Holo is a sagent Forest agent with the managed sandbox tools (`shell`, `write_file`, `search_replace`, `view_image`, ...). Its tool calls are shell commands and file edits: it writes `build.py` and runs `bricks run`, which rebuilds the model on the server and prints the problems by line, with the render attached (`@@attach`).
-- `bricks run` prepares changed steps in memory and publishes them only when all checks pass. A failed candidate
-  leaves the displayed model and its accepted script unchanged; `build.py` in the agent workspace retains the edit
-  for repair. Support is checked over each complete step, independently of the order of Python calls within it.
-  This does not validate the physical order of assembly within a step.
+- `bricks run` checks changed steps in memory. Collisions, invalid parts and script errors reject the entire
+  candidate, leaving the displayed model and accepted script unchanged. Support warnings permit a visible draft,
+  but remain attached to its steps and block verified completion. Rerunning the same script cannot erase them.
+  Support is checked over each complete step, independently of Python call order; this does not validate the physical
+  order of assembly within a step.
 - `bricks reference <image-path>` pins a photo alongside subsequent `run`/`look` renders. New user attachments select
   the first supplied image automatically; the other images remain available with `view_image`. The build loop starts
   with a compact silhouette and repairs one identified defect at a time before adding detail or scenery.
@@ -76,16 +77,20 @@ your tab + headless Chrome  <── steps, renders ──>  brickyard server  �
   including after compaction. Reviews and candidate scripts/images are saved under `.brickyard-quality/` in each
   workspace, separated by request/reference content. `restore_best` rechecks the best saved script before restoring
   it. Repeated non-improvements prompt a change of scale, part family or construction approach.
-- Completion requires a checked, nonempty geometry matching the current script and two passing visual judgments.
-  The final judgment does not see the earlier review or score. Missing evidence, major defects, reviewer failures
-  and stale renders cannot approve completion. Time/step exhaustion is reported as incomplete and attempts to restore
-  the best reviewed candidate, preserving the last experiment as `before-restore.py`. Geometry fingerprints
-  bind each rendered image to exact piece positions, rotations and colors, including changes with the same part count.
-- This loop intentionally spends additional Holo calls on quality: one brief per target, one review per changed
-  geometry, additional calls for requested detail views, and a final independent review. Its scores are subjective
-  model judgments, not a measured improvement guarantee. Bounding-box checks do **not** verify clutch connections,
-  physical stability or every assembly step. Catalog checks verify recorded part/color combinations,
-  not current seller stock or delivered prices.
+- Verified completion requires checked, nonempty geometry matching the current script, no unresolved support
+  warnings, and a passing visual review. The refusal limit may stop the loop, but that answer is marked partial and
+  unverified. Time/step exhaustion is also reported as incomplete. `restore_best` remains an explicit tool.
+- Viewers fetch complete, content-versioned snapshots instead of reconstructing geometry from partial events.
+  A five-second foreground poll repairs missed events and recovers pending render requests. Background/finished
+  tabs release event-stream connections; the managed headless renderer remains active. The canvas stays hidden
+  until every asset for its revision has loaded and drawn, or shows a recoverable error. Asset requests expire after
+  12 seconds; failed cache entries can retry. Agent images must match the exact geometry fingerprint, even for
+  same-count edits, and cannot replace the live scene with an obsolete revision. Exported views use adaptive contours
+  to avoid darkening small white surfaces; `look` also reports the stored LDraw color codes.
+- This loop spends additional Holo calls on a brief per target, a review per changed geometry, and requested detail
+  views. Its scores are subjective model judgments, not a measured improvement guarantee. Bounding-box checks do
+  **not** verify clutch connections, physical stability, or every assembly step. Catalog checks verify recorded
+  part/color combinations, not current seller stock or delivered prices.
 - sagent comes from a local hai checkout recent enough for Linkup's `include_images`: set `HAI_ROOT` to it, with its venv synced (`cd hai && uv sync`).
 
 ```bash

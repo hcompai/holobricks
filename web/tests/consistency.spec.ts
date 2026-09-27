@@ -143,43 +143,26 @@ test("a hung asset times out, then retries; agent requests are recovered without
   await ready(page, state.build);
 });
 
-test("an in-flight obsolete model cannot overwrite or acknowledge a newer model; a failed cache entry can retry", async ({
-  page,
-}) => {
+test("a newer snapshot supersedes a model whose assets are still loading", async ({ page }) => {
   const state = await setup(page);
-  await page.goto("/");
-  await page.evaluate(async (build) => {
-    const { BrickScene } = await import("/src/scene.ts");
-    const host = document.createElement("div");
-    host.style.cssText = "width:256px;height:256px";
-    document.body.append(host);
-    (window as any).scene = new BrickScene(host, { replay: true });
-    (window as any).pieces = build.pieces;
-  }, state.build);
+  state.build = revision({ ...state.build, pieces: state.build.pieces.map((p) => ({ ...p, part: "slow.dat" })) });
+  const obsolete = state.build.revision;
   let release!: () => void;
-  const blocked = new Promise<void>((r) => {
-    release = r;
+  const blocked = new Promise<void>((resolve) => {
+    release = resolve;
   });
   await page.route("**/api/parts/slow.dat", async (route) => {
     await blocked;
     await route.fulfill({ body: part });
   });
   const request = page.waitForRequest("**/api/parts/slow.dat");
-  await page.evaluate(() => {
-    const w = window as any;
-    w.old = w.scene.setPieces(w.pieces.map((p: any) => ({ ...p, part: "slow.dat" })));
-  });
+  await page.goto("/?build=export-test");
   await request;
-  await page.evaluate(() => {
-    const w = window as any;
-    w.latest = w.scene.setPieces(w.pieces);
-  });
+  state.build = revision(fixture());
+  // Wait for the watchdog to receive the newer full snapshot while the old fetch is still pending.
+  await page.waitForTimeout(5500);
+  await expect(page.locator(".viewer")).not.toHaveAttribute("data-revision", obsolete!);
   release();
-  const result = await page.evaluate(async () => {
-    const w = window as any;
-    const result = [await w.old, await w.latest];
-    w.scene.dispose();
-    return result;
-  });
-  expect(result).toEqual([false, true]);
+  await ready(page, state.build);
+  await expect(page.locator(".viewer-canvas")).toHaveCSS("visibility", "visible");
 });

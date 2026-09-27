@@ -426,3 +426,18 @@ def test_render_failure_is_not_reported_as_a_missing_viewer_or_as_success(bench)
     assert result.problems == 1
     assert "No verified render" in result.text
     assert not result.images
+
+
+def test_support_warnings_survive_unchanged_reruns_and_clear_only_after_repair(bench):
+    async def run():
+        code = 'step("Floating")\nbrick("3001", 0, 0, 6, 4)\n'
+        for _ in range(2):
+            result = await bench.run_script(code)
+            assert result.problems == 1
+            assert bench.session.build.support_warnings == 1
+            assert bench.session.store.load(bench.session.build.id).support_warnings == 1
+        assert not (await bench.run_script(code.replace(", 6,", ", 0,"))).problems
+        assert bench.session.build.support_warnings == 0
+        assert bench.session.store.load(bench.session.build.id).support_warnings == 0
+
+    asyncio.run(run())

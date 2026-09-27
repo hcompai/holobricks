@@ -280,7 +280,8 @@ class Workbench:
                 continue
             placements, rejected, warnings = await asyncio.to_thread(draft._check, parsed)
             if placements:
-                candidate.add_step(s["title"], placements, key)
+                added = candidate.add_step(s["title"], placements, key if not warnings else "")
+                added.support_warnings = len(warnings)
             if rejected or warnings:
                 errors += len(rejected)
                 floating += len(warnings)
