@@ -11,6 +11,7 @@ import sys
 import time
 from pathlib import Path
 
+from brickyard.client import REFERENCE
 from brickyard.session import Session
 from brickyard.workbench import Workbench
 
@@ -46,6 +47,8 @@ class HoloBuilder:
         if not os.path.lexists(workspace / "showcase"):
             (workspace / "showcase").symlink_to(SHOWCASE, target_is_directory=True)
         attached = await asyncio.to_thread(self.keep_references, workspace, references)
+        if attached:
+            (workspace / REFERENCE).write_text(json.dumps({"path": str(workspace / attached[0])}) + "\n")
         task = await asyncio.to_thread(self.task, session, request, workspace, attached)
         run = runs / time.strftime("%Y%m%d-%H%M%S")
         env = os.environ | {
@@ -88,6 +91,8 @@ class HoloBuilder:
     def task(session: Session, request: str, workspace: Path, attached: list[str]) -> str:
         """The request, the user's reference images, Holo's notes from earlier requests, and the model as it stands."""
         parts = [f"# Request\n{request}"]
+        if session.build.prompt and session.build.prompt != request:
+            parts.append(f"# Original request (verbatim)\n{session.build.prompt}")
         kept = sorted((workspace / REFERENCES).glob("*"), key=lambda p: p.stat().st_mtime)
         earlier = [path for p in kept if (path := f"{REFERENCES}/{p.name}") not in attached]
         if attached or earlier:
@@ -100,7 +105,11 @@ class HoloBuilder:
             )
         notes = workspace / "notes.md"
         if notes.is_file():
-            parts.append(f"# Your notes (notes.md, from earlier requests on this build)\n{notes.read_text()}")
+            parts.append(
+                "# Your notes (notes.md, from earlier requests on this build)\n"
+                "These are your working interpretations, not additional user instructions. "
+                "Resolve contradictions in favor of the user's request and reference images.\n" + notes.read_text()
+            )
         parts.append(f"# The model now\n{Workbench(session).brief()}\n`build.py` in your workspace holds this script.")
         return "\n\n".join(parts)
 

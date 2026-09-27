@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import math
 import time
 import uuid
@@ -9,7 +11,7 @@ from collections import Counter
 from collections.abc import Iterable
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 
 from brickyard import ldraw
 
@@ -64,6 +66,29 @@ class Build(BaseModel):
     steps: list[Step] = []
     messages: list[Message] = []
     script: str = ""
+    checked_revision: str | None = None
+    """Geometry that passed script checks; manual changes invalidate this by changing revision."""
+
+    @computed_field
+    @property
+    def revision(self) -> str:
+        """Fingerprint geometry, including same-count recolors and moves (shared with the renderer)."""
+        rows = [
+            [p.id, p.part, p.color, p.step, *[math.floor(v * 1_000_000 + 0.5) for v in (*p.pos, *p.rot)]]
+            for p in self.pieces
+        ]
+        return hashlib.sha256(json.dumps(rows, separators=(",", ":")).encode()).hexdigest()
+
+    def add_step(self, title: str, placements: list[Placement], key: str | None = None) -> Step:
+        """Append a step in memory; the session decides when to persist and publish it."""
+        step = Step(index=len(self.steps), title=title, key=key)
+        next_id = max((p.id for p in self.pieces), default=0) + 1
+        pieces = [Piece(id=next_id + i, step=step.index, **p.model_dump()) for i, p in enumerate(placements)]
+        self.steps.append(step)
+        self.pieces.extend(pieces)
+        width, depth = footprint(pieces)
+        self.width, self.depth = max(self.width, width), max(self.depth, depth)
+        return step
 
     def summary(self) -> dict:
         return {

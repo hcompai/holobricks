@@ -12,7 +12,7 @@ from typing import Protocol
 
 import PIL.Image
 
-from brickyard.model import Box, Build, Camera, Message, Piece, Placement, Step, footprint
+from brickyard.model import Box, Build, Camera, Message, Placement, Step, footprint
 from brickyard.viewer import Viewers
 
 log = logging.getLogger("brickyard")
@@ -144,14 +144,9 @@ class Session:
 
     async def step(self, title: str, placements: list[Placement], key: str | None = None) -> Step:
         """Add placements as one step of the build."""
-        step = Step(index=len(self.build.steps), title=title, key=key)
-        next_id = max((p.id for p in self.build.pieces), default=0) + 1
-        pieces = [Piece(id=next_id + i, step=step.index, **pl.model_dump()) for i, pl in enumerate(placements)]
-        self.build.steps.append(step)
-        self.build.pieces += pieces
+        step = self.build.add_step(title, placements, key)
+        pieces = [p for p in self.build.pieces if p.step == step.index]
         self.build.updated = time.time()
-        width, depth = footprint(pieces)
-        self.build.width, self.build.depth = max(self.build.width, width), max(self.build.depth, depth)
         self._publish(
             {
                 "type": "step",
@@ -163,6 +158,32 @@ class Session:
         )
         await asyncio.sleep(0)
         return step
+
+    def commit_script(self, candidate: Build, kept: int) -> None:
+        """Persist checked geometry once, then publish its changed steps without yielding halfway through."""
+        candidate.checked_revision = candidate.revision
+        changes = {
+            name: getattr(candidate, name)
+            for name in ("script", "steps", "pieces", "width", "depth", "checked_revision")
+        }
+        changes["updated"] = time.time() if candidate.revision != self.build.revision else self.build.updated
+        self.store.save(self.build.model_copy(update=changes))
+        for name, value in changes.items():
+            setattr(self.build, name, value)
+        events = [{"type": "rewind", "steps": kept, "width": candidate.width, "depth": candidate.depth}]
+        events.extend(
+            {
+                "type": "step",
+                "step": step.model_dump(),
+                "pieces": [p.model_dump() for p in candidate.pieces if p.step == step.index],
+                "width": candidate.width,
+                "depth": candidate.depth,
+            }
+            for step in candidate.steps[kept:]
+        )
+        for queue in self.subscribers:
+            for event in events:
+                queue.put_nowait(event)
 
     async def rewind(self, steps: int) -> None:
         """Keep only the first `steps` steps and their pieces."""
@@ -191,6 +212,7 @@ class Session:
             "camera": camera.model_dump() if camera else None,
             "box": box.model_dump() if box else None,
             "pieces": len(self.build.pieces),
+            "revision": self.build.revision,
         }
         self.renders[request] = (event, future)
         for queue in self.subscribers:
@@ -202,11 +224,12 @@ class Session:
         finally:
             self.renders.pop(request, None)
 
-    def deliver_render(self, request: str, png: bytes, pieces: int | None) -> bool:
+    def deliver_render(self, request: str, png: bytes, pieces: int | None, revision: str | None = None) -> bool:
         """Takes a viewer's render if it shows the model as it was when asked, so a stale tab can't answer."""
         if request not in self.renders or (future := self.renders[request][1]).done():
             return False
-        if pieces != self.renders[request][0]["pieces"]:
+        expected = self.renders[request][0]
+        if pieces != expected["pieces"] or revision != expected["revision"] or revision != self.build.revision:
             return False
         future.set_result(png)
         return True

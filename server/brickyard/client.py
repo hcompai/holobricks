@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import json
 import os
 import sys
 from pathlib import Path
@@ -13,6 +14,25 @@ import httpx
 TIMEOUT_S = 300
 ATTACHED = 2
 """Images marked `@@attach` in the output, which sagent shows the agent with the command's result."""
+REFERENCE = Path(".brickyard-reference.json")
+
+
+def reference(path: str | None = None) -> Path | None:
+    """Select or read the primary image paired with construction renders across commands."""
+    selecting = path is not None
+    if path is None:
+        if not REFERENCE.exists():
+            return None
+        saved = json.loads(REFERENCE.read_text())
+        if not isinstance(saved, dict) or not isinstance(saved.get("path"), str):
+            raise ValueError("Invalid primary reference selection")
+        path = saved["path"]
+    image = Path(path).resolve()
+    if not image.is_file() or image.suffix.lower() not in (".jpg", ".jpeg", ".png", ".webp"):
+        raise ValueError(f"Reference must be an existing JPEG, PNG or WebP image: {image}")
+    if selecting:
+        REFERENCE.write_text(json.dumps({"path": str(image)}) + "\n")
+    return image
 
 
 def call(tool: str, **args: object) -> dict:
@@ -54,8 +74,17 @@ def main() -> None:
     look.add_argument("--zoom", type=float, help="1 frames the whole model, 4 a quarter of its width")
     look.add_argument("--at", type=float, nargs=3, metavar=("X", "Y", "Z"), help="center of the view, studs and plates")
     tools.add_parser("parts", help="search LDraw parts by words or number").add_argument("query")
+    tools.add_parser("reference", help="pair this reference image with every construction render").add_argument("image")
     tools.add_parser("name", help="name the build").add_argument("name")
     args = parser.parse_args()
+    if args.tool == "reference":
+        try:
+            selected = reference(args.image)
+        except (OSError, ValueError) as e:
+            parser.error(str(e))
+        print(f"Primary reference: {selected}. It will accompany each run/look render.")
+        print(f"@@attach {selected}")
+        return
     camera = {k: v for k in ("angle", "elevation", "zoom", "at") if (v := getattr(args, k, None)) is not None}
 
     if args.tool == "run":
@@ -81,6 +110,14 @@ def main() -> None:
             print(f"- {Path(name).resolve()}")
         for name in names[:ATTACHED]:
             print(f"@@attach {name}")
+        if len(names) < ATTACHED:
+            try:
+                selected = reference()
+            except (OSError, ValueError, KeyError) as e:
+                print(f"Primary reference unavailable: {e}. Use bricks reference <image-path> to select it again.")
+            else:
+                if selected:
+                    print(f"Primary reference for comparison:\n@@attach {selected}")
     sys.exit(1 if out["problems"] else 0)
 
 

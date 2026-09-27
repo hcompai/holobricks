@@ -64,14 +64,28 @@ def catalog() -> dict[str, str]:
 
 
 def search(query: str, limit: int = 20) -> list[str]:
-    """Parts whose title contains every word of `query`, shortest (most generic) titles first."""
+    """Exact part IDs first; otherwise rank complete title words ahead of prefix matches."""
+    if limit <= 0 or not query.strip():
+        return []
+    exact = resolve(query)
+    if exact is not None:
+        return [exact]
 
     def tokens(text: str) -> list[str]:
-        return re.sub(r"(\d)\s*x\s*(\d)", r"\1 x \2", text.lower()).split()
+        words = re.sub(r"(\d)\s*x\s*(\d)", r"\1 x \2", text.lower()).split()
+        return [{"tire": "tyre", "tires": "tyre", "tyres": "tyre"}.get(w, w) for w in words]
 
     words = tokens(query)
-    hits = [p for p, t in catalog().items() if all(any(tok.startswith(w) for tok in tokens(t)) for w in words)]
-    return sorted(hits, key=lambda p: (len(catalog()[p]), p))[:limit]
+    dimensions = [tuple(sorted(map(int, m.groups()))) for m in DIMS.finditer(" ".join(words))]
+    hits = []
+    for part, title in catalog().items():
+        terms = tokens(title)
+        sizes = [tuple(sorted(map(int, m.groups()))) for m in DIMS.finditer(" ".join(terms))]
+        if any(size not in sizes for size in dimensions):
+            continue
+        if all(any(t == w or (not w.isdecimal() and t.startswith(w)) for t in terms) for w in words):
+            hits.append((sum(w not in terms for w in words), len(title), part))
+    return [part for _, _, part in sorted(hits)[:limit]]
 
 
 @cache

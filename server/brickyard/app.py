@@ -212,6 +212,7 @@ async def call_tool(build_id: str, tool: str, args: dict[str, Any]) -> dict:
         "text": result.text,
         "problems": result.problems,
         "caption": result.caption,
+        "revision": session.build.revision,
         "images": [{"mime": p.mime, "data": base64.b64encode(p.data).decode()} for p in result.images],
     }
 
@@ -252,7 +253,11 @@ async def get_sheet(
 async def put_render(build_id: str, request: str, body: Request) -> dict:
     pieces = body.headers.get("x-pieces")
     png = await body.body()
-    return {"accepted": session_for(build_id).deliver_render(request, png, int(pieces) if pieces else None)}
+    return {
+        "accepted": session_for(build_id).deliver_render(
+            request, png, int(pieces) if pieces else None, body.headers.get("x-revision")
+        )
+    }
 
 
 @app.get("/api/builds/{build_id}/events")

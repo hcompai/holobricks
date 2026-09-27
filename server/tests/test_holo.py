@@ -117,9 +117,9 @@ def test_a_script_rebuilds_from_its_first_changed_step_and_names_the_lines_of_it
 
     before = list(bench.pieces)
     broken = asyncio.run(bench.run_script(bench.session.build.script + "undefined()\n"))
-    assert "did not change" in broken.text and "line 13 `undefined()`: NameError" in broken.text
+    assert "did not change" in broken.text and "line 12 `undefined()`: NameError" in broken.text
     assert bench.pieces == before
-    assert "undefined()" in bench.session.build.script
+    assert bench.session.build.script == HOUSE.replace("320", "4")
 
 
 def test_a_step_builds_the_same_bricks_whatever_randomness_the_steps_before_it_use():
@@ -179,8 +179,10 @@ def test_a_render_is_answered_by_a_late_viewer_but_never_by_a_stale_one(tmp_path
         await asyncio.sleep(0)
         event = session.subscribe().get_nowait()
         assert event["type"] == "render" and event["camera"]["angle"] == 90
-        assert not session.deliver_render(event["request"], b"stale", event["pieces"] + 1)
-        assert session.deliver_render(event["request"], b"png", event["pieces"])
+        assert not session.deliver_render(event["request"], b"stale", event["pieces"] + 1, event["revision"])
+        assert not session.deliver_render(event["request"], b"stale", event["pieces"], "old-geometry")
+        assert not session.deliver_render(event["request"], b"stale", event["pieces"])
+        assert session.deliver_render(event["request"], b"png", event["pieces"], event["revision"])
         return await waiting
 
     assert asyncio.run(main()) == b"png"
@@ -238,8 +240,13 @@ def test_holo_gets_the_task_on_stdin_and_stop_ends_its_whole_process_group(tmp_p
     assert task.startswith("# Request\na tower") and "Build area" not in task and task.endswith(session.build.id)
     assert "the lighthouse from the pier" in task and "No pieces yet." in task
     assert "- references/pier.jpg (attached to this request)" in task
+    assert "# Original request (verbatim)\na lighthouse" in task
+    assert "working interpretations, not additional user instructions" in task
     assert json.loads((workspace / "references.json").read_text()) == [str(workspace / "references" / "pier.jpg")]
     assert (workspace / "references" / "pier.jpg").read_bytes() == b"jpeg"
+    assert json.loads((workspace / ".brickyard-reference.json").read_text())["path"] == str(
+        workspace / "references" / "pier.jpg"
+    )
     assert not session.build.steps
     assert (workspace / "build.py").exists() and (workspace / "showcase" / "paris.png").exists()
     assert not any(map(alive, pids))

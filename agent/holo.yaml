@@ -26,8 +26,21 @@ llm:
     preserve_thinking: true
     max_completion_tokens: ${max_completion_tokens}
 
+# A separate Holo context judges actual images without the builder's explanations or private reasoning.
+review_llm:
+  _target_: hai_adapters.llm.LanguageModel
+  default_timeout: ${llm_timeout}
+  chat_provider:
+    _target_: hai_adapters.chat_provider_builder.build_chat_provider
+    name: ${model_name}
+  base_request:
+    _target_: hai_protocols.base.BaseRequest
+    temperature: 0.2
+    reasoning_effort: high
+    max_completion_tokens: 16384
+
 compactor:
-  _target_: sagent.lib.callbacks.Compactor
+  _target_: quality.ConstructionCompactor
   trigger_tokens: ${compactor_trigger_tokens}
   passthrough_images: ${max_images}
   passthrough_actions: 10
@@ -90,9 +103,24 @@ agent:
     - _target_: sagent.lib.tools.sandbox.SearchReplace
     - _target_: sagent.lib.tools.sandbox.ViewImage
     - _target_: sagent.lib.tools.search.WebSearch
+    - _target_: quality.RestoreBest
+      workspace: ${workspace}
+      url: ${oc.env:BRICKYARD_URL,http://127.0.0.1:8000}
+      build: ${oc.env:BRICKYARD_BUILD}
     - _target_: sagent.lib.tools.communication.Answer
   callbacks:
     - ${compactor}
+    - _target_: quality.QualityLoop
+      llm: ${review_llm}
+      workspace: ${workspace}
+      url: ${oc.env:BRICKYARD_URL,http://127.0.0.1:8000}
+      build: ${oc.env:BRICKYARD_BUILD}
+    - _target_: quality.CompletionDisclosure
+      restore:
+        _target_: quality.RestoreBest
+        workspace: ${workspace}
+        url: ${oc.env:BRICKYARD_URL,http://127.0.0.1:8000}
+        build: ${oc.env:BRICKYARD_BUILD}
   services:
     sandbox: ${sandbox}
     search_engine:

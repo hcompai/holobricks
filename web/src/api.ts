@@ -80,6 +80,7 @@ export interface RenderRequest {
   box: Box | null;
   /** How many pieces the model had when asked; only a viewer showing that many may answer. */
   pieces: number;
+  revision: string;
 }
 
 export type BuildEvent =
@@ -157,11 +158,11 @@ export const api = {
     json<BuildSummary>(post(`/api/builds/${id}/messages`, { text, images })),
   stop: (id: string) => post(`/api/builds/${id}/stop`, {}),
   events: (id: string) => new EventSource(`/api/builds/${id}/events`),
-  putRender: (id: string, request: string, png: Blob, pieces: number) =>
+  putRender: (id: string, request: string, png: Blob, pieces: number, revision: string) =>
     fetch(`/api/builds/${id}/renders/${request}`, {
       method: "PUT",
       body: png,
-      headers: { "X-Pieces": String(pieces) },
+      headers: { "X-Pieces": String(pieces), "X-Revision": revision },
     }),
   putThumbnail: (id: string, png: Blob) => fetch(`/api/builds/${id}/thumbnail.png`, { method: "PUT", body: png }),
 };

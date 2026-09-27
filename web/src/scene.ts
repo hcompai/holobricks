@@ -421,6 +421,42 @@ export class BrickScene {
     return this.loading;
   }
 
+  /** Bind an agent image to its exact geometry and serialize it with all scene updates. */
+  renderBuild(pieces: Piece[], revision: string, camera: Camera | null, box: Box | null): Promise<Blob | null> {
+    const render = this.loading
+      .catch(() => undefined)
+      .then(async () => {
+        const rows = pieces.map((p) => [
+          p.id,
+          p.part,
+          p.color,
+          p.step,
+          ...[...p.pos, ...p.rot].map((v) => Math.round(v * 1_000_000)),
+        ]);
+        const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(rows)));
+        const actual = Array.from(new Uint8Array(digest), (v) => v.toString(16).padStart(2, "0")).join("");
+        if (actual !== revision) return null;
+        // Preflight every distinct asset before changing the scene. A failed or empty template
+        // must never produce an apparently verified image with some pieces silently missing.
+        const parts = new Map(pieces.map((p) => [`${p.part}:${p.color}`, p]));
+        await Promise.all(
+          [...parts.values()].map(async (p) => {
+            const template = await this.template(p.part, p.color);
+            if (new THREE.Box3().setFromObject(template).isEmpty()) {
+              throw new Error(`Empty render asset: ${p.part} in color ${p.color}`);
+            }
+          }),
+        );
+        await this.apply(pieces);
+        return camera ? this.view(camera, box) : this.sheet(box);
+      });
+    this.loading = render.then(
+      () => undefined,
+      () => undefined,
+    );
+    return render;
+  }
+
   private async apply(pieces: Piece[]) {
     const groups = new Map<string, Piece[]>();
     for (const p of pieces) {
