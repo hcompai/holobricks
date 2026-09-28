@@ -668,9 +668,9 @@ def plane(kit: Kit, x: int, y: int, ground: int = GROUND, tiers=PLANE, trunk: in
             kit.add("3062b", x, y, z, GREEN)
             z += 3
         for i, (part, rotation, dx, dy, color) in enumerate(tier):
-            leaf(kit, part, x + dx, y + dy, z + i, color, rotation, FAR_TIP, ("15470", BGREEN))
+            leaf(kit, part, x + dx, y + dy, z + i, color, rotation, FAR_TIP, ("6141", BGREEN))
         z += len(tier)
-    kit.add("15470", x, y, z, BGREEN)
+    kit.add("6141", x, y, z, BGREEN)
 
 
 def chestnut(kit: Kit, x: int, y: int) -> None:

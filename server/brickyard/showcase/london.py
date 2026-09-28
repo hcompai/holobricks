@@ -238,7 +238,7 @@ def barge(kit: Kit) -> None:
     x = x0 + 1
     for z, y, n in ((5, y0 + 1, 4), (8, y0 + 1, 4), (11, y0 + 2, 3), (14, y0 + 2, 3), (17, y0 + 3, 2), (20, y0 + 4, 1)):
         kit.run(x, y, z, n, RBROWN, "y")
-    kit.add("3957a", x, y0 + 5, 5, BLACK)
+    kit.add("3957b", x, y0 + 5, 5, BLACK)
     kit.step("Red-brown sails")
 
 

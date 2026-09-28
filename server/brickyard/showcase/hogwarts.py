@@ -720,7 +720,7 @@ def life(kit: Kit, sc: Sculpture, ground: Ground, rng: random.Random) -> None:
     kit.add("2417", x - 2, y - 2, z + 13, DGREEN, 90)
     kit.add("3021", x - 1, y, z + 14, AZURE)
     kit.add("3004", x, y, z + 15, CLEAR, 90)
-    kit.add("3023", x, y, z + 18, AZURE, 90)
+    kit.add("3023b", x, y, z + 18, AZURE, 90)
     kit.step("The Whomping Willow, with a flying Ford Anglia stuck in it")
     tops = {
         c: h
@@ -760,7 +760,7 @@ def life(kit: Kit, sc: Sculpture, ground: Ground, rng: random.Random) -> None:
             ("3941", 0, 2),
             ("3062b", 1, 5),
             ("3062b", 1, 8),
-            ("3023", 1, 11),
+            ("3023b", 1, 11),
             ("3062b", 2, 12),
             ("4589", 2, 15),
         ):
