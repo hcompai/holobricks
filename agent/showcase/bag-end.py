@@ -13,6 +13,7 @@ WALLTOP = 17               # facade top / turf line, courses
 BASE = 3 * F               # plate height of the door sill level
 
 GRASS = [(2, 6), (10, 3), (288, 1)]
+LEAFY = [(2, 4), (288, 3), (10, 2)]
 STONE = [(19, 3), (28, 3), (72, 2), (71, 2), (84, 1)]
 PLASTER, TIMBER, DOOR, FRAME = 226, 308, 2, 28
 BRICKRED = (320, 70)
@@ -20,6 +21,21 @@ BRICKRED = (320, 70)
 BRICKS = {1: "3005", 2: "3004", 3: "3622", 4: "3010", 6: "3009", 8: "3008"}
 PLATES = {1: "3024", 2: "3023b", 3: "3623", 4: "3710", 6: "3666", 8: "3460"}
 LENS = (1, 2, 3, 4, 6, 8)
+GLASS_LENS = {"brick": (1,), "plate": (1, 2)}
+
+# colors BrickLink has no record of for these parts (from `bricks colors`), and the nearest shade that exists
+LACKS = {"3001": {10}, "3007": {10, 27, 28, 288}, "3039": {10, 308}, "3045": {10, 288}, "3678b": {10, 288},
+         "3684c": {10}, "3022": {288}, "3031": {308}, "2356": {288}, "6141": {288}, "3062b": {28},
+         "3742": {2, 10, 25, 27}, "24866": {13}, "3633": {28, 308}, "3009": {10}, "3008": {10, 288},
+         "3666": {10}, "3460": {10}}
+NEAREST = {10: 2, 27: 2, 288: 2, 28: 19, 308: 70, 13: 29, 25: 14, 2: 15}
+
+
+def fit(part, color):
+    """The palette's color if BrickLink has it for this part, else the nearest shade it has."""
+    while color in LACKS.get(part, ()):
+        color = NEAREST[color]
+    return color
 
 
 def pick(weights):
@@ -54,23 +70,35 @@ def dome(x, y, cx, cy, rx, ry, peak, p=0.7, seed=0.0):
     return peak * max(0.0, 1 - d * d) ** p
 
 
+BLEND = 2.5                # courses over which neighbouring domes melt into one another
 TREE = (44, 44)            # trunk centre (studs)
 CHIMNEYS = [(26, 34), (62, 38)]
 
 
 def hill(x, y):
-    """Main crest behind the door (the oak's seat), a back-right hump and two wings reaching forward
-    around the garden like arms; radial folds and noise so no flank repeats another."""
-    h = max(dome(x, y, 42, 47, 33, 25, 27, 0.6),
-            dome(x, y, 64, 58, 19, 16, 22, 0.7, 2.0),
-            dome(x, y, 12, 30, 13, 21, 18, 0.75, 1.0),
-            dome(x, y, 75, 29, 12, 18, 15, 0.75, 3.0),
-            dome(x, y, 22, 60, 16, 13, 13, 0.8, 4.0))
+    """A berm burying the facade, a broad crest rising gently behind it to the oak's seat, a back-right
+    hump and two wings reaching forward around the garden like arms; soft folds and noise."""
+    domes = (dome(x, y, 41, 30, 40, 13, WALLTOP + 4, 0.5),
+             dome(x, y, 44, 47, 40, 32, 27, 0.8),
+             dome(x, y, 64, 58, 19, 16, 22, 0.7, 2.0),
+             dome(x, y, 12, 30, 13, 21, 18, 0.75, 1.0),
+             dome(x, y, 75, 29, 12, 18, 16, 0.75, 3.0),
+             dome(x, y, 22, 60, 19, 15, 21, 0.65, 4.0),
+             dome(x, y, 10, 47, 11, 14, 17, 0.7, 5.0))
+    h = BLEND * math.log(sum(math.exp(d / BLEND) for d in domes) - len(domes) + 1)
     if h > 0.5:
         a = math.atan2(y - 47, x - 42)
-        h *= 1 + 0.07 * math.sin(7 * a + 0.5) + 0.05 * math.sin(11 * a + 2.0)
-        h += 1.5 * noise(x * 0.19 + 5, y * 0.19) + 0.3 * noise(x * 0.55, y * 0.55 + 2)
-    return h
+        h *= 1 + 0.035 * math.sin(7 * a + 0.5) + 0.025 * math.sin(11 * a + 2.0)
+        h += 0.8 * noise(x * 0.19 + 5, y * 0.19) + 0.2 * noise(x * 0.55, y * 0.55 + 2)
+    return h * min(1.0, max(0.0, (1 - rim(x, y)) / 0.3)) ** 0.8
+
+
+def rim(x, y):
+    """0 in the middle of the site, 1 on its edge: a rounded, wobbling outline, flattest along the lane."""
+    dx, dy = (x - 44) / 43, (y - 37) / 40
+    a = math.atan2(dy, dx)
+    wob = 1 + 0.06 * math.sin(3 * a + 0.8) + 0.04 * math.sin(5 * a + 2.3) + 0.03 * noise(x * 0.15, y * 0.15)
+    return (abs(dx) ** 3 + abs(dy) ** 3) ** (1 / 3) / wob
 
 
 def front_edges(x):
@@ -85,26 +113,6 @@ STAIRS = {}
 for X in (21, 22):
     STAIRS.update({(X, 1): 1, (X, 2): 1, (X, 3): 2, (X, 6): 3, (X, 7): 4, (X, 8): 4, (X, 9): 4, (X, 10): 4,
                    (X, 11): 4})
-
-
-TRAIL = [(61, 21), (70, 24), (77, 34), (73, 47), (63, 53), (53, 50)]
-
-
-def trail_cells():
-    """A footpath climbing from the east end of the yard round the shoulder of the hill to the oak:
-    cells in order, their heights rising steadily from the yard to the crest."""
-    cells = []
-    for (ax, ay), (bx, by) in zip(TRAIL, TRAIL[1:]):
-        n = int(max(abs(bx - ax), abs(by - ay)) * 2)
-        for i in range(n):
-            t = i / n
-            c = (int((ax + (bx - ax) * t) // S), int((ay + (by - ay) * t) // S))
-            if not cells or cells[-1] != c:
-                if cells and abs(c[0] - cells[-1][0]) + abs(c[1] - cells[-1][1]) == 2:
-                    cells.append((c[0], cells[-1][1]))
-                cells.append(c)
-    h0, h1 = F + 1, 27
-    return [(c, round(h0 + (h1 - h0) * i / (len(cells) - 1))) for i, c in enumerate(cells)]
 
 
 def build_heights():
@@ -130,31 +138,29 @@ def build_heights():
             if Y == FY // S and fx0 <= X < fx1:
                 H[X, Y], kind[X, Y] = WALLTOP, "house"
                 continue
+            if Y < FY // S and fx0 - 7 <= X <= fx0:
+                stair = WALLTOP + 1 - 2 * (FY // S - Y) - 2 * max(0, X - (fx0 - 2), fx0 - 3 - X)
+                if stair > hh:
+                    hh, kk = stair, "hill"
             dist = max(fx0 - X, X - (fx1 - 1), 0)
             if FY // S - 1 <= Y <= FY // S + 1 and dist > 0:
                 bump = WALLTOP + 1 - 1.6 * (dist - 1) - (3 if Y < FY // S else 0)
                 if bump > hh:
                     hh, kk = int(bump), "hill"
             if FY // S < Y <= FY // S + 3 and fx0 <= X < fx1:
-                lip = WALLTOP + 1 + (Y - FY // S - 1) + (round(1.2 + 1.3 * noise(X * 0.45, Y * 0.8 + 3)) if Y > FY // S + 1 else 0)
+                bump = 1.2 + 1.3 * noise(X * 0.45, Y * 0.8 + 3) if Y > FY // S + 1 else 0.6 + 1.1 * noise(X * 0.7, 5)
+                lip = WALLTOP + 1 + (Y - FY // S - 1) + round(bump + 3 * max(0.0, noise(X * 1.3 + 4 * Y, Y * 2.1)))
                 hh, kk = max(hh, lip), "hill"
             H[X, Y], kind[X, Y] = hh, kk
     for (X, Y), h in STAIRS.items():
         H[X, Y], kind[X, Y] = h, "path"
-    for (X, Y), h in trail_cells():
-        H[X, Y], kind[X, Y] = h, "path"
     for (px, py), r in [(TREE, 2)] + [(c, 1) for c in CHIMNEYS]:
         PX, PY = px // S, py // S
-        level = H[PX, PY]
+        level = max(H[X, Y] for X in range(PX - r, PX + r + 1) for Y in range(PY - r, PY + r + 1))
         for X in range(PX - r, PX + r + 1):
             for Y in range(PY - r, PY + r + 1):
                 H[X, Y] = level
-    keep = {}
-    for (X, Y), h in H.items():
-        near = any(H.get((X + dx, Y + dy), 0) > 0 for dx in (-2, -1, 0, 1, 2) for dy in (-2, -1, 0, 1, 2))
-        if h > 0 or Y * S < FY or near:
-            keep[X, Y] = h
-    return keep, kind
+    return {c: h for c, h in H.items() if rim(S * c[0] + 1, S * c[1] + 1) < 1}, kind
 
 
 H, KIND = build_heights()
@@ -208,7 +214,8 @@ def plan_bevels():
             part, rot, back = BEVELS[size], dict(OUTWARD)[d], (-d[0], -d[1])
         claimed.update((X, Y, k) for k in range(h - size, h))
         slopes.update(((X, Y, k), back) for k in range(h - size, h))
-        out.append((part, S * X, S * Y, 3 * (h - size), shade(ROCK, X, Y, 9, 0.9) if rocky(X, Y) else shade(GRASS, X, Y, 9), rot))
+        color = shade(ROCK, X, Y, 9, 0.9) if rocky(X, Y) else shade(GRASS, X, Y, 9)
+        out.append((part, S * X, S * Y, 3 * (h - size), fit(part, color), rot))
     return out
 
 
@@ -235,12 +242,16 @@ def blocks(cells, z, color):
         while n < target and (X + axis[0] * n, Y + axis[1] * n) in free:
             n += 1
         free -= {(X + axis[0] * i, Y + axis[1] * i) for i in range(n)}
-        brick(CELLRUNS[n], S * X, S * Y, z, color, 0 if n == 1 or axis == (1, 0) else 90)
+        brick(CELLRUNS[n], S * X, S * Y, z, fit(CELLRUNS[n], color), 0 if n == 1 or axis == (1, 0) else 90)
+
+
+OUTCROPS = [(22, 62, 5.5), (55, 64, 4.5), (72, 57, 4.0)]   # stud centre x, y and radius, all behind the crest
 
 
 def rocky(X, Y):
-    return (KIND.get((X, Y)) == "hill" and H.get((X, Y), 0) > 5 and Y > FY // S + 4
-            and noise(X * 0.7 + 7, Y * 0.7 - 2) > 0.66)
+    x, y = S * X + 1, S * Y + 1
+    return (KIND.get((X, Y)) == "hill" and H.get((X, Y), 0) > 5
+            and any(math.hypot(x - ox, y - oy) < r * (1 + 0.3 * noise(x * 0.4, y * 0.4)) for ox, oy, r in OUTCROPS))
 
 
 ROCK = [(71, 3), (72, 3), (19, 1), (28, 1)]
@@ -270,14 +281,14 @@ PLATERUNS = {1: "3022", 2: "3020", 3: "3795", 4: "3034"}
 
 
 # ---------------------------------------------------------------- facade: pixel walls
-def split_run(xs, supported):
+def split_run(xs, supported, lens=LENS):
     """Split a run of consecutive x into allowed lengths, each piece touching support."""
     out, i, n = [], 0, len(xs)
     while i < n:
-        opts = [L for L in LENS if L <= n - i]
+        opts = [L for L in lens if L <= n - i]
         random.shuffle(opts)
         opts.sort(key=lambda L: -L if L <= 4 else 0)
-        opts = opts[:3] + [L for L in LENS if L <= n - i and L not in opts[:3]]
+        opts = opts[:3] + [L for L in lens if L <= n - i and L not in opts[:3]]
         chosen = None
         for L in opts:
             ok = any(supported(xs[j]) for j in range(i, i + L))
@@ -286,7 +297,7 @@ def split_run(xs, supported):
                 chosen = L
                 break
         if chosen is None:
-            chosen = max(L for L in LENS if L <= n - i)
+            chosen = max(L for L in lens if L <= n - i)
         out.append((xs[i], chosen))
         i += chosen
     return out
@@ -343,8 +354,8 @@ def pixel_plane(y, x0, x1, z0, z1, color_at):
                     while run[-1] + 1 < x1 and cols[run[-1] + 1][0] == c and ok(run[-1] + 1, c):
                         run.append(run[-1] + 1)
                     sup = lambda xx: zb == z0 or at(xx, zb - 1) is not None
-                    for sx, L in split_run(run, sup):
-                        brick(BRICKS[L], sx, y, zb, paint(c))
+                    for sx, L in split_run(run, sup, GLASS_LENS["brick"] if c in (40, 46) else LENS):
+                        brick(BRICKS[L], sx, y, zb, fit(BRICKS[L], paint(c)))
                     done |= {(xx, z) for xx in run for z in rows}
                     x = run[-1] + 1
                 else:
@@ -360,8 +371,8 @@ def pixel_plane(y, x0, x1, z0, z1, color_at):
                 while run[-1] + 1 < x1 and (run[-1] + 1, z) not in done and at(run[-1] + 1, z) == c:
                     run.append(run[-1] + 1)
                 sup = lambda xx, z=z: z == z0 or at(xx, z - 1) is not None
-                for sx, L in split_run(run, sup):
-                    brick(PLATES[L], sx, y, z, paint(c))
+                for sx, L in split_run(run, sup, GLASS_LENS["plate"] if c in (40, 46) else LENS):
+                    brick(PLATES[L], sx, y, z, fit(PLATES[L], paint(c)))
                 x = run[-1] + 1
 
 
@@ -455,7 +466,7 @@ def back_px(x, z):
         above = back_open(x, zz)
         if above:
             return 0
-    return None
+    return 72 if z < eave(x) + 1.2 else None
 
 
 def back_open(x, z):
@@ -475,28 +486,46 @@ pixel_plane(FY, FX0, FX1, 0, 3 * WALLTOP, front_px)
 step("The green round door and the window glass, set back in their frames")
 pixel_plane(FY + 1, FX0, FX1, 0, 3 * WALLTOP, back_px)
 
-step("Turf lip over the eaves, jutting a stud proud of the wall on a dark timber beam")
-TURF_RUNS = {1: "3022", 2: "3022", 3: "3021", 4: "3020", 6: "3795"}
-lip = {}
+step("Turf over the eaves, bulging out and hanging over the door and windows")
+LIP = range(FX0, FX1)
+crest, x = {}, FX0
+while x < FX1:
+    n, lift = random.randint(2, 7), random.choice([0, 1, 2, 3, 3, 4, 5, 6, 8])
+    for i in range(x, min(x + n, FX1)):
+        crest[i] = 3 * WALLTOP + 1 + lift + round(noise(i * 0.4, 2.0))
+    x += n
+drip = {x: max(0, round(1.5 + 2 * noise(x * 0.47 + 3, 5.0) + math.sin(x * 1.7))) for x in LIP}
+fringe = {x: noise(x * 0.31, 9.0) > -0.35 for x in LIP}
+rows = {FY + 1: {x: (top(x, FY + 1), crest[x]) for x in LIP},
+        FY: {x: (top(x, FY), crest[x]) for x in LIP},
+        FY - 1: {x: (top(x, FY) - drip[x], crest[x]) for x in LIP},
+        FY - 2: {x: (top(x, FY) - drip[x] - 1, crest[x]) for x in LIP if fringe[x]}}
+low = {x: min(rows[y][x][0] for y in (FY - 1, FY - 2) if x in rows[y]) for x in LIP}
+for y, span in rows.items():
+    turf = lambda x, z, span=span, y=y: (shade(GRASS, x, z // 3, y, 0.3)
+                                         if x in span and span[x][0] <= z < span[x][1] else None)
+    pixel_plane(y, FX0, FX1, 0, max(crest.values()), turf)
+for x in LIP:
+    brick("3710", x, FY - 2, crest[x], fit("3710", shade(GRASS, x, 0, 7)), 90)
+
+step("Ferns trailing from the turf, and long grass along its top")
+hung = set()
+for x in range(FX0, FX1 - 3, 4):
+    z = min(low[i] for i in range(x, x + 4)) - 1
+    if random.random() < 0.6 and z > 31 and any(low[i] == z + 1 for i in range(x, x + 4)):
+        brick("2423", x, FY - 4 if fringe[x] else FY - 3, z, fit("2423", pick(LEAFY)), 90)
+        hung.update(range(x, x + 4))
+for x in LIP:
+    if x not in hung and random.random() < 0.35:
+        y = FY - 2 if fringe[x] else FY - 1
+        for k in range(random.randint(1, 3)):
+            brick("6141", x, y, low[x] - 1 - k, fit("6141", pick(LEAFY)))
+for x in range(FX0, FX1 - 3, 2):
+    if random.random() < 0.5:
+        brick("2423", x, FY - 2, top(x, FY - 2, 4, 3), fit("2423", pick(LEAFY)), 90)
 for x in range(FX0, FX1):
-    e = eave(x)
-    z0 = top(x, FY)                  # the turf sits right on the plastered wall's top
-    lip[x] = z0
-    brick("3024", x, FY - 1, z0 - 1, TIMBER)
-for z in range(min(lip.values()), 3 * WALLTOP):
-    xs = [x for x in range(FX0, FX1) if lip[x] <= z]
-    i = 0
-    while i < len(xs):
-        n = 1
-        while i + n < len(xs) and xs[i + n] == xs[i] + n and n < 6:
-            n += 1
-        n = max(k for k in TURF_RUNS if k <= n)
-        if n == 1:
-            brick("3023b", xs[i], FY - 1, z, shade(GRASS, xs[i], z, 4, 0.5), 90)
-        else:
-            brick(TURF_RUNS[n], xs[i], FY - 1, z, shade(GRASS, xs[i], z, 4, 0.5))
-        i += n
-print("lipdbg", [(z, front_px(29, z), top(29, FY, 1, 1)) for z in range(26, 44)])
+    if random.random() < 0.2 and top(x, FY - 1) == top(x, FY):
+        brick("15279", x, FY - 1, top(x, FY - 1), random.choice([10, 27, 288, 330]))
 
 # ---- terrain
 bevels = plan_bevels()
@@ -542,7 +571,7 @@ for X, Y in sorted(hollow, key=lambda c: (c[1], c[0])):
             column(S * (X + i), S * Y, 0, 3 * h - 1)
 step("Turf on the hill, lawns, the lane and the stone stairs")
 for X, Y, n, h, c in runs:
-    brick(PLATERUNS[n], S * X, S * Y, max(0, 3 * h - 1), c)
+    brick(PLATERUNS[n], S * X, S * Y, max(0, 3 * h - 1), fit(PLATERUNS[n], c))
 
 # ---------------------------------------------------------------- the oak on the crest
 BARK = [(308, 5), (70, 3), (28, 1)]
@@ -564,7 +593,7 @@ def oput(part, x, y, z, color, rot=0):
     w, d, h = OSIZE[part]
     if rot in (90, 270):
         w, d = d, w
-    brick(part, x, y, z, color, rot)
+    brick(part, x, y, z, fit(part, color), rot)
     vox = [(x + i, y + j, z + k) for i in range(w) for j in range(d) for k in range(h)]
     OCC.update(vox)
     if part in ("2417", "2423"):
@@ -761,7 +790,6 @@ chimney(CHIMNEYS[1][0] - 1, CHIMNEYS[1][1] - 1, 3, [(71, 3), (72, 2), (19, 1)], 
 
 # ---------------------------------------------------------------- the garden
 FLOWERS = [(4, 3), (14, 3), (15, 2), (13, 2), (25, 2), (5, 1), (1, 1)]
-LEAFY = [(2, 4), (288, 3), (10, 2)]
 WOOD = [(70, 4), (308, 2), (28, 1)]
 
 
@@ -793,7 +821,7 @@ def put(part, x, y, z, color, rot=0):
     w, d = FOOT.get(part, (1, 1))
     if rot in (90, 270):
         w, d = d, w
-    brick(part, x, y, z, color, rot)
+    brick(part, x, y, z, fit(part, color), rot)
     for i in range(w):
         for j in range(d):
             GH[x + i, y + j] = z + PH[part]
@@ -893,23 +921,48 @@ for (X, Y) in STAIRS:
         if z is not None:
             put(random.choice(["3068b", "3022"]), S * X, S * Y, z, pick([(71, 3), (19, 2), (72, 1)]))
 
-step("A low hedge along the lane and a wooden fence on the terrace")
+def rail_fence(posts, y):
+    """Weathered round posts with a rail across their tops; pickets fill some bays, and a few rails are gone."""
+    tops = {}
+    for x in posts:
+        z = gtop(x, y)
+        if z is not None:
+            for k in range(3):
+                put("3062b", x, y, z + 3 * k, pick(WOOD))
+            tops[x] = z + 9
+    for x in sorted(tops):
+        if x + 3 not in tops or random.random() < 0.15:
+            continue
+        rail = tops[x]
+        if random.random() < 0.5:
+            for i in (1, 2):
+                z = gtop(x + i, y)
+                if z is not None and (rail - z) % 3 == 0:
+                    for k in range((rail - z) // 3):
+                        put("3062b", x + i, y, z + 3 * k, pick(WOOD))
+        put("3623", x, y, rail, pick(WOOD))
+
+
+PH["3623"], FOOT["3623"] = 1, (3, 1)
+step("A rail fence along the lane, a low hedge behind it and a wooden fence on the terrace")
+rail_fence(range(40, 10, -3), 2)
+rail_fence(range(47, 76, 3), 2)
 for x0, x1 in ((14, 40), (48, 70)):
     x = x0
     while x < x1 - 1:
-        z = gtop(x, 2, 2, 2, True)
+        z = gtop(x, 4, 2, 2, True)
         if z is not None:
-            put("3003", x, 2, z, random.choice([288, 2, 2]))
+            put("3003", x, 4, z, random.choice([288, 2, 2]))
         x += 2
-    for layer in range(2):
+    for layer in range(3):
         x = x0 - 1
         while x < x1:
             part = random.choice(["2423", "2423", "2417"])
             rot = random.choice((0, 90))
             w, d = FOOT[part] if rot == 0 else FOOT[part][::-1]
-            y = 3 - d // 2 + random.randint(0, 1)
+            y = 5 - d // 2 + random.randint(0, 1)
             z = gtop(x, y, w, d)
-            if z is not None and z <= 5 + layer and x + w <= x1 + 1:
+            if z is not None and z <= 7 + layer and x + w <= x1 + 1:
                 put(part, x, y, z, pick(LEAFY), rot)
             x += random.randint(1, 2)
 fz = 3 * F
@@ -954,14 +1007,11 @@ def veg_patch(x0, y0, w, rows):
             for i in range(4):
                 crop = random.random()
                 if crop < 0.35:
-                    put("15470" if random.random() < 0.5 else "6141", x + i, y, z + 1, random.choice([10, 2, 326]))
+                    put("6141", x + i, y, z + 1, random.choice([10, 2, 27]))
                 elif crop < 0.5:
                     put("3062b", x + i, y, z + 1, 25)
                 elif crop < 0.7:
-                    put("3742", x + i, y, z + 1, random.choice([2, 10]))
-
-
-PH.update({"15470": 2, "2417": 1})
+                    put("3062b", x + i, y, z + 1, random.choice([2, 10]))
 
 step("Sam's garden: an apple tree, a vegetable patch, a bench by the door")
 fruit_tree(22, 9)
@@ -977,3 +1027,65 @@ for x0, x1 in ((FX0 + 1, 41), (47, FX1 - 1)):
     flowerbed(x0, 22, x1 - x0, 2, yz)
 for x, y in ((20, 17), (28, 16), (53, 17), (58, 20), (38, 10), (29, 8), (46, 9), (17, 6), (33, 7), (60, 13)):
     bush(x, y, random.choice((1, 2, 3)))
+
+PH["15279"], FOOT["15279"] = 8, (1, 2)
+step("Weeds gone wild: tall stalks, long grass, dandelions and ferns through the lawns and round the beds")
+for x in range(W):
+    for y in range(FY):
+        z = gtop(x, y)
+        if z is None or z != max(1, 3 * H[x // S, y // S]) or random.random() > 0.4:
+            continue
+        r = random.random()
+        if r < 0.35:
+            n = random.randint(1, 4)
+            reed = gtop(x, y, 1, 2, True) == z and random.random() < 0.5
+            for j in range(1 + reed):
+                for k in range(n):
+                    put("3062b", x, y + j, z + 3 * k, random.choice([2, 2, 288]))
+            if reed:
+                put("15279", x, y, z + 3 * n, random.choice([10, 27, 288, 330]))
+            else:
+                part, color = random.choice([("6141", 330), ("6141", 27), ("3742", 14), ("3742", 15), ("4589", 2)])
+                put(part, x, y, z + 3 * n, color)
+        elif r < 0.6 and gtop(x, y, 1, 2, True) == z:
+            put("15279", x, y, z, random.choice([10, 27, 288, 330]))
+        elif r < 0.72:
+            put("6141", x, y, z, random.choice([27, 330, 2]))
+        elif r < 0.8:
+            put("3742", x, y, z, random.choice([14, 14, 15]))
+        elif gtop(x - 1, y - 1, 3, 4, True) == z:
+            put("2423", x - 1, y - 1, z, random.choice([330, 288, 27]))
+
+step("Wildflowers, grasses and weeds flourishing in patches across the hill")
+pads = {(X, Y) for (px, py), r in [(TREE, 2)] + [(c, 1) for c in CHIMNEYS]
+        for X in range(px // S - r, px // S + r + 1) for Y in range(py // S - r, py // S + r + 1)}
+for (X, Y), h in H.items():
+    if KIND.get((X, Y)) != "hill" or h < 2 or 3 * h + 11 > 96 or (X, Y) in pads or rocky(X, Y):
+        continue
+    sloped = (X, Y, h - 1) in slopes
+    back = slopes.get((X, Y, h - 1))
+    if sloped and back is None:
+        continue
+    studs = [(i, j) for i in (0, 1) for j in (0, 1)
+             if not sloped or (back[0] and i == (back[0] > 0)) or (back[1] and j == (back[1] > 0))]
+    lush = noise(X * 0.33 + 11, Y * 0.33 - 4) > 0.1
+    grown = set()
+    for i, j in studs:
+        x, y, z = S * X + i, S * Y + j, 3 * h
+        if random.random() > (0.4 if lush else 0.05) or (i, j) in grown:
+            continue
+        grown.add((i, j))
+        r = random.random()
+        if r < 0.3 and not sloped and j == 0 and (i, 1) not in grown:
+            grown.add((i, 1))
+            brick("15279", x, y, z, random.choice([10, 27, 288, 330]))
+        elif r < 0.5:
+            n = random.randint(1, 3)
+            for k in range(n):
+                brick("3062b", x, y, z + 3 * k, random.choice([2, 2, 288]))
+            part, color = random.choice([("6141", 330), ("6141", 27), ("3742", 14), ("3742", 15), ("4589", 2)])
+            brick(part, x, y, z + 3 * n, fit(part, color))
+        elif r < 0.8:
+            brick("3742", x, y, z, fit("3742", pick(FLOWERS)))
+        else:
+            brick("6141", x, y, z, fit("6141", random.choice([27, 330, 2, 288])))
