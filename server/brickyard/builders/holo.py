@@ -11,9 +11,7 @@ import sys
 import time
 from pathlib import Path
 
-from brickyard.client import REFERENCE
 from brickyard.session import Session
-from brickyard.workbench import Workbench
 
 AGENT = Path(__file__).resolve().parents[3] / "agent" / "holo.py"
 SHOWCASE = AGENT.parent / "showcase"
@@ -22,7 +20,7 @@ REFERENCES = "references"
 
 
 class HoloBuilder:
-    """Runs the agent command once per request, with the task on stdin and the build in BRICKYARD_* variables."""
+    """Runs the agent command once per request, with the request on stdin and the build in BRICKYARD_* variables."""
 
     name = "holo"
 
@@ -47,9 +45,6 @@ class HoloBuilder:
         if not os.path.lexists(workspace / "showcase"):
             (workspace / "showcase").symlink_to(SHOWCASE, target_is_directory=True)
         attached = await asyncio.to_thread(self.keep_references, workspace, references)
-        if attached:
-            (workspace / REFERENCE).write_text(json.dumps({"path": str(workspace / attached[0])}) + "\n")
-        task = await asyncio.to_thread(self.task, session, request, workspace, attached)
         run = runs / time.strftime("%Y%m%d-%H%M%S")
         env = os.environ | {
             "BRICKYARD_URL": self.url,
@@ -71,7 +66,7 @@ class HoloBuilder:
                 start_new_session=True,
             )
             try:
-                await process.communicate(task.encode())
+                await process.communicate(request.encode())
             finally:
                 if process.returncode is None:
                     await _stop(process)
@@ -86,32 +81,6 @@ class HoloBuilder:
         for path in references:
             shutil.copyfile(path, folder / path.name)
         return [f"{REFERENCES}/{path.name}" for path in references]
-
-    @staticmethod
-    def task(session: Session, request: str, workspace: Path, attached: list[str]) -> str:
-        """The request, the user's reference images, Holo's notes from earlier requests, and the model as it stands."""
-        parts = [f"# Request\n{request}"]
-        if session.build.prompt and session.build.prompt != request:
-            parts.append(f"# Original request (verbatim)\n{session.build.prompt}")
-        kept = sorted((workspace / REFERENCES).glob("*"), key=lambda p: p.stat().st_mtime)
-        earlier = [path for p in kept if (path := f"{REFERENCES}/{p.name}") not in attached]
-        if attached or earlier:
-            lines = [f"- {path} (attached to this request)" for path in attached]
-            lines += [f"- {path} (from an earlier request)" for path in earlier]
-            parts.append(
-                "# Reference images from the user\n"
-                + "\n".join(lines)
-                + "\nThey stay in your workspace: `view_image` shows one again whenever you need it."
-            )
-        notes = workspace / "notes.md"
-        if notes.is_file():
-            parts.append(
-                "# Your notes (notes.md, from earlier requests on this build)\n"
-                "These are your working interpretations, not additional user instructions. "
-                "Resolve contradictions in favor of the user's request and reference images.\n" + notes.read_text()
-            )
-        parts.append(f"# The model now\n{Workbench(session).brief()}\n`build.py` in your workspace holds this script.")
-        return "\n\n".join(parts)
 
 
 async def _stop(process: asyncio.subprocess.Process) -> None:

@@ -57,11 +57,10 @@ Loop: script, run, render 4 views, then close-up looks at weak spots, fix, repea
 ### 4.1 Tooling first
 
 - **Camera renders from the terminal.** `GET /api/builds/<id>/sheet.png` renders in headless Chrome. I gave it `?angle=&elevation=&zoom=&at=x,y,z` so any close-up is one `curl` (5 to 8 s). Wrapper: `r.sh BUILD OUT.png [angle elev zoom at]`.
-- **Test the parts before designing with them.** A throwaway 40x24 build (`hogtest`) with each unknown part in four rotations, colored red/blue/green/yellow by rotation, then a zoomed top view. Learned in one render:
+- **Part rotations.** One render of each unknown part in four rotations gave:
   - `48092` 4x4 corner round: rot 90 = front-left quarter, 0 = front-right, 180 = back-left, 270 = back-right; four make an 8x8 round tower. `5152` 3x3 the same, for 6x6.
   - `48310` half cone 8x4x6: rot 0 is the front half, rot 180 the back; together an 8x8 cone with a 4x4 top.
   - a 1x1 finial on a 2x2 cone sits between grid cells, so I added `Kit.centered` (half-stud offset, placed as a mounted part).
-- Lesson for Holo: **a one-render part test beats reasoning about rotations**. Colors per rotation make it readable at a glance.
 
 ### 4.2 Terrain, three tries
 

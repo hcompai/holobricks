@@ -1,5 +1,7 @@
 import { ArrowUpIcon, PlusIcon, StopIcon, XIcon } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
+import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { api, GALLERY, type Build } from "./api";
 import { Lightbox } from "./Lightbox";
 import { imageFiles, reference } from "./references";
@@ -159,7 +161,13 @@ export function ChatPanel({ build, loading, thinking, onCreate, onSay }: Props) 
         ) : (
           build.messages.map((m) => (
             <div key={`${m.at}-${m.role}`} className={`msg ${m.role}`}>
-              {m.text}
+              {m.role === "assistant" ? (
+                <div className="markdown">
+                  <Markdown remarkPlugins={[remarkGfm]}>{m.text}</Markdown>
+                </div>
+              ) : (
+                m.text
+              )}
               {m.images?.map((src) => (
                 <button
                   key={src}
