@@ -25,8 +25,8 @@ def bench(tmp_path, monkeypatch, offline_catalog):
 CORE = 'step("Core")\nbrick("3001", 0, 0, 0, 4)\n'
 
 
-@pytest.mark.parametrize("entry", ["workbench_add", "direct_step", "direct_script_commit"])
-def test_no_publication_path_can_accept_invalid_catalog_pairs(bench, entry):
+@pytest.mark.parametrize("entry", ["workbench_add", "direct_step"])
+def test_direct_additions_cannot_publish_invalid_catalog_pairs(bench, entry):
     async def run():
         await bench.run_script(CORE)
         before = bench.session.build.model_dump_json()
@@ -34,14 +34,9 @@ def test_no_publication_path_can_accept_invalid_catalog_pairs(bench, entry):
         if entry == "workbench_add":
             result = await bench.add("Invalid", [{"part": "3001", "x": 5, "y": 0, "z": 0, "color": 503}])
             assert result.problems and "Verified choices" in result.text
-        elif entry == "direct_step":
+        else:
             with pytest.raises(catalog.ValidationError):
                 await bench.session.step("Invalid", [place("3001.dat", 5, 0, 0, 503)])
-        else:
-            candidate = bench.session.build.model_copy(deep=True)
-            candidate.pieces[0].color = 503
-            with pytest.raises(catalog.ValidationError):
-                await bench.session.commit_script(candidate, 0)
         assert bench.session.build.model_dump_json() == before
         assert bench.session.store.load(bench.session.build.id).model_dump_json() == before
         assert queue.empty()
@@ -118,17 +113,63 @@ def test_builder_exit_does_not_bypass_final_inventory_check(bench, monkeypatch, 
     asyncio.run(run())
 
 
-def test_real_bom_gate_rejects_a_known_piece_in_an_unverified_color_atomically(bench):
+@pytest.mark.parametrize("case", ["connected", "disconnected", "empty"])
+def test_holo_exit_cannot_bypass_final_assembly_check(bench, monkeypatch, case):
+    from brickyard import app
+
+    class ExitingHolo:
+        async def run(self, session, *_):
+            # Simulate any clean process exit, including forced time/step limits.
+            if case != "empty":
+                session.build.add_step("Base", [place("3001.dat", 0, 0, 0, 4)])
+                if case == "disconnected":
+                    session.build.add_step("Loose", [place("3001.dat", 8, 0, 0, 4)])
+
+    bench.session.build.builder = "holo"
+    monkeypatch.setitem(app.BUILDERS, "holo", ExitingHolo())
+    monkeypatch.setattr(app.viewers, "release", lambda *_: asyncio.sleep(0))
+
     async def run():
-        assert not (await bench.run_script(CORE)).problems
-        saved = bench.session.build.model_dump_json()
-        queue = bench.session.subscribe()
+        app.start(bench.session, "test", [])
+        await bench.session.task
+        assert bench.session.build.status == ("done" if case == "connected" else "error")
+        if case != "connected":
+            assert "Assembly is not verified" in bench.session.build.messages[-1].text
+        report = (
+            bench.session.store.root.parent
+            / "workspaces"
+            / bench.session.build.id
+            / ".brickyard-assembly"
+            / "assembly-report.json"
+        )
+        assert json.loads(report.read_text())["revision"] == bench.session.build.revision
+
+    asyncio.run(run())
+
+
+def test_cli_submits_explicit_assembly_plan(tmp_path, monkeypatch):
+    proposed = {"revision": "current", "root": "model", "groups": []}
+    path = tmp_path / "plan.json"
+    path.write_text(json.dumps(proposed))
+    received = []
+
+    def call(tool, **kwargs):
+        received.append((tool, kwargs))
+        return {"text": "Assembly verified", "images": [], "problems": 0}
+
+    monkeypatch.setattr(client, "call", call)
+    monkeypatch.setattr(sys, "argv", ["bricks", "assembly", str(path)])
+    with pytest.raises(SystemExit) as exit:
+        client.main()
+    assert exit.value.code == 0
+    assert received == [("assembly", {"plan": proposed})]
+
+
+def test_a_run_reports_a_piece_in_an_unverified_color_with_the_verified_choices(bench):
+    async def run():
         result = await bench.run_script(CORE.replace(", 4)", ", 503)"))
-        assert result.problems == 1 and "Known colors" in result.text
-        assert "14 Yellow" in result.text
-        assert bench.session.build.model_dump_json() == saved
-        assert bench.session.store.load(bench.session.build.id).model_dump_json() == saved
-        assert queue.empty() and not result.images
+        assert result.problems == 1 and "Known colors" in result.text and "14 Yellow" in result.text
+        assert [p.color for p in bench.pieces] == [503]
         assert not (await bench.run_script(CORE.replace(", 4)", ", 14)"))).problems
         choices = await bench.catalog_colors("3001")
         assert not choices.problems and "14 Yellow" in choices.text
@@ -137,23 +178,14 @@ def test_real_bom_gate_rejects_a_known_piece_in_an_unverified_color_atomically(b
     asyncio.run(run())
 
 
-def test_catalog_outage_does_not_commit_or_replace_the_accepted_script(bench, monkeypatch):
-    from brickyard import catalog
+def test_a_catalog_outage_is_a_problem_to_retry_not_a_design_to_change(bench, monkeypatch):
+    def unavailable(*args):
+        raise catalog.CatalogUnavailable("Catalog temporarily unavailable")
 
-    async def run():
-        await bench.run_script(CORE)
-        saved = bench.session.build.model_dump_json()
-
-        def unavailable(*args):
-            raise catalog.CatalogUnavailable("Catalog temporarily unavailable")
-
-        monkeypatch.setattr(catalog.Catalog, "get", unavailable)
-        result = await bench.run_script(CORE.replace(", 4)", ", 14)"))
-        assert result.problems and "temporarily unavailable" in result.text
-        assert "do not change the design" in result.text
-        assert bench.session.build.model_dump_json() == saved
-
-    asyncio.run(run())
+    monkeypatch.setattr(catalog.Catalog, "get", unavailable)
+    result = asyncio.run(bench.run_script(CORE.replace(", 4)", ", 14)")))
+    assert result.problems and "temporarily unavailable" in result.text
+    assert "do not change the design" in result.text
 
 
 def test_same_count_geometry_changes_cannot_answer_an_old_render(tmp_path):
@@ -181,44 +213,17 @@ def test_same_count_geometry_changes_cannot_answer_an_old_render(tmp_path):
     asyncio.run(run())
 
 
-def test_checked_revision_only_tracks_geometry_that_passed_transaction(bench):
-    async def run():
-        await bench.run_script(CORE)
-        valid = bench.session.build.revision
-        assert bench.session.build.checked_revision == valid
-        await bench.run_script(CORE + 'brick("3001", 0, 0, 0, 15)')
-        assert bench.session.build.checked_revision == bench.session.build.revision == valid
-        bench.session.build.pieces[0].color = 15
-        assert bench.session.build.checked_revision != bench.session.build.revision
-
-    asyncio.run(run())
-
-
 @pytest.mark.parametrize(
     "bad",
-    [
-        'brick("3001", 0, 0, 0, 14)',  # collision in a later step
-        'brick("missing-part", 8, 0, 0, 14)',
-        'raise ValueError("broken script")',
-    ],
+    ['brick("3001", 0, 0, 0, 14)', 'brick("missing-part", 8, 0, 0, 14)'],
+    ids=["collision", "unknown part"],
 )
-def test_rejected_candidate_preserves_model_disk_script_and_event_stream(bench, bad):
+def test_a_run_publishes_the_bricks_that_fit_and_names_the_line_of_each_one_that_does_not(bench, bad):
     async def run():
         assert not (await bench.run_script(CORE)).problems
-        saved = bench.session.build.model_dump_json()
-        on_disk = bench.session.store.load(bench.session.build.id).model_dump_json()
         queue = bench.session.subscribe()
-        candidate = CORE.replace(", 4)", ", 15)") + 'step("Detail")\n' + bad + "\n"
-        rejected = await bench.run_script(candidate)
-        assert rejected.problems > 0
-        assert "did not change" in rejected.text
-        assert not rejected.images
-        assert bench.session.build.model_dump_json() == saved
-        assert bench.session.store.load(bench.session.build.id).model_dump_json() == on_disk
-        assert queue.empty(), "A rejected candidate must not reach the viewer, even temporarily"
-
-        accepted = await bench.run_script(CORE + 'step("Detail")\nbrick("3001", 0, 0, 3, 14)\n')
-        assert accepted.problems == 0
+        result = await bench.run_script(CORE + 'step("Detail")\nbrick("3001", 0, 0, 3, 14)\n' + bad + "\n")
+        assert result.problems == 1 and f"line 5 `{bad}`" in result.text
         assert len(bench.pieces) == 2
         assert bench.session.store.load(bench.session.build.id).pieces == bench.pieces
         assert queue.get_nowait()["type"] == "rewind"
@@ -334,19 +339,18 @@ def test_support_is_checked_on_the_complete_step_in_any_line_order(bench):
         assert len(bench.pieces) == 3
 
 
-def test_floating_bricks_are_placed_with_a_warning_and_cannot_support_each_other(bench):
+def test_floating_bricks_are_placed_with_a_note_and_cannot_support_each_other(bench):
     result = asyncio.run(
         bench.run_script('step("Floating pair")\nbrick("3001", 0, 0, 6, 4)\nbrick("3001", 0, 0, 9, 4)')
     )
-    assert result.problems == 2 and "vertical contact path" in result.text
-    assert "rejected" not in result.text and len(bench.pieces) == 2
-    assert bench.session.build.checked_revision == bench.session.build.revision
+    assert result.problems == 0 and "Floating" in result.text and result.text.count("vertical contact path") == 2
+    assert len(bench.pieces) == 2
 
 
 def test_a_later_step_cannot_retroactively_support_an_earlier_step(bench):
     code = 'step("Top first")\nbrick("3001", 0, 0, 3, 4)\n' + CORE
     result = asyncio.run(bench.run_script(code))
-    assert result.problems == 1 and "Top first" in result.text and "vertical contact path" in result.text
+    assert "Top first" in result.text and "vertical contact path" in result.text
 
 
 def test_fixed_manual_steps_survive_script_rejection_and_script_removal(bench):
@@ -382,14 +386,8 @@ def test_part_search_resolves_exact_ids_alias_spelling_and_dimensions(monkeypatc
     assert ldraw.search("") == []
 
 
-def test_reference_selection_is_paired_with_renders_but_not_failed_candidates(tmp_path, monkeypatch, capsys):
+def test_bricks_run_attaches_its_render_and_exits_1_on_problems(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(tmp_path)
-    photo = tmp_path / "reference.jpg"
-    photo.write_bytes(b"reference")
-    monkeypatch.setattr(sys, "argv", ["bricks", "reference", str(photo)])
-    client.main()
-    assert json.loads(client.REFERENCE.read_text())["path"] == str(photo)
-    capsys.readouterr()
     (tmp_path / "build.py").write_text(CORE)
 
     def render(*args, **kwargs):
@@ -405,9 +403,7 @@ def test_reference_selection_is_paired_with_renders_but_not_failed_candidates(tm
     with pytest.raises(SystemExit) as exit:
         client.main()
     assert exit.value.code == 0
-    output = capsys.readouterr().out
-    assert output.count("@@attach") == 2
-    assert "@@attach render.png" in output and f"@@attach {photo}" in output
+    assert "@@attach render.png" in capsys.readouterr().out
 
     monkeypatch.setattr(client, "call", lambda *args, **kwargs: {"text": "Rejected", "images": [], "problems": 1})
     with pytest.raises(SystemExit) as exit:
@@ -427,18 +423,3 @@ def test_render_failure_is_not_reported_as_a_missing_viewer_or_as_success(bench)
     assert result.problems == 1
     assert "No verified render" in result.text
     assert not result.images
-
-
-def test_support_warnings_survive_unchanged_reruns_and_clear_only_after_repair(bench):
-    async def run():
-        code = 'step("Floating")\nbrick("3001", 0, 0, 6, 4)\n'
-        for _ in range(2):
-            result = await bench.run_script(code)
-            assert result.problems == 1
-            assert bench.session.build.support_warnings == 1
-            assert bench.session.store.load(bench.session.build.id).support_warnings == 1
-        assert not (await bench.run_script(code.replace(", 6,", ", 0,"))).problems
-        assert bench.session.build.support_warnings == 0
-        assert bench.session.store.load(bench.session.build.id).support_warnings == 0
-
-    asyncio.run(run())

@@ -32,15 +32,14 @@ correctness, and the HoloTab prompt does not perform ID translation.
    every quantity, and generate XML with ITEMTYPE P, ITEMID, COLOR, MINQTY and CONDITION N.
    No omitted lots, partial exports or automatic substitutions.
 
-The session's publication boundary checks the whole candidate (including unchanged,
-inherited and automatically added accessory pieces). Both script commits and direct
-step additions, including scripted demos/showcases, use this boundary. Failure preserves
-the accepted model, script, disk state and event stream. `bricks run` returns each bad
-pair and the verified LDraw color choices so Holo can repair its script.
-`bricks colors <part>` lets Holo choose a valid palette first; `bricks check` audits the
-current build. Completion performs a fresh catalog check independently of the visual
-review: repeated answer attempts cannot waive an invalid or unavailable catalog check.
-The server rechecks when a builder exits before marking it done.
+Direct step additions, including scripted demos/showcases, check the whole candidate
+(including inherited and automatically added accessory pieces) before publication; failure
+preserves the accepted model, disk state and event stream. `bricks run` publishes the
+script's geometry, then reports each unverified pair as a problem, with the verified LDraw
+color choices, so Holo repairs its script before finishing. `bricks colors <part>` lets
+Holo choose a valid palette first; `bricks check` audits the current build. The server
+rechecks the whole inventory when a builder exits, and marks the build as an error
+instead of done if it is not verified.
 
 The BOM endpoint, Parts panel, gallery BOM and purchasing XML all require full validation.
 Legacy designs may remain visible in 3D for repair, but cannot expose an unchecked or
@@ -100,10 +99,10 @@ silently substituted. Printed assembly instructions are not included.
 Offline tests exercise the real catalog validator using explicit source fixtures:
 identity/type/status, aliases, print suffixes, Known vs All colors, name/code conversion,
 ambiguous mappings, stale/corrupt cache, HTTP errors, timeout budgets and exact quantities.
-Construction tests prove rejected pairs and outages cannot replace the accepted model,
-including direct step/script commits and inherited invalid pieces. The demo uses only
+Construction tests prove rejected pairs cannot replace the accepted model through direct
+step additions, that script runs report unverified pairs and outages as problems, and that
+a builder exit with an invalid inventory ends in error. The demo uses only
 catalog-recorded combinations, including red 3043 ridge slopes and green 3471 trees.
-Final-answer tests show catalog failures cannot pass even after the visual refusal cap.
 API and gallery tests prove no partial file escapes; browser tests compare the actual
 clipboard XML with the server snapshot, cover XML-load retry and partial-response rejection,
 blocking errors, legacy/expired packages, expiry while the dialog is open, clipboard

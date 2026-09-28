@@ -16,7 +16,7 @@ from brickyard import ldraw, script
 from brickyard.builders.holo import HoloBuilder
 from brickyard.model import Box, Build, Camera, grid
 from brickyard.session import Session, Store
-from brickyard.workbench import Workbench, part_line
+from brickyard.workbench import Workbench
 
 pytestmark = pytest.mark.skipif(not ldraw.LDRAW.exists(), reason="LDraw library not downloaded")
 
@@ -110,21 +110,24 @@ def test_a_script_rebuilds_from_its_first_changed_step_and_names_the_lines_of_it
     walls = [p for p in bench.pieces if p.step == 0]
 
     recolored = asyncio.run(bench.run_script(HOUSE.replace("320", "4")))
-    assert "kept step 1, rebuilt 2 steps" in recolored.text
+    assert "kept step 1 unchanged, rebuilt and checked 2 steps" in recolored.text
     assert [p for p in bench.pieces if p.step == 0] == walls
     assert {p.color for p in bench.pieces if p.step == 1} == {4}
 
     stray = HOUSE.replace("320", "4") + 'brick("3001", -1, 0, 0, 4)\n'
     for _ in range(2):
         result = asyncio.run(bench.run_script(stray))
-        assert result.problems == 1 and "kept steps 1 to 2, rebuilt 1 steps" in result.text
+        assert result.problems == 2 and "kept steps 1 to 2 unchanged, rebuilt and checked 1 step." in result.text
+        assert "disconnected_model" in result.text
         assert 'line 12 `brick("3001", -1, 0, 0, 4)` (3001 at x=-1 y=0 z=0): x and y start at 0' in result.text
+    assert {p.step for p in bench.pieces} == {0, 1, 2}
 
     before = list(bench.pieces)
-    broken = asyncio.run(bench.run_script(bench.session.build.script + "undefined()\n"))
-    assert "did not change" in broken.text and "line 12 `undefined()`: NameError" in broken.text
+    code = bench.session.build.script + "undefined()\n"
+    broken = asyncio.run(bench.run_script(code))
+    assert "did not change" in broken.text and "line 13 `undefined()`: NameError" in broken.text
     assert bench.pieces == before
-    assert bench.session.build.script == HOUSE.replace("320", "4")
+    assert bench.session.store.load(bench.session.build.id).script == code
 
 
 def test_a_step_builds_the_same_bricks_whatever_randomness_the_steps_before_it_use():
@@ -160,7 +163,7 @@ def test_agents_build_through_the_tools_endpoint_and_see_the_model_from_any_came
         ran = client.post(f"{tools}/run", json={"code": code}).json()
         assert ran["problems"] == 0 and "1 Core: 1 piece" in ran["text"], ran["text"]
         assert Image.open(io.BytesIO(base64.b64decode(ran["images"][0]["data"]))).size == (120, 90)
-        assert "kept step 1," in client.post(f"{tools}/run", json={"code": code}).json()["text"]
+        assert "kept step 1 unchanged," in client.post(f"{tools}/run", json={"code": code}).json()["text"]
         assert cameras == [None, None]
         closer = client.post(f"{tools}/look", json={"camera": {"angle": 200, "zoom": 3, "at": [4, 4, 3]}}).json()
         assert closer["caption"] == "The view from 200 degrees, 30 up, zoom 3, centered on x 4, y 4, z 3."
@@ -193,26 +196,35 @@ def test_a_render_is_answered_by_a_late_viewer_but_never_by_a_stale_one(tmp_path
     assert asyncio.run(main()) == b"png"
 
 
-def test_the_prompt_names_only_real_parts_and_colors_and_its_example_builds_cleanly(bench, monkeypatch):
-    agent = Path(__file__).resolve().parents[2] / "agent"
-    prompt = (agent / "holo.j2").read_text()
-    parts = re.findall(r"^\w+: .*\| .* tall$", prompt, re.MULTILINE)
-    assert len(parts) > 80
-    for line in parts:
-        assert line == part_line(f"{line.split(':')[0]}.dat")
+def test_the_showcase_renders_but_is_not_a_verified_connected_assembly(bench, monkeypatch):
+    monkeypatch.setattr(bench.session, "render", lambda camera=None, box=None: asyncio.sleep(0))
+    example = (Path(__file__).resolve().parents[2] / "agent" / "showcase" / "bag-end.py").read_text()
+    result = asyncio.run(bench.run_script(example))
+    assert len(bench.session.build.pieces) > 10_000, result.text
+    assert "No problems: every brick is known, fits" in result.text
+    assert result.problems == 1 and "disconnected_model" in result.text
+
+
+def test_the_prompt_names_only_real_parts_sizes_and_colors():
+    prompt = (Path(__file__).resolve().parents[2] / "agent" / "holo.j2").read_text()
+    rows = re.findall(r"^- (\d+) tall[^:]*: (.*)$", prompt.split("## Parts")[1].split("\n## ")[0], re.MULTILINE)
+    entries = [
+        (part, (int(w), int(d)), int(height))
+        for height, parts in rows
+        for part, w, d in re.findall(r"\b(\d\w*) (\d+)x(\d+)\b", parts)
+    ]
+    assert len(entries) > 80 and len(entries) == sum(len(re.findall(r"\d+x\d+", parts)) for _, parts in rows)
+    for part, size, height in entries:
+        info = ldraw.info(f"{part}.dat")
+        assert (info.footprint, info.plates) == (size, height), part
     palette = ldraw.colors()
-    colors = prompt[prompt.index("# Colors") : prompt.index("# Session")].splitlines()
+    colors = prompt.split("## Colors")[1].split("\n#")[0].splitlines()
     for entry in (e for line in colors if line.startswith("- ") for e in line.split(": ")[1].split(", ")):
         code, name = entry.split(" ", 1)
         assert palette[int(code)][0].lower() == name, entry
 
-    monkeypatch.setattr(bench.session, "render", lambda camera=None, box=None: asyncio.sleep(0))
-    example = re.search(r"```python\n(.*?)```", prompt, re.DOTALL).group(1)
-    result = asyncio.run(bench.run_script(example))
-    assert result.problems == 0, result.text
 
-
-def test_holo_gets_the_task_on_stdin_and_stop_ends_its_whole_process_group(tmp_path, monkeypatch):
+def test_holo_gets_the_request_on_stdin_and_stop_ends_its_whole_process_group(tmp_path, monkeypatch):
     agent = (
         "import os, subprocess, sys, time; "
         "open('task.txt', 'w').write(sys.stdin.read() + os.environ['BRICKYARD_BUILD']); "
@@ -223,8 +235,6 @@ def test_holo_gets_the_task_on_stdin_and_stop_ends_its_whole_process_group(tmp_p
     )
     session = Session(Build(prompt="a lighthouse"), Store(tmp_path))
     workspace = tmp_path / "workspaces" / session.build.id
-    workspace.mkdir(parents=True)
-    (workspace / "notes.md").write_text("Pinned reference-2.jpg: the lighthouse from the pier.")
     photo = tmp_path / "images" / "pier.jpg"
     photo.parent.mkdir()
     photo.write_bytes(b"jpeg")
@@ -241,17 +251,9 @@ def test_holo_gets_the_task_on_stdin_and_stop_ends_its_whole_process_group(tmp_p
         return [int(p) for p in (workspace / "pids").read_text().split()]
 
     pids = asyncio.run(main())
-    task = (workspace / "task.txt").read_text()
-    assert task.startswith("# Request\na tower") and "Build area" not in task and task.endswith(session.build.id)
-    assert "the lighthouse from the pier" in task and "No pieces yet." in task
-    assert "- references/pier.jpg (attached to this request)" in task
-    assert "# Original request (verbatim)\na lighthouse" in task
-    assert "working interpretations, not additional user instructions" in task
+    assert (workspace / "task.txt").read_text() == "a tower" + session.build.id
     assert json.loads((workspace / "references.json").read_text()) == [str(workspace / "references" / "pier.jpg")]
     assert (workspace / "references" / "pier.jpg").read_bytes() == b"jpeg"
-    assert json.loads((workspace / ".brickyard-reference.json").read_text())["path"] == str(
-        workspace / "references" / "pier.jpg"
-    )
     assert not session.build.steps
     assert (workspace / "build.py").exists() and (workspace / "showcase" / "paris.png").exists()
     assert not any(map(alive, pids))

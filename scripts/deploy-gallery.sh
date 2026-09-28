@@ -3,7 +3,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-builds=(hogwarts london paris)
+builds=(hogwarts 6eb28d127e london paris)
 
 case "${1:-}" in
   --preview) target=() ;;
