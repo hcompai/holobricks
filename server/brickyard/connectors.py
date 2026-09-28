@@ -30,6 +30,10 @@ class ConnectorError(ValueError):
     pass
 
 
+class GeometryChangedError(ConnectorError):
+    pass
+
+
 def vector(matrix: Mat, point: Vec) -> Vec:
     return tuple(sum(matrix[3 * k + j] * point[j] for j in range(3)) for k in range(3))
 
@@ -112,6 +116,21 @@ class Library:
     def __init__(self, folder: Path | None = None):
         self.folder = folder or Path(os.environ.get("BRICKYARD_SHADOW", Path(__file__).resolve().parents[2] / "shadow"))
         self._profiles: dict[tuple[str, bool], Profile] = {}
+        self._geometry: dict[str, tuple[str, ...]] = {}
+
+    def verify_geometry(self) -> None:
+        """Keep the process's cached meshes immutable, including inherited subparts.
+
+        LDraw measurements and rendered assets share process-lifetime caches.
+        Never renew an assembly proof from those caches after files change on disk:
+        restarting loads the new library consistently across all consumers.
+        """
+        for name, loaded in self._geometry.items():
+            path = ldraw._index().get(name)
+            if path is None or tuple(path.read_text(encoding="utf-8", errors="replace").splitlines()) != loaded:
+                raise GeometryChangedError(
+                    "LDraw geometry changed after loading. Restart the server with the updated library and regenerate the assembly plan."
+                )
 
     def _shadow(self, name: str) -> str:
         if ".." in Path(name).parts or Path(name).is_absolute():
@@ -132,6 +151,8 @@ class Library:
             return cached
         ports, unsupported, evidence = [], [], []
         original = () if only_shadow else ldraw.read(name)
+        if not only_shadow:
+            self._geometry[name] = original
         evidence.append("\n".join(original))
         for line in original:
             fields = line.split()

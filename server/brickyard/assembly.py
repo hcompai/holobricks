@@ -17,7 +17,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from brickyard.assembly_geometry import Envelope, envelopes, rigid_grid, swept_interval
-from brickyard.connectors import EPS, POLICY, ConnectorError, Library, Port, Vec, compatible, dot
+from brickyard.connectors import EPS, POLICY, ConnectorError, GeometryChangedError, Library, Port, Vec, compatible, dot
 from brickyard.model import Build
 
 PLAN_VERSION = 1
@@ -147,6 +147,7 @@ class Checker:
         if len(self.parts) > 20000:
             reject("planning_limit", "Automatic assembly checking currently supports at most 20000 parts.")
         self.local = {p.id: self.library.profile(p.part) for p in build.pieces}
+        self.library.verify_geometry()
         self.world = {p.id: self.library.world(p) for p in build.pieces}
         for p in build.pieces:
             if not rigid_grid(p):
@@ -410,6 +411,13 @@ def check(build: Build, plan: Plan | None = None, library: Library | None = None
         )
     except AssemblyError as exc:
         return Report(revision=build.revision, status="unverified", pieces=len(build.pieces), issues=[exc.issue])
+    except GeometryChangedError as exc:
+        return Report(
+            revision=build.revision,
+            status="unverified",
+            pieces=len(build.pieces),
+            issues=[Issue(code="geometry_changed", message=str(exc))],
+        )
     except (ConnectorError, KeyError, OSError, ValueError, IndexError, RecursionError) as exc:
         return Report(
             revision=build.revision,

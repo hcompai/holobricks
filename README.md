@@ -205,6 +205,11 @@ workspace's `.brickyard-assembly/`. The completion gate checks them independentl
 
 GET /api/builds/{id}/assembly returns the current report and accepted plan.
 
+Loaded LDraw geometry is immutable for the lifetime of the server. Assembly checks
+compare every used file (including inherited subparts) with its loaded contents;
+an on-disk change blocks verification and PDF download. Restart the server after
+updating the geometry library, then regenerate the plan and guide.
+
 **Scope of verification:** supported rigid stud/socket engagement, conservative straight insertion,
 exact part accounting and reconstruction. This is not a physical test build or certification of
 clutch force, structural strength, hand clearance, moving joints or flexible parts. Cavities may

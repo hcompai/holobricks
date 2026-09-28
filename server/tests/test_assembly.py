@@ -1,4 +1,5 @@
 import copy
+import json
 
 import pytest
 
@@ -184,3 +185,55 @@ def test_disconnected_feedback_names_a_real_other_component(library):
     issue = result.issues[0]
     assert "2 separate islands" in issue.message
     assert issue.moving == [3] and issue.obstacles == [1]
+
+
+@pytest.mark.parametrize("changed", ["3005.dat", "stud.dat"])
+def test_warm_geometry_changes_block_old_and_new_proofs(library, tmp_path, monkeypatch, changed):
+    from brickyard import assembly_geometry
+
+    b = model(place("3005.dat", 0, 0, 0, 4), place("3005.dat", 0, 0, 3, 4))
+    files = {}
+
+    def collect(name):
+        if name in files:
+            return
+        files[name] = "\n".join(ldraw.read(name)) + "\n"
+        for _, child in ldraw._references(name):
+            collect(child)
+
+    collect("3005.dat")
+    index = {}
+    for name, content in files.items():
+        path = tmp_path / "parts" / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content)
+        index[name] = str(path.relative_to(tmp_path))
+    (tmp_path / "brickyard-index.json").write_text(json.dumps(index))
+    monkeypatch.setattr(ldraw, "LDRAW", tmp_path)
+
+    def clear():
+        ldraw._index.cache_clear()
+        ldraw.read.cache_clear()
+        assembly_geometry.polygons.cache_clear()
+        assembly_geometry.local_envelopes.cache_clear()
+
+    clear()
+    try:
+        reused = Library()
+        first = assembly.check(b, library=reused)
+        assert first.status == "verified"
+        path = tmp_path / "parts" / changed
+        path.write_text(path.read_text() + "4 16 -10 -30 -10 10 -30 -10 10 24 10 -10 24 10\n")
+        # Both a fresh resolver and a reused one must reject warmed mesh caches.
+        for resolver in (Library(), reused):
+            for proposal in (first.plan, None):
+                result = assembly.check(b, proposal, resolver)
+                assert result.status == "unverified"
+                assert result.issues[0].code == "geometry_changed"
+                assert result.evidence is None
+        # A new process can load the updated data but cannot reuse the old proof.
+        clear()
+        assert assembly.check(b, first.plan).issues[0].code == "stale_evidence"
+        assert assembly.check(b).status == "unverified"
+    finally:
+        clear()
