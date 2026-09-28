@@ -205,7 +205,7 @@ class Sculpture:
         return out
 
     def _hold(self, k: int, layer, shown, runs: list[tuple[Cell, list[Cell]]], done, held) -> None:
-        """Bridges for the studs of course k with nothing under them, or a hidden column down when none fits."""
+        """Bridges for the studs of course k with nothing under them, where one fits."""
         taken: dict[Cell, int] = {}
         hanging = {c for c in shown[k] if (*c, k) not in done and not held(*c, k)}
         options = {c: len(self._bridges(c, k, layer, shown[k], {}, done, held, strict=False)) for c in hanging}
@@ -232,9 +232,6 @@ class Sculpture:
                 freed = self._reroute(c, k, layer, shown[k], taken, runs, done, held)
                 if freed is not None:
                     queue.extend(q for q in freed if q in hanging and q not in taken)
-                    continue
-            if (*c, k - 1) in self.solid:
-                shown[k - 1].add(c)
 
     def _reroute(self, c: Cell, k: int, layer, shown, taken, runs, done, held, depth: int = 3) -> list[Cell] | None:
         """Takes a run for c that crosses one bridge and moves that bridge elsewhere, recursively; returns the studs let go."""

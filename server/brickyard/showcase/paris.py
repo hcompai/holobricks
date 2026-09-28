@@ -109,15 +109,14 @@ def building(kit: Kit, name: str, b: Haussmann):
         for color in set(lit.values()):
             kit.cover({cell for cell, col in lit.items() if col == color}, z + 3 * c, color, BRICKS)
     z += 9
-    below, solid = GROUND, _perimeter(b) | set(lit)
     yield "shopfront"
 
     r = b.reach
     ledge = _deep(kit, b, z, b.stone) if r == 3 else _perimeter(b)
     if r != 3:
         kit.cover(ledge, z, b.stone)
-    _interior(kit, b, z, below, solid)
-    below, solid, z = z + 1, _perimeter(b), z + 1
+    _interior(kit, b, z)
+    z += 1
     awnings = {s for s in frames if faces[s].awning is not None}
     awning_corners = [p for p in corners if set(p) <= awnings]
     blocks = {p: {_out(b, p, i, j) for i in (r - 1, r) for j in (r - 1, r)} for p in awning_corners}
@@ -162,11 +161,10 @@ def building(kit: Kit, name: str, b: Haussmann):
             _deep(kit, b, z, BLACK)
         else:
             _slab(kit, b, z, band, band if balcony else set())
-        _interior(kit, b, z, below, solid)
+        _interior(kit, b, z)
         z += 1
         glass = {f.cell(u + i, 0) for s, f in frames.items() for u in faces[s].windows for i in (0, 1)}
         backs = {f.cell(u + i, 1) for s, f in frames.items() for u in faces[s].windows for i in (0, 1)}
-        below, solid = z, _perimeter(b) | backs
         for c in range(2):
             kit.cover(backs, z + 3 * c, BLACK, BRICKS)
         top = kit.ring(x0, y0, w, d, z, 2, b.stone, lambda x, y, c, glass=glass: (x, y) in glass, start=floor)
@@ -185,7 +183,7 @@ def building(kit: Kit, name: str, b: Haussmann):
         yield f"floor {floor}"
 
     _slab(kit, b, z, band, set())
-    _interior(kit, b, z, below, solid)
+    _interior(kit, b, z)
     z += 1
     for side, frame in frames.items():
         frame.run(0, -1, z, frame.length, WHITE, TILE_RUN)
@@ -204,14 +202,9 @@ def _perimeter(b: Haussmann) -> set[tuple[int, int]]:
     return {(x, y) for x, y in _footprint(b) if x in (b.x0, b.x0 + b.w - 1) or y in (b.y0, b.y0 + b.d - 1)}
 
 
-def _interior(
-    kit: Kit, b: Haussmann, z: int, below: int, solid: set[tuple[int, int]], color: int | None = None
-) -> None:
-    """Plates filling the inside at `z`, each on a hidden column from `below` unless it already rests on `solid`."""
-    held, kit.pending = kit.pending, []
+def _interior(kit: Kit, b: Haussmann, z: int, color: int | None = None) -> None:
+    """Plates filling the inside at `z`."""
     kit.cover(_footprint(b) - _perimeter(b), z, b.stone if color is None else color)
-    plates = kit.support(z, solid, [("3005", 3)] * ((z - below) // 3), b.stone)
-    kit.pending = held + kit.pending + plates
 
 
 def _corner_block(b: Haussmann, pair: tuple[str, str]) -> tuple[int, int]:
@@ -340,10 +333,10 @@ def _mansard(kit: Kit, b: Haussmann, z: int):
             frame.put("3004", u, 1, z + 3, DBG)
             frame.put("3039", u, 0, z + 6, DBG)
     yield "mansard"
-    below, z = z, z + 9
+    z += 9
     facade = {c for f in frames.values() for c in _row(f, 0)}
     kit.cover(_perimeter(b) - facade, z, DBG)
-    _interior(kit, b, z, below, _perimeter(b) | slopes, DBG)
+    _interior(kit, b, z, DBG)
     z += 1
     for x, y in _chimneys(b):
         kit.add("3004", x, y, z, b.stone, 90)
@@ -459,11 +452,8 @@ def base(kit: Kit, rng: random.Random) -> None:
     kit.ring(
         0, RIVER, W, D - RIVER, 1, 2, lambda x, y, c: (DBG if c == 0 else LBG) if y == RIVER else DBG, kind=EMBOSSED
     )
+    kit.step("Dock wall")
     kit.fill(0, RIVER, W, D - RIVER, 7, DBG)
-    walls = {c for c in rect(0, RIVER, W, D - RIVER) if c[0] in (0, W - 1) or c[1] in (RIVER, D - 1)}
-    plates = kit.support(7, walls, [("3005", 3), ("3005", 3)], DBG)
-    kit.step("Dock wall and hidden pillars")
-    kit.pending = plates
     kit.step("Dock plates")
     kit.ring(0, QUAY, W, D - QUAY, DOCK, 6, _stone, _vaulted, EMBOSSED)
     kit.step("Quay wall in dressed stone")
@@ -479,11 +469,6 @@ def base(kit: Kit, rng: random.Random) -> None:
     kit.step("Vaults under the quai: a lit buvette and an iron gate")
     kit.cover(rect(0, QUAY - 1, 12, 2), 26, TAN)
     kit.cover(rect(0, QUAY, W, D - QUAY) - rect(0, QUAY, 12, 1), 26, DBG)
-    walls = {c for c in rect(0, QUAY, W, D - QUAY) if c[0] in (0, W - 1) or c[1] in (QUAY, D - 1)}
-    walls |= {(x, QUAY + 1) for n in VAULTS for x in range(n, n + 4)}
-    plates = kit.support(26, walls, [("3005", 3)] * 6, DBG)
-    kit.step("Hidden street pillars")
-    kit.pending = plates
     kit.step("Street plates")
 
 

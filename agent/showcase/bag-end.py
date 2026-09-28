@@ -219,17 +219,6 @@ def plan_bevels():
     return out
 
 
-COLUMN = [(15, "2453b"), (9, "14716"), (3, "3005"), (1, "3024")]
-
-
-def column(x, y, z0, z1, color=72):
-    z = z0
-    for h, part in COLUMN:
-        while z1 - z >= h:
-            brick(part, x, y, z, color)
-            z += h
-
-
 CELLRUNS = {1: "3003", 2: "3001", 3: "2456", 4: "3007"}
 
 
@@ -529,14 +518,6 @@ for x in range(FX0, FX1):
 
 # ---- terrain
 bevels = plan_bevels()
-step("Hidden columns inside the hill")
-for (X, Y), h in H.items():
-    if h == 0 or KIND.get((X, Y)) == "house":
-        continue
-    low = next((k for k in range(h) if (X, Y, k) in claimed or exposed(X, Y, k)), None)
-    if low is not None and low > 0:
-        column(S * X, S * Y, 0, 3 * low)
-
 top_course = max(H.values())
 for k0 in range(0, top_course, 5):
     step(f"The hill of Bag End, courses {k0 + 1} to {min(k0 + 5, top_course)}")
@@ -554,7 +535,6 @@ for part, x, y, z, color, rot in bevels:
 
 hollow = [(X, Y) for (X, Y), h in H.items()
           if KIND.get((X, Y)) != "house" and (h == 0 or ((X, Y, h - 1) not in claimed and not exposed(X, Y, h - 1)))]
-step("Hidden columns under the lawns")
 runs = []
 free = set(hollow)
 for X, Y in sorted(hollow, key=lambda c: (c[1], c[0])):
@@ -566,9 +546,6 @@ for X, Y in sorted(hollow, key=lambda c: (c[1], c[0])):
         n += 1
     free -= {(X + i, Y) for i in range(n)}
     runs.append((X, Y, n, h, c))
-    if h > 0:
-        for i in range(0, n, 2):
-            column(S * (X + i), S * Y, 0, 3 * h - 1)
 step("Turf on the hill, lawns, the lane and the stone stairs")
 for X, Y, n, h, c in runs:
     brick(PLATERUNS[n], S * X, S * Y, max(0, 3 * h - 1), fit(PLATERUNS[n], c))

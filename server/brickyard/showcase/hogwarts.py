@@ -8,7 +8,7 @@ import random
 from collections import Counter
 from collections.abc import Callable
 
-from brickyard.shapes import brick, rect
+from brickyard.shapes import rect
 from brickyard.showcase.kit import Kit
 from brickyard.showcase.sculpt import Color, Sculpture, circle, erode
 
@@ -167,7 +167,7 @@ def grass(x: int, y: int) -> int:
 
 
 class Ground:
-    """The terrain meshed into bricks: exposed faces only, step edges bevelled, hidden columns under the top plates."""
+    """The terrain meshed into bricks: exposed faces only, step edges bevelled, plates on the hollow tops."""
 
     def __init__(self, kit: Kit, rng: random.Random, pads: dict[Cell, tuple[int, str]], footing: set[Cell]):
         self.kit, self.rng, self.footing = kit, rng, footing
@@ -248,10 +248,6 @@ class Ground:
 
     def mesh(self) -> None:
         bevels = self.bevels()
-        for (X, Y), h in self.height.items():
-            low = next((k for k in range(h) if (X, Y, k) in self.claimed or self.exposed(X, Y, k)), 0)
-            self.kit.pending += _column(S * X, S * Y, 1, 1 + 3 * low)
-        self.kit.step("Hidden columns under the rock faces")
         top = max(self.height.values())
         for k0 in range(0, top, 4):
             for k in range(k0, min(k0 + 4, top)):
@@ -287,36 +283,16 @@ class Ground:
         }
 
     def surface(self, paved: dict[str, Callable[[int, int], int]]) -> None:
-        """Top plates flush with the rock over the hollow cells, each held by a hidden column."""
+        """Top plates flush with the rock over the hollow cells."""
         groups: dict[tuple[str, int], set[Cell]] = {}
         for X, Y in self.hollow_tops():
             groups.setdefault((self.kind[X, Y], self.height[X, Y]), set()).update(self.studs(X, Y))
-        columns = []
         for (kind, h), cells in sorted(groups.items()):
-            before = len(self.kit.pending)
             self.kit.cover(cells, 3 * h, paved.get(kind, grass))
-            for plate in self.kit.pending[before:]:
-                x, y = plate["x"], plate["y"]
-                built = [k for k in range(h) if (x // S, y // S, k) in self.claimed or self.exposed(x // S, y // S, k)]
-                columns += _column(x, y, 1 + 3 * (max(built) + 1) if built else 1, 3 * h)
-        plates, self.kit.pending = self.kit.pending, columns
-        self.kit.step("Hidden columns under the ground")
-        self.kit.pending = plates
         self.kit.step("The tops of the crag and the grounds")
 
 
 WATER = ((4, 2, "3020"), (2, 2, "3022"), (4, 4, "3031"), (6, 2, "3795"), (2, 1, "3023b"), (1, 1, "3024"))
-COLUMN = [(15, "2453b"), (9, "14716"), (3, "3005"), (1, "3024")]
-
-
-def _column(x: int, y: int, z0: int, z1: int, color: int = DBG) -> list[dict]:
-    """1x1 bricks and plates from plate z0 up to z1."""
-    out, z = [], z0
-    for h, part in COLUMN:
-        while z1 - z >= h:
-            out.append(brick(part, x, y, z, color))
-            z += h
-    return out
 
 
 Finials = list[tuple[int, int, int]]

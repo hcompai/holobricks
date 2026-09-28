@@ -190,21 +190,6 @@ def hip(
     return out, (x0, y0, w, d, z)
 
 
-def support(plates: list[Brick], z: int, solid: set[Cell], column: list[tuple[str, int]], color: int) -> list[Brick]:
-    """Hidden columns of (part, plates) ending at `z`, under each plate that misses the `solid` cells."""
-    out = []
-    for plate in plates:
-        w, d = footprint(plate["part"], plate["rotation"])
-        spot = rect(plate["x"], plate["y"], w, d)
-        if not spot & solid:
-            x, y = min(spot)
-            at = z - sum(h for _, h in column)
-            for part, h in column:
-                out.append(brick(part, x, y, at, color))
-                at += h
-    return out
-
-
 def _groups(cells: list[Cell], axis: str, shade: Callable[[int, int], int]) -> list[list[Cell]]:
     k = 0 if axis == "x" else 1
     out: list[list[Cell]] = []

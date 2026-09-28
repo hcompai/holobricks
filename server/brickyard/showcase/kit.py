@@ -89,11 +89,6 @@ class Kit:
     def mosaic(self, x0, y0, w, d, z, palette, rng, skip: Iterable[Cell] = (), **kwargs) -> None:
         self.scatter(rect(x0, y0, w, d) - set(skip), z, palette, rng, **kwargs)
 
-    def support(self, z: int, solid: set[Cell], column: list[tuple[str, int]], color: int) -> list[dict]:
-        """Takes the pending plates at height `z`, leaving hidden columns under each one missing `solid`."""
-        plates, self.pending = self.pending, shapes.support(self.pending, z, solid, column, color)
-        return plates
-
     def ridge(self, x: int, y: int, w: int, d: int, z: int, color: int) -> None:
         self.pending += shapes.ridge(x, y, w, d, z, color)
 

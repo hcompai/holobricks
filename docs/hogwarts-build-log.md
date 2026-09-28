@@ -45,7 +45,7 @@ Palette: tan (19) walls, dark tan (28) plinths and trims, dark bluish grey (72) 
 Layers, each its own steps:
 
 1. **Lake**: blue base, calm trans-blue plates, few highlights.
-2. **Cliff**: a voxel heightmap, meshed into bricks: exposed faces only (hollow inside, hidden columns under the top), faces bevelled with 45/65/75 degree slopes so they read as angled crags, not brick rows.
+2. **Cliff**: a voxel heightmap, meshed into bricks: exposed faces only (hollow inside), faces bevelled with 45/65/75 degree slopes so they read as angled crags, not brick rows.
 3. **Castle**, reusable parts: `hall` (buttresses, lancets, steep roof), `round_tower` (2x2, 3x3, 4x4, cone spire with a gold finial), `square_tower` (corner pinnacles, pyramid spire), `curtain` (crenellated walls).
    - Great Hall, Astronomy Tower (tallest, crown of spires), the big round tower, Gryffindor/clock tower, Headmaster's tower, viaduct arches, covered bridge, greenhouses.
 4. **Below and around**: boathouse at the water with stairs up the rock, boats, Hagrid's hut, Forbidden Forest.
@@ -102,13 +102,13 @@ Big round towers and cones don't exist as parts, and hand-placing bricks can't u
 - Buildings are solids on a stud x course grid: `fill`, `roof` (hip or gable by erosion), `cone`, `part` (a real part claims its voxels).
 - `mesh` emits only the shell: studs next to air (2 deep on sloped solids), or open on top.
 - Steady steps become slopes: 45/65/75 degrees picked from the rise of the step above.
-- Every brick is held: a hanging stud gets a 2 to 4 stud bridge to a held one, most constrained studs first, else a hidden column down.
+- A hanging stud gets a 2 to 4 stud bridge to a held one where one fits, most constrained studs first.
 
 Test: a 24-stud tower + cone next to a gabled hall, 3.3k pieces in 0.1 s, 4 floaters left (fixing).
 
 ![sculpt test](hogwarts/sculpt-test.jpg)
 
-Lesson: **when parts can't express the shape, build a small geometry layer** and let it guarantee the rules (support, no overlap) by construction.
+Lesson: **when parts can't express the shape, build a small geometry layer** and let it guarantee the rules (no overlap) by construction.
 
 ### 4.6 A bug that lied to me: stale renders
 
