@@ -124,6 +124,11 @@ def test_a_run_with_problems_in_every_step_leads_with_its_revision_and_stays_sho
     assert len(result.text) < 8000
 
 
+def test_a_run_names_its_parts_so_a_color_passed_as_the_part_shows(bench):
+    result = bench.run_script('WHITE = 15\nstep("Wall")\nfor z in range(0, 12, 4):\n    brick(WHITE, 0, 0, z, WHITE)\n')
+    assert "Parts: 15 Minifig Hips and Legs" in result.text, result.text
+
+
 def test_the_shared_model_holds_the_current_revision_and_every_part_it_uses(bench):
     bench.run_script(HOUSE)
     model = json.loads(gzip.decompress((bench.workspace.folder / MODEL).read_bytes()))

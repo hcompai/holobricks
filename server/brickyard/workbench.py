@@ -31,6 +31,7 @@ STUD_HEIGHT = 4
 EPS = 0.5
 CELL = 4 * ldraw.STUD
 PROBLEM_LIMIT = 12
+PARTS_SHOWN = 12
 SCRIPT_TIMEOUT_S = 60
 BASEPLATE = "3811.dat"
 
@@ -311,7 +312,7 @@ class Workbench:
             lines += ["Floating, fine only if the subject flies or hangs there:", *_by_step(floating)]
         lines.append("Steps: pieces, then where they sit in studs (x, y) and plates (z, bottom to top):")
         lines.append(self.describe())
-        lines.append(self.summary() + self.colors())
+        lines.append(self.summary() + self.colors() + self.parts())
         physical = self.assembly_plan()
         lines.append(physical.text)
         return Result("\n".join(lines) + printed, problems=problems + physical.problems)
@@ -379,6 +380,14 @@ class Workbench:
         return " Colors: " + ", ".join(
             f"{color} {palette.get(color, ('Unknown', ''))[0].lower()} {count}" for color, count in counts.most_common()
         )
+
+    def parts(self) -> str:
+        counts = Counter(p.part for p in self.pieces if p.part != BASEPLATE)
+        named = [
+            f"{part.removesuffix('.dat')} {ldraw.info(part).title} {n}" for part, n in counts.most_common(PARTS_SHOWN)
+        ]
+        more = len(counts) - len(named)
+        return " Parts: " + ", ".join(named) + (f" and {more} more" if more > 0 else "") if named else ""
 
     def summary(self) -> str:
         pieces = [p for p in self.pieces if p.part != BASEPLATE]
