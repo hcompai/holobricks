@@ -1,5 +1,5 @@
-import type { HaiAgents } from "hai-agents";
-import type { Message } from "./model";
+import { isSettledSessionStatus, type HaiAgents } from "hai-agents";
+import type { Message, Status } from "./model";
 
 export const MODEL_FILE = "model.json.gz";
 /** The builder's side of a session, read from its events in order. */
@@ -94,4 +94,17 @@ function step(t: Transcript, event: HaiAgents.SessionEvent): Transcript {
 
 export function read(t: Transcript, events: HaiAgents.SessionEvent[]): Transcript {
   return { ...events.reduce(step, t), events: t.events + events.length };
+}
+
+export function status(session: HaiAgents.TrajectoryStatus): Status {
+  if (session === "failed" || session === "timed_out") return "error";
+  return isSettledSessionStatus(session) ? "done" : "building";
+}
+
+/** The chat's last line once the session stopped on its own terms, if it needs one. */
+export function ending(session: HaiAgents.TrajectoryStatus, error: string | null): Message | null {
+  if (session === "interrupted") return { role: "system", text: "Stopped.", images: [] };
+  if (status(session) === "error")
+    return { role: "system", text: `The build stopped: ${error ?? session.replace("_", " ")}.`, images: [] };
+  return null;
 }

@@ -1,6 +1,6 @@
-import type { HaiAgents } from "hai-agents";
 import { sessions, unavailable } from "./agent";
 import type { Build, BuildSummary, Status } from "./model";
+import { status } from "./session";
 
 const GALLERY = "/gallery";
 const STORE = "brickyard.library";
@@ -33,12 +33,6 @@ export function remember(id: string, card: Partial<Card>) {
   } catch (e) {
     console.error("Could not remember the build", e);
   }
-}
-
-export function status(session: HaiAgents.TrajectoryStatus): Status {
-  if (session === "failed" || session === "timed_out") return "error";
-  if (session === "idle" || session === "completed" || session === "interrupted") return "done";
-  return "building";
 }
 
 interface ShowcaseSummary {
