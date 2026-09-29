@@ -15,7 +15,7 @@ export default defineConfig({
   },
   webServer: {
     // The production build mounts each WebGL scene once; dev StrictMode doubles every shader compile.
-    command: "npx vite build && npx vite preview --host 127.0.0.1 --port 5188 --strictPort",
+    command: "VITE_HAI_API_KEY=test-key npx vite build && npx vite preview --host 127.0.0.1 --port 5188 --strictPort",
     url: "http://127.0.0.1:5188",
     reuseExistingServer: !process.env.CI,
   },

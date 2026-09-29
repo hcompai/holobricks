@@ -1,6 +1,8 @@
-import type { Build } from "../src/api";
+import type { Page } from "@playwright/test";
+import { createHash } from "node:crypto";
+import type { Build, Piece } from "../src/api";
 
-// Offline test geometry, deliberately independent of the LDraw install and inference server.
+// Offline test geometry, deliberately independent of the LDraw install.
 export const part = `0 FILE main.ldr
 1 16 0 0 0 1 0 0 0 1 0 0 0 1 test-brick.dat
 0 FILE test-brick.dat
@@ -19,28 +21,80 @@ export const colors = `0 !COLOUR Red CODE 4 VALUE #C91A09 EDGE #333333
 0 !COLOUR Main_Colour CODE 16 VALUE #FFFF80 EDGE #333333
 0 !COLOUR Edge_Colour CODE 24 VALUE #333333 EDGE #333333`;
 
+export const revision = (pieces: Piece[]) =>
+  createHash("sha256")
+    .update(
+      JSON.stringify(
+        pieces.map((p) => [p.id, p.part, p.color, p.step, ...[...p.pos, ...p.rot].map((v) => Math.round(v * 1e6))]),
+      ),
+    )
+    .digest("hex");
+
+/** The build with its revision recomputed from its pieces. */
+export const revised = (build: Build): Build => ({ ...build, revision: revision(build.pieces) });
+
 export function fixture(): Build {
+  // Eight pieces still exercise every color/step and the real GIF encoder, without making
+  // CPU-only CI render two dozen full-size frames for each lifecycle assertion.
+  const pieces: Piece[] = Array.from({ length: 8 }, (_, id) => ({
+    id,
+    part: "test-brick",
+    color: [4, 14, 1, 2][Math.floor(id / 2)],
+    step: Math.floor(id / 2),
+    pos: [(id % 2) * 40, -Math.floor(id / 2) * 24, 0],
+    rot: [1, 0, 0, 0, 1, 0, 0, 0, 1],
+  }));
   return {
     id: "export-test",
     name: "A little LEGO tower",
-    prompt: "A little LEGO tower",
     builder: "holo",
     status: "done",
-    created: 1,
+    open: false,
     updated: 1,
     width: 4,
     depth: 2,
+    revision: revision(pieces),
     messages: [],
     steps: Array.from({ length: 4 }, (_, index) => ({ index, title: `Layer ${index + 1}` })),
-    // Eight pieces still exercise every color/step and the real encoder, without making
-    // CPU-only CI render two dozen full-size frames for each lifecycle assertion.
-    pieces: Array.from({ length: 8 }, (_, id) => ({
-      id,
-      part: "test-brick",
-      color: [4, 14, 1, 2][Math.floor(id / 2)],
-      step: Math.floor(id / 2),
-      pos: [(id % 2) * 40, -Math.floor(id / 2) * 24, 0],
-      rot: [1, 0, 0, 0, 1, 0, 0, 0, 1],
-    })),
+    pieces,
+    parts: { "test-brick": part },
+    ldr: "0 FILE export-test.ldr\n",
+    bom: { error: "The parts list was not checked." },
+    shopping: { error: "The parts list was not checked." },
   };
+}
+
+/** Serve the static files the app reads: the palette, the toolkit and these showcases; the Agents API has no sessions. */
+export async function site(page: Page, showcases: Build[] = []) {
+  await page.route("https://agp.eu.hcompany.ai/**", (route) =>
+    route.fulfill({
+      headers: { "access-control-allow-origin": "*", "access-control-allow-headers": "*" },
+      json: { items: [], total: 0, page: 1 },
+    }),
+  );
+  await page.route("**/LDConfig.ldr", (route) => route.fulfill({ body: colors }));
+  await page.route("**/brickyard.tgz", (route) => route.fulfill({ body: Buffer.from("toolkit") }));
+  await page.route("**/gallery/builds.json", (route) =>
+    route.fulfill({
+      json: showcases.map((b) => ({
+        id: b.id,
+        name: b.name,
+        prompt: b.messages[0]?.text ?? b.name,
+        status: b.status,
+        created: 1,
+        pieces: b.pieces.length,
+        thumbnail: null,
+      })),
+    }),
+  );
+  await page.route("**/gallery/builds/*.json", (route) => {
+    const id = decodeURIComponent(
+      new URL(route.request().url()).pathname
+        .split("/")
+        .pop()!
+        .replace(/\.json$/, ""),
+    );
+    const shown = showcases.find((b) => b.id === id);
+    return shown ? route.fulfill({ json: shown }) : route.fulfill({ status: 404 });
+  });
 }

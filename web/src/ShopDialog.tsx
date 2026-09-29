@@ -14,7 +14,6 @@ export function ShopDialog({ build, preview, onClose }: Props) {
   const fallback = useRef<HTMLTextAreaElement>(null);
   const [pack, setPack] = useState<ShoppingPackage | null>(null);
   const [error, setError] = useState("");
-  const [attempt, setAttempt] = useState(0);
   const [image, setImage] = useState("");
   const [copied, setCopied] = useState(false);
   const [manual, setManual] = useState(false);
@@ -51,7 +50,7 @@ export function ShopDialog({ build, preview, onClose }: Props) {
       setPack(null);
       setError(reason instanceof Error ? reason.message : "Could not prepare your parts.");
     }
-  }, [build, attempt]);
+  }, [build]);
 
   useEffect(() => {
     if (manual) {
@@ -136,7 +135,6 @@ export function ShopDialog({ build, preview, onClose }: Props) {
       {error ? (
         <div className="shop-error" role="alert">
           <p style={{ whiteSpace: "pre-line" }}>{error}</p>
-          <button onClick={() => setAttempt((n) => n + 1)}>Try again</button>
         </div>
       ) : (
         <button className="shop-copy" disabled={!pack || copying} onClick={copy}>
