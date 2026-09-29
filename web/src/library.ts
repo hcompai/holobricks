@@ -23,6 +23,8 @@ const cards = (): Record<string, Card> => {
 
 const NEW_CARD: Card = { name: "Untitled build", prompt: "", pieces: 0 };
 
+export const card = (id: string): Card | undefined => cards()[id];
+
 export function remember(id: string, card: Partial<Card>) {
   const all = cards();
   all[id] = { ...NEW_CARD, ...all[id], ...card };
@@ -71,16 +73,16 @@ export async function library(): Promise<BuildSummary[]> {
   const [mine, shown] = await Promise.all([unavailable ? [] : sessions(), showcases()]);
   const known = cards();
   const builds = mine.map((s): BuildSummary => {
-    const card = known[s.id];
-    const prompt = card?.prompt || s.firstMessage?.message || "";
+    const saved = known[s.id];
+    const prompt = saved?.prompt || s.firstMessage?.message || "";
     return {
       id: s.id,
-      name: card?.name ?? (prompt.slice(0, 60) || "Untitled build"),
+      name: saved?.name ?? (prompt.slice(0, 60) || NEW_CARD.name),
       prompt,
       status: status(s.status),
       created: s.createdAt.getTime() / 1000,
-      pieces: card?.pieces ?? null,
-      thumbnail: card?.thumbnail ?? null,
+      pieces: saved?.pieces ?? null,
+      thumbnail: saved?.thumbnail ?? null,
       showcase: false,
     };
   });

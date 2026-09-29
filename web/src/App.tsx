@@ -233,7 +233,9 @@ export default function App() {
               onSay={async (text, images) => {
                 if (build) await say(build.id, text, images);
               }}
-              onStop={() => build && void stop(build.id).catch(console.error)}
+              onStop={async () => {
+                if (build) await stop(build.id);
+              }}
             />
           ) : (
             <LibraryPanel

@@ -2,7 +2,7 @@ import type { HaiAgents } from "hai-agents";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { answer, client, download, fail } from "./agent";
 import { EMPTY_MODEL, type Box, type Build, type Camera, type Message, type Model, type RenderRequest } from "./api";
-import { remember, showcase, status as buildStatus } from "./library";
+import { card, remember, showcase, status as buildStatus } from "./library";
 import { provideParts } from "./scene";
 import { EMPTY_TRANSCRIPT, read, type Transcript } from "./session";
 
@@ -33,6 +33,8 @@ async function unpack(blob: Blob): Promise<Model> {
   const stream = gzipped ? blob.stream().pipeThrough(new DecompressionStream("gzip")) : blob.stream();
   return JSON.parse(await new Response(stream).text());
 }
+
+const named = (model: Model) => model.name !== EMPTY_MODEL.name;
 
 const dataUrl = (blob: Blob) =>
   new Promise<string>((resolve, reject) => {
@@ -161,6 +163,7 @@ export function useBuild(ref: BuildRef | null): LiveBuild {
       const end = ending(status, failure ?? transcript.error);
       setBuild({
         ...model,
+        name: named(model) ? model.name : (card(id)?.name ?? model.name),
         id,
         status: buildStatus(status),
         messages: shown(end ? [...transcript.messages, end] : transcript.messages),
@@ -193,7 +196,7 @@ export function useBuild(ref: BuildRef | null): LiveBuild {
       if (next.revision === model.revision) next.pieces = model.pieces;
       model = next;
       loaded = latest.shared;
-      remember(id, { name: model.name, pieces: model.pieces.length });
+      remember(id, { pieces: model.pieces.length, ...(named(model) && { name: model.name }) });
     };
 
     const poll = async () => {

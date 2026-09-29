@@ -102,7 +102,8 @@ export async function say(id: string, text: string, photos: string[]) {
   await client.session(id).sendMessage(await message(text, photos, false));
 }
 
-export const stop = (id: string) => client.session(id).cancel();
+/** Holo ends its current step and answers; the session stays open for the next message. */
+export const stop = (id: string) => client.session(id).forceAnswer();
 
 export async function sessions(): Promise<HaiAgents.SessionSummary[]> {
   // hai-agents 1.0.12 sends the `agent` list as a JSON string, which matches no session.

@@ -79,7 +79,7 @@ interface Props {
   closed: string | null;
   onCreate: (prompt: string, images: string[]) => Promise<void>;
   onSay: (text: string, images: string[]) => Promise<void>;
-  onStop: () => void;
+  onStop: () => Promise<void>;
 }
 
 export function ChatPanel({ build, loading, thinking, closed, onCreate, onSay, onStop }: Props) {
@@ -97,6 +97,10 @@ export function ChatPanel({ build, loading, thinking, closed, onCreate, onSay, o
   const busy = build?.status === "building";
   const waiting = useWaitingLine(busy);
   const changing = Boolean(build || loading);
+  const [stopping, setStopping] = useState(false);
+  useEffect(() => {
+    if (!busy) setStopping(false);
+  }, [busy]);
 
   useEffect(() => {
     const jump = scrolled.current !== (build?.id ?? null);
@@ -276,7 +280,19 @@ export function ChatPanel({ build, loading, thinking, closed, onCreate, onSay, o
             <PlusIcon size={14} weight="bold" />
           </button>
           {busy && build ? (
-            <button className="round send stop" title="Stop" aria-label="Stop" onClick={onStop}>
+            <button
+              className="round send stop"
+              title={stopping ? "Stopping after this step" : "Stop"}
+              aria-label="Stop"
+              disabled={stopping}
+              onClick={() => {
+                setStopping(true);
+                onStop().catch((e) => {
+                  setStopping(false);
+                  setError(`Could not stop: ${e instanceof Error ? e.message : e}`);
+                });
+              }}
+            >
               <StopIcon size={12} weight="fill" />
             </button>
           ) : (
