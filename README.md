@@ -18,7 +18,7 @@
 
 ```
 browser: this web app                  Agents API (agp.eu.hcompany.ai)          Workstation
-  start a session, send messages ───>  Holo (holo4-35b-a3b)  ──── shell ────>   bricks run, from the toolkit
+  start a session, send messages ───>  Holo (holo4-27b)    ──── shell ────>   bricks run, from the toolkit
   long-poll its events          <───   model.json.gz        <── share_files ──  model.json.gz
   answer `look` with a GPU render ──>  the image, as the tool result
 ```

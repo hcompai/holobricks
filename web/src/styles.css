@@ -477,27 +477,6 @@ aside {
   color: var(--text-secondary);
 }
 
-.model-picker {
-  position: absolute;
-  bottom: 8px;
-  left: 42px;
-  height: 28px;
-  padding: 0 6px;
-  border: none;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--text-tertiary);
-  font: inherit;
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.model-picker:hover,
-.model-picker:focus-visible {
-  background: var(--background-muted);
-  color: var(--text-secondary);
-}
-
 .send {
   right: 8px;
   border: none;
