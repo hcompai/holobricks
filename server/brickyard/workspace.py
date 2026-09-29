@@ -1,7 +1,8 @@
-"""The build being edited: `build.json` is the model, `model.json` everything the browser renders it from."""
+"""The build being edited: `build.json` is the model, `model.json.gz` everything the browser renders it from."""
 
 from __future__ import annotations
 
+import gzip
 import json
 import time
 import uuid
@@ -11,12 +12,12 @@ from brickyard import ldraw
 from brickyard.model import Build
 
 BUILD = "build.json"
-MODEL = "model.json"
+MODEL = "model.json.gz"
 
 
-def write(path: Path, text: str) -> None:
+def write(path: Path, data: str | bytes) -> None:
     tmp = path.with_name(f".{uuid.uuid4().hex}.tmp")
-    tmp.write_text(text)
+    tmp.write_bytes(data.encode() if isinstance(data, str) else data)
     tmp.replace(path)
 
 
@@ -49,7 +50,9 @@ class Workspace:
         """Keep `build`, the current one by default, as the current one once its files are written."""
         build = build or self.build
         if self.folder is not None:
-            write(self.folder / MODEL, json.dumps(bundle(build), separators=(",", ":")))
+            write(
+                self.folder / MODEL, gzip.compress(json.dumps(bundle(build), separators=(",", ":")).encode(), mtime=0)
+            )
             write(self.folder / BUILD, build.model_dump_json())
         self.build = build
 

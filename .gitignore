@@ -20,3 +20,5 @@ __pycache__/
 *.tsbuildinfo
 .vercel/
 .env*
+
+web/public/brickyard.tgz

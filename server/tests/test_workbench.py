@@ -1,3 +1,4 @@
+import gzip
 import json
 import re
 from pathlib import Path
@@ -112,7 +113,7 @@ def test_a_script_rebuilds_from_its_first_changed_step_and_names_the_lines_of_it
 
 def test_the_shared_model_holds_the_current_revision_and_every_part_it_uses(bench):
     bench.run_script(HOUSE)
-    model = json.loads((bench.workspace.folder / MODEL).read_text())
+    model = json.loads(gzip.decompress((bench.workspace.folder / MODEL).read_bytes()))
     build = bench.workspace.build
     assert model["revision"] == build.revision and len(model["pieces"]) == len(build.pieces)
     assert set(model["parts"]) == {"3004.dat", "3039.dat", "3069b.dat"}
