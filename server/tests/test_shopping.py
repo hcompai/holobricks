@@ -3,16 +3,15 @@ import time
 from xml.etree import ElementTree as ET
 
 import pytest
-from fastapi.testclient import TestClient
 
 from brickyard import catalog, ldraw, shopping
 from brickyard.model import Build, Message, Piece, Step
-from brickyard.session import Store
+from brickyard.store import Store
 
 
 @pytest.fixture
 def model(monkeypatch, offline_catalog):
-    library = {p + ".dat": p for p in offline_catalog} | {"3069b.dat": "Tile 1 x 2", "6143.dat": "Round brick"}
+    library = dict.fromkeys(offline_catalog, "Part") | {"3069b.dat": "Tile 1 x 2", "6143.dat": "Round brick"}
     monkeypatch.setattr(ldraw, "catalog", lambda: library)
     monkeypatch.setattr(
         ldraw,
@@ -32,15 +31,6 @@ def model(monkeypatch, offline_catalog):
         "resolve",
         lambda p: (
             (p.lower().removesuffix(".dat") + ".dat") if (p.lower().removesuffix(".dat") + ".dat") in library else None
-        ),
-    )
-    monkeypatch.setattr(
-        ldraw,
-        "read",
-        lambda p: (
-            "0 Part",
-            "",
-            "0 !KEYWORDS BrickLink " + {"3069b.dat": "3069", "6143.dat": "3941"}.get(p, p.removesuffix(".dat")),
         ),
     )
     return Build(
@@ -142,10 +132,11 @@ def test_retries_are_idempotent_and_recolors_cannot_change_saved_files(model, tm
         "inherited_color",
         "too_large",
         "unsupported_pair",
+        "no_bricklink_id",
         "outage",
     ],
 )
-def test_no_partial_or_unverified_export(model, tmp_path, monkeypatch, change):
+def test_no_partial_or_unverified_export(model, tmp_path, monkeypatch, offline_catalog, change):
     if change == "empty":
         model.pieces = []
     elif change in ("building", "idle", "error"):
@@ -158,12 +149,14 @@ def test_no_partial_or_unverified_export(model, tmp_path, monkeypatch, change):
         model.pieces[0].color = 16
     elif change == "unsupported_pair":
         model.pieces[0].color = 503
+    elif change == "no_bricklink_id":
+        offline_catalog["3024.dat"]["bricklink"] = None
     elif change == "outage":
 
-        def fail(*args):
+        def fail():
             raise catalog.CatalogUnavailable("Source unavailable")
 
-        monkeypatch.setattr(catalog.Catalog, "get", fail)
+        monkeypatch.setattr(catalog, "snapshot", fail)
     else:
         monkeypatch.setattr(shopping, "MAX_IMPORT_BYTES", 30)
     with pytest.raises(ValueError):
@@ -177,40 +170,6 @@ def test_labels_cannot_inject_markup_or_xml_items(model, tmp_path):
     page = (tmp_path / f"{pack['id']}.html").read_text()
     assert "<script>" not in page and "&lt;script&gt;" in page
     assert sum(imported(tmp_path, pack).values()) == 3
-
-
-def test_api_checks_revision_blocks_invalid_pairs_and_revokes_legacy_or_expired_downloads(model, tmp_path, monkeypatch):
-    from brickyard import app as module
-
-    store = Store(tmp_path)
-    store.save(model)
-    monkeypatch.setattr(module, "store", store)
-    monkeypatch.setattr(module, "sessions", {})
-    client = TestClient(module.app)
-    url = f"/api/builds/{model.id}/shopping"
-    assert client.post(url, json={"revision": "stale"}).status_code == 409
-    response = client.post(url, json={"revision": model.revision})
-    assert response.status_code == 200
-    pack = response.json()
-    link = f"/api/shopping/{pack['id']}"
-    original = client.get(f"{link}.xml")
-    assert original.status_code == 200 and "attachment" in original.headers["content-disposition"]
-    assert original.headers["cache-control"] == "private, no-store"
-    assert client.get(f"{link}.json").json() == pack
-    assert client.get(f"{link}.ldr").status_code == 410
-    model.pieces[0].color = 503
-    store.save(model)
-    assert client.post(url, json={"revision": pack["revision"]}).status_code == 409
-    rejected = client.post(url, json={"revision": model.revision})
-    assert rejected.status_code == 422
-    assert rejected.json()["detail"]["issues"][0]["code"] == "color_not_verified"
-    assert client.get(f"{link}.xml").content == original.content
-    report = client.get(f"/api/builds/{model.id}/bom/validation").json()
-    assert not report["valid"] and report["revision"] == model.revision
-    assert len(list((tmp_path / "shopping").iterdir())) == 3
-    monkeypatch.setattr(module.time, "time", lambda: pack["validation"]["valid_until"] + 1)
-    assert client.get(f"{link}.xml").status_code == 410
-    assert client.get("/api/shopping/not-a-package.json").status_code == 404
 
 
 def test_static_gallery_exports_only_validated_xml_and_blocks_invalid_models(model, tmp_path, monkeypatch):
@@ -237,31 +196,3 @@ def test_static_gallery_exports_only_validated_xml_and_blocks_invalid_models(mod
     assert "error" in json.loads((out / "builds" / f"{model.id}.shopping.json").read_text())
     assert "error" in json.loads((out / "builds" / f"{model.id}.bom.json").read_text())
     assert not (out / "shopping").exists()
-
-
-def test_bom_revalidates_legacy_models_and_same_count_recolors_without_partial_lists(model, tmp_path, monkeypatch):
-    from brickyard import app as module
-
-    store = Store(tmp_path)
-    store.save(model)
-    monkeypatch.setattr(module, "store", store)
-    monkeypatch.setattr(module, "sessions", {})
-    client = TestClient(module.app)
-    url = f"/api/builds/{model.id}/bom"
-    response = client.get(url)
-    assert response.status_code == 200 and response.headers["cache-control"] == "private, no-store"
-    bom = response.json()
-    assert bom["pieces"] == 3 and bom["revision"] == model.revision
-    assert bom["lines"][0]["bricklinkPart"] == "3001" and bom["lines"][0]["bricklinkColor"] == 3
-    model.pieces[0].color = 503
-    store.save(model)
-    response = client.get(url)
-    assert response.status_code == 422
-    assert "lines" not in response.json()
-    assert response.json()["detail"]["issues"][0]["code"] == "color_not_verified"
-
-    def unavailable(*args):
-        raise catalog.CatalogUnavailable("Temporarily unavailable")
-
-    monkeypatch.setattr(catalog.Catalog, "get", unavailable)
-    assert client.get(url).json()["detail"]["issues"][0]["code"] == "catalog_unavailable"

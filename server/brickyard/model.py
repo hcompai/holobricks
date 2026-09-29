@@ -8,7 +8,6 @@ import math
 import time
 import uuid
 from collections.abc import Iterable
-from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, Field, computed_field
@@ -112,9 +111,9 @@ class Build(BaseModel):
             lines.append(f"0 STEP {step.title}".rstrip())
         return "\n".join(lines) + "\n"
 
-    def bom(self, catalog_folder: Path | None = None) -> dict:
+    def bom(self) -> dict:
         """Only a complete verified BOM may be presented, including for legacy/imported builds."""
-        report = catalog.require(self.pieces, catalog_folder)
+        report = catalog.require(self.pieces)
         palette = ldraw.colors()
         lines = [
             {

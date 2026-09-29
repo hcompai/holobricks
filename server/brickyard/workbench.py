@@ -1,15 +1,15 @@
-"""The stateful model an agent edits: a build script rebuilt into validated steps, part search, and renders."""
+"""The model an agent edits: a build script rebuilt into validated steps, plus part search and checks."""
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import json
 import math
+import subprocess
 import sys
 import tempfile
 from collections import Counter
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from pydantic import BaseModel, ValidationError
 
@@ -17,8 +17,6 @@ from brickyard import assembly, catalog, ldraw
 from brickyard.model import (
     FACINGS,
     ROTATIONS,
-    Box,
-    Camera,
     Piece,
     Placement,
     bounds,
@@ -27,7 +25,7 @@ from brickyard.model import (
     place,
     with_accessories,
 )
-from brickyard.session import Session
+from brickyard.workspace import MODEL, Workspace
 
 STUD_HEIGHT = 4
 EPS = 0.5
@@ -49,20 +47,8 @@ class Brick(BaseModel):
 
 
 @dataclass
-class Picture:
-    data: bytes
-    mime: str
-
-
-@dataclass
 class Result:
     text: str
-    note: str | None = None
-    images: list[Picture] = field(default_factory=list)
-    """Images the agent should see."""
-    kind: str | None = None
-    """What the images are, like `render`; an agent keeps only the latest images of each kind in context."""
-    caption: str = ""
     problems: int = 0
 
 
@@ -113,14 +99,14 @@ def part_line(part: str) -> str:
 
 
 class Workbench:
-    def __init__(self, session: Session):
-        self.session = session
+    def __init__(self, workspace: Workspace):
+        self.workspace = workspace
         self._indexed: dict[int, tuple[Piece, tuple]] = {}
         self._cells: dict[tuple[int, int], set[int]] = {}
 
     @property
     def pieces(self) -> list[Piece]:
-        return self.session.build.pieces
+        return self.workspace.build.pieces
 
     def _index(self) -> dict[int, tuple[Piece, tuple]]:
         """Each piece id with its piece and box, keeping the cell index in step with the build."""
@@ -213,41 +199,43 @@ class Workbench:
         ]
         return [p for placement, _, _, _ in accepted for p in with_accessories(placement)], rejected, warnings
 
-    async def add(
-        self, title: str, bricks: list[dict], mounted: list[Placement] = (), key: str | None = None
-    ) -> Result:
-        """Check the bricks and place the ones that fit as one step; a keyed step with problems keeps an empty key."""
+    def add(self, title: str, bricks: list[dict], mounted: list[Placement] = ()) -> Result:
+        """Check the bricks and place the ones that fit as one step, if the whole model stays verified."""
         try:
             parsed = [Brick.model_validate(b) for b in bricks]
         except ValidationError as e:
             return Result(f"Invalid bricks in '{title}': {e.errors(include_url=False)}", problems=len(bricks))
         if not parsed and not mounted:
             return Result("No bricks given.")
-        placements, rejected, warnings = await asyncio.to_thread(self._check, parsed, list(mounted))
-        problems = len(rejected) + len(warnings)
+        placements, rejected, warnings = self._check(parsed, list(mounted))
         lines = []
         if placements:
+            candidate = self.workspace.build.model_copy(deep=True)
+            step = candidate.add_step(title, placements)
             try:
-                step = await self.session.step(title, placements, "" if key and problems else key)
+                catalog.require(candidate.pieces)
             except catalog.ValidationError as exc:
-                return self.catalog_rejection(exc.report)
+                return Result(
+                    "Candidate rejected; the model did not change.\n" + _catalog_issues(exc.report),
+                    problems=len(exc.report["issues"]),
+                )
+            self.workspace.commit(candidate)
             new = [p for p in self.pieces if p.step == step.index]
             lines.append(f"Step {step.index + 1} '{title}': placed {len(new)} pieces as #{new[0].id}-#{new[-1].id}.")
         if rejected:
             lines.append(f"Rejected {len(rejected)}, not placed:\n" + _first(rejected))
         if warnings:
             lines.append("Placed but check:\n" + _first(warnings))
-        note = f"Added {len(placements)} pieces: {title}" if placements else f"Rejected every brick of '{title}'"
-        return Result("\n".join(lines), note=note, problems=problems)
+        return Result("\n".join(lines), problems=len(rejected) + len(warnings))
 
-    async def run_script(self, code: str) -> Result:
+    def run_script(self, code: str) -> Result:
         """Rebuild the model from `code`: steps up to the first changed one stay, the rest are rebuilt and checked."""
-        build = self.session.build
+        build = self.workspace.build
         fixed = self._fixed()
-        out = await _execute(code, await asyncio.to_thread(self._taken, fixed))
+        out = _execute(code, self._taken(fixed))
         printed = f"\nThe script printed:\n{out['printed']}" if out.get("printed") else ""
         if "error" in out:
-            await self.session.save_script(code)
+            self.workspace.save(build.model_copy(update={"script": code}))
             return Result(f"The script stopped, so the model did not change.\n{out['error']}{printed}", problems=1)
         steps = out["steps"]
         keys = [_digest(s) for s in steps]
@@ -264,7 +252,7 @@ class Workbench:
             }
         )
         candidate.width, candidate.depth = footprint(candidate.pieces)
-        draft = Workbench(Session(candidate, self.session.store))
+        draft = Workbench(Workspace(candidate))
         source = code.splitlines()
         reports, floating = [], []
         for n, (s, key) in enumerate(zip(steps[same:], keys[same:], strict=True), kept_steps + 1):
@@ -274,15 +262,15 @@ class Workbench:
             except ValidationError as e:
                 reports.append(f"Step {n} '{s['title']}': invalid bricks: {e.errors(include_url=False)}")
                 continue
-            placements, rejected, warnings = await asyncio.to_thread(draft._check, parsed)
+            placements, rejected, warnings = draft._check(parsed)
             if placements:
                 candidate.add_step(s["title"], placements, "" if rejected else key)
             if rejected:
                 reports.append(f"Step {n} '{s['title']}':\n" + _first(rejected))
             if warnings:
                 floating.append(f"Step {n} '{s['title']}':\n" + _first(warnings))
-        await self.session.commit_script(candidate, kept_steps)
-        parts = await self.session.check_parts() if self.pieces else None
+        self.workspace.commit(candidate)
+        parts = catalog.validate(self.pieces) if self.pieces else None
         problems = len(reports) + (len(parts["issues"]) if parts else 0)
         kept = (
             ""
@@ -298,50 +286,36 @@ class Workbench:
         if parts and not parts["valid"]:
             lines.append(_catalog_issues(parts))
         if not problems:
-            lines.append("No problems: every brick is known, fits, and exists in its color on BrickLink.")
+            lines.append("No problems: every brick is known, fits, and exists in its color in LEGO sets.")
         if floating:
             lines += ["Floating, fine only if the subject flies or hangs there:", *floating]
         lines.append("Steps: pieces, then where they sit in studs (x, y) and plates (z, bottom to top):")
-        lines.append(await asyncio.to_thread(self.describe))
-        pieces = sum(p.part != BASEPLATE for p in self.pieces)
-        seen = await self.look(f"Ran the script: {pieces} pieces" + (f", {problems} problems" if problems else ""))
-        physical = await self.assembly_plan()
-        return Result(
-            "\n".join(lines) + printed + "\n" + seen.text + "\n" + physical.text,
-            note=seen.note,
-            images=seen.images,
-            kind=seen.kind,
-            caption=seen.caption,
-            problems=problems + physical.problems,
-        )
+        lines.append(self.describe())
+        lines.append(self.summary() + self.colors())
+        physical = self.assembly_plan()
+        lines.append(physical.text)
+        lines.append(f"Share {MODEL} to show this revision to the user, then call look to see it.")
+        return Result("\n".join(lines) + printed, problems=problems + physical.problems)
 
-    async def assembly_plan(self, plan: dict | None = None) -> Result:
+    def assembly_plan(self, plan: dict | None = None) -> Result:
         """Plan/check the current frozen revision without editing its geometry."""
-        build = self.session.build.model_copy(deep=True)
-        folder = self.session.store.root.parent / "workspaces" / build.id / ".brickyard-assembly"
+        build = self.workspace.build
+        folder = self.workspace.evidence
         try:
             proposed = assembly.Plan.model_validate(plan) if plan is not None else assembly.cached_plan(folder, build)
         except ValueError as exc:
             return Result(f"Invalid assembly plan: {exc}", problems=1)
-        report = await asyncio.to_thread(assembly.check, build, proposed)
-        if self.session.build.revision != build.revision:
-            return Result("The model changed during assembly checking. Retry for the current revision.", problems=1)
-        await asyncio.to_thread(assembly.save_report, folder, report)
+        report = assembly.check(build, proposed)
+        assembly.save_report(folder, report)
         return Result(
             assembly.describe(report) + f"\nEvidence and accepted plan: {folder}",
             problems=0 if report.status == "verified" else 1,
         )
 
-    @staticmethod
-    def catalog_rejection(report: dict) -> Result:
-        return Result(
-            "Candidate rejected; the model did not change.\n" + _catalog_issues(report),
-            problems=len(report["issues"]),
-        )
-
     def _fixed(self) -> int:
         """How many steps were built before the script; it builds on them and never changes them."""
-        return next((s.index for s in self.session.build.steps if s.key is not None), len(self.session.build.steps))
+        steps = self.workspace.build.steps
+        return next((s.index for s in steps if s.key is not None), len(steps))
 
     def _taken(self, steps: int) -> list[list[int]]:
         """(x, y, w, d, z, height) on the grid of every piece in the first `steps` steps, except a baseplate."""
@@ -353,70 +327,39 @@ class Workbench:
                 out.append([x, y, max(1, w), max(1, d), z, max(1, _top((lo, hi)) - z)])
         return out
 
-    async def look(
-        self, note: str = "Looked at the model", camera: dict | None = None, box: list[int] | None = None
-    ) -> Result:
-        try:
-            view = None if camera is None else Camera.model_validate(camera)
-            inside = None if box is None else Box.of(box)
-        except (ValidationError, ValueError, TypeError) as e:
-            return Result(f"Could not set the view: {e}", problems=1)
-        if inside and not any(inside.holds(p) for p in self.pieces):
-            return Result(f"No pieces in the box {inside}.", problems=1)
-        png = await self.session.render(view, inside)
-        summary = await asyncio.to_thread(self.summary)
-        if png is None:
-            return Result(
-                f"No verified render was received (viewer unavailable, asset failure, or timeout).\n{summary}",
-                note=f"{note} (render unavailable)",
-                problems=1,
-            )
-        palette = await asyncio.to_thread(ldraw.colors)
-        colors = Counter(p.color for p in self.pieces if inside is None or inside.holds(p))
-        summary += " Colors: " + ", ".join(
-            f"{color} {palette.get(color, ('Unknown', ''))[0].lower()} {count}" for color, count in colors.most_common()
-        )
-        await self.session.say(note, role="tool", images=[self.session.store.save_image(png, "image/png")])
-        caption = "The render: 3/4 front-right, 3/4 back-left, front, and top (back at the top)."
-        if view:
-            center = f", centered on x {view.at[0]:g}, y {view.at[1]:g}, z {view.at[2]:g}" if view.at else ""
-            caption = f"The view from {view.angle:g} degrees, {view.elevation:g} up, zoom {view.zoom:g}{center}."
-        if inside:
-            n = sum(inside.holds(p) for p in self.pieces)
-            caption = f"Only the {n} pieces in the box {inside}. {caption}"
-        return Result(summary, images=[Picture(png, "image/png")], kind="render", caption=caption)
+    def find_parts(self, query: str) -> Result:
+        hits = [part_line(p) for p in ldraw.search(query)]
+        return Result("\n".join(hits) if hits else f"No parts match '{query}'. Try fewer or simpler words.")
 
-    async def find_parts(self, query: str) -> Result:
-        hits = await asyncio.to_thread(lambda: [part_line(p) for p in ldraw.search(query)])
-        text = "\n".join(hits) if hits else f"No parts match '{query}'. Try fewer or simpler words."
-        return Result(text, note=f"Searched parts for '{query}'")
-
-    async def catalog_colors(self, part: str) -> Result:
+    def catalog_colors(self, part: str) -> Result:
         resolved = ldraw.resolve(part)
         if not resolved or resolved not in ldraw.catalog():
             return Result("Unknown complete part; use bricks parts.", problems=1)
         try:
-            record = await asyncio.to_thread(
-                catalog.Catalog(self.session.store.root.parent / "bricklink-catalog").resolve, resolved
-            )
+            record = catalog.entry(resolved)
         except ValueError as exc:
             return Result(str(exc), problems=1)
         choices = catalog.available_colors(record)
         return Result(
-            f"{resolved} → BrickLink {record.item}. Verified colors (use these LDraw codes in the script):\n"
+            f"{resolved} → Rebrickable {record['rebrickable']}. Verified colors (use these LDraw codes in the script):\n"
             + ", ".join(f"{c['color']} {c['name']}" for c in choices),
             problems=0 if choices else 1,
         )
 
-    async def check_catalog(self) -> Result:
-        report = await asyncio.to_thread(
-            catalog.validate, self.pieces, self.session.store.root.parent / "bricklink-catalog"
-        )
+    def check_catalog(self) -> Result:
+        report = catalog.validate(self.pieces)
         return Result(catalog.describe(report), problems=len(report["issues"]))
 
-    async def rename(self, name: str) -> Result:
-        await self.session.rename(name.strip()[:60] or "Untitled build")
-        return Result(f"Build is now called '{self.session.build.name}'.")
+    def rename(self, name: str) -> Result:
+        self.workspace.save(self.workspace.build.model_copy(update={"name": name.strip()[:60] or "Untitled build"}))
+        return Result(f"Build is now called '{self.workspace.build.name}'.")
+
+    def colors(self) -> str:
+        palette = ldraw.colors()
+        counts = Counter(p.color for p in self.pieces)
+        return " Colors: " + ", ".join(
+            f"{color} {palette.get(color, ('Unknown', ''))[0].lower()} {count}" for color, count in counts.most_common()
+        )
 
     def summary(self) -> str:
         pieces = [p for p in self.pieces if p.part != BASEPLATE]
@@ -427,7 +370,7 @@ class Workbench:
         top = max(_top(indexed[p.id][1]) for p in pieces)
         xs, ys = [b[0] for b in boxes], [b[1] for b in boxes]
         return (
-            f"{len(pieces)} pieces in {len(self.session.build.steps)} steps, spanning x {min(xs)}-{max(xs)}, "
+            f"{len(pieces)} pieces in {len(self.workspace.build.steps)} steps, spanning x {min(xs)}-{max(xs)}, "
             f"y {min(ys)}-{max(ys)}, up to plate height {top}."
         )
 
@@ -438,7 +381,7 @@ class Workbench:
         for p in self.pieces:
             boxes.setdefault(p.step, []).append(indexed[p.id][1])
         s, lines = ldraw.STUD, []
-        for step in self.session.build.steps:
+        for step in self.workspace.build.steps:
             if step.index not in boxes:
                 continue
             los, his = [b[0] for b in boxes[step.index]], [b[1] for b in boxes[step.index]]
@@ -453,7 +396,7 @@ class Workbench:
 def _catalog_issues(report: dict) -> str:
     retry = any(issue["code"] == "catalog_unavailable" for issue in report["issues"])
     return catalog.describe(report) + (
-        "\nRetry the catalog check; do not change the design to bypass an unavailable source."
+        "\nThe catalog snapshot is missing or expired; report it and do not change the design to bypass it."
         if retry
         else "\nChoose verified part/color combinations matching the reference, edit the script and run again."
     )
@@ -468,28 +411,22 @@ def _digest(step: dict) -> str:
     return hashlib.sha256(json.dumps([step["title"], bricks], sort_keys=True).encode()).hexdigest()[:16]
 
 
-async def _execute(code: str, taken: list[list[int]]) -> dict:
+def _execute(code: str, taken: list[list[int]]) -> dict:
     """Run a build script in a fresh process with an empty environment and a time limit."""
-    process = await asyncio.create_subprocess_exec(
-        sys.executable,
-        "-I",
-        "-m",
-        "brickyard.script",
-        stdin=asyncio.subprocess.PIPE,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-        env={"BRICKYARD_LDRAW": str(ldraw.LDRAW)},
-        cwd=tempfile.gettempdir(),
-    )
-    job = json.dumps({"code": code, "taken": taken}).encode()
+    job = json.dumps({"code": code, "taken": taken})
     try:
-        out, err = await asyncio.wait_for(process.communicate(job), SCRIPT_TIMEOUT_S)
-    except TimeoutError:
+        done = subprocess.run(
+            [sys.executable, "-I", "-m", "brickyard.script"],
+            input=job,
+            capture_output=True,
+            text=True,
+            env={"BRICKYARD_LDRAW": str(ldraw.LDRAW)},
+            cwd=tempfile.gettempdir(),
+            timeout=SCRIPT_TIMEOUT_S,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
         return {"error": f"The script ran for over {SCRIPT_TIMEOUT_S} s; look for a loop that never ends."}
-    finally:
-        if process.returncode is None:
-            process.kill()
-            await process.wait()
-    if process.returncode:
-        return {"error": f"The script runner crashed: {err.decode(errors='replace')[-500:]}"}
-    return json.loads(out)
+    if done.returncode:
+        return {"error": f"The script runner crashed: {done.stderr[-500:]}"}
+    return json.loads(done.stdout)

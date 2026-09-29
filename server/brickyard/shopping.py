@@ -22,12 +22,16 @@ MAX_IMPORT_BYTES = 204800
 PACKAGE_FILE = re.compile(r"[a-f0-9]{64}\.(?:json|html|xml)")
 
 
-def prepare(build: Build, catalog_folder: Path | None = None) -> tuple[dict, str]:
+def prepare(build: Build) -> tuple[dict, str]:
     """Verify the complete BOM before writing anything; never export just the valid subset."""
     if build.status != "done" or not build.pieces:
         raise ValueError("Finish your build before shopping for its bricks.")
-    report = catalog.require(build.pieces, catalog_folder)
+    report = catalog.require(build.pieces)
     inventory = report["inventory"]
+    if unlinked := sorted(
+        {line["part"] for line in inventory if None in (line["bricklink_part"], line["bricklink_color"])}
+    ):
+        raise ValueError(f"No BrickLink identifier for {', '.join(unlinked)}, so no complete BrickLink list exists.")
     counts: Counter[tuple[str, int]] = Counter()
     for line in inventory:
         counts[line["bricklink_part"], line["bricklink_color"]] += line["count"]
@@ -54,9 +58,9 @@ def prepare(build: Build, catalog_folder: Path | None = None) -> tuple[dict, str
     return package, contents
 
 
-def save(build: Build, folder: Path, catalog_folder: Path | None = None) -> dict:
+def save(build: Build, folder: Path) -> dict:
     """Persist a content-addressed package; retries return the same handoff."""
-    package, contents = prepare(build, catalog_folder)
+    package, contents = prepare(build)
     folder.mkdir(parents=True, exist_ok=True)
     files = {"xml": contents, "html": order_page(package), "json": json.dumps(package)}
     for suffix, content in files.items():
@@ -106,7 +110,7 @@ If it already exists, check its contents and resume it instead of uploading agai
 This is a parts list; printed building instructions are not included yet.</p>
 <h2>Expected inventory</h2><div class="table"><table><thead><tr><th>Qty</th><th>Part</th><th>Color</th>
 <th>Model part (LDraw)</th><th>BrickLink part</th><th>BrickLink color</th></tr></thead><tbody>{rows}</tbody></table></div>
-<p>Every exported part and color pair was checked against BrickLink's Known colors.
+<p>Every exported part and color pair appears in LEGO set inventories on Rebrickable.
 The XML contains canonical BrickLink identifiers and exact quantities. Do not convert identifiers or substitute items.
 Validation evidence and timestamps are in the <a href="{package["id"]}.json">saved inventory</a>.
 Catalog validity does not guarantee stock, price, a specific mold within a catalog family, or physical assembly.</p>

@@ -365,9 +365,9 @@ def _chimneys(b: Haussmann) -> list[tuple[int, int]]:
     return out
 
 
-async def build_building(kit: Kit, name: str, b: Haussmann) -> None:
+def build_building(kit: Kit, name: str, b: Haussmann) -> None:
     for title in building(kit, name, b):
-        await kit.step(f"{name}: {title}")
+        kit.step(f"{name}: {title}")
 
 
 W = D = 32
@@ -449,24 +449,24 @@ def _stone(x: int, y: int, c: int) -> int:
     return DTAN if c == 0 or (3 * x + 5 * c) % 7 == 0 else TAN
 
 
-async def base(kit: Kit, rng: random.Random) -> None:
+def base(kit: Kit, rng: random.Random) -> None:
     kit.fill(0, 0, W, D, 0, BLACK)
-    await kit.step("Base plate")
+    kit.step("Base plate")
     river = rect(0, 0, W, RIVER) - rect(*BARGE) - _piers()
     kit.cover(river, 1, DBLUE)
     kit.scatter(river, 2, WATER, rng)
-    await kit.step("The Seine")
+    kit.step("The Seine")
     kit.ring(
         0, RIVER, W, D - RIVER, 1, 2, lambda x, y, c: (DBG if c == 0 else LBG) if y == RIVER else DBG, kind=EMBOSSED
     )
     kit.fill(0, RIVER, W, D - RIVER, 7, DBG)
     walls = {c for c in rect(0, RIVER, W, D - RIVER) if c[0] in (0, W - 1) or c[1] in (RIVER, D - 1)}
     plates = kit.support(7, walls, [("3005", 3), ("3005", 3)], DBG)
-    await kit.step("Dock wall and hidden pillars")
+    kit.step("Dock wall and hidden pillars")
     kit.pending = plates
-    await kit.step("Dock plates")
+    kit.step("Dock plates")
     kit.ring(0, QUAY, W, D - QUAY, DOCK, 6, _stone, _vaulted, EMBOSSED)
-    await kit.step("Quay wall in dressed stone")
+    kit.step("Quay wall in dressed stone")
     for n in VAULTS:
         kit.add("15254", n - 1, QUAY, DOCK + 12, TAN)
         for z in range(DOCK, 26, 3):
@@ -476,18 +476,18 @@ async def base(kit: Kit, rng: random.Random) -> None:
     kit.add("2431", bar, QUAY, DOCK + 3, TAN)
     for z in (DOCK, DOCK + 6):
         kit.add("3185", gate, QUAY, z, BLACK)
-    await kit.step("Vaults under the quai: a lit buvette and an iron gate")
+    kit.step("Vaults under the quai: a lit buvette and an iron gate")
     kit.cover(rect(0, QUAY - 1, 12, 2), 26, TAN)
     kit.cover(rect(0, QUAY, W, D - QUAY) - rect(0, QUAY, 12, 1), 26, DBG)
     walls = {c for c in rect(0, QUAY, W, D - QUAY) if c[0] in (0, W - 1) or c[1] in (QUAY, D - 1)}
     walls |= {(x, QUAY + 1) for n in VAULTS for x in range(n, n + 4)}
     plates = kit.support(26, walls, [("3005", 3)] * 6, DBG)
-    await kit.step("Hidden street pillars")
+    kit.step("Hidden street pillars")
     kit.pending = plates
-    await kit.step("Street plates")
+    kit.step("Street plates")
 
 
-async def stairs(kit: Kit) -> None:
+def stairs(kit: Kit) -> None:
     for x, top in STAIRS:
         body = top - 1 - DOCK
         for c in range(body // 3):
@@ -500,7 +500,7 @@ async def stairs(kit: Kit) -> None:
     x, _ = STAIRS[0]
     kit.add("3005", x - 1, 9, DOCK, LBG)
     kit.add("98138", x - 1, 9, DOCK + 3, LBG)
-    await kit.step("Stairs up the quay wall with a stepped balustrade")
+    kit.step("Stairs up the quay wall with a stepped balustrade")
 
 
 def _piers() -> set[tuple[int, int]]:
@@ -508,7 +508,7 @@ def _piers() -> set[tuple[int, int]]:
     return rect(x0, 5, w, 2) | {(x0, 0), (x0 + w - 1, 0)} | CUTWATER
 
 
-async def bridge(kit: Kit) -> None:
+def bridge(kit: Kit) -> None:
     x0, _, w, d = BRIDGE
     east = x0 + w - 1
     passage = {(x0, 6), (east, 6)}
@@ -516,7 +516,7 @@ async def bridge(kit: Kit) -> None:
         cells = _piers() if z < 13 else rect(x0, 5, w, 2) - {(x0, 5), (east, 5)} - (passage if z >= 19 else set())
         kit.cover(cells, z, LBG, BRICKS)
     kit.add("3039", *min(CUTWATER), 13, LBG, 90)
-    await kit.step("Bridge pier with its cutwater")
+    kit.step("Bridge pier with its cutwater")
     for x in (x0, east):
         kit.add("15254", x, 0, 13, LBG, 90)
         for z in (19, 22):
@@ -527,14 +527,14 @@ async def bridge(kit: Kit) -> None:
                 kit.add("3005", x, 9, z, LBG)
         kit.add("3024", x, 6, 19, LBG)
         kit.add("6182", x, 6, 20, LBG, 90)
-    await kit.step("Arches over the river and a passage under the bridge")
+    kit.step("Arches over the river and a passage under the bridge")
     kit.cover(rect(x0, 0, w, RIVER) - passage, 25, LBG)
     for y, color in ((0, LBG), (2, DBG), (4, DBG)):
         kit.add("15254", x0 + 1, y, 19, color)
-    await kit.step("Vault ribs under the deck")
+    kit.step("Vault ribs under the deck")
     kit.fill(x0 - 1, 0, w + 2, 9, 26, LBG)
     kit.fill(x0, 9, w, 2, 26, LBG)
-    await kit.step("Bridge deck with an overhanging cornice")
+    kit.step("Bridge deck with an overhanging cornice")
     for x in (x0 - 1, east + 1):
         for y in range(0, 9, 2):
             kit.add("3024", x, y, 25, LBG)
@@ -542,7 +542,7 @@ async def bridge(kit: Kit) -> None:
     kit.mount("14769", x0 - 1, 2, 19, PGOLD, "west")
     kit.add("3024", x0 + 3, 8, 25, BLACK)
     kit.add("3062b", x0 + 3, 8, 22, TYELLOW)
-    await kit.step("Corbels, a gilded medallion and a lantern in the passage")
+    kit.step("Corbels, a gilded medallion and a lantern in the passage")
     for x in (x0 + 1, east - 1):
         kit.run(x, 0, GROUND, d, LBG, "y", TILE_RUN)
     for x in (x0, east):
@@ -551,23 +551,23 @@ async def bridge(kit: Kit) -> None:
         kit.run(x, 0, GROUND + 3, d, LBG, "y", TILE_RUN)
     for x, y in ((x0 + 1, 2), (x0 + w - 2, 2), (x0 + 1, 8), (x0 + w - 2, 8)):
         lamp(kit, x, y)
-    await kit.step("Bridge pavements, parapets and lamps")
+    kit.step("Bridge pavements, parapets and lamps")
 
 
-async def streets(kit: Kit, built: set[tuple[int, int]]) -> None:
+def streets(kit: Kit, built: set[tuple[int, int]]) -> None:
     zebra = {(x, y) for x in range(15, 19) for y in (14, 16)}
     dashes = {(x + i, 15) for x in range(0, W, 4) for i in (0, 1)} - rect(13, 15, 8, 1) - rect(24, 15, 6, 1)
     kit.cover(ROADS - zebra - dashes, GROUND, DBG, TILES)
     for y in (14, 16):
         kit.add("2431", 15, y, GROUND, WHITE)
     kit.cover(dashes, GROUND, WHITE, TILES)
-    await kit.step("Quai, rue Saint-Benoît and the bridge road")
+    kit.step("Quai, rue Saint-Benoît and the bridge road")
     parapet = {(x, QUAY) for x in range(W)} - rect(21, QUAY, 2, 1) - rect(24, QUAY, 6, 1)
     street = rect(0, QUAY, W, D - QUAY) - ROADS - built - parapet
     kerb = {(x, y) for x, y in street if {(x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)} & ROADS}
     kit.cover(kerb, GROUND, LBG, TILES)
     kit.cover(street - kerb, GROUND, VLBG, TILES)
-    await kit.step("Pavements")
+    kit.step("Pavements")
     kit.cover(parapet, GROUND, TAN, BRICKS)
     stalls = [x for x in (1, 7, 13) if all((x + i, QUAY) in parapet for i in range(4))]
     boxes = {(x + i, QUAY) for x in stalls for i in range(4)}
@@ -575,10 +575,10 @@ async def streets(kit: Kit, built: set[tuple[int, int]]) -> None:
     for x in stalls:
         kit.add("3010", x, QUAY, GROUND + 3, DGREEN)
         kit.add("3710", x, QUAY, GROUND + 6, DGREEN)
-    await kit.step("Parapet with the bouquinistes' green boxes")
+    kit.step("Parapet with the bouquinistes' green boxes")
 
 
-async def dock(kit: Kit) -> None:
+def dock(kit: Kit) -> None:
     stair_cells = {(x, y) for x, _ in STAIRS for y in (9, 10)} | {(STAIRS[0][0] - 1, 9)}
     sides = {(x, y) for x in (BRIDGE[0], BRIDGE[0] + BRIDGE[2] - 1) for y in (9, 10)}
     picnic = rect(4, 7, 2, 2)
@@ -586,7 +586,7 @@ async def dock(kit: Kit) -> None:
     kit.cover(cells, DOCK, LBG, TILES)
     for i, (x, y) in enumerate(sorted(picnic)):
         kit.add("3070b", x, y, DOCK, RED if i % 3 == 0 else WHITE)
-    await kit.step("Dock paving and a picnic blanket")
+    kit.step("Dock paving and a picnic blanket")
     z = DOCK + 1
     kit.add("3062b", 6, 8, z, DGREEN)
     kit.add("6141", 6, 8, z + 3, DGREEN)
@@ -595,23 +595,23 @@ async def dock(kit: Kit) -> None:
         kit.add("3062b", x, RIVER, z, BLACK)
     bench(kit, 5, 10, "x", DOCK)
     bench(kit, 16, 7, "x", DOCK)
-    await kit.step("Life on the dock: bollards and benches")
+    kit.step("Life on the dock: bollards and benches")
     plane(kit, 8, 8, DOCK, YOUNG, 4)
-    await kit.step("A young plane tree on the dock")
+    kit.step("A young plane tree on the dock")
 
 
-async def barge(kit: Kit) -> None:
+def barge(kit: Kit) -> None:
     x0, y0, w, d = BARGE
     kit.fill(x0, y0, w, d, 1, BLACK, BRICKS)
     kit.fill(x0, y0, w, d, 4, RBROWN)
-    await kit.step("Péniche hull and deck")
+    kit.step("Péniche hull and deck")
     cabin = (x0 + 8, y0, 7, d)
     glass = {(x0 + 9, y0), (x0 + 11, y0), (x0 + 13, y0)}
     kit.ring(*cabin, 5, 1, WHITE, lambda x, y, c: (x, y) in glass)
     for x, y in glass:
         kit.add("3005", x, y, 5, 43)
     kit.fill(*cabin, 8, DBG)
-    await kit.step("Péniche cabin")
+    kit.step("Péniche cabin")
     for x in range(x0 + 1, x0 + 7, 2):
         kit.add("3062b", x, y0, 5, DBG)
         kit.add("6141", x, y0, 8, GREEN)
@@ -619,28 +619,28 @@ async def barge(kit: Kit) -> None:
     for x, y in ((x0 + 9, y0 + 1), (x0 + 12, y0 + 1)):
         kit.add("3062b", x, y, 9, DBG)
         kit.add("4589", x, y, 12, GREEN)
-    await kit.step("Flower pots and a deck table")
+    kit.step("Flower pots and a deck table")
 
 
-async def square(kit: Kit) -> None:
+def square(kit: Kit) -> None:
     z = GROUND + 1
     kit.add("3941", 7, 12, z, DGREEN)
     for dx in (0, 1):
         for dy in (0, 1):
             kit.add("3062b", 7 + dx, 12 + dy, z + 3, DGREEN)
     kit.add("2654a", 7, 12, z + 6, DGREEN)
-    await kit.step("Wallace fountain")
+    kit.step("Wallace fountain")
     for c, color in enumerate((DGREEN, WHITE, YELLOW, WHITE, DGREEN)):
         kit.add("3941", 17, 12, z + 3 * c, color)
     kit.add("2654a", 17, 12, z + 15, DGREEN)
-    await kit.step("Morris column")
+    kit.step("Morris column")
     for x, y in ((16, 13), (1, 19), (18, 18), (21, 18)):
         lamp(kit, x, y)
-    await kit.step("Street lamps")
+    kit.step("Street lamps")
     plane(kit, 4, 13)
-    await kit.step("A plane tree on the quai")
+    kit.step("A plane tree on the quai")
     chestnut(kit, 13, 13)
-    await kit.step("A horse chestnut in bloom")
+    kit.step("A horse chestnut in bloom")
 
 
 def centered(kit: Kit, part: str, x: int, y: int, z: int, color: int, rotation: int = 0) -> None:
@@ -741,18 +741,18 @@ def bus(kit: Kit, x: int, y: int) -> None:
     kit.add("3795", x, y, z + 6, WHITE)
 
 
-async def terraces(kit: Kit) -> None:
+def terraces(kit: Kit) -> None:
     for x in (5, 8, 11, 14):
         table(kit, x, 19, [(x - 1, 19), (x + 1, 19)], NOUGAT)
     for y in (23, 26, 29):
         table(kit, 17, y, [(17, y - 1), (17, y + 1)], NOUGAT)
-    await kit.step("Café de Flore terrace")
+    kit.step("Café de Flore terrace")
     for x in (23, 26, 29):
         table(kit, x, 19, [(x - 1, 19), (x + 1, 19)], DGREEN)
-    await kit.step("Les Deux Magots terrace")
+    kit.step("Les Deux Magots terrace")
 
 
-async def traffic(kit: Kit) -> None:
+def traffic(kit: Kit) -> None:
     bus(kit, 2, 14)
     car(kit, 24, 14, BLACK)
     car(kit, 10, 16, RED)
@@ -760,24 +760,24 @@ async def traffic(kit: Kit) -> None:
     kit.add("3001", 26, 3, GROUND + 2, SBLUE, 90)
     kit.add("3039", 26, 4, GROUND + 5, TBLACK)
     kit.add("3004", 26, 6, GROUND + 5, SBLUE)
-    await kit.step("Traffic")
+    kit.step("Traffic")
 
 
-async def build() -> Kit:
+def build() -> Kit:
     kit = Kit("paris", "Paris, the Seine at Saint-Germain", PROMPT)
     rng = random.Random(7)
     houses = blocks()
     built = set().union(*(_footprint(b) for b in houses.values()))
-    await base(kit, rng)
-    await barge(kit)
-    await stairs(kit)
-    await dock(kit)
-    await bridge(kit)
-    await streets(kit, built)
+    base(kit, rng)
+    barge(kit)
+    stairs(kit)
+    dock(kit)
+    bridge(kit)
+    streets(kit, built)
     for name, b in houses.items():
-        await build_building(kit, name, b)
-    await square(kit)
-    await terraces(kit)
-    await traffic(kit)
+        build_building(kit, name, b)
+    square(kit)
+    terraces(kit)
+    traffic(kit)
     kit.save(STORY)
     return kit
