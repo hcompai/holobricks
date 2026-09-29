@@ -20,15 +20,6 @@ jobs:
           path: shadow
           key: ldcad-shadow-9b1131fb1991f8c0bfc072325e4e12f6271aba35
       - run: python3 scripts/fetch-connectors.py
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: web/package-lock.json
-      - name: Web app and ffmpeg for the film job test
-        run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
-          cd web && npm ci && npm run build
       - uses: astral-sh/setup-uv@v6
       - working-directory: server
         run: |

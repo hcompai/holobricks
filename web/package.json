@@ -6,7 +6,6 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "build:gallery": "tsc -b && vite build --mode gallery",
     "typecheck": "tsc -b",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
