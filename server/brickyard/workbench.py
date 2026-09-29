@@ -91,6 +91,22 @@ def _first(lines: list[str]) -> str:
     return "\n".join(lines[:PROBLEM_LIMIT] + ([f"... and {extra} more like these."] if extra > 0 else []))
 
 
+def _by_step(groups: list[tuple[int, str, list[str]]]) -> list[str]:
+    """The first PROBLEM_LIMIT lines of the whole run under their steps, then how many more and where."""
+    lines, shown, rest = [], 0, {}
+    for n, title, found in groups:
+        taken = found[: max(0, PROBLEM_LIMIT - shown)]
+        if taken:
+            lines += [f"Step {n} '{title}':", *taken]
+            shown += len(taken)
+        if len(found) > len(taken):
+            rest[n] = len(found) - len(taken)
+    if rest:
+        where = f"step{'s' if len(rest) > 1 else ''} {', '.join(map(str, rest))}"
+        lines.append(f"... and {sum(rest.values())} more like these in {where}.")
+    return lines
+
+
 def part_line(part: str) -> str:
     info = ldraw.info(part)
     w, d = info.footprint
@@ -260,15 +276,15 @@ class Workbench:
             try:
                 parsed = [Brick.model_validate(b) for b in bricks]
             except ValidationError as e:
-                reports.append(f"Step {n} '{s['title']}': invalid bricks: {e.errors(include_url=False)}")
+                reports.append((n, s["title"], [f"invalid bricks: {e.errors(include_url=False)}"]))
                 continue
             placements, rejected, warnings = draft._check(parsed)
             if placements:
                 candidate.add_step(s["title"], placements, "" if rejected else key)
             if rejected:
-                reports.append(f"Step {n} '{s['title']}':\n" + _first(rejected))
+                reports.append((n, s["title"], rejected))
             if warnings:
-                floating.append(f"Step {n} '{s['title']}':\n" + _first(warnings))
+                floating.append((n, s["title"], warnings))
         self.workspace.commit(candidate)
         parts = catalog.validate(self.pieces) if self.pieces else None
         problems = len(reports) + (len(parts["issues"]) if parts else 0)
@@ -280,22 +296,24 @@ class Workbench:
             else f"kept steps {fixed + 1} to {fixed + same} unchanged, "
         )
         rebuilt = len(steps) - same
-        lines = [f"Ran the script: {kept}rebuilt and checked {rebuilt} step{'' if rebuilt == 1 else 's'}."]
+        revision = self.workspace.build.revision[:8]
+        lines = [
+            f"Ran the script: {kept}rebuilt and checked {rebuilt} step{'' if rebuilt == 1 else 's'}.",
+            f"Share {MODEL} to show revision {revision} to the user, then call look to see it.",
+        ]
         if reports:
-            lines += ["Problems, by script line; these bricks were not placed:", *reports]
+            lines += ["Problems, by script line; these bricks were not placed:", *_by_step(reports)]
         if parts and not parts["valid"]:
             lines.append(_catalog_issues(parts))
         if not problems:
             lines.append("No problems: every brick is known, fits, and exists in its color in LEGO sets.")
         if floating:
-            lines += ["Floating, fine only if the subject flies or hangs there:", *floating]
+            lines += ["Floating, fine only if the subject flies or hangs there:", *_by_step(floating)]
         lines.append("Steps: pieces, then where they sit in studs (x, y) and plates (z, bottom to top):")
         lines.append(self.describe())
         lines.append(self.summary() + self.colors())
         physical = self.assembly_plan()
         lines.append(physical.text)
-        revision = self.workspace.build.revision[:8]
-        lines.append(f"Share {MODEL} to show revision {revision} to the user, then call look to see it.")
         return Result("\n".join(lines) + printed, problems=problems + physical.problems)
 
     def assembly_plan(self, plan: dict | None = None) -> Result:

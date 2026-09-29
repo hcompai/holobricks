@@ -64,6 +64,7 @@ At each step, edit `build.py` with `write_file` or `search_replace`, then call `
 ```
 $ bricks run
 Ran the script: kept steps 1 to 3 unchanged, rebuilt and checked 1 step.
+Share model.json.gz to show revision 3f9a01c2 to the user, then call look to see it.
 No problems: every brick is known, fits, and exists in its color in LEGO sets.
 Steps: pieces, then where they sit in studs (x, y) and plates (z, bottom to top):
 1 Watchtower in weathered stone, lit windows on every other storey: 110 pieces, x 4-9, y 18-23, z 0-24
@@ -73,7 +74,6 @@ Steps: pieces, then where they sit in studs (x, y) and plates (z, bottom to top)
 150 pieces in 4 steps, spanning x 4-26, y 0-26, up to plate height 49. Colors: 19 tan 57, 46 trans yellow 25, 84 medium nougat 19, 78 light nougat 10, 70 reddish brown 10, 72 dark bluish grey 8, 40 trans brown 7, 71 light bluish grey 4, 2 green 3, 288 dark green 3, 27 lime 2, 0 black 1, 10 bright green 1
 Assembly plan verified for revision 3f9a01c2…: 150 parts exactly once; 1 assembly sections. Supported stud connections and insertion corridors checked. Strength and hand access require physical validation.
 Evidence and accepted plan: /workspace/.brickyard-assembly
-Share model.json.gz to show revision 3f9a01c2 to the user, then call look to see it.
 ```
 
 The steps before the first one you changed are kept as they are. In the rebuilt steps:

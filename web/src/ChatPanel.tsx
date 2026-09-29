@@ -51,6 +51,7 @@ const WAITING = [
   "Trying another angle",
 ];
 const WAITING_S = 4;
+const TYPING_FRAMES = 60;
 const MAX_ATTACHMENTS = 2;
 const WHO = "Holo";
 
@@ -69,6 +70,25 @@ function useWaitingLine(active: boolean): string {
     return () => clearInterval(timer);
   }, [active]);
   return WAITING[line];
+}
+
+function useTyped(text: string): string {
+  const [typed, setTyped] = useState({ text, shown: 0 });
+  useEffect(() => {
+    const step = matchMedia("(prefers-reduced-motion: reduce)").matches
+      ? text.length
+      : Math.ceil(text.length / TYPING_FRAMES);
+    let shown = 0;
+    let frame = 0;
+    const tick = () => {
+      shown = Math.min(text.length, shown + step);
+      setTyped({ text, shown });
+      if (shown < text.length) frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [text]);
+  return typed.text === text ? text.slice(0, typed.shown) : "";
 }
 
 interface Props {
@@ -96,6 +116,7 @@ export function ChatPanel({ build, loading, thinking, closed, onCreate, onSay, o
   const scrolled = useRef<string | null>(null);
   const busy = build?.status === "building";
   const waiting = useWaitingLine(busy);
+  const typed = useTyped(thinking);
   const changing = Boolean(build || loading);
   const [stopping, setStopping] = useState(false);
   useEffect(() => {
@@ -115,7 +136,7 @@ export function ChatPanel({ build, loading, thinking, closed, onCreate, onSay, o
 
   useEffect(() => {
     thought.current?.scrollTo({ top: thought.current.scrollHeight });
-  }, [thinking]);
+  }, [typed]);
 
   const attach = async (files: File[]) => {
     if (!files.length) return;
@@ -200,9 +221,9 @@ export function ChatPanel({ build, loading, thinking, closed, onCreate, onSay, o
                 {waiting}
               </span>
             </div>
-            {thinking && (
+            {typed && (
               <div className="thinking-text" ref={thought}>
-                {thinking}
+                {typed}
               </div>
             )}
           </div>

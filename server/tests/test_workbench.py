@@ -112,6 +112,18 @@ def test_a_script_rebuilds_from_its_first_changed_step_and_names_the_lines_of_it
     assert Build.model_validate_json((bench.workspace.folder / BUILD).read_text()).script == code
 
 
+def test_a_run_with_problems_in_every_step_leads_with_its_revision_and_stays_short(bench):
+    code = "".join(f'step("Floor {n}")\nfor x in range(40):\n    brick("3001", -1, x, 0, 4)\n' for n in range(9))
+    result = bench.run_script(code)
+    revision = bench.workspace.build.revision[:8]
+    assert (
+        result.text.splitlines()[1]
+        == f"Share {MODEL} to show revision {revision} to the user, then call look to see it."
+    )
+    assert "... and 348 more like these in steps 1, 2, 3, 4, 5, 6, 7, 8, 9." in result.text
+    assert len(result.text) < 8000
+
+
 def test_the_shared_model_holds_the_current_revision_and_every_part_it_uses(bench):
     bench.run_script(HOUSE)
     model = json.loads(gzip.decompress((bench.workspace.folder / MODEL).read_bytes()))

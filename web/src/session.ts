@@ -2,8 +2,6 @@ import type { HaiAgents } from "hai-agents";
 import type { Message } from "./api";
 
 export const MODEL_FILE = "model.json.gz";
-const THINKING_CHARS = 1500;
-
 /** The builder's side of a session, read from its events in order. */
 export interface Transcript {
   events: number;
@@ -75,7 +73,7 @@ function step(t: Transcript, event: HaiAgents.SessionEvent): Transcript {
       return say({ role: "user", text: text(data.content ?? []), images: images(data.content ?? []) });
     }
     case "policy_event": {
-      const thinking = (data.reasoningContent ?? "").slice(-THINKING_CHARS);
+      const thinking = data.reasoningContent ?? "";
       const content = data.content?.trim();
       return content ? { ...say({ role: "assistant", text: content, images: [] }), thinking } : { ...t, thinking };
     }
