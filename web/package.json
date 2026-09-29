@@ -17,6 +17,7 @@
     "@fontsource-variable/plus-jakarta-sans": "^5.3.0",
     "@phosphor-icons/react": "^2.1.10",
     "gifenc": "^1.0.3",
+    "hai-agents": "1.0.12",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "react-markdown": "^10.1.0",

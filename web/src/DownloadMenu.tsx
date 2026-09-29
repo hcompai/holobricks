@@ -1,6 +1,6 @@
 import { CubeIcon, DownloadSimpleIcon, FilmStripIcon, ImageIcon } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
-import { api, type Build } from "./api";
+import type { Build } from "./api";
 
 interface Props {
   build: Build;
@@ -29,13 +29,16 @@ export function DownloadMenu({ build, image, onReplay }: Props) {
     };
   }, [open]);
 
+  const save = (blob: Blob, extension: string) => {
+    const url = URL.createObjectURL(blob);
+    Object.assign(document.createElement("a"), { href: url, download: `${build.name}.${extension}` }).click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
   const saveImage = async () => {
     setOpen(false);
     const png = await image();
-    if (!png) return;
-    const url = URL.createObjectURL(png);
-    Object.assign(document.createElement("a"), { href: url, download: `${build.name}.png` }).click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    if (png) save(png, "png");
   };
 
   return (
@@ -52,15 +55,17 @@ export function DownloadMenu({ build, image, onReplay }: Props) {
       </button>
       {open && (
         <div className="menu-list" role="menu">
-          <a
+          <button
             role="menuitem"
-            href={api.downloadUrl(build.id)}
-            download={`${build.name}.ldr`}
-            onClick={() => setOpen(false)}
+            disabled={!build.ldr}
+            onClick={() => {
+              setOpen(false);
+              save(new Blob([build.ldr], { type: "text/plain" }), "ldr");
+            }}
           >
             <CubeIcon size={16} />
             Download .ldr
-          </a>
+          </button>
           <button role="menuitem" onClick={saveImage}>
             <ImageIcon size={16} />
             Download image

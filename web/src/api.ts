@@ -17,35 +17,15 @@ export interface Step {
 export interface Message {
   role: "user" | "assistant" | "system" | "tool";
   text: string;
+  /** Image URLs; data and blob URLs show as they are, gallery paths have a small WebP beside them. */
   images: string[];
-  at: number;
 }
 
 export type Status = "idle" | "building" | "done" | "error";
 
-export interface BuildSummary {
-  id: string;
-  name: string;
-  prompt: string;
-  builder: string;
-  status: Status;
-  created: number;
-  /** When the pieces last changed, in seconds; 0 when unknown. */
-  updated: number;
-  pieces: number;
-  steps: number;
-  width: number;
-  depth: number;
-  /** When the thumbnail was saved, in milliseconds; null when there is none. */
-  thumbnail?: number | null;
-}
-
-export interface Build extends Omit<BuildSummary, "pieces" | "steps" | "thumbnail"> {
-  /** Geometry fingerprint; optional for older static gallery exports. */
-  revision?: string;
-  pieces: Piece[];
-  steps: Step[];
-  messages: Message[];
+export interface Validation {
+  status: "verified";
+  valid_until: number;
 }
 
 export interface BomLine {
@@ -62,9 +42,60 @@ export interface BomLine {
 export interface Bom {
   revision: string;
   pieces: number;
-  validation: { status: "verified"; valid_until: number };
+  validation: Validation;
   lines: BomLine[];
-  error?: string;
+}
+
+export interface ShoppingPackage {
+  version: 3;
+  validation: Validation;
+  id: string;
+  name: string;
+  revision: string;
+  pieces: number;
+  lots: number;
+  xml: string;
+}
+
+export type Verified<T> = T | { error: string };
+
+/** One revision of the model, as `bricks run` writes it to model.json.gz. */
+export interface Model {
+  name: string;
+  /** Who made it: "holo" for Holo's builds. */
+  builder: string;
+  width: number;
+  depth: number;
+  /** When the pieces last changed, in seconds; 0 when unknown. */
+  updated: number;
+  revision: string;
+  pieces: Piece[];
+  steps: Step[];
+  /** Every part the pieces use, packed as one LDraw MPD each. */
+  parts: Record<string, string>;
+  ldr: string;
+  bom: Verified<Bom>;
+  shopping: Verified<ShoppingPackage>;
+}
+
+export interface Build extends Model {
+  id: string;
+  status: Status;
+  messages: Message[];
+  /** Whether the builder takes a new message. */
+  open: boolean;
+}
+
+export interface BuildSummary {
+  id: string;
+  name: string;
+  prompt: string;
+  status: Status;
+  /** In seconds. */
+  created: number;
+  pieces: number | null;
+  thumbnail: string | null;
+  showcase: boolean;
 }
 
 /** One view the builder asks for: seen from compass `angle` (0 front, 90 right), `elevation` degrees up, `zoom` times closer, centered on `at` (studs, studs, plates). */
@@ -90,156 +121,23 @@ export interface RenderRequest {
   request: string;
   camera: Camera | null;
   box: Box | null;
-  /** How many pieces the model had when asked; only a viewer showing that many may answer. */
-  pieces: number;
+  /** Only a viewer showing this revision may answer. */
   revision: string;
 }
 
-export type BuildEvent =
-  | { type: "hello"; build: BuildSummary }
-  | { type: "build"; build: BuildSummary }
-  | { type: "message"; message: Message }
-  | { type: "step"; step: Step; pieces: Piece[]; width: number; depth: number }
-  | { type: "rewind"; steps: number; width: number; depth: number }
-  | { type: "thinking"; text: string; reset: boolean }
-  | ({ type: "render" } & RenderRequest);
-
-export type FilmStatus = "queued" | "rendering" | "encoding" | "done" | "error" | "cancelled";
-
-/** What the server renders: frame sizes and timing for the film page, plus the encodes it makes from them. */
-export interface FilmRequest {
-  aspect: "16:9" | "1:1" | "9:16";
-  seconds: number;
-  fps?: number;
-  gif?: boolean;
-  branded?: boolean;
-}
-
-export interface FilmJob {
-  id: string;
-  build: string;
-  name: string;
-  status: FilmStatus;
-  /** Share of frames rendered, 0 to 1. */
-  progress: number;
-  error: string | null;
-  frames: number;
-  samples: number | null;
-  /** Rendering time budget in seconds, spent on samples when none are set. */
-  budget: number;
-  elapsed: number;
-  options: {
-    width: number;
-    height: number;
-    seconds: number;
-    fps: number;
-    samples: number | null;
-    branded: boolean;
-    dof: boolean;
-  };
-  files: Partial<Record<"mp4" | "gif", { size: number; width: number; height: number; fps: number }>>;
-}
-
-/** A static, read-only export of chosen builds (`vite build --mode gallery`), served without the Python server. */
-export const GALLERY = import.meta.env.MODE === "gallery";
-
-const LIVE_URLS = {
-  builds: "/api/builds",
-  build: (id: string) => `/api/builds/${id}`,
-  bom: (id: string) => `/api/builds/${id}/bom`,
-  thumbnail: (id: string) => `/api/builds/${id}/thumbnail.png`,
-  download: (id: string) => `/api/builds/${id}/download.ldr`,
-  part: (part: string) => `/api/parts/${encodeURIComponent(part)}`,
-  ldconfig: "/api/ldconfig",
+export const EMPTY_MODEL: Model = {
+  name: "Untitled build",
+  builder: "holo",
+  width: 0,
+  depth: 0,
+  updated: 0,
+  revision: "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+  pieces: [],
+  steps: [],
+  parts: {},
+  ldr: "",
+  bom: { error: "Nothing is built yet." },
+  shopping: { error: "Nothing is built yet." },
 };
 
-const GALLERY_URLS: typeof LIVE_URLS = {
-  builds: "/gallery/builds.json",
-  build: (id) => `/gallery/builds/${id}.json`,
-  bom: (id) => `/gallery/builds/${id}.bom.json`,
-  thumbnail: (id) => `/gallery/thumbnails/${id}.png`,
-  download: (id) => `/gallery/builds/${id}.ldr`,
-  part: (part) => `/gallery/parts/${encodeURIComponent(part)}`,
-  ldconfig: "/gallery/LDConfig.ldr",
-};
-
-const urls = GALLERY ? GALLERY_URLS : LIVE_URLS;
-
-export class HttpError extends Error {
-  constructor(
-    readonly status: number,
-    detail: string,
-  ) {
-    super(`${status}: ${detail}`);
-  }
-}
-
-async function json<T>(response: Promise<Response>): Promise<T> {
-  const r = await response;
-  if (!r.ok) {
-    const body = await r.text();
-    let detail = body;
-    try {
-      const parsed = JSON.parse(body).detail;
-      if (parsed) detail = typeof parsed === "string" ? parsed : JSON.stringify(parsed);
-    } catch {}
-    throw new HttpError(r.status, detail);
-  }
-  return r.json() as Promise<T>;
-}
-
-const post = (url: string, body: unknown) =>
-  fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-
-export const api = {
-  builds: () => json<BuildSummary[]>(fetch(urls.builds)),
-  build: (id: string) => json<Build>(fetch(urls.build(id))),
-  state: (id: string, after: string, signal: AbortSignal) =>
-    json<{ token: string; build: Build | null; renders: RenderRequest[] }>(
-      fetch(`/api/builds/${id}/state?after=${encodeURIComponent(after)}`, { signal, cache: "no-store" }),
-    ),
-  bom: (id: string) => json<Bom>(fetch(urls.bom(id), { cache: "no-store" })),
-  thumbnailUrl: (id: string, version: number) => `${urls.thumbnail(id)}?v=${version}`,
-  /** A chat image as WebP with its short side at most 240 pixels. */
-  smallImageUrl: (url: string) => url.replace(/[^/]+$/, "small/$&.webp"),
-  downloadUrl: urls.download,
-  partUrl: urls.part,
-  ldconfigUrl: urls.ldconfig,
-  create: (prompt: string, images: string[] = []) =>
-    json<BuildSummary>(post("/api/builds", { prompt, images, builder: "holo" })),
-  say: (id: string, text: string, images: string[] = []) =>
-    json<BuildSummary>(post(`/api/builds/${id}/messages`, { text, images })),
-  stop: (id: string) => post(`/api/builds/${id}/stop`, {}),
-  events: (id: string) => new EventSource(`/api/builds/${id}/events`),
-  putRender: (id: string, request: string, png: Blob, pieces: number, revision: string) =>
-    fetch(`/api/builds/${id}/renders/${request}`, {
-      method: "PUT",
-      body: png,
-      headers: { "X-Pieces": String(pieces), "X-Revision": revision },
-      signal: AbortSignal.timeout(8000),
-    }),
-  putThumbnail: (id: string, png: Blob) => fetch(`/api/builds/${id}/thumbnail.png`, { method: "PUT", body: png }),
-  /** Why the server cannot render films, or null when it can. */
-  filmsUnavailable: async (): Promise<string | null> => {
-    if (GALLERY) return "The gallery has no server.";
-    try {
-      const { available, reason } = await json<{ available: boolean; reason: string | null }>(fetch("/api/films"));
-      return available ? null : (reason ?? "Films are unavailable.");
-    } catch {
-      return "The server does not render films.";
-    }
-  },
-  createFilm: (id: string, request: FilmRequest) => json<FilmJob>(post(`/api/builds/${id}/film`, request)),
-  film: (job: string) => json<FilmJob>(fetch(`/api/films/${job}`)),
-  filmBuild: (job: string) => json<Build>(fetch(`/api/films/${job}/build`)),
-  startFilm: (job: string, body: { frames: number; samples: number; landings: number[] }) =>
-    json<FilmJob>(post(`/api/films/${job}/start`, body)),
-  putFrame: (job: string, index: number, rgba: Uint8ClampedArray, samples: number) =>
-    fetch(`/api/films/${job}/frames/${index}?samples=${samples}`, {
-      method: "PUT",
-      body: rgba as Uint8ClampedArray<ArrayBuffer>,
-    }),
-  failFilm: (job: string, message: string) => post(`/api/films/${job}/fail`, { message }),
-  cancelFilm: (job: string) => fetch(`/api/films/${job}`, { method: "DELETE" }),
-  filmUrl: (job: string, format: "mp4" | "gif") => `/api/films/${job}/film.${format}`,
-};
+export const verified = <T extends object>(value: Verified<T>): T | null => ("error" in value ? null : value);

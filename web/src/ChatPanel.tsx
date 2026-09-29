@@ -2,7 +2,7 @@ import { ArrowUpIcon, PlusIcon, StopIcon, XIcon } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { api, GALLERY, type Build } from "./api";
+import type { Build } from "./api";
 import { Lightbox } from "./Lightbox";
 import { imageFiles, reference } from "./references";
 
@@ -34,8 +34,6 @@ const SUGGESTIONS = [
   },
 ];
 
-const BUILDER_LABELS: Record<string, string> = { holo: "Holo", demo: "Scripted demo", claude: "Claude" };
-
 const WAITING = [
   "Sorting the parts bin",
   "Counting studs",
@@ -54,6 +52,10 @@ const WAITING = [
 ];
 const WAITING_S = 4;
 const MAX_ATTACHMENTS = 2;
+const WHO = "Holo";
+
+/** A gallery image's small WebP; other images show as they are. */
+const small = (src: string) => (src.startsWith("/gallery/") ? src.replace(/[^/]+$/, "small/$&.webp") : src);
 
 /** A waiting line that changes every few seconds while `active`, never twice in a row. */
 function useWaitingLine(active: boolean): string {
@@ -73,11 +75,14 @@ interface Props {
   build: Build | null;
   loading: boolean;
   thinking: string;
+  /** Why the builder takes no message here, or null when it does. */
+  closed: string | null;
   onCreate: (prompt: string, images: string[]) => Promise<void>;
   onSay: (text: string, images: string[]) => Promise<void>;
+  onStop: () => void;
 }
 
-export function ChatPanel({ build, loading, thinking, onCreate, onSay }: Props) {
+export function ChatPanel({ build, loading, thinking, closed, onCreate, onSay, onStop }: Props) {
   const [text, setText] = useState("");
   const [attachments, setAttachments] = useState<string[]>([]);
   const [sending, setSending] = useState(false);
@@ -134,8 +139,6 @@ export function ChatPanel({ build, loading, thinking, onCreate, onSay }: Props) 
     }
   };
 
-  const who = (build && BUILDER_LABELS[build.builder]) ?? build?.builder ?? "Builder";
-
   return (
     <div className="chat">
       <div className="chat-log" ref={log}>
@@ -159,8 +162,8 @@ export function ChatPanel({ build, loading, thinking, onCreate, onSay }: Props) 
             </div>
           </div>
         ) : (
-          build.messages.map((m) => (
-            <div key={`${m.at}-${m.role}`} className={`msg ${m.role}`}>
+          build.messages.map((m, i) => (
+            <div key={i} className={`msg ${m.role}`}>
               {m.role === "assistant" ? (
                 <div className="markdown">
                   <Markdown remarkPlugins={[remarkGfm]}>{m.text}</Markdown>
@@ -176,8 +179,8 @@ export function ChatPanel({ build, loading, thinking, onCreate, onSay }: Props) 
                   title={m.role === "user" ? "Open the image" : "Open the render"}
                 >
                   <img
-                    src={api.smallImageUrl(src)}
-                    alt={m.role === "user" ? "Your reference image" : `The render ${who} saw`}
+                    src={small(src)}
+                    alt={m.role === "user" ? "Your reference image" : `The render ${WHO} saw`}
                     loading="lazy"
                     decoding="async"
                   />
@@ -188,7 +191,7 @@ export function ChatPanel({ build, loading, thinking, onCreate, onSay }: Props) 
         )}
         {busy && (
           <div className="msg assistant thinking">
-            <div className="thinking-head" title={`${who} is ${thinking ? "thinking" : "working"}`}>
+            <div className="thinking-head" title={`${WHO} is ${thinking ? "thinking" : "working"}`}>
               <span key={waiting} className="shimmer">
                 {waiting}
               </span>
@@ -201,8 +204,8 @@ export function ChatPanel({ build, loading, thinking, onCreate, onSay }: Props) 
           </div>
         )}
       </div>
-      {GALLERY && <p className="gallery-note">Read-only gallery. New builds run in the local app with Holo.</p>}
-      {!GALLERY && (
+      {closed && <p className="gallery-note">{closed}</p>}
+      {!closed && (
         <div
           className={dragging ? "composer dragging" : "composer"}
           onDragOver={(e) => {
@@ -273,7 +276,7 @@ export function ChatPanel({ build, loading, thinking, onCreate, onSay }: Props) 
             <PlusIcon size={14} weight="bold" />
           </button>
           {busy && build ? (
-            <button className="round send stop" title="Stop" aria-label="Stop" onClick={() => api.stop(build.id)}>
+            <button className="round send stop" title="Stop" aria-label="Stop" onClick={onStop}>
               <StopIcon size={12} weight="fill" />
             </button>
           ) : (

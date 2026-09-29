@@ -1,9 +1,9 @@
 import { type Ref, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { ArrowsClockwiseIcon } from "@phosphor-icons/react";
-import { api, GALLERY, type Build, type RenderRequest } from "./api";
+import type { Build, RenderRequest } from "./api";
 import { BrickLoader } from "./BrickLoader";
+import { buildRevision } from "./buildRevision";
 import { BrickScene, type View } from "./scene";
-import { pieceRevision } from "./loadAsset";
 
 const VIEWS: { id: View; label: string }[] = [
   { id: "iso", label: "3/4" },
@@ -63,13 +63,16 @@ interface Props {
   syncError?: string | null;
   framing: Framing;
   spin: boolean;
-  /** Whether the library's thumbnail shows the current pieces; undefined until the library loads. */
-  thumbnailFresh: boolean | undefined;
-  onThumbnail: () => void;
+  /** Hand the builder a render it asked for; true once it has it. */
+  onRender: (request: RenderRequest, png: Blob) => Promise<boolean>;
+  /** Called with a thumbnail once a finished revision is drawn. */
+  onThumbnail: (png: Blob) => void;
+  /** What shows before any build is open. */
+  empty: string;
 }
 
 export function Viewer(props: Props) {
-  const { ref, build, opening, step, renderRequest, framing, spin, thumbnailFresh, onThumbnail, syncError } = props;
+  const { ref, build, opening, step, renderRequest, framing, spin, onRender, onThumbnail, syncError, empty } = props;
   const container = useRef<HTMLDivElement>(null);
   const scene = useRef<BrickScene | null>(null);
   const framedBuild = useRef<string | null>(null);
@@ -78,7 +81,7 @@ export function Viewer(props: Props) {
   const [drawn, setDrawn] = useState<{ key: string; pieces: Build["pieces"] } | null>(null);
   const [renderError, setRenderError] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
-  const version = build ? `${build.id}:${build.revision ?? JSON.stringify(build.pieces)}` : null;
+  const version = build ? `${build.id}:${build.revision}` : null;
   const ready = !!build && drawn?.key === version && drawn.pieces === build.pieces && !renderError;
   const failed = (error: unknown) => {
     setDrawn(null);
@@ -120,7 +123,7 @@ export function Viewer(props: Props) {
     s.setPieces(build?.pieces ?? [])
       .then(async (applied) => {
         if (!current || !build || !applied) return;
-        if (build.revision && (await pieceRevision(build.pieces)) !== build.revision) {
+        if ((await buildRevision(build.pieces)) !== build.revision) {
           throw new Error("Model revision mismatch. Reload the model to recover.");
         }
         if (!current) return;
@@ -141,36 +144,32 @@ export function Viewer(props: Props) {
 
   useEffect(() => {
     const s = scene.current;
-    if (GALLERY || !s || !ready || !build?.pieces.length || build.status !== "done" || thumbnailFresh !== false) return;
-    const key = `${build.id}:${build.updated}:${version}`;
-    if (thumbnailed.current.has(key)) return;
+    if (!s || !ready || !build?.pieces.length || build.status !== "done" || thumbnailed.current.has(version!)) return;
     let current = true;
     s.renderThumbnail(build.pieces)
-      .then(async (png) => {
-        if (current && png && (await api.putThumbnail(build.id, png)).ok) {
-          thumbnailed.current.add(key);
-          onThumbnail();
-        }
+      .then((png) => {
+        if (!current || !png) return;
+        thumbnailed.current.add(version!);
+        onThumbnail(png);
       })
-      .catch((error) => console.error("Could not save the thumbnail", error));
+      .catch((error) => console.error("Could not make the thumbnail", error));
     return () => {
       current = false;
     };
-  }, [ready, build?.id, build?.status, build?.updated, thumbnailFresh, version]);
+  }, [ready, build?.status, version]);
 
   useEffect(() => {
     const s = scene.current;
     if (!s || !ready || syncError || !build || !renderRequest || answered.current.has(renderRequest.request)) return;
-    const { request, camera, box, pieces, revision } = renderRequest;
-    if (build.pieces.length !== pieces || (build.revision && build.revision !== revision)) return;
+    const { request, camera, box, revision } = renderRequest;
+    if (build.revision !== revision) return;
     let active = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const answer = async () => {
       try {
         const png = await s.renderBuild(build.pieces, revision, camera, box);
         if (!active || !png || answered.current.has(request)) return;
-        const response = await api.putRender(build.id, request, png, pieces, revision);
-        if (response.ok && (await response.json()).accepted) answered.current.add(request);
+        if (await onRender(renderRequest, png)) answered.current.add(request);
         else if (active) timer = setTimeout(answer, 2000);
       } catch (error) {
         console.error("Could not answer a render request", error);
@@ -197,7 +196,7 @@ export function Viewer(props: Props) {
   return (
     <div
       className="viewer"
-      data-revision={ready ? (build?.revision ?? "gallery") : undefined}
+      data-revision={ready ? build?.revision : undefined}
       data-render-state={ready ? "ready" : renderError ? "error" : "loading"}
     >
       <div
@@ -213,11 +212,7 @@ export function Viewer(props: Props) {
       ) : (
         opening && !ready && <BrickLoader label={build ? "Loading the latest model…" : opening} />
       )}
-      {!build && !opening && (
-        <div className="viewer-empty">
-          {GALLERY ? "Pick a build from the library." : "Describe a model in the chat to start building."}
-        </div>
-      )}
+      {!build && !opening && <div className="viewer-empty">{empty}</div>}
     </div>
   );
 }

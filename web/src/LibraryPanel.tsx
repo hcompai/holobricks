@@ -1,4 +1,4 @@
-import { api, type BuildSummary } from "./api";
+import type { BuildSummary } from "./api";
 
 const PLACEHOLDERS = 6;
 
@@ -8,7 +8,7 @@ interface Props {
   failed: boolean;
   onRetry: () => void;
   activeId: string | null;
-  onOpen: (id: string) => void;
+  onOpen: (build: BuildSummary) => void;
 }
 
 export function LibraryPanel({ builds, failed, onRetry, activeId, onOpen }: Props) {
@@ -37,9 +37,9 @@ export function LibraryPanel({ builds, failed, onRetry, activeId, onOpen }: Prop
   return (
     <div className="library">
       {builds.map((b) => (
-        <button key={b.id} className={`card ${b.id === activeId ? "active" : ""}`} onClick={() => onOpen(b.id)}>
+        <button key={b.id} className={`card ${b.id === activeId ? "active" : ""}`} onClick={() => onOpen(b)}>
           {b.thumbnail != null ? (
-            <img className="thumb" src={api.thumbnailUrl(b.id, b.thumbnail)} alt="" loading="lazy" decoding="async" />
+            <img className="thumb" src={b.thumbnail} alt="" loading="lazy" decoding="async" />
           ) : (
             <div className="thumb">{b.name.slice(0, 1).toUpperCase()}</div>
           )}
@@ -47,7 +47,13 @@ export function LibraryPanel({ builds, failed, onRetry, activeId, onOpen }: Prop
             <b>{b.name}</b>
             <span className="muted">{b.prompt}</span>
             <span className="muted small">
-              {b.pieces} pieces · {b.steps} steps{b.status === "building" ? " · building…" : ""}
+              {[
+                b.showcase ? "Showcase" : null,
+                b.pieces === null ? null : `${b.pieces.toLocaleString()} pieces`,
+                b.status === "building" ? "building…" : b.status === "error" ? "stopped" : null,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
             </span>
           </div>
         </button>
