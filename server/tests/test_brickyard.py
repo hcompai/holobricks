@@ -46,14 +46,13 @@ def test_gallery_export_holds_every_file_the_static_site_reads(tmp_path, offline
     out = export(store, [build.id], tmp_path / "site")
 
     assert [b["id"] for b in json.loads((out / "builds.json").read_text())] == [build.id]
-    exported = Build.model_validate_json((out / "builds" / f"{build.id}.json").read_text())
-    shown = exported.messages[0].images[0]
+    exported = json.loads((out / "builds" / f"{build.id}.json").read_text())
+    shown = exported["messages"][0]["images"][0]
     assert shown.startswith("/gallery/") and (out.parent / shown.lstrip("/")).read_bytes() == png.getvalue()
     with PIL.Image.open(out / "images" / "small" / f"{Path(shown).name}.webp") as small:
         assert small.size == (320, 240)
-    assert all((out / "parts" / p.part).exists() for p in exported.pieces)
-    assert json.loads((out / "builds" / f"{build.id}.bom.json").read_text())["validation"]["status"] == "verified"
-    assert (out / "LDConfig.ldr").exists()
+    assert exported["parts"].keys() == {p.part for p in build.pieces}
+    assert exported["status"] == "done" and exported["bom"]["validation"]["status"] == "verified"
 
 
 def test_build_ids_cannot_leave_the_data_folder(tmp_path):

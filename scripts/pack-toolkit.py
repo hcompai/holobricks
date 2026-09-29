@@ -1,14 +1,18 @@
-"""Pack what an agent's Workstation needs to build into web/public/brickyard.tgz: server/.venv/bin/python scripts/pack-toolkit.py"""
+"""Put the files the web app serves in web/public: the Workstation toolkit and the LDraw palette. Run with server/.venv/bin/python."""
 
 import io
+import shutil
 import sys
 import tarfile
 from pathlib import Path
 
 from PIL import Image
 
+from brickyard import ldraw
+
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / "web" / "public" / "brickyard.tgz"
+PUBLIC = ROOT / "web" / "public"
+OUT = PUBLIC / "brickyard.tgz"
 LIMIT = 2_000_000
 """User files share 7 MB per message with the user's photos."""
 
@@ -40,7 +44,8 @@ def main() -> None:
     size = OUT.stat().st_size
     if size > LIMIT:
         sys.exit(f"{OUT} is {size / 1e6:.1f} MB, over the {LIMIT / 1e6:.0f} MB budget")
-    print(f"{OUT} ({size / 1e6:.2f} MB)")
+    shutil.copy(ldraw.LDRAW / "LDConfig.ldr", PUBLIC / "LDConfig.ldr")
+    print(f"{OUT} ({size / 1e6:.2f} MB), {PUBLIC / 'LDConfig.ldr'}")
 
 
 if __name__ == "__main__":

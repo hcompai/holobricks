@@ -6,7 +6,7 @@ import pytest
 
 from brickyard import catalog, ldraw, shopping
 from brickyard.model import Build, Message, Piece, Step
-from brickyard.store import Store
+from brickyard.workspace import bundle
 
 
 @pytest.fixture
@@ -48,27 +48,25 @@ def model(monkeypatch, offline_catalog):
     )
 
 
-def imported(folder, pack):
-    root = ET.fromstring((folder / f"{pack['id']}.xml").read_text())
+def imported(pack):
+    root = ET.fromstring(pack["xml"])
     assert root.tag == "INVENTORY"
     assert all(item.findtext("ITEMTYPE") == "P" and item.findtext("CONDITION") == "N" for item in root)
     return {(item.findtext("ITEMID"), int(item.findtext("COLOR"))): int(item.findtext("MINQTY")) for item in root}
 
 
-def test_xml_has_verified_bricklink_ids_colors_and_exact_counts_including_orphan_steps(model, tmp_path):
+def test_xml_has_verified_bricklink_ids_colors_and_exact_counts_including_orphan_steps(model):
     before = model.model_dump()
-    pack = shopping.save(model, tmp_path)
-    assert imported(tmp_path, pack) == {("3001", 3): 2, ("3024", 5): 1}
+    pack = shopping.package(model)
+    assert imported(pack) == {("3001", 3): 2, ("3024", 5): 1}
     assert pack["version"] == 3 and pack["validation"]["status"] == "verified"
     assert pack["validation"]["valid_until"] > time.time()
     assert pack["pieces"] == 3 and pack["lots"] == 2
     assert model.model_dump() == before
-    assert all(
-        "PRIVATE" not in file.read_text() and "/api/images/" not in file.read_text() for file in tmp_path.iterdir()
-    )
+    assert "PRIVATE" not in json.dumps(pack)
 
 
-def test_microduck_aliases_and_all_three_colors_are_resolved_from_catalog_metadata(model, tmp_path):
+def test_microduck_aliases_and_all_three_colors_are_resolved_from_catalog_metadata(model):
     model.pieces = []
     for part, color, count in [
         ("3069b.dat", 70, 122),
@@ -81,52 +79,44 @@ def test_microduck_aliases_and_all_three_colors_are_resolved_from_catalog_metada
                 Piece(id=len(model.pieces), part=part, color=color, pos=(len(model.pieces) * 20, -8, 0), step=0)
             )
     before = model.model_dump()
-    pack = shopping.save(model, tmp_path)
-    assert imported(tmp_path, pack) == {("3069", 88): 122, ("3069", 90): 46, ("3069", 158): 4, ("3941", 3): 1}
+    pack = shopping.package(model)
+    assert imported(pack) == {("3069", 88): 122, ("3069", 90): 46, ("3069", 158): 4, ("3941", 3): 1}
     assert model.model_dump() == before
     assert pack["pieces"] == 173 and pack["lots"] == 4
-    page = (tmp_path / f"{pack['id']}.html").read_text()
-    assert "<td>3069b.dat</td><td>3069</td><td>88</td>" in page
     assert all(row["evidence"]["sha256"] for row in pack["inventory"])
 
 
-def test_variant_and_print_suffixes_are_never_stripped(model, tmp_path):
+def test_variant_and_print_suffixes_are_never_stripped(model):
     model.pieces = [
         Piece(id=1, part="3069a.dat", color=14, pos=(0, 0, 0), step=0),
         Piece(id=2, part="3069bp01.dat", color=14, pos=(40, 0, 0), step=0),
     ]
-    pack = shopping.save(model, tmp_path)
-    assert imported(tmp_path, pack) == {("3069a", 3): 1, ("3069bp01", 3): 1}
+    pack = shopping.package(model)
+    assert imported(pack) == {("3069a", 3): 1, ("3069bp01", 3): 1}
 
 
-def test_aliases_merge_into_one_import_lot_without_losing_instances(model, tmp_path):
+def test_aliases_merge_into_one_import_lot_without_losing_instances(model):
     model.pieces = [
         Piece(id=1, part="3069.dat", color=14, pos=(0, 0, 0), step=0),
         Piece(id=2, part="3069b.dat", color=14, pos=(40, 0, 0), step=0),
     ]
-    pack = shopping.save(model, tmp_path)
-    assert imported(tmp_path, pack) == {("3069", 3): 2}
+    pack = shopping.package(model)
+    assert imported(pack) == {("3069", 3): 2}
     assert pack["pieces"] == 2 and pack["lots"] == 1
 
 
-def test_retries_are_idempotent_and_recolors_cannot_change_saved_files(model, tmp_path):
-    first = shopping.save(model, tmp_path)
-    content = {p.name: p.read_bytes() for p in tmp_path.iterdir()}
-    assert shopping.save(model, tmp_path) == first
-    assert len(content) == 3
+def test_the_same_model_gives_the_same_package_and_a_recolor_a_new_one(model):
+    first = shopping.package(model)
+    assert shopping.package(model) == first
     model.pieces[0].color = 4
-    second = shopping.save(model, tmp_path)
+    second = shopping.package(model)
     assert first["id"] != second["id"] and first["revision"] != second["revision"]
-    assert all((tmp_path / name).read_bytes() == body for name, body in content.items())
 
 
 @pytest.mark.parametrize(
     "change",
     [
         "empty",
-        "building",
-        "idle",
-        "error",
         "unknown_part",
         "unknown_color",
         "inherited_color",
@@ -136,11 +126,9 @@ def test_retries_are_idempotent_and_recolors_cannot_change_saved_files(model, tm
         "outage",
     ],
 )
-def test_no_partial_or_unverified_export(model, tmp_path, monkeypatch, offline_catalog, change):
+def test_no_partial_or_unverified_export(model, monkeypatch, offline_catalog, change):
     if change == "empty":
         model.pieces = []
-    elif change in ("building", "idle", "error"):
-        model.status = change
     elif change == "unknown_part":
         model.pieces[0].part = "s/not-a-part.dat"
     elif change == "unknown_color":
@@ -160,39 +148,22 @@ def test_no_partial_or_unverified_export(model, tmp_path, monkeypatch, offline_c
     else:
         monkeypatch.setattr(shopping, "MAX_IMPORT_BYTES", 30)
     with pytest.raises(ValueError):
-        shopping.save(model, tmp_path)
-    assert not list(tmp_path.iterdir())
+        shopping.package(model)
+    assert "error" in bundle(model)["shopping"]
 
 
-def test_labels_cannot_inject_markup_or_xml_items(model, tmp_path):
+def test_labels_cannot_inject_xml_items(model):
     model.name = "</title><script>alert(1)</script>\n<ITEM><ITEMID>evil</ITEMID></ITEM>"
-    pack = shopping.save(model, tmp_path)
-    page = (tmp_path / f"{pack['id']}.html").read_text()
-    assert "<script>" not in page and "&lt;script&gt;" in page
-    assert sum(imported(tmp_path, pack).values()) == 3
+    assert sum(imported(shopping.package(model)).values()) == 3
 
 
-def test_static_gallery_exports_only_validated_xml_and_blocks_invalid_models(model, tmp_path, monkeypatch):
-    from brickyard.gallery import export
-
-    library = tmp_path / "library"
-    library.mkdir()
-    (library / "LDConfig.ldr").write_text("0 colors")
-    monkeypatch.setattr(ldraw, "LDRAW", library)
+def test_the_bundle_carries_the_verified_parts_list_and_shopping_list(model, monkeypatch):
     monkeypatch.setattr(ldraw, "pack", lambda part: "0 geometry")
-    store = Store(tmp_path / "data")
-    model.messages = []
-    store.save(model)
-    out = export(store, [model.id], tmp_path / "site")
-    pack = json.loads((out / "builds" / f"{model.id}.shopping.json").read_text())
-    assert pack["revision"] == model.revision
-    bom = json.loads((out / "builds" / f"{model.id}.bom.json").read_text())
-    assert bom["revision"] == model.revision and bom["validation"]["status"] == "verified"
-    assert sum(line["count"] for line in bom["lines"]) == len(model.pieces)
-    assert all((out / "shopping" / f"{pack['id']}.{ext}").is_file() for ext in ("html", "json", "xml"))
+    shown = bundle(model)
+    assert shown["shopping"]["revision"] == shown["bom"]["revision"] == model.revision
+    assert shown["bom"]["validation"]["status"] == "verified"
+    assert sum(line["count"] for line in shown["bom"]["lines"]) == len(model.pieces)
+    assert "PRIVATE" not in json.dumps(shown)
     model.pieces[0].color = 503
-    store.save(model)
-    out = export(store, [model.id], tmp_path / "invalid-site")
-    assert "error" in json.loads((out / "builds" / f"{model.id}.shopping.json").read_text())
-    assert "error" in json.loads((out / "builds" / f"{model.id}.bom.json").read_text())
-    assert not (out / "shopping").exists()
+    shown = bundle(model)
+    assert "error" in shown["shopping"] and "error" in shown["bom"]

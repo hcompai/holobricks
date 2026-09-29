@@ -6,9 +6,10 @@ import gzip
 import json
 import time
 import uuid
+from collections.abc import Callable
 from pathlib import Path
 
-from brickyard import ldraw
+from brickyard import ldraw, shopping
 from brickyard.model import Build
 
 BUILD = "build.json"
@@ -22,9 +23,21 @@ def write(path: Path, data: str | bytes) -> None:
 
 
 def bundle(build: Build) -> dict:
-    """The build with every part it uses packed into one MPD each, so the browser needs nothing else."""
+    """The build as the browser shows it: every part packed into one MPD each, the LDraw file, parts list and shopping list."""
     parts = sorted({p.part for p in build.pieces})
-    return build.model_dump(exclude={"script", "messages"}) | {"parts": {part: ldraw.pack(part) for part in parts}}
+    return build.model_dump(exclude={"script", "messages", "status"}) | {
+        "parts": {part: ldraw.pack(part) for part in parts},
+        "ldr": build.to_ldraw(),
+        "bom": _verified(build.bom),
+        "shopping": _verified(lambda: shopping.package(build)),
+    }
+
+
+def _verified(make: Callable[[], dict]) -> dict:
+    try:
+        return make()
+    except ValueError as exc:
+        return {"error": str(exc)}
 
 
 class Workspace:

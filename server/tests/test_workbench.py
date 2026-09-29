@@ -22,7 +22,8 @@ def bench(tmp_path, monkeypatch):
     # These tests exercise geometry/script semantics. Real catalog gating
     # is exercised separately in test_catalog and test_construction_loop.
     monkeypatch.setattr(
-        "brickyard.catalog.validate", lambda pieces, *args: {"valid": True, "pieces": len(pieces), "issues": []}
+        "brickyard.catalog.validate",
+        lambda pieces, *args: {"valid": True, "pieces": len(pieces), "inventory": [], "issues": []},
     )
     return Workbench(Workspace.open(tmp_path))
 
@@ -141,7 +142,7 @@ def test_the_showcase_builds_but_is_not_a_verified_connected_assembly(bench):
 
 def test_the_prompt_names_only_real_parts_sizes_and_colors():
     prompt = (Path(__file__).resolve().parents[2] / "agent" / "holo.md").read_text()
-    rows = re.findall(r"^- (\d+) tall[^:]*: (.*)$", prompt.split("## Parts")[1].split("\n## ")[0], re.MULTILINE)
+    rows = re.findall(r"^- (\d+) tall[^:]*: (.*)$", prompt.split("\n## Parts")[1].split("\n## ")[0], re.MULTILINE)
     entries = [
         (part, (int(w), int(d)), int(height))
         for height, parts in rows
@@ -152,7 +153,7 @@ def test_the_prompt_names_only_real_parts_sizes_and_colors():
         info = ldraw.info(f"{part}.dat")
         assert (info.footprint, info.plates) == (size, height), part
     palette = ldraw.colors()
-    colors = prompt.split("## Colors")[1].split("\n#")[0].splitlines()
+    colors = prompt.split("\n## Colors")[1].split("\n#")[0].splitlines()
     for entry in (e for line in colors if line.startswith("- ") for e in line.split(": ")[1].split(", ")):
         code, name = entry.split(" ", 1)
         assert palette[int(code)][0].lower() == name, entry
