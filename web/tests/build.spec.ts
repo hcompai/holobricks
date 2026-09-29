@@ -80,6 +80,7 @@ test("a new build sends the toolkit and the photos; Stop makes Holo answer and t
   const prompt = "Construis la Citadelle de Port-Louis à Lorient";
   await composer.fill(prompt);
   await page.locator('input[type="file"]').setInputFiles(PHOTO);
+  await page.getByRole("combobox", { name: "Model" }).selectOption({ label: "Holo4 27B" });
   const send = page.getByRole("button", { name: "Send", exact: true });
   await send.click();
   await expect(page.getByText("The platform is unavailable.")).toBeVisible();
@@ -89,7 +90,11 @@ test("a new build sends the toolkit and the photos; Stop makes Holo answer and t
   await send.click();
   await expect(page).toHaveURL(/\?build=new-build$/);
   const [session] = agp.posted("/api/v2/sessions");
-  expect(session.agent).toMatchObject({ name: "brickyard", environments: [{ kind: "workstation", id: "brickyard" }] });
+  expect(session.agent).toMatchObject({
+    name: "brickyard",
+    model: "holo4-27b",
+    environments: [{ kind: "workstation", id: "brickyard" }],
+  });
   expect(session.agent.tools.map((t: { name: string }) => t.name)).toEqual(["look"]);
   const [first] = agp.posted("/messages");
   expect(first.message).toBe(prompt);

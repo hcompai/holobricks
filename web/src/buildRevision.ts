@@ -1,4 +1,4 @@
-import type { Piece } from "./api";
+import type { Piece } from "./model";
 
 /** Matches Build.revision on the server, including same-count color and position changes. */
 export async function buildRevision(pieces: Piece[]): Promise<string> {

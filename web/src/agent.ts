@@ -3,7 +3,8 @@ import prompt from "../../agent/holo.md?raw";
 import bagEnd from "../../agent/showcase/bag-end.py?raw";
 
 export const AGENT = "brickyard";
-const MODEL = "holo4-35b-a3b";
+export const HOLO_MODELS = { "holo4-35b-a3b": "Holo4 35B", "holo4-27b": "Holo4 27B" } as const;
+export type HoloModel = keyof typeof HOLO_MODELS;
 const MAX_STEPS = 300;
 const MAX_TIME_S = 3 * 3600;
 /** How long a finished build keeps its Workstation for a follow-up message. */
@@ -61,7 +62,7 @@ const LOOK: HaiAgents.ToolDefinition = {
   },
 };
 
-function agent(): HaiAgents.Agent {
+function agent(model: HoloModel): HaiAgents.Agent {
   const instructions = prompt
     .replace("{{bag_end}}", () => bagEnd.trimEnd())
     .replace("{{date}}", new Date().toISOString().slice(0, 10))
@@ -69,7 +70,7 @@ function agent(): HaiAgents.Agent {
   return {
     name: AGENT,
     description: "Designs LEGO models from real LDraw parts, step by step, in Brickyard.",
-    model: MODEL,
+    model,
     instructions,
     environments: [{ kind: "workstation", id: AGENT }],
     tools: [LOOK],
@@ -92,10 +93,10 @@ async function message(
 }
 
 /** Start a build; the session starts empty, then takes the first message with the toolkit and the photos. */
-export async function create(text: string, photos: string[]): Promise<string> {
+export async function create(text: string, photos: string[], model: HoloModel): Promise<string> {
   const first = await message(text, photos, true);
   const session = await client.startSession({
-    agent: agent(),
+    agent: agent(model),
     maxSteps: MAX_STEPS,
     maxTimeS: MAX_TIME_S,
     idleTimeoutS: IDLE_TIMEOUT_S,

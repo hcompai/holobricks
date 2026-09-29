@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { Bom, Build } from "./api";
+import type { Bom, Build } from "./model";
 
 /** Why a parts list cannot be shown for this model, or null when it can. */
 function problem(build: Build, now: number): string | null {

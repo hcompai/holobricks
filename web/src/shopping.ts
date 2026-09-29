@@ -1,4 +1,4 @@
-import type { Build, ShoppingPackage } from "./api";
+import type { Build, ShoppingPackage } from "./model";
 
 export const HOLOTAB_INSTALL = "https://chromewebstore.google.com/detail/holotab/hlaoiikljjgcjdhkakedfngifaopbcop";
 export const BRICKLINK_UPLOAD = "https://www.bricklink.com/v2/wanted/upload.page";

@@ -1,6 +1,6 @@
 import { type Ref, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { ArrowsClockwiseIcon } from "@phosphor-icons/react";
-import type { Build, RenderRequest } from "./api";
+import type { Build, RenderRequest } from "./model";
 import { BrickLoader } from "./BrickLoader";
 import { buildRevision } from "./buildRevision";
 import { BrickScene, type View } from "./scene";

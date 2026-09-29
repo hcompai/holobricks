@@ -1,7 +1,7 @@
 import type { HaiAgents } from "hai-agents";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { answer, client, download, fail } from "./agent";
-import { EMPTY_MODEL, type Box, type Build, type Camera, type Message, type Model, type RenderRequest } from "./api";
+import { EMPTY_MODEL, type Box, type Build, type Camera, type Message, type Model, type RenderRequest } from "./model";
 import { card, remember, showcase, status as buildStatus } from "./library";
 import { provideParts } from "./scene";
 import { EMPTY_TRANSCRIPT, read, type Transcript } from "./session";

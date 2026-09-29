@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import type { Bom, Build, ShoppingPackage } from "../src/api";
+import type { Bom, Build, ShoppingPackage } from "../src/model";
 import { fixture, revised, site } from "./fixtures";
 
 const VERIFIED_XML = `<INVENTORY>

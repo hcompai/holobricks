@@ -3,7 +3,7 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { LDrawLoader } from "three/examples/jsm/loaders/LDrawLoader.js";
 import { LDrawConditionalLineMaterial } from "three/examples/jsm/materials/LDrawConditionalLineMaterial.js";
-import type { Box, Camera, Piece } from "./api";
+import type { Box, Camera, Piece } from "./model";
 import { buildRevision } from "./buildRevision";
 import { loadAsset } from "./loadAsset";
 

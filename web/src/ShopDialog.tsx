@@ -1,6 +1,6 @@
 import { ArrowUpRightIcon, CheckIcon, CopyIcon, CubeIcon, ShoppingBagIcon, XIcon } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
-import type { Build, ShoppingPackage } from "./api";
+import type { Build, ShoppingPackage } from "./model";
 import { HOLOTAB_INSTALL, prepareShopping, shoppingPrompt } from "./shopping";
 
 interface Props {

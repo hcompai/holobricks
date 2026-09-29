@@ -1,4 +1,4 @@
-import type { BuildSummary } from "./api";
+import type { BuildSummary } from "./model";
 
 const PLACEHOLDERS = 6;
 

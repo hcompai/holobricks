@@ -1,6 +1,6 @@
 import { CubeIcon, DownloadSimpleIcon, FilmStripIcon, ImageIcon } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
-import type { Build } from "./api";
+import type { Build } from "./model";
 
 interface Props {
   build: Build;

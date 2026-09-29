@@ -1,7 +1,7 @@
 import { PlusIcon, ShoppingBagIcon } from "@phosphor-icons/react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { create, say, stop, unavailable } from "./agent";
-import type { Build, BuildSummary } from "./api";
+import { create, say, stop, unavailable, type HoloModel } from "./agent";
+import type { Build, BuildSummary } from "./model";
 import { ChatPanel } from "./ChatPanel";
 import { DownloadMenu } from "./DownloadMenu";
 import { LibraryPanel } from "./LibraryPanel";
@@ -123,8 +123,8 @@ export default function App() {
     setFollowing(s >= last);
   };
 
-  const start = async (prompt: string, images: string[]) => {
-    const id = await create(prompt, images);
+  const start = async (prompt: string, images: string[], model: HoloModel) => {
+    const id = await create(prompt, images, model);
     remember(id, { name: prompt.slice(0, 60) || "Untitled build", prompt });
     open({ id, showcase: false });
     setLeft("chat");

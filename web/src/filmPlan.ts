@@ -1,4 +1,4 @@
-import type { Build, Piece } from "./api";
+import type { Build, Piece } from "./model";
 
 export const HOLO_MODEL = "HOLO4";
 

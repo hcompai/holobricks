@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 import { createHash } from "node:crypto";
-import type { Build, Piece } from "../src/api";
+import type { Build, Piece } from "../src/model";
 
 // Offline test geometry, deliberately independent of the LDraw install.
 export const part = `0 FILE main.ldr

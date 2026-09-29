@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 import { gzipSync } from "node:zlib";
-import type { Model } from "../src/api";
+import type { Model } from "../src/model";
 
 const AGP = "https://agp.eu.hcompany.ai";
 const CORS = {

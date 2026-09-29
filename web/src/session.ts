@@ -1,5 +1,5 @@
 import type { HaiAgents } from "hai-agents";
-import type { Message } from "./api";
+import type { Message } from "./model";
 
 export const MODEL_FILE = "model.json.gz";
 /** The builder's side of a session, read from its events in order. */

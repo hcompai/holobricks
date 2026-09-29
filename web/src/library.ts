@@ -1,6 +1,6 @@
 import type { HaiAgents } from "hai-agents";
 import { sessions, unavailable } from "./agent";
-import type { Build, BuildSummary, Status } from "./api";
+import type { Build, BuildSummary, Status } from "./model";
 
 const GALLERY = "/gallery";
 const STORE = "brickyard.library";

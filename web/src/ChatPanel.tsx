@@ -2,7 +2,8 @@ import { ArrowUpIcon, PlusIcon, StopIcon, XIcon } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import type { Build } from "./api";
+import { HOLO_MODELS, type HoloModel } from "./agent";
+import type { Build } from "./model";
 import { Lightbox } from "./Lightbox";
 import { imageFiles, reference } from "./references";
 
@@ -54,6 +55,12 @@ const WAITING_S = 4;
 const TYPING_FRAMES = 60;
 const MAX_ATTACHMENTS = 2;
 const WHO = "Holo";
+const MODEL_STORE = "brickyard.model";
+
+const savedModel = (): HoloModel => {
+  const saved = localStorage.getItem(MODEL_STORE);
+  return saved && saved in HOLO_MODELS ? (saved as HoloModel) : "holo4-35b-a3b";
+};
 
 /** A gallery image's small WebP; other images show as they are. */
 const small = (src: string) => (src.startsWith("/gallery/") ? src.replace(/[^/]+$/, "small/$&.webp") : src);
@@ -97,7 +104,7 @@ interface Props {
   thinking: string;
   /** Why the builder takes no message here, or null when it does. */
   closed: string | null;
-  onCreate: (prompt: string, images: string[]) => Promise<void>;
+  onCreate: (prompt: string, images: string[], model: HoloModel) => Promise<void>;
   onSay: (text: string, images: string[]) => Promise<void>;
   onStop: () => Promise<void>;
 }
@@ -107,6 +114,7 @@ export function ChatPanel({ build, loading, thinking, closed, onCreate, onSay, o
   const [attachments, setAttachments] = useState<string[]>([]);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
+  const [model, setModel] = useState(savedModel);
   const log = useRef<HTMLDivElement>(null);
   const thought = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
@@ -154,7 +162,7 @@ export function ChatPanel({ build, loading, thinking, closed, onCreate, onSay, o
     setSending(true);
     setError("");
     try {
-      await (changing ? onSay(prompt, attachments) : onCreate(prompt, attachments));
+      await (changing ? onSay(prompt, attachments) : onCreate(prompt, attachments, model));
       setText("");
       setAttachments([]);
     } catch (e) {
@@ -300,6 +308,25 @@ export function ChatPanel({ build, loading, thinking, closed, onCreate, onSay, o
           >
             <PlusIcon size={14} weight="bold" />
           </button>
+          {!changing && (
+            <select
+              className="model-picker"
+              title="Model for this build"
+              aria-label="Model"
+              value={model}
+              onChange={(e) => {
+                const next = e.target.value as HoloModel;
+                setModel(next);
+                localStorage.setItem(MODEL_STORE, next);
+              }}
+            >
+              {Object.entries(HOLO_MODELS).map(([id, label]) => (
+                <option key={id} value={id}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          )}
           {busy && build ? (
             <button
               className="round send stop"

@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import { decompressFrames, parseGIF } from "gifuct-js";
-import type { Build } from "../src/api";
+import type { Build } from "../src/model";
 import { DROP, fall, filmFilename, frameCount, landed, planFilm, started } from "../src/filmPlan";
 import { fixture, site } from "./fixtures";
 
