@@ -66,13 +66,21 @@ def colors(results: list[dict]) -> dict[int, dict]:
 
 
 def parts(results: list[dict], library: set[str]) -> dict[str, dict]:
-    pairs = []
+    """LDraw file -> its Rebrickable part; of several claimants, only the one numbered like the file is kept."""
+    claims: dict[str, dict[str, dict]] = {}
     for part in results:
         ids = part.get("external_ids") or {}
-        names = ids.get("LDraw") or [part["part_num"]]
         record = {"rebrickable": part["part_num"], "bricklink": _one(ids.get("BrickLink") or [])}
-        pairs += [(f"{name.lower()}.dat", record) for name in names if f"{name.lower()}.dat" in library]
-    return _unique(pairs)
+        for name in ids.get("LDraw") or [part["part_num"]]:
+            if (key := f"{name.lower()}.dat") in library:
+                claims.setdefault(key, {})[json.dumps(record, sort_keys=True)] = record
+    mapped = {}
+    for key, records in claims.items():
+        exact = [r for r in records.values() if f"{r['rebrickable'].lower()}.dat" == key]
+        chosen = list(records.values()) if len(records) == 1 else exact
+        if len(chosen) == 1:
+            mapped[key] = chosen[0]
+    return mapped
 
 
 def known_colors(client: httpx.Client) -> dict[str, set[int]]:

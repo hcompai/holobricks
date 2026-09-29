@@ -89,8 +89,9 @@ def test_a_missing_or_untrustworthy_snapshot_never_authorizes_an_order(library, 
         catalog.require([piece()])
 
 
-def test_the_builder_keeps_only_unambiguous_mappings_and_colors_seen_in_real_sets(monkeypatch):
-    monkeypatch.setattr(ldraw, "catalog", lambda: dict.fromkeys(["3001.dat", "3069b.dat", "3070b.dat", "4150.dat"]))
+def test_the_builder_keeps_unambiguous_mappings_and_colors_seen_in_real_sets(monkeypatch):
+    library = ["3001.dat", "3069b.dat", "3070b.dat", "3794.dat", "4150.dat"]
+    monkeypatch.setattr(ldraw, "catalog", lambda: dict.fromkeys(library))
     monkeypatch.setattr(rebrickable.time, "sleep", lambda _: None)
 
     def ids(ldraw_ids, bricklink_ids):
@@ -103,6 +104,9 @@ def test_the_builder_keeps_only_unambiguous_mappings_and_colors_seen_in_real_set
     ]
     parts = [
         {"part_num": "3001", "external_ids": {"BrickLink": ["3001"]}},
+        {"part_num": "3001a", "external_ids": {"LDraw": ["3001"], "BrickLink": ["3001old"]}},
+        {"part_num": "3794a", "external_ids": {"LDraw": ["3794"], "BrickLink": ["3794a"]}},
+        {"part_num": "3794b", "external_ids": {"LDraw": ["3794"], "BrickLink": ["3794b"]}},
         {"part_num": "3069b", "external_ids": {"LDraw": ["3069b"], "BrickLink": ["3069", "3069b"]}},
         {"part_num": "3070b", "external_ids": {"LDraw": ["3070b"], "BrickLink": ["3070"]}},
         {"part_num": "3070bpr", "external_ids": {"LDraw": ["3070b"], "BrickLink": ["3070pb01"]}},
@@ -130,5 +134,6 @@ def test_the_builder_keeps_only_unambiguous_mappings_and_colors_seen_in_real_set
     assert built["parts"] == {
         "3001.dat": {"rebrickable": "3001", "bricklink": "3001", "colors": [4, 15]},
         "3069b.dat": {"rebrickable": "3069b", "bricklink": None, "colors": [4]},
+        "3070b.dat": {"rebrickable": "3070b", "bricklink": "3070", "colors": []},
         "4150.dat": {"rebrickable": "4150", "bricklink": None, "colors": []},
     }
