@@ -19,6 +19,12 @@ export const client = new HaiAgentsClient({
   environment: HaiAgentsEnvironment.Eu,
   apiKey: API_KEY ?? "",
   headers: { "X-HCompany-Client-Name": AGENT },
+  // Safari sends the SDK's User-Agent in CORS preflights, and the Agents API does not allow it.
+  fetch: (input, init) => {
+    const headers = new Headers(init?.headers);
+    headers.delete("User-Agent");
+    return fetch(input, { ...init, headers });
+  },
 });
 
 const LOOK: HaiAgents.ToolDefinition = {
