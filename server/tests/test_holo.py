@@ -105,7 +105,7 @@ for x in range(0, 32, 2):
 def test_a_script_rebuilds_from_its_first_changed_step_and_names_the_lines_of_its_problems(bench, monkeypatch):
     monkeypatch.setattr(bench.session, "render", lambda camera=None, box=None: asyncio.sleep(0))
     first = asyncio.run(bench.run_script(HOUSE))
-    assert first.problems == 0 and "roof top 18" in first.text, first.text
+    assert first.problems == 1 and "roof top 18" in first.text and "disconnected_model" in first.text, first.text
     assert [s.title for s in bench.session.build.steps] == ["Walls", "Roof", "Paving"]
     walls = [p for p in bench.pieces if p.step == 0]
 
@@ -117,7 +117,8 @@ def test_a_script_rebuilds_from_its_first_changed_step_and_names_the_lines_of_it
     stray = HOUSE.replace("320", "4") + 'brick("3001", -1, 0, 0, 4)\n'
     for _ in range(2):
         result = asyncio.run(bench.run_script(stray))
-        assert result.problems == 1 and "kept steps 1 to 2 unchanged, rebuilt and checked 1 step." in result.text
+        assert result.problems == 2 and "kept steps 1 to 2 unchanged, rebuilt and checked 1 step." in result.text
+        assert "disconnected_model" in result.text
         assert 'line 12 `brick("3001", -1, 0, 0, 4)` (3001 at x=-1 y=0 z=0): x and y start at 0' in result.text
     assert {p.step for p in bench.pieces} == {0, 1, 2}
 
@@ -195,11 +196,13 @@ def test_a_render_is_answered_by_a_late_viewer_but_never_by_a_stale_one(tmp_path
     assert asyncio.run(main()) == b"png"
 
 
-def test_the_worked_example_in_the_prompt_builds_without_problems(bench, monkeypatch):
+def test_the_showcase_renders_but_is_not_a_verified_connected_assembly(bench, monkeypatch):
     monkeypatch.setattr(bench.session, "render", lambda camera=None, box=None: asyncio.sleep(0))
     example = (Path(__file__).resolve().parents[2] / "agent" / "showcase" / "bag-end.py").read_text()
     result = asyncio.run(bench.run_script(example))
-    assert result.problems == 0 and len(bench.session.build.pieces) > 10_000, result.text
+    assert len(bench.session.build.pieces) > 10_000, result.text
+    assert "No problems: every brick is known, fits" in result.text
+    assert result.problems == 1 and "disconnected_model" in result.text
 
 
 def test_the_prompt_names_only_real_parts_sizes_and_colors():

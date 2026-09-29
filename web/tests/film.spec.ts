@@ -114,6 +114,9 @@ test("film plans are deterministic and land every piece before the turntable", (
 test("without a film server, the browser makes a looping GIF and leaves the viewer untouched", async ({
   page,
 }, info) => {
+  // On CPU-only CI the real 160-frame export is still progressing when the
+  // default two-minute test budget expires. Keep the full render assertions.
+  test.setTimeout(300000);
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   const { mutations } = await mock(page);
@@ -121,7 +124,7 @@ test("without a film server, the browser makes a looping GIF and leaves the view
   await page.getByRole("slider", { name: "Step", exact: true }).fill("1");
   await page.getByRole("button", { name: "Export film", exact: true }).click();
   const dialog = page.getByRole("dialog");
-  await expect(dialog.getByRole("button", { name: "Generate GIF", exact: true })).toBeEnabled();
+  await expect(dialog.getByRole("button", { name: "Generate GIF", exact: true })).toBeEnabled({ timeout: 60000 });
   const branding = dialog.getByRole("checkbox", { name: "H Company logo" });
   const branded = await preview(page);
   await branding.uncheck();
@@ -137,7 +140,7 @@ test("without a film server, the browser makes a looping GIF and leaves the view
 
   await dialog.getByRole("button", { name: "Generate GIF", exact: true }).click();
   const link = dialog.getByRole("link", { name: "Download GIF" });
-  await expect(link).toBeVisible({ timeout: 90000 });
+  await expect(link).toBeVisible({ timeout: 240000 });
   const pending = page.waitForEvent("download");
   await link.click();
   const download = await pending;
@@ -228,7 +231,8 @@ test("the server renders MP4 and GIF with progress, cancellation and retry, from
   await page.getByRole("button", { name: "Export film", exact: true }).click();
   const dialog = page.getByRole("dialog");
   const render = dialog.getByRole("button", { name: "Render MP4 + GIF", exact: true });
-  await expect(render).toBeEnabled();
+  // Scene preparation has its own 45-second deadline, including CPU shader warmup.
+  await expect(render).toBeEnabled({ timeout: 60000 });
   build.pieces.push({ ...build.pieces[0], id: 100, step: 4 });
   build.steps.push({ index: 4, title: "New layer" });
   await page.evaluate((piece) => {

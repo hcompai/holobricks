@@ -23,6 +23,7 @@ Gallery for the H team: [brickyard-h-company.vercel.app](https://brickyard-h-com
 
 ```bash
 scripts/fetch-ldraw.sh                        # LDraw parts library into ./ldraw (145 MB)
+python3 scripts/fetch-connectors.py           # pinned LDCad stud/socket data for assembly plans
 cd server && uv sync && cd ..
 cd web && npm install && npm run build && cd ..
 server/.venv/bin/brickyard                    # http://127.0.0.1:8000
@@ -138,3 +139,51 @@ cd web && npm ci && npx playwright install chromium && npm test && npm run build
 ```
 
 The browser tests use offline geometry and mocked build APIs, including a decoded in-browser GIF, the server film flow with cancellation/retry, a live snapshot, missing parts and file sharing. The server tests render a tiny film end to end when Chrome, ffmpeg and the built web app are present.
+
+### Assembly plans
+
+`python3 scripts/fetch-connectors.py` installs the pinned LDCad shadow library (CC BY-SA 4.0;
+Roland Melkert and contributors). `BRICKYARD_SHADOW` can select another installed library. LDraw
+geometry alone is not connector evidence. The independent assembly checker resolves supported
+round studs and round/square sockets, rejects disconnected models, and checks straight insertion
+corridors against conservative envelopes from the full part meshes. It never uses the viewer's
+clipped footprint as a collision proof. Scaled/mirrored placements, nonorthogonal rotations and
+unsupported joint dependencies are unverified, not silently accepted.
+
+Every `bricks run` reports assembly findings. `bricks assembly` searches an order by accessible
+removal, keeping the remainder connected, and reverses that order into assembly operations.
+Connected cuts at articulation points can produce subassemblies; this is a bounded search, not a
+complete solver. If it cannot find an order, Holo can submit `bricks assembly plan.json`:
+
+```json
+{
+  "revision": "CURRENT_BUILD_REVISION",
+  "root": "model",
+  "groups": [
+    {"id": "upper", "title": "Upper unit", "operations": [{"part": 2}, {"part": 3}]},
+    {"id": "model", "title": "Main assembly", "operations": [{"part": 1}, {"assembly": "upper"}]}
+  ]
+}
+```
+
+IDs refer to physical instances in the current build, not catalog part numbers. Each instance is
+introduced exactly once, each child assembly attached exactly once, and cycles/unused groups are
+refused. All placements come from the immutable model snapshot. `approach`, when present, is the
+unit vector **from the final position toward the outside** in LDraw coordinates; insertion follows
+its opposite. The first unit has no direction. Accepted plans and reports are stored under the
+workspace's `.brickyard-assembly/`. When Holo exits, the server rechecks the current model and
+marks the build as an error if assembly is unverified, including an exit at the agent's time/step
+limit. This preserves the compactor-only agent loop; no visual reviewer or answer-retry loop is added.
+
+GET /api/builds/{id}/assembly returns the current report and accepted plan.
+
+Loaded LDraw geometry is immutable for the lifetime of the server. Assembly checks
+compare every used file (including inherited subparts) with its loaded contents;
+an on-disk change blocks verification and PDF download. Restart the server after
+updating the geometry library, then regenerate the plan and guide.
+
+**Scope of verification:** supported rigid stud/socket engagement, conservative straight insertion,
+exact part accounting and reconstruction. This is not a physical test build or certification of
+clutch force, structural strength, hand clearance, moving joints or flexible parts. Cavities may
+cause conservative false rejections. Unsupported connections must gain a validated rule before a
+manual is offered; they cannot be waived by a visual review. Keep models supported during assembly.

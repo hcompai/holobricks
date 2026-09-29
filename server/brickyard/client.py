@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import json
 import os
 import sys
 from pathlib import Path
@@ -58,6 +59,9 @@ def main() -> None:
         "part"
     )
     tools.add_parser("check", help="verify every part/color pair in the current bill of materials")
+    tools.add_parser(
+        "assembly", help="check the insertion order; optionally submit a subassembly plan JSON"
+    ).add_argument("plan", nargs="?")
     tools.add_parser("name", help="name the build").add_argument("name")
     args = parser.parse_args()
     camera = {k: v for k in ("angle", "elevation", "zoom", "at") if (v := getattr(args, k, None)) is not None}
@@ -70,6 +74,8 @@ def main() -> None:
         out = call("colors", part=args.part)
     elif args.tool == "check":
         out = call("check")
+    elif args.tool == "assembly":
+        out = call("assembly", plan=json.loads(Path(args.plan).read_text()) if args.plan else None)
     elif args.tool == "name":
         out = call("name", name=args.name)
     else:

@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import json
 import sys
 import threading
 from itertools import permutations
@@ -112,6 +113,58 @@ def test_builder_exit_does_not_bypass_final_inventory_check(bench, monkeypatch, 
     asyncio.run(run())
 
 
+@pytest.mark.parametrize("case", ["connected", "disconnected", "empty"])
+def test_holo_exit_cannot_bypass_final_assembly_check(bench, monkeypatch, case):
+    from brickyard import app
+
+    class ExitingHolo:
+        async def run(self, session, *_):
+            # Simulate any clean process exit, including forced time/step limits.
+            if case != "empty":
+                session.build.add_step("Base", [place("3001.dat", 0, 0, 0, 4)])
+                if case == "disconnected":
+                    session.build.add_step("Loose", [place("3001.dat", 8, 0, 0, 4)])
+
+    bench.session.build.builder = "holo"
+    monkeypatch.setitem(app.BUILDERS, "holo", ExitingHolo())
+    monkeypatch.setattr(app.viewers, "release", lambda *_: asyncio.sleep(0))
+
+    async def run():
+        app.start(bench.session, "test", [])
+        await bench.session.task
+        assert bench.session.build.status == ("done" if case == "connected" else "error")
+        if case != "connected":
+            assert "Assembly is not verified" in bench.session.build.messages[-1].text
+        report = (
+            bench.session.store.root.parent
+            / "workspaces"
+            / bench.session.build.id
+            / ".brickyard-assembly"
+            / "assembly-report.json"
+        )
+        assert json.loads(report.read_text())["revision"] == bench.session.build.revision
+
+    asyncio.run(run())
+
+
+def test_cli_submits_explicit_assembly_plan(tmp_path, monkeypatch):
+    proposed = {"revision": "current", "root": "model", "groups": []}
+    path = tmp_path / "plan.json"
+    path.write_text(json.dumps(proposed))
+    received = []
+
+    def call(tool, **kwargs):
+        received.append((tool, kwargs))
+        return {"text": "Assembly verified", "images": [], "problems": 0}
+
+    monkeypatch.setattr(client, "call", call)
+    monkeypatch.setattr(sys, "argv", ["bricks", "assembly", str(path)])
+    with pytest.raises(SystemExit) as exit:
+        client.main()
+    assert exit.value.code == 0
+    assert received == [("assembly", {"plan": proposed})]
+
+
 def test_a_run_reports_a_piece_in_an_unverified_color_with_the_verified_choices(bench):
     async def run():
         result = await bench.run_script(CORE.replace(", 4)", ", 503)"))
@@ -193,7 +246,8 @@ def test_commit_saves_only_the_complete_revision_and_preserves_chat(bench, monke
 
         monkeypatch.setattr(bench.session.store, "save", record)
         code = CORE + 'step("Top")\nbrick("3001", 0, 0, 3, 15)\nstep("Side")\nbrick("3001", 5, 0, 0, 14)\n'
-        assert not (await bench.run_script(code)).problems
+        result = await bench.run_script(code)
+        assert result.problems == 1 and "disconnected_model" in result.text
         assert len(snapshots) == 1
         assert len(snapshots[0].steps) == len(snapshots[0].pieces) == 3
         assert snapshots[0].script == code

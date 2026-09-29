@@ -88,6 +88,28 @@ bricks colors 3062b                     # the colors BrickLink has for a part, a
 bricks check                            # every part/color pair of the model against BrickLink
 ```
 
+### Physical assembly (`bricks assembly [plan.json]`)
+
+Drawing steps are separate from a physical assembly order. Every `bricks run` reports assembly
+findings and names moving parts and obstacles. Repair those findings before finishing; the server
+rechecks the current model when Holo exits and refuses completion without a verified plan.
+The checker supports rigid stud/socket engagement and straight insertion, not every LEGO joint.
+Never claim strength or hand-access certification, and never treat unsupported as verified.
+
+Tie walls and ground together with real plates and interlocking brick courses. Adjacent stacks
+of 1x1 bricks do not form one connected wall; bare ground and touching side faces are not joints.
+For a blocked insertion, place trapped parts before the roof or build a connected unit separately.
+Submit an explicit subassembly order with `bricks assembly plan.json` when automatic planning fails.
+The JSON contains `revision`, `root` and `groups`; each group has `id`, `title` and `operations`.
+Each operation introduces one `{"part": INSTANCE_ID}` or attaches one `{"assembly": CHILD_ID}`.
+Use each physical instance once, attach each child once, and include no cycles. Positions come from
+the model, not the plan. Omit `approach` to let the checker select and test an insertion direction.
+Inspect `.brickyard-assembly/assembly-report.json` and its accepted `assembly-plan.json`.
+
+Showcases illustrate design and rendering techniques; they are not certified assembly plans.
+Do not simplify the requested subject just to bypass missing connector support. If the supported
+checks cannot verify it, report that limitation; an unverified model cannot receive a printable guide.
+
 ### Chains
 
 ```bash

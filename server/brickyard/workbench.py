@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 
 from pydantic import BaseModel, ValidationError
 
-from brickyard import catalog, ldraw
+from brickyard import assembly, catalog, ldraw
 from brickyard.model import (
     FACINGS,
     ROTATIONS,
@@ -305,13 +305,31 @@ class Workbench:
         lines.append(await asyncio.to_thread(self.describe))
         pieces = sum(p.part != BASEPLATE for p in self.pieces)
         seen = await self.look(f"Ran the script: {pieces} pieces" + (f", {problems} problems" if problems else ""))
+        physical = await self.assembly_plan()
         return Result(
-            "\n".join(lines) + printed + "\n" + seen.text,
+            "\n".join(lines) + printed + "\n" + seen.text + "\n" + physical.text,
             note=seen.note,
             images=seen.images,
             kind=seen.kind,
             caption=seen.caption,
-            problems=problems,
+            problems=problems + physical.problems,
+        )
+
+    async def assembly_plan(self, plan: dict | None = None) -> Result:
+        """Plan/check the current frozen revision without editing its geometry."""
+        build = self.session.build.model_copy(deep=True)
+        folder = self.session.store.root.parent / "workspaces" / build.id / ".brickyard-assembly"
+        try:
+            proposed = assembly.Plan.model_validate(plan) if plan is not None else assembly.cached_plan(folder, build)
+        except ValueError as exc:
+            return Result(f"Invalid assembly plan: {exc}", problems=1)
+        report = await asyncio.to_thread(assembly.check, build, proposed)
+        if self.session.build.revision != build.revision:
+            return Result("The model changed during assembly checking. Retry for the current revision.", problems=1)
+        await asyncio.to_thread(assembly.save_report, folder, report)
+        return Result(
+            assembly.describe(report) + f"\nEvidence and accepted plan: {folder}",
+            problems=0 if report.status == "verified" else 1,
         )
 
     @staticmethod
