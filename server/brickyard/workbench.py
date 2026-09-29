@@ -294,7 +294,8 @@ class Workbench:
         lines.append(self.summary() + self.colors())
         physical = self.assembly_plan()
         lines.append(physical.text)
-        lines.append(f"Share {MODEL} to show this revision to the user, then call look to see it.")
+        revision = self.workspace.build.revision[:8]
+        lines.append(f"Share {MODEL} to show revision {revision} to the user, then call look to see it.")
         return Result("\n".join(lines) + printed, problems=problems + physical.problems)
 
     def assembly_plan(self, plan: dict | None = None) -> Result:

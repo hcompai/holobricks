@@ -140,7 +140,7 @@ def test_the_showcase_builds_but_is_not_a_verified_connected_assembly(bench):
 
 
 def test_the_prompt_names_only_real_parts_sizes_and_colors():
-    prompt = (Path(__file__).resolve().parents[2] / "agent" / "holo.j2").read_text()
+    prompt = (Path(__file__).resolve().parents[2] / "agent" / "holo.md").read_text()
     rows = re.findall(r"^- (\d+) tall[^:]*: (.*)$", prompt.split("## Parts")[1].split("\n## ")[0], re.MULTILINE)
     entries = [
         (part, (int(w), int(d)), int(height))
