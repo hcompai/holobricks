@@ -176,18 +176,25 @@ function follow(id: string, signal: AbortSignal, notify: Listener, displayed: ()
   const poll = async () => {
     while (!signal.aborted) {
       try {
-        const changes = await client.sessions.getSessionChanges(
-          { id, fromIndex: transcript.events, includeEvents: true, waitForSeconds: WAIT_S },
-          { abortSignal: signal, timeoutInSeconds: WAIT_S + 20, maxRetries: 0 },
-        );
+        const changed = (waitForSeconds: number) =>
+          client.sessions.getSessionChanges(
+            { id, fromIndex: transcript.events, includeEvents: true, waitForSeconds },
+            { abortSignal: signal, timeoutInSeconds: waitForSeconds + 20, maxRetries: 0 },
+          );
+        let changes = await changed(WAIT_S);
+        if (!changes) {
+          const current = await client.sessions.getSessionStatus({ id }, { abortSignal: signal });
+          /** Events can land between the long poll and the status: fetch them so the status never outruns the transcript. */
+          if (current.status !== session) changes = await changed(0);
+          if (!changes) {
+            session = current.status;
+            failure = current.error ?? null;
+          }
+        }
         if (changes) {
           transcript = read(transcript, changes.newEvents ?? []);
           session = changes.status;
           failure = changes.error ?? null;
-        } else {
-          const current = await client.sessions.getSessionStatus({ id }, { abortSignal: signal });
-          session = current.status;
-          failure = current.error ?? null;
         }
         await loadModel();
         fetchPictures();
