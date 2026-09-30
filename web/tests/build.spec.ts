@@ -164,7 +164,7 @@ test("the library shows my builds by the names Holo gave them; showcases under P
   await expect(page).toHaveURL(/\?showcase=paris$/);
   await expect(page.locator(".library-page")).toHaveCount(0);
   await shown(page, showcase.revision);
-  await expect(page.getByText("A showcase from the gallery.")).toBeVisible();
+  await expect(page.getByText("A showcase from the gallery: remix it to make your own.")).toBeVisible();
 });
 
 test("missing geometry fails closed; a lost WebGL context never leaves a trusted stale canvas", async ({ page }) => {

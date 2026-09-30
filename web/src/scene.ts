@@ -6,7 +6,7 @@ import { LDrawLoader } from "three/examples/jsm/loaders/LDrawLoader.js";
 import { LDrawConditionalLineMaterial } from "three/examples/jsm/materials/LDrawConditionalLineMaterial.js";
 import type { Box, Camera, Piece } from "./model";
 import { buildRevision } from "./buildRevision";
-import { loadAsset } from "./loadAsset";
+import { paletteFile } from "./palette";
 
 export type View = "iso" | "isoBack" | "front" | "top";
 
@@ -24,7 +24,6 @@ const SHEET: { view: View; label: string }[] = [
   { view: "top", label: "Top (back is up)" },
 ];
 
-const PALETTE = "/LDConfig.ldr";
 /** Every part the loaded models use, as one LDraw MPD each; a part's geometry never changes, so all scenes share them. */
 const PARTS = new Map<string, string>();
 
@@ -668,7 +667,7 @@ export class BrickScene {
 
   private palette(): Promise<void> {
     if (!this.materials) {
-      const pending = loadAsset(PALETTE, this.lifetime.signal).then(async (text) => {
+      const pending = paletteFile().then(async (text) => {
         if (!/^0 !COLOUR /m.test(text)) throw new Error("Empty LDraw color palette");
         const url = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
         try {

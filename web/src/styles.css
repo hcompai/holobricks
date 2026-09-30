@@ -544,12 +544,27 @@ aside {
 }
 
 .gallery-note {
-  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
   padding: 12px;
   border-radius: var(--radius-large);
   background: var(--background-muted);
   color: var(--text-secondary);
   font-size: 13px;
+}
+
+.gallery-note p {
+  flex: 1;
+  margin: 0;
+}
+
+.gallery-note button {
+  flex: none;
+  border-color: transparent;
+  background: var(--background-primary);
+  color: var(--text-on-primary);
+  font-weight: 600;
 }
 
 .library-toggle {

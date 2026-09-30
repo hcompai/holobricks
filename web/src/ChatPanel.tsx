@@ -1,4 +1,4 @@
-import { ArrowUpIcon, PlusIcon, StopIcon, XIcon } from "@phosphor-icons/react";
+import { ArrowUpIcon, PlusIcon, ShuffleIcon, StopIcon, XIcon } from "@phosphor-icons/react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -101,10 +101,13 @@ interface Props {
   onCreate: (prompt: string, images: string[]) => Promise<void>;
   onSay: (text: string, images: string[]) => Promise<void>;
   onStop: () => Promise<void>;
+  /** Start a new build from a copy of this closed one, changed as asked. */
+  onRemix: (text: string, images: string[]) => Promise<void>;
 }
 
-export function ChatPanel({ build, loading, thinking, closed, onCreate, onSay, onStop }: Props) {
+export function ChatPanel({ build, loading, thinking, closed, onCreate, onSay, onStop, onRemix }: Props) {
   const [text, setText] = useState("");
+  const [remixing, setRemixing] = useState(false);
   const [attachments, setAttachments] = useState<string[]>([]);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
@@ -158,7 +161,7 @@ export function ChatPanel({ build, loading, thinking, closed, onCreate, onSay, o
     setSending(true);
     setError("");
     try {
-      await (changing ? onSay(prompt, attachments) : onCreate(prompt, attachments));
+      await (remixing ? onRemix : changing ? onSay : onCreate)(prompt, attachments);
       setText("");
       setAttachments([]);
     } catch (e) {
@@ -244,8 +247,17 @@ export function ChatPanel({ build, loading, thinking, closed, onCreate, onSay, o
           </div>
         )}
       </div>
-      {closed && <p className="gallery-note">{closed}</p>}
-      {!closed && (
+      {closed && !remixing && (
+        <div className="gallery-note">
+          <p>{closed}</p>
+          {!!build?.pieces.length && (
+            <button onClick={() => setRemixing(true)} title="Start your own build from a copy of this one">
+              <ShuffleIcon size={14} weight="bold" /> Remix
+            </button>
+          )}
+        </div>
+      )}
+      {(!closed || remixing) && (
         <div
           className={dragging ? "composer dragging" : "composer"}
           onDragOver={(e) => {
@@ -280,12 +292,15 @@ export function ChatPanel({ build, loading, thinking, closed, onCreate, onSay, o
           <textarea
             ref={input}
             value={text}
+            autoFocus={remixing}
             placeholder={
-              busy
-                ? `${WHO} is building: Stop to change course`
-                : changing
-                  ? "Describe how to change it…"
-                  : "Describe what to build…"
+              remixing
+                ? `What should ${WHO} change?`
+                : busy
+                  ? `${WHO} is building: Stop to change course`
+                  : changing
+                    ? "Describe how to change it…"
+                    : "Describe what to build…"
             }
             onChange={(e) => setText(e.target.value)}
             onPaste={(e) => {

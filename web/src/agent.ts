@@ -2,6 +2,8 @@ import { fileFromBlob, HaiAgentsClient, type HaiAgents } from "hai-agents";
 import prompt from "../../agent/holo.md?raw";
 import { expired, key } from "./account";
 import { H } from "./hosts";
+import type { Build } from "./model";
+import { script } from "./remix";
 import { AGENT } from "./session";
 const MODEL = "holo4-27b";
 const MAX_STEPS = 300;
@@ -79,26 +81,26 @@ function agent(): HaiAgents.Agent {
   };
 }
 
-/** A message with its photos saved under `prefix-N.jpg`, so later photos never overwrite earlier ones. */
+/** A message with the `attached` files, then its photos as `prefix-N.jpg`, so later photos never overwrite earlier ones. */
 async function message(
   text: string,
   photos: string[],
-  toolkit: boolean,
+  attached: Record<string, Blob>,
   prefix = "photo",
 ): Promise<HaiAgents.UserMessageEvent & { type: "user_message" }> {
   const blobs = await Promise.all(photos.map((src) => fetch(src).then((r) => r.blob())));
-  const files = await Promise.all(blobs.map((blob, i) => fileFromBlob(blob, `${prefix}-${i + 1}.jpg`)));
-  if (toolkit) {
-    const response = await fetch(TOOLKIT);
-    if (!response.ok) throw new Error("The Brickyard toolkit is missing from this site.");
-    files.unshift(await fileFromBlob(await response.blob(), "brickyard.tgz"));
-  }
+  const files = await Promise.all([
+    ...Object.entries(attached).map(([name, blob]) => fileFromBlob(blob, name)),
+    ...blobs.map((blob, i) => fileFromBlob(blob, `${prefix}-${i + 1}.jpg`)),
+  ]);
   return { type: "user_message", message: text, images: photos, files };
 }
 
-/** Start a build; the session starts empty, then takes the first message with the toolkit and the photos. */
-export async function create(text: string, photos: string[]): Promise<string> {
-  const first = await message(text, photos, true);
+/** Start a build; the session starts empty, then takes the first message with the toolkit, `attached` and the photos. */
+export async function create(text: string, photos: string[], attached: Record<string, Blob> = {}): Promise<string> {
+  const toolkit = await fetch(TOOLKIT);
+  if (!toolkit.ok) throw new Error("The Brickyard toolkit is missing from this site.");
+  const first = await message(text, photos, { "brickyard.tgz": await toolkit.blob(), ...attached });
   const session = await client.startSession({
     agent: agent(),
     maxSteps: MAX_STEPS,
@@ -110,8 +112,12 @@ export async function create(text: string, photos: string[]): Promise<string> {
   return session.id;
 }
 
+/** Start a build from an exact copy of `build`, which Holo then changes as `text` asks. */
+export const remix = (build: Build, text: string, photos: string[]) =>
+  create(text, photos, { "remix.py": new Blob([script(build)], { type: "text/x-python" }) });
+
 export async function say(id: string, text: string, photos: string[]) {
-  await client.session(id).sendMessage(await message(text, photos, false, `photo-${Date.now()}`));
+  await client.session(id).sendMessage(await message(text, photos, {}, `photo-${Date.now()}`));
 }
 
 /** Holo ends its current step and answers; the session stays open for the next message. */
