@@ -217,3 +217,43 @@ def test_the_prompt_names_only_real_parts_sizes_and_colors():
     for entry in (e for line in colors if line.startswith("- ") for e in line.split(": ")[1].split(", ")):
         code, name = entry.split(" ", 1)
         assert palette[int(code)][0].lower() == name, entry
+
+
+def test_recovery_keeps_the_script_for_the_shared_geometry_after_a_failed_edit(bench, tmp_path):
+    from brickyard.workspace import bundle
+
+    bench.run_script(HOUSE)
+    before = bench.workspace.build
+    bench.run_script(HOUSE + '\nraise RuntimeError("unfinished edit")')
+    model = json.loads(gzip.decompress((bench.workspace.folder / MODEL).read_bytes()))
+    assert model["recovery"] == {"version": 1, "revision": before.revision, "script": HOUSE}
+    assert "recovery" not in bundle(bench.workspace.build)
+    assert "recovery_script" not in model and "script" not in model and "messages" not in model
+    target = tmp_path / "replacement"
+    target.mkdir()
+    restored = Workspace.open(target)
+    restored.restore(bench.workspace.folder / MODEL)
+    assert restored.build.pieces == before.pieces
+    assert restored.build.steps == before.steps
+    assert (target / "build.py").read_text() == HOUSE
+    assert Workbench(restored).run_script(HOUSE).problems == 0
+    assert restored.build.revision == before.revision
+
+
+def test_recovery_rejects_mismatched_revisions_and_does_not_overwrite_a_workspace(bench, tmp_path):
+    bench.run_script(HOUSE)
+    model = json.loads(gzip.decompress((bench.workspace.folder / MODEL).read_bytes()))
+    target = tmp_path / "replacement"
+    target.mkdir()
+    attachment = tmp_path / "checkpoint.json"
+    model["recovery"]["revision"] = "wrong"
+    attachment.write_text(json.dumps(model))
+    with pytest.raises(ValueError, match="does not match"):
+        Workspace.open(target).restore(attachment)
+    assert not list(target.iterdir())
+    model["recovery"]["revision"] = model["revision"]
+    attachment.write_text(json.dumps(model))
+    Workspace.open(target).restore(attachment)
+    with pytest.raises(ValueError, match="fresh workspace"):
+        Workspace.open(target).restore(attachment)
+    assert (target / "build.py").read_text() == HOUSE

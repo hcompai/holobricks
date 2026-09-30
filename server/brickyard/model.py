@@ -65,6 +65,8 @@ class Build(BaseModel):
     steps: list[Step] = []
     messages: list[Message] = []
     script: str = ""
+    recovery_script: str | None = None
+    """The last script that produced this geometry; a later failed run must not replace it."""
 
     @computed_field
     @property

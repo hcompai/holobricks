@@ -42,9 +42,17 @@ def main() -> None:
         "assembly", help="check the insertion order; optionally submit a subassembly plan JSON"
     ).add_argument("plan", nargs="?")
     tools.add_parser("name", help="name the build").add_argument("name")
+    tools.add_parser("restore", help="restore a shared checkpoint into a fresh workspace").add_argument("model")
     args = parser.parse_args()
 
     bench = Workbench(Workspace.open(Path.cwd()))
+    if args.tool == "restore":
+        try:
+            bench.workspace.restore(Path(args.model))
+        except (ValueError, OSError) as exc:
+            parser.exit(1, f"Could not restore: {exc}\n")
+        print(f"Restored revision {bench.workspace.build.revision[:8]}. Share model.json.gz, then look before editing.")
+        return
     if args.tool == "run":
         out = bench.run_script(Path(args.script).read_text())
         out.text = tick(Path.cwd()) + out.text

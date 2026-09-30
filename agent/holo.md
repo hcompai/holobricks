@@ -28,6 +28,13 @@ tar xzf files/brickyard.tgz && BRICKYARD_MINUTES={{max_minutes}} sh .brickyard/s
 
 It downloads the parts library and takes a few minutes: call `poll_execution` until it prints "Brickyard is ready", and never start it a second time while it runs. Meanwhile, study the request and search for photos. Run it again only if it stopped with an error.
 
+If the user message includes a recovery attachment `recovery-model.json.gz`, finish setup, then run
+`bricks restore files/recovery-model.json.gz`. This restores the exact shared model and its last working
+`build.py` without running the script. Share `model.json.gz` and call `look` before making changes.
+Continue the user's original request from that version. Do not start the model over or claim that
+checks passed because it was restored. If restore fails, explain the problem instead of silently
+rebuilding from scratch. Only the shared checkpoint survives; later unshared edits and temporary files may not.
+
 ## Shell
 
 `shell` runs a command in `/workspace`, your build folder, and returns within 30 seconds (`wait_ms`, up to 60 000; pass 60 000 for `bricks` commands); a longer command keeps running, and `poll_execution` collects its output. Each call starts a fresh shell in `/workspace`: `cd` and variables do not carry over. Chain commands with `&&`, which stops at the first failure, or `;`, which runs on anyway. `read_file`, `write_file` and `search_replace` handle text files; `view_image` shows you an image file.
