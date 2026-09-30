@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { BuildSummary } from "./model";
 import type { BuildRef } from "./useBuild";
 
@@ -10,12 +11,17 @@ interface Props {
   active: BuildRef | null;
   onRetry: () => void;
   onOpen: (build: BuildSummary) => void;
+  /** The signed-in user's id: the public builds they own count as theirs too, such as imported ones. */
+  me: string | null;
+  /** What sits beside the Mine heading, such as the import button. */
+  mineActions?: ReactNode;
 }
 
 function meta(b: BuildSummary, published: Set<string>): string {
   return [
     b.source === "showcase" ? "Showcase" : b.author ? `by ${b.author}` : null,
     b.source === "session" && published.has(b.id) ? "public" : null,
+    b.id.startsWith("import-") ? "imported" : null,
     b.pieces === null ? null : `${b.pieces.toLocaleString()} pieces`,
     b.status === "building" ? "building…" : b.status === "error" ? "stopped" : null,
   ]
@@ -24,16 +30,21 @@ function meta(b: BuildSummary, published: Set<string>): string {
 }
 
 /** The library over the viewer: everyone's public builds with the showcases, then the user's own. */
-export function LibraryPage({ builds, failed, active, onRetry, onOpen }: Props) {
-  const mine = builds?.filter((b) => b.source === "session") ?? [];
+export function LibraryPage({ builds, failed, active, onRetry, onOpen, me, mineActions }: Props) {
+  const sessions = builds?.filter((b) => b.source === "session") ?? [];
   const everyone = builds?.filter((b) => b.source !== "session") ?? [];
+  const ids = new Set(sessions.map((b) => b.id));
+  // Builds with no session of theirs, like imported ones, are the user's through the library only.
+  const owned = everyone.filter((b) => b.source === "public" && me && b.owner === me && !ids.has(b.id));
+  const mine = [...sessions, ...owned].sort((a, b) => b.created - a.created);
   const published = new Set(everyone.filter((b) => b.source === "public").map((b) => b.id));
 
-  const section = (title: string, shown: BuildSummary[], empty: string) => (
+  const section = (title: string, shown: BuildSummary[], empty: string, actions?: ReactNode) => (
     <section className="library-section" aria-label={title}>
       <h2>
         {title}
         {builds && <span className="count">{shown.length}</span>}
+        {actions}
       </h2>
       {builds === null ? (
         <div className="library-grid" aria-busy="true">
@@ -84,7 +95,7 @@ export function LibraryPage({ builds, failed, active, onRetry, onOpen }: Props) 
       ) : (
         <>
           {section("Public", everyone, "Nothing public yet. Publish one of your builds to share it here.")}
-          {section("Mine", mine, "No builds yet. Describe one in the chat.")}
+          {section("Mine", mine, "No builds yet. Describe one in the chat, or import one.", mineActions)}
         </>
       )}
     </div>

@@ -2060,3 +2060,45 @@ main {
 .instructions-dialog {
   width: min(560px, calc(100vw - 32px));
 }
+
+/* Importing a model file, beside the Mine heading. */
+.import-build {
+  margin-left: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.import-build > button {
+  font-size: 13px;
+  padding: 4px 10px;
+}
+
+.import-confirm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 560px;
+  padding: 8px 8px 8px 12px;
+  border: 1px solid var(--stroke-default);
+  border-radius: var(--radius-large);
+  background: var(--background-card);
+  box-shadow: var(--elevation-1);
+  color: var(--text-secondary);
+}
+
+.import-confirm .primary {
+  background: var(--background-primary);
+  color: var(--text-on-primary);
+  border-color: var(--background-primary);
+}
+
+.import-error {
+  margin: 0;
+  max-width: 420px;
+  color: var(--text-error);
+  text-align: right;
+}

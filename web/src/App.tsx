@@ -10,6 +10,7 @@ import { usePrices } from "./pickabrick";
 import { PriceMenu } from "./PriceMenu";
 import { ChatPanel } from "./ChatPanel";
 import { DownloadMenu } from "./DownloadMenu";
+import { ImportBuild } from "./ImportBuild";
 import { LibraryPage } from "./LibraryPage";
 import { countParts, PartsPanel } from "./PartsPanel";
 import { PublishButton } from "./PublishButton";
@@ -410,6 +411,15 @@ export default function App({ account }: { account: Account }) {
             active={ref}
             onRetry={refreshBuilds}
             onOpen={(b) => open({ id: b.id, source: b.source })}
+            me={account.user.id}
+            mineActions={
+              <ImportBuild
+                onImported={(id) => {
+                  refreshBuilds();
+                  open({ id, source: "public" });
+                }}
+              />
+            }
           />
         )}
       </main>
