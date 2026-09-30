@@ -497,89 +497,118 @@ aside {
   font-size: 13px;
 }
 
-.library {
-  overflow-y: auto;
+.library-toggle {
+  border: none;
+  background: none;
+  padding: 6px 10px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.library-toggle:hover,
+.library-toggle.active {
+  color: var(--text-default);
+  background: var(--background-muted);
+}
+
+.aside-title {
+  font-weight: 600;
+}
+
+.library-page {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding-top: 16px;
+  min-height: 0;
+  background: var(--background-page);
+  animation: fade-in 0.15s ease-out;
 }
 
-.card {
+.library-bar {
   display: flex;
+  margin: 12px 16px;
+}
+
+.tabs .count {
+  margin-left: 6px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.library-grid {
+  flex: 1;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  grid-auto-rows: max-content;
+  align-content: start;
+  gap: 16px;
+  padding: 4px 16px 24px;
+}
+
+.tile {
+  display: flex;
+  flex-direction: column;
   align-items: stretch;
-  gap: 12px;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
   text-align: left;
-  padding: 8px;
   border-radius: var(--radius-large);
+  background: var(--background-card);
+  transition:
+    border-color 0.15s,
+    transform 0.15s,
+    box-shadow 0.15s;
 }
 
-.card:hover {
+.tile:hover {
   border-color: var(--stroke-strong);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
 }
 
-.card.active {
+.tile.active {
   border-color: var(--background-primary);
 }
 
-.thumb {
-  width: 56px;
-  height: 56px;
-  flex: none;
-  border-radius: var(--radius-medium);
+.tile-thumb {
+  width: 100%;
+  aspect-ratio: 4 / 3;
   display: grid;
   place-items: center;
+  font-size: 32px;
   font-weight: 700;
   color: var(--text-tertiary);
-  background: var(--background-muted);
+  background: var(--background-viewer);
   object-fit: cover;
+  border-bottom: 1px solid var(--stroke-default);
 }
 
-img.thumb {
-  border: 1px solid var(--stroke-default);
-}
-
-.card-body {
+.tile-body {
   display: flex;
   flex-direction: column;
-  justify-content: center;
   gap: 2px;
+  padding: 10px 12px 12px;
   min-width: 0;
 }
 
-.card-body .muted {
+.tile-body > * {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.empty {
-  color: var(--text-tertiary);
-  padding: 20px 4px;
-}
-
-.library-section {
+.library-empty {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-}
-
-.library-section + .library-section {
-  padding-top: 12px;
-}
-
-.library-section h3 {
-  margin: 0;
-  padding: 0 4px;
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  align-items: center;
+  gap: 12px;
+  padding: 64px 16px;
   color: var(--text-tertiary);
-}
-
-.library-section .empty {
-  padding: 4px 4px 12px;
+  text-align: center;
 }
 
 .sign-in,
@@ -645,7 +674,7 @@ img.thumb {
   pointer-events: none;
 }
 
-.skeleton .card-body {
+.skeleton .tile-body {
   flex: 1;
   gap: 10px;
 }
@@ -661,7 +690,7 @@ img.thumb {
   width: 80%;
 }
 
-.skeleton .thumb,
+.skeleton .tile-thumb,
 .skeleton .bar {
   animation: breathe 1.6s ease-in-out infinite;
 }
@@ -823,6 +852,7 @@ img.thumb {
 }
 
 .brick-stage.idle .brick {
+  --w: 56px;
   animation: turn 16s linear infinite;
 }
 
@@ -889,7 +919,7 @@ img.thumb {
   .brick-hop,
   .brick,
   .brick-shadow,
-  .skeleton .thumb,
+  .skeleton .tile-thumb,
   .skeleton .bar {
     animation: none;
   }
@@ -900,6 +930,7 @@ img.thumb {
 }
 
 main {
+  position: relative;
   display: flex;
   flex-direction: column;
   min-width: 0;

@@ -1,4 +1,4 @@
-import { PlusIcon, ShoppingBagIcon } from "@phosphor-icons/react";
+import { PlusIcon, ShoppingBagIcon, SquaresFourIcon } from "@phosphor-icons/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAccount } from "./account";
 import { AccountMenu, SignInButton } from "./AccountMenu";
@@ -8,7 +8,7 @@ import { type Build, type BuildSummary, type Piece, type Source, verified } from
 import { type Color, usePalette } from "./palette";
 import { ChatPanel } from "./ChatPanel";
 import { DownloadMenu } from "./DownloadMenu";
-import { LibraryPanel } from "./LibraryPanel";
+import { LibraryPage, type Shelf } from "./LibraryPage";
 import { countParts, PartsPanel } from "./PartsPanel";
 import { PublishButton } from "./PublishButton";
 import { ShopDialog } from "./ShopDialog";
@@ -35,6 +35,13 @@ function urlBuild(): BuildRef | null {
   return null;
 }
 
+const SHELF = "library";
+
+function urlShelf(): Shelf | null {
+  const shelf = new URLSearchParams(window.location.search).get(SHELF);
+  return shelf === "mine" || shelf === "public" ? shelf : null;
+}
+
 const same = (a: BuildRef | null, b: BuildRef | null) => a?.id === b?.id && a?.source === b?.source;
 
 /** Part titles from the build's verified parts list, by LDraw part. */
@@ -51,6 +58,9 @@ function describer(build: Build | null, palette: Color[]): (piece: Piece) => str
 export default function App() {
   const account = useAccount();
   const [ref, setRef] = useState<BuildRef | null>(urlBuild);
+  const opened = useRef(ref);
+  opened.current = ref;
+  const [shelf, setShelf] = useState<Shelf | null>(urlShelf);
   const buildId = ref?.id ?? null;
   const { build: live, loading, thinking, renderRequest, error, syncError, answer } = useBuild(ref);
   const edits = useEdits(live);
@@ -61,7 +71,6 @@ export default function App() {
   const viewer = useRef<ViewerHandle>(null);
   const [builds, setBuilds] = useState<BuildSummary[] | null>(null);
   const [buildsFailed, setBuildsFailed] = useState(false);
-  const [left, setLeft] = useState<"chat" | "library">("chat");
   const [center, setCenter] = useState<"model" | "parts">("model");
   const [step, setStep] = useState(Infinity);
   const [following, setFollowing] = useState(true);
@@ -87,15 +96,21 @@ export default function App() {
   };
   const last = (build?.steps.length ?? 0) - 1;
 
-  const refreshBuilds = useCallback((fresh = false) => {
+  const latest = useRef(0);
+  const refreshBuilds = useCallback(() => {
+    const request = ++latest.current;
     setBuildsFailed(false);
-    library(fresh).then(setBuilds, (e) => {
-      console.error(e);
-      setBuildsFailed(true);
-    });
+    library().then(
+      (next) => request === latest.current && setBuilds(next),
+      (e) => {
+        if (request !== latest.current) return;
+        console.error(e);
+        setBuildsFailed(true);
+      },
+    );
   }, []);
 
-  useEffect(() => refreshBuilds(), [refreshBuilds, account?.user.id]);
+  useEffect(() => refreshBuilds(), [refreshBuilds, account?.user.id, !!shelf]);
 
   const summary = builds?.find((b) => b.id === buildId && b.source === ref?.source);
   const heading = build ?? summary;
@@ -117,20 +132,27 @@ export default function App() {
     setPlaying(false);
   }, []);
 
-  const open = useCallback(
-    (next: BuildRef | null) => {
-      show(next);
-      if (same(next, urlBuild())) return;
+  /** Show this build, with the library open on `nextShelf` over it, and put both in the URL. */
+  const navigate = useCallback(
+    (next: BuildRef | null, nextShelf: Shelf | null) => {
+      if (!same(next, opened.current)) show(next);
+      setShelf(nextShelf);
       const url = new URL(window.location.href);
-      for (const param of Object.values(PARAMS)) url.searchParams.delete(param);
+      for (const param of [...Object.values(PARAMS), SHELF]) url.searchParams.delete(param);
       if (next) url.searchParams.set(PARAMS[next.source], next.id);
-      window.history.pushState(null, "", url);
+      if (nextShelf) url.searchParams.set(SHELF, nextShelf);
+      if (url.href !== window.location.href) window.history.pushState(null, "", url);
     },
     [show],
   );
+  const open = (next: BuildRef | null) => navigate(next, null);
 
   useEffect(() => {
-    const sync = () => show(urlBuild());
+    const sync = () => {
+      const next = urlBuild();
+      if (!same(next, opened.current)) show(next);
+      setShelf(urlShelf());
+    };
     window.addEventListener("popstate", sync);
     return () => window.removeEventListener("popstate", sync);
   }, [show]);
@@ -162,7 +184,6 @@ export default function App() {
     const id = await create(prompt, images);
     remember(id, { name: prompt.slice(0, 60) || "Untitled build", prompt });
     open({ id, source: "session" });
-    setLeft("chat");
     refreshBuilds();
   };
 
@@ -177,14 +198,20 @@ export default function App() {
     const png = await viewer.current?.image();
     const hand = edits.edits.length ? { revision: live.revision, edits: edits.edits } : null;
     await publish(live.id, png ? await thumbnail(png) : null, hand);
-    refreshBuilds(true);
+    open({ id: live.id, source: "public" });
+    refreshBuilds();
   };
 
   const unpublishBuild = async () => {
     if (!live) return;
     await unpublish(live.id);
-    refreshBuilds(true);
+    if (ref?.source === "public") open({ id: live.id, source: "session" });
+    refreshBuilds();
   };
+
+  /** The signed-in user's build, from their session or as they published it. */
+  const owned =
+    !!account && (ref?.source === "session" || (ref?.source === "public" && summary?.owner === account.user.id));
 
   const unavailable = account ? null : SIGN_IN;
   const closed =
@@ -209,6 +236,13 @@ export default function App() {
           <img className="brand-icon" src="/brick.png" alt="" />
           Brickyard
         </button>
+        <button
+          className={shelf ? "library-toggle active" : "library-toggle"}
+          aria-pressed={!!shelf}
+          onClick={() => navigate(ref, shelf ? null : account ? "mine" : "public")}
+        >
+          <SquaresFourIcon size={16} /> Library
+        </button>
         {loading && summary && <span className="title">{summary.name}</span>}
         {build && (
           <>
@@ -226,9 +260,9 @@ export default function App() {
           </>
         )}
         <span className="spacer" />
-        {build && account && ref?.source === "session" && (
+        {build && account && owned && (
           <PublishButton
-            published={!!listed}
+            published={ref?.source === "public" || !!listed}
             blocked={
               build.status === "building"
                 ? "Publish once Holo answers"
@@ -270,65 +304,28 @@ export default function App() {
       </header>
       <aside>
         <div className="aside-bar">
-          <div className="tabs" role="tablist">
-            <button
-              role="tab"
-              aria-selected={left === "chat"}
-              className={left === "chat" ? "active" : ""}
-              onClick={() => setLeft("chat")}
-            >
-              Chat
-            </button>
-            <button
-              role="tab"
-              aria-selected={left === "library"}
-              className={left === "library" ? "active" : ""}
-              onClick={() => setLeft("library")}
-            >
-              Library
-            </button>
-          </div>
+          <span className="aside-title">Chat</span>
           {ref && (
-            <button
-              className="new-build"
-              onClick={() => {
-                open(null);
-                setLeft("chat");
-              }}
-            >
+            <button className="new-build" onClick={() => open(null)}>
               <PlusIcon size={14} weight="bold" />
               New build
             </button>
           )}
         </div>
         <div className="aside-body">
-          {left === "chat" ? (
-            <ChatPanel
-              build={live}
-              loading={loading}
-              thinking={thinking}
-              closed={closed}
-              onCreate={start}
-              onSay={async (text, images) => {
-                if (build) await say(build.id, text, images);
-              }}
-              onStop={async () => {
-                if (build) await stop(build.id);
-              }}
-            />
-          ) : (
-            <LibraryPanel
-              builds={builds}
-              failed={buildsFailed}
-              onRetry={() => refreshBuilds()}
-              active={ref}
-              signedIn={!!account}
-              onOpen={(b) => {
-                open({ id: b.id, source: b.source });
-                setLeft("chat");
-              }}
-            />
-          )}
+          <ChatPanel
+            build={live}
+            loading={loading}
+            thinking={thinking}
+            closed={closed}
+            onCreate={start}
+            onSay={async (text, images) => {
+              if (build) await say(build.id, text, images);
+            }}
+            onStop={async () => {
+              if (build) await stop(build.id);
+            }}
+          />
         </div>
       </aside>
       <main>
@@ -411,6 +408,18 @@ export default function App() {
             }}
             onSpeed={setSpeed}
             onReplay={exportReplay}
+          />
+        )}
+        {shelf && (
+          <LibraryPage
+            builds={builds}
+            failed={buildsFailed}
+            shelf={shelf}
+            signedIn={!!account}
+            active={ref}
+            onShelf={(next) => navigate(ref, next)}
+            onRetry={refreshBuilds}
+            onOpen={(b) => open({ id: b.id, source: b.source })}
           />
         )}
       </main>

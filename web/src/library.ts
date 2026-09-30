@@ -87,9 +87,16 @@ async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   return body as T;
 }
 
-/** Everyone's public builds, newest first; `fresh` skips the shared cache, to see one's own change at once. */
-async function community(fresh: boolean): Promise<BuildSummary[]> {
-  const published = await api<Published[]>(fresh ? `${API}?t=${Date.now()}` : API);
+/** The library API's URL; signed-in users can change the library, so they skip the shared cache. */
+function read(params: Record<string, string> = {}): string {
+  const query = new URLSearchParams(params);
+  if (current()) query.set("t", String(Date.now()));
+  return query.size ? `${API}?${query}` : API;
+}
+
+/** Everyone's public builds, newest first. */
+async function community(): Promise<BuildSummary[]> {
+  const published = await api<Published[]>(read());
   return published.map((p) => ({
     id: p.id,
     name: p.name,
@@ -105,7 +112,7 @@ async function community(fresh: boolean): Promise<BuildSummary[]> {
 }
 
 export async function publicBuild(id: string): Promise<Build> {
-  const published = await api<Published>(`${API}?id=${encodeURIComponent(id)}`);
+  const published = await api<Published>(read({ id }));
   const response = await fetch(published.build);
   if (!response.ok) throw new Error(`No public build ${id}`);
   return { ...(await unpack<Build>(await response.blob())), id, open: false };
@@ -115,7 +122,7 @@ const signed = () => ({ Authorization: `Bearer ${current()?.pass}`, "X-Agents-Ke
 
 /** Publish a build of the signed-in user as it is now, with this browser's hand edits and a thumbnail. */
 export async function publish(id: string, thumbnail: string | null, edits: { revision: string; edits: Edit[] } | null) {
-  await api(API, {
+  return api<Published>(API, {
     method: "POST",
     headers: { ...signed(), "Content-Type": "application/json" },
     body: JSON.stringify({ id, thumbnail, edits }),
@@ -127,27 +134,29 @@ export async function unpublish(id: string) {
 }
 
 /** The signed-in user's builds, newest first, then everyone's public builds, then the showcases. */
-export async function library(fresh = false): Promise<BuildSummary[]> {
+export async function library(): Promise<BuildSummary[]> {
   const [mine, shared, shown] = await Promise.all([
     current() ? sessions() : [],
-    community(fresh).catch((e) => {
+    community().catch((e) => {
       console.error(e);
       return [];
     }),
     showcases(),
   ]);
   const known = cards();
+  const listed = new Map(shared.map((p) => [p.id, p]));
   const builds = mine.map((s): BuildSummary => {
     const saved = known[s.id];
-    const prompt = saved?.prompt || s.firstMessage?.message || "";
+    const published = listed.get(s.id);
+    const prompt = saved?.prompt || s.firstMessage?.message || published?.prompt || "";
     return {
       id: s.id,
-      name: saved?.name ?? (prompt.slice(0, 60) || NEW_CARD.name),
+      name: [saved?.name, published?.name, prompt.slice(0, 60)].find((n) => n && n !== NEW_CARD.name) ?? NEW_CARD.name,
       prompt,
       status: status(s.status),
       created: s.createdAt.getTime() / 1000,
-      pieces: saved?.pieces ?? null,
-      thumbnail: saved?.thumbnail ?? null,
+      pieces: saved?.pieces ?? published?.pieces ?? null,
+      thumbnail: saved?.thumbnail ?? published?.thumbnail ?? null,
       source: "session",
       author: null,
       owner: null,

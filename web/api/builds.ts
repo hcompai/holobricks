@@ -7,7 +7,11 @@ import { enter, files, find, library, type Published, save, unlist } from "./lib
 const ID = /^[\w-]{1,100}$/;
 const THUMBNAIL = /^data:image\/(webp|png|jpeg);base64,([A-Za-z0-9+/=]+)$/;
 const MAX_THUMBNAIL = 512 * 1024;
-const SHARED = { "Cache-Control": "public, max-age=0, s-maxage=30, stale-while-revalidate=300" };
+const SHARED = { "Cache-Control": "public, max-age=0, s-maxage=15, stale-while-revalidate=60" };
+
+/** Republishing overwrites a build's files in place: its URLs carry the time, past the Blob CDN's cache. */
+const versioned = (url: string, at: number) => `${url}?v=${at}`;
+const bare = (url: string) => url.split("?")[0];
 
 function buildId(value: unknown): string {
   if (typeof value !== "string" || !ID.test(value)) throw new Refusal(400, "No such build.");
@@ -50,7 +54,8 @@ export const POST = route(async (request) => {
   };
   const build = await snapshot(id, key, given.edits, (name, image) => keep(name, image, image.type || "image/png"));
   const coverUrl = cover ? await keep(`thumbnail.${cover.type.split("/")[1]}`, cover.data, cover.type) : null;
-  if (!cover && previous?.thumbnail) written.push(previous.thumbnail);
+  if (!cover && previous?.thumbnail) written.push(bare(previous.thumbnail));
+  const at = Math.floor(Date.now() / 1000);
   const published: Published = {
     id,
     name: build.name,
@@ -59,9 +64,9 @@ export const POST = route(async (request) => {
     steps: build.steps.length,
     author: user.name,
     owner: user.id,
-    published: Math.floor(Date.now() / 1000),
-    thumbnail: coverUrl ?? previous?.thumbnail ?? null,
-    build: await keep("build.json.gz", gzipSync(JSON.stringify(build)), "application/gzip"),
+    published: at,
+    thumbnail: coverUrl ? versioned(coverUrl, at) : (previous?.thumbnail ?? null),
+    build: versioned(await keep("build.json.gz", gzipSync(JSON.stringify(build)), "application/gzip"), at),
   };
   await enter(published, before, written);
   return Response.json(published, { status: 201 });

@@ -75,18 +75,23 @@ test("anyone can open a public build from the library, shown under its author's 
   await page.goto("/");
   await expect(page.locator(".gallery-note")).toContainText("Sign in with your H account to build with Holo.");
 
-  await page.getByRole("tab", { name: "Library" }).click();
-  await expect(page.getByRole("region", { name: "Your builds" })).toHaveCount(0);
-  const card = page.getByRole("region", { name: "Community" }).locator(".card");
-  await expect(card).toContainText("by Ada Lovelace");
-  await card.click();
+  await page.getByRole("button", { name: "Library" }).click();
+  await expect(page).toHaveURL(/\?library=public$/);
+  const tile = page.locator(".library-page .tile");
+  await expect(tile).toContainText("by Ada Lovelace");
+  await page.getByRole("tab", { name: /^Mine/ }).click();
+  await expect(page.locator(".library-page")).toContainText("Sign in with your H account");
+  await page.getByRole("tab", { name: /^Public/ }).click();
+  await tile.click();
   await expect(page).toHaveURL(/\?public=tower$/);
   await shown(page, tower.revision);
   await expect(page.locator(".gallery-note")).toHaveText(/^Shared by Ada Lovelace\./);
   await expect(page.getByRole("button", { name: "Publish", exact: true })).toHaveCount(0);
 });
 
-test("the author publishes a build with its render and the signed-in key, then takes it out", async ({ page }) => {
+test("the author publishes a build with its render and the signed-in key, lands on it, then takes it out", async ({
+  page,
+}) => {
   const model = fixture();
   await site(page);
   const agp = await platform(page);
@@ -99,25 +104,32 @@ test("the author publishes a build with its render and the signed-in key, then t
   await shown(page, model.revision);
 
   await page.getByRole("button", { name: "Publish", exact: true }).click();
+  await expect(page).toHaveURL(/\?public=mine$/);
+  await shown(page, model.revision);
   const unpublish = page.getByRole("button", { name: "Public", exact: true });
   await expect(unpublish).toHaveAttribute("aria-pressed", "true");
   const post = calls.find((c) => c.method === "POST")!;
   expect(post.headers).toMatchObject({ authorization: `Bearer ${ACCOUNT.pass}`, "x-agents-key": ACCOUNT.key });
   expect(post.body).toEqual({ id: "mine", thumbnail: expect.stringMatching(/^data:image\/webp;base64,/), edits: null });
 
-  await page.getByRole("tab", { name: "Library" }).click();
-  await expect(page.getByRole("region", { name: "Your builds" }).locator(".card")).toContainText("public");
-  await expect(page.getByRole("region", { name: "Community" }).locator(".card")).toContainText(
-    `by ${ACCOUNT.user.name}`,
-  );
+  const shelf = page.getByRole("button", { name: "Library" });
+  const tiles = page.locator(".library-page .tile");
+  await shelf.click();
+  await expect(tiles).toContainText("public");
+  await page.getByRole("tab", { name: /^Public/ }).click();
+  await expect(tiles).toContainText(`by ${ACCOUNT.user.name}`);
+  await shelf.click();
 
   await unpublish.click();
+  await expect(page).toHaveURL(/\?build=mine$/);
   await expect(page.getByRole("button", { name: "Publish", exact: true })).toBeVisible();
   expect(calls.find((c) => c.method === "DELETE")).toMatchObject({
     search: "?id=mine",
     headers: { authorization: `Bearer ${ACCOUNT.pass}`, "x-agents-key": ACCOUNT.key },
   });
-  await expect(page.getByRole("region", { name: "Community" })).toHaveCount(0);
+  await shelf.click();
+  await page.getByRole("tab", { name: /^Public/ }).click();
+  await expect(tiles).toHaveCount(0);
 });
 
 test("signing in goes through the H portal's window, and the next sign-in revokes the last key", async ({
