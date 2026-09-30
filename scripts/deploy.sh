@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Build the web app with the toolkit and the showcases, and deploy it to Vercel: scripts/deploy.sh --preview|--prod
-# Pushes to master that pass CI deploy to production: the deploy job in .github/workflows/ci.yml runs this with CI set.
+# Pushes to master that pass CI deploy to production, and so does a weekly run that keeps the catalog snapshot fresh:
+# the deploy job in .github/workflows/ci.yml runs this with CI set.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
