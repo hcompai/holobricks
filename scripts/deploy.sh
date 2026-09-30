@@ -37,7 +37,13 @@ server/.venv/bin/brickyard-catalog --out "$catalog" --max-age 20
 [[ "$catalog" -ef data/rebrickable.json.gz ]] || cp "$catalog" data/rebrickable.json.gz
 gh release upload "$release" data/rebrickable.json.gz --clobber
 server/.venv/bin/python scripts/pack-toolkit.py
-server/.venv/bin/brickyard-prices   # web/public/pick-a-brick.json: today's Pick a Brick prices for the estimate
+# web/public/pick-a-brick.json: today's Pick a Brick prices for the estimate, else the last table fetched.
+if server/.venv/bin/brickyard-prices; then
+  gh release upload "$release" web/public/pick-a-brick.json --clobber
+else
+  echo "warning: Pick a Brick did not answer; deploying the last price table" >&2
+  gh release download "$release" --pattern pick-a-brick.json --dir web/public --clobber
+fi
 [[ -f web/.vercel/project.json ]] || (cd web && vercel link --yes --scope h-company --project brickyard ${vercel[@]+"${vercel[@]}"})
 (cd web && npm run build)
 rm -rf web/.vercel/output && mkdir -p web/.vercel/output
