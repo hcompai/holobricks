@@ -96,7 +96,7 @@ def test_a_run_writes_the_complete_revision_once(bench, monkeypatch):
     monkeypatch.setattr(Workspace, "save", record)
     code = CORE + 'step("Top")\nbrick("3001", 0, 0, 3, 15)\nstep("Side")\nbrick("3001", 5, 0, 0, 14)\n'
     result = bench.run_script(code)
-    assert result.problems == 1 and "disconnected_model" in result.text
+    assert result.problems == 0 and "disconnected_model" in result.text
     assert len(writes) == 1 and len(writes[0].steps) == len(writes[0].pieces) == 3 and writes[0].script == code
 
 
@@ -208,8 +208,10 @@ def test_bricks_works_on_the_build_in_its_directory_and_exits_1_on_problems(
     assert json.loads(gzip.decompress((tmp_path / MODEL).read_bytes()))["parts"].keys() == {"3001.dat"}
     assert bricks("name", "Red brick") == 0 and saved(Workbench(Workspace.open(tmp_path))).name == "Red brick"
     (tmp_path / "loose.py").write_text(CORE + 'step("Loose")\nbrick("3001", 8, 0, 0, 4)\n')
-    assert bricks("run", "loose.py") == 1
+    assert bricks("run", "loose.py") == 0
     assert "disconnected_model" in capsys.readouterr().out
+    (tmp_path / "outside.py").write_text(CORE + 'brick("3001", -1, 0, 0, 4)\n')
+    assert bricks("run", "outside.py") == 1
     plan = tmp_path / "plan.json"
     plan.write_text(json.dumps({"revision": "stale", "root": "model", "groups": []}))
     assert bricks("assembly", str(plan)) == 1
