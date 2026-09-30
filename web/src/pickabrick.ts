@@ -42,7 +42,7 @@ let table: Promise<PriceTable | null> | null = null;
 /** The deployed price table, or null when the app was built without one. */
 function prices(): Promise<PriceTable | null> {
   // A static host answers a missing file with the app's page, so a table that does not parse is no table.
-  table ??= loadAsset(TABLE, new AbortController().signal)
+  table ??= loadAsset(TABLE)
     .then((text) => {
       const parsed: PriceTable = JSON.parse(text);
       return parsed.currency && parsed.prices ? parsed : null;
