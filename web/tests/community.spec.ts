@@ -86,7 +86,7 @@ test("a colleague's public build opens from the library's Public section, under 
   await tile.click();
   await expect(page).toHaveURL(/\?public=tower$/);
   await shown(page, tower.revision);
-  await expect(page.locator(".gallery-note")).toHaveText(/^Shared by Ada Lovelace\./);
+  await expect(page.locator(".gallery-note")).toHaveText(/^Shared by Ada Lovelace: remix it to make your own\./);
   await expect(page.getByRole("button", { name: "Publish", exact: true })).toHaveCount(0);
 });
 
