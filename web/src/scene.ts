@@ -54,6 +54,7 @@ interface Light {
 /** The user's view: a sun from the upper left, so the default camera sees the shadows it casts. */
 const FLOOR_SHADOW = 0.18;
 const GLIDE_MS = 450;
+const RENDER_QUALITY = 0.9;
 const SETTLE_MS = 400;
 /** Pieces past which a moving view drops to one pixel per point. */
 const LARGE_MODEL = 5000;
@@ -1033,10 +1034,10 @@ export class BrickScene {
     this.dirty = true;
   }
 
-  /** Square renders of the whole model, or only of what lies in `box`, as a PNG, leaving the user's camera and timeline untouched. */
+  /** Square renders of the whole model, or only of what lies in `box`, as a JPEG, leaving the user's camera and timeline untouched. */
   private offscreen(...args: Parameters<BrickScene["paint"]>): Promise<Blob | null> {
     const canvas = this.paint(...args);
-    return new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
+    return new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", RENDER_QUALITY));
   }
 
   /**

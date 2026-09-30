@@ -47,7 +47,7 @@ test("a live build shows the loader until its first model, each shared model, an
   await expect.poll(() => agp.posted("/tool_results")).toHaveLength(2);
   const [caption, image] = agp.posted("/tool_results")[1].result;
   expect(caption).toMatch(new RegExp(`^Revision ${model.revision.slice(0, 8)}, 8 pieces\\. The view from 90 degrees`));
-  expect(image).toMatch(/^data:image\/png;base64,/);
+  expect(image).toMatch(/^data:image\/jpeg;base64,/);
 
   const recolored = revised({ ...model, pieces: model.pieces.map((p) => ({ ...p, color: 1 })) });
   agp.state("live", "running");
@@ -75,7 +75,7 @@ test("Holo keeps getting its renders while the user browses other builds", async
   await expect.poll(() => agp.posted("/tool_results")).toHaveLength(1);
   const [caption, image] = agp.posted("/tool_results")[0].result;
   expect(caption).toMatch(`Revision ${model.revision.slice(0, 8)}`);
-  expect(image).toMatch(/^data:image\/png;base64,/);
+  expect(image).toMatch(/^data:image\/jpeg;base64,/);
 });
 
 test("a lost connection hides the model until the platform answers again", async ({ page }) => {
