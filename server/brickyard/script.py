@@ -34,11 +34,15 @@ class Script:
             self.columns.setdefault(cell, []).append((lo, hi))
 
     @staticmethod
-    def _line() -> int:
+    def _lines() -> tuple[int, int]:
+        """The script line that made the brick and the top-level line that led to it, the same outside helpers."""
+        lines = []
         frame = sys._getframe(1)
-        while frame and frame.f_code.co_filename != SOURCE:
+        while frame:
+            if frame.f_code.co_filename == SOURCE:
+                lines.append(frame.f_lineno)
             frame = frame.f_back
-        return frame.f_lineno if frame else 0
+        return (lines[0], lines[-1]) if lines else (0, 0)
 
     def _add(self, bricks: list[Brick]) -> None:
         if not self.steps:
@@ -46,10 +50,10 @@ class Script:
         self.count += len(bricks)
         if self.count > MAX_BRICKS:
             raise ValueError(f"the script makes more than {MAX_BRICKS} bricks")
-        line = self._line()
+        line, call = self._lines()
         for b in bricks:
+            self.steps[-1]["bricks"].append(b | {"line": line, "call": call})
             if "facing" in b:
-                self.steps[-1]["bricks"].append(b | {"line": line})
                 continue
             try:
                 x, y, w, d, z, height = self._extent(b)
@@ -57,7 +61,6 @@ class Script:
                 pass
             else:
                 self._occupy(shapes.rect(x, y, w, d), z, z + height)
-            self.steps[-1]["bricks"].append(b | {"line": line})
 
     @staticmethod
     def _extent(b: Brick) -> tuple[int, int, int, int, int, int]:

@@ -120,6 +120,14 @@ def test_a_step_with_floating_bricks_is_rebuilt_and_reported_every_run(bench):
         assert 'line 4 `brick("3005", 10, 10, 6, 4)` (3005 at x=10 y=10 z=6): nothing under' in result.text
 
 
+def test_problems_made_in_a_helper_name_each_line_that_called_it(bench):
+    code = 'def column(x):\n    brick("3005", x, 0, 3, 4)\nstep("Columns")\ncolumn(0)\ncolumn(5)\n'
+    result = bench.run_script(code)
+    for line, x in ((4, 0), (5, 5)):
+        cited = f'line 2 `brick("3005", x, 0, 3, 4)` from line {line} `column({x})` (3005 at x={x} y=0 z=3)'
+        assert cited in result.text, result.text
+
+
 def test_a_run_with_problems_in_every_step_leads_with_its_revision_and_stays_short(bench):
     code = "".join(f'step("Floor {n}")\nfor x in range(40):\n    brick("3001", -1, x, 0, 4)\n' for n in range(9))
     result = bench.run_script(code)

@@ -343,7 +343,7 @@ class Workbench:
         source = code.splitlines()
         reports, floating = [], []
         for n, (s, key) in enumerate(zip(steps[same:], keys[same:], strict=True), kept_steps + 1):
-            bricks = [b | {"label": _line(source, b["line"])} for b in s["bricks"]]
+            bricks = [b | {"label": _cite(source, b["line"], b["call"])} for b in s["bricks"]]
             try:
                 parsed = [Brick.model_validate(b) for b in bricks]
             except ValidationError as e:
@@ -508,14 +508,14 @@ def _catalog_issues(report: dict) -> str:
 
 
 def _cite_lines(report: dict, steps: list[dict], source: list[str]) -> None:
-    """Give each catalog issue the first script lines that made its part/color pair."""
-    made: dict[tuple, set[int]] = defaultdict(set)
+    """Give each catalog issue the first script lines and calls that made its part/color pair."""
+    made: dict[tuple, set[tuple[int, int]]] = defaultdict(set)
     for step in steps:
         for b in step["bricks"]:
-            made[ldraw.resolve(str(b["part"])), b["color"]].add(b["line"])
+            made[ldraw.resolve(str(b["part"])), b["color"]].add((b["line"], b["call"]))
     for issue in report["issues"]:
         found = sorted(made.get((issue.get("part"), issue.get("color")), ()))
-        issue["lines"] = [where for n in found[:LINES_CITED] if (where := _line(source, n))]
+        issue["lines"] = [where for line, call in found[:LINES_CITED] if (where := _cite(source, line, call))]
 
 
 def _floating(flags: list[tuple[int, str, str]]) -> str:
@@ -540,8 +540,14 @@ def _line(source: list[str], n: int) -> str | None:
     return f"line {n} `{source[n - 1].strip()[:70]}`" if 0 < n <= len(source) else None
 
 
+def _cite(source: list[str], line: int, call: int) -> str | None:
+    """The line that made a brick, then the top-level line that called it when a helper made it."""
+    made, via = _line(source, line), _line(source, call)
+    return f"{made} from {via}" if made and via and call != line else made
+
+
 def _digest(step: dict) -> str:
-    bricks = [{k: v for k, v in b.items() if k != "line"} for b in step["bricks"]]
+    bricks = [{k: v for k, v in b.items() if k not in ("line", "call")} for b in step["bricks"]]
     return hashlib.sha256(json.dumps([step["title"], bricks], sort_keys=True).encode()).hexdigest()[:16]
 
 

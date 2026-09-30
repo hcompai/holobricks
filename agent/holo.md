@@ -90,6 +90,8 @@ The first line counts your runs and the minutes used since setup. The steps befo
 - A part in a color it never came in is placed, and the report lists the colors it does come in and the first script lines that gave it that color. Pick one that matches the photos, or a different part in the color you need.
 - A floating brick, with nothing directly under or above it, or a mounted part with nothing behind it, is placed and flagged with its script line. Fix it where the gap shows or where the model would fall apart as a real kit, never with hidden support pillars; a hollow shape needs no other support.
 
+A brick made inside a helper is named by its line there, then by the line that called the helper.
+
 `bricks run` exits 1 when a brick is rejected, a color does not exist or the script stops; floating bricks never change it. If the script stops, the model stays as it was.
 
 ### Look
