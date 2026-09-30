@@ -22,6 +22,7 @@ from brickyard.model import (
     bounds,
     footprint,
     grid,
+    mount,
     place,
     with_accessories,
 )
@@ -43,6 +44,8 @@ class Brick(BaseModel):
     z: int
     color: int
     rotation: int = 0
+    facing: str | None = None
+    """Set for a part mounted on a wall, its top turned to face that side."""
     label: str | None = None
     """How problems name the brick, like the script line that made it."""
 
@@ -173,6 +176,11 @@ class Workbench:
                 rejected.append(f"{label}: rotation must be 0, 90, 180 or 270")
             elif brick.z < 0:
                 rejected.append(f"{label}: below the ground")
+            elif brick.facing is not None:
+                if brick.facing in FACINGS:
+                    candidates.append((label, mount(part, brick.x, brick.y, brick.z, brick.color, brick.facing), False))
+                else:
+                    rejected.append(f"{label}: facing must be south, north, west or east")
             else:
                 placement = place(part, brick.x, brick.y, brick.z, brick.color, brick.rotation)
                 candidates.append((label, placement, brick.z > 0))
@@ -185,7 +193,7 @@ class Workbench:
         for label, placement, needs_support in candidates:
             box = bounds(placement)
             if box[0][0] < -EPS or box[0][2] < -EPS:
-                rejected.append(f"{label}: x and y start at 0")
+                rejected.append(f"{label}: x and y start at 0; to make room, add an offset to the whole plan")
                 continue
             neighbors = near(box)
             hit = next(((other, what) for other, what in neighbors if _collides(box, other)), None)
@@ -313,9 +321,8 @@ class Workbench:
         lines.append("Steps: pieces, then where they sit in studs (x, y) and plates (z, bottom to top):")
         lines.append(self.describe())
         lines.append(self.summary() + self.colors() + self.parts())
-        physical = self.assembly_plan()
-        lines.append(physical.text)
-        return Result("\n".join(lines) + printed, problems=problems + physical.problems)
+        lines.append("Kit, a note for ordering the model as one connected kit: " + self.assembly_plan().text)
+        return Result("\n".join(lines) + printed, problems=problems)
 
     def assembly_plan(self, plan: dict | None = None) -> Result:
         """Plan/check the current frozen revision without editing its geometry."""
@@ -409,12 +416,16 @@ class Workbench:
         for p in self.pieces:
             boxes.setdefault(p.step, []).append(indexed[p.id][1])
         s, lines = ldraw.STUD, []
+
+        def studs(lo: float, hi: float) -> str:
+            return f"{math.floor((lo + EPS) / s)}-{math.ceil((hi - EPS) / s) - 1}"
+
         for step in self.workspace.build.steps:
             if step.index not in boxes:
                 continue
             los, his = [b[0] for b in boxes[step.index]], [b[1] for b in boxes[step.index]]
-            x = f"{round(min(v[0] for v in los) / s)}-{round(max(v[0] for v in his) / s) - 1}"
-            y = f"{round(min(v[2] for v in los) / s)}-{round(max(v[2] for v in his) / s) - 1}"
+            x = studs(min(v[0] for v in los), max(v[0] for v in his))
+            y = studs(min(v[2] for v in los), max(v[2] for v in his))
             z = f"{max(0, round(min(-v[1] for v in his) / ldraw.PLATE))}-{max(map(_top, boxes[step.index]))}"
             n = len(boxes[step.index])
             lines.append(f"{step.index + 1} {step.title}: {n} piece{'s' * (n != 1)}, x {x}, y {y}, z {z}")

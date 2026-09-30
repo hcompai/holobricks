@@ -87,7 +87,7 @@ for x in range(0, 32, 2):
 
 def test_a_script_rebuilds_from_its_first_changed_step_and_names_the_lines_of_its_problems(bench):
     first = bench.run_script(HOUSE)
-    assert first.problems == 1 and "roof top 18" in first.text and "disconnected_model" in first.text, first.text
+    assert first.problems == 0 and "roof top 18" in first.text and "disconnected_model" in first.text, first.text
     assert [s.title for s in bench.workspace.build.steps] == ["Walls", "Roof", "Paving"]
     walls = [p for p in bench.pieces if p.step == 0]
 
@@ -99,7 +99,7 @@ def test_a_script_rebuilds_from_its_first_changed_step_and_names_the_lines_of_it
     stray = HOUSE.replace("320", "4") + 'brick("3001", -1, 0, 0, 4)\n'
     for _ in range(2):
         result = bench.run_script(stray)
-        assert result.problems == 2 and "kept steps 1 to 2 unchanged, rebuilt and checked 1 step." in result.text
+        assert result.problems == 1 and "kept steps 1 to 2 unchanged, rebuilt and checked 1 step." in result.text
         assert "disconnected_model" in result.text
         assert 'line 12 `brick("3001", -1, 0, 0, 4)` (3001 at x=-1 y=0 z=0): x and y start at 0' in result.text
     assert {p.step for p in bench.pieces} == {0, 1, 2}
@@ -122,6 +122,18 @@ def test_a_run_with_problems_in_every_step_leads_with_its_revision_and_stays_sho
     )
     assert "... and 348 more like these in steps 1, 2, 3, 4, 5, 6, 7, 8, 9." in result.text
     assert len(result.text) < 8000
+
+
+def test_a_part_mounted_on_a_wall_face_hangs_there_without_raising_the_wall(bench):
+    code = (
+        'step("Tower")\nfor z in range(0, 12, 3):\n    brick("3003", 4, 4, z, 71)\n'
+        'step("Clock")\nmount("4150p03", 4, 3, 4, 15, "south")\nprint("top", top(4, 3), top(4, 4))\n'
+        'mount("3070b", 4, 3, 1, 15, "up")\n'
+    )
+    result = bench.run_script(code)
+    assert "top 0 12" in result.text and "Floating" not in result.text, result.text
+    assert "2 Clock: 1 piece, x 4-5, y 3-3, z 4-9" in result.text
+    assert result.problems == 1 and "facing must be south, north, west or east" in result.text
 
 
 def test_a_run_names_its_parts_so_a_color_passed_as_the_part_shows(bench):
@@ -149,12 +161,12 @@ def test_a_step_builds_the_same_bricks_whatever_randomness_the_steps_before_it_u
     assert trees_after(1) == trees_after(50)
 
 
-def test_the_showcase_builds_but_is_not_a_verified_connected_assembly(bench):
+def test_the_showcase_builds_with_no_problems_and_notes_what_keeps_it_from_one_kit(bench):
     example = (Path(__file__).resolve().parents[2] / "agent" / "showcase" / "bag-end.py").read_text()
     result = bench.run_script(example)
     assert len(bench.workspace.build.pieces) > 10_000, result.text
     assert "No problems: every brick is known, fits" in result.text
-    assert result.problems == 1 and "disconnected_model" in result.text
+    assert result.problems == 0 and "Kit, a note for ordering" in result.text and "disconnected_model" in result.text
 
 
 def test_the_prompt_names_only_real_parts_sizes_and_colors():

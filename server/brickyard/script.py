@@ -14,7 +14,7 @@ from brickyard.shapes import Brick, Cell
 SOURCE = "<script>"
 MAX_BRICKS = 100_000
 PRINT_LIMIT = 2000
-API = ("step", "brick", "top")
+API = ("step", "brick", "mount", "top")
 
 
 class Script:
@@ -46,6 +46,9 @@ class Script:
             raise ValueError(f"the script makes more than {MAX_BRICKS} bricks")
         line = self._line()
         for b in bricks:
+            if "facing" in b:
+                self.steps[-1]["bricks"].append(b | {"line": line})
+                continue
             try:
                 w, d = shapes.footprint(b["part"], b["rotation"])
                 height = ldraw.info(ldraw.resolve(b["part"]) or b["part"]).plates
@@ -62,6 +65,10 @@ class Script:
 
     def brick(self, part: str, x: int, y: int, z: int, color: int, rotation: int = 0) -> None:
         self._add([shapes.brick(str(part), x, y, z, color, rotation)])
+
+    def mount(self, part: str, x: int, y: int, z: int, color: int, facing: str) -> None:
+        """A part on a wall's face, its top toward `facing`; `top` does not count it."""
+        self._add([{"part": str(part), "x": x, "y": y, "z": z, "color": color, "facing": facing}])
 
     def top(self, x: int, y: int, w: int = 1, d: int = 1) -> int:
         """The highest plate height filled over the rectangle, 0 on bare ground."""
