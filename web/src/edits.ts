@@ -10,7 +10,9 @@ export type Edit =
   | { kind: "delete"; ids: number[] }
   | { kind: "move"; ids: number[]; by: [number, number, number] }
   | { kind: "rotate"; ids: number[]; turns: 1 | -1; about: [number, number] }
-  | { kind: "color"; ids: number[]; color: number };
+  | { kind: "color"; ids: number[]; color: number }
+  /** Copies of the pieces, moved `by`; the copy of `ids[i]` takes id `first + i`. */
+  | { kind: "duplicate"; ids: number[]; by: [number, number, number]; first: number };
 
 export const STUD = 20;
 export const PLATE = 8;
@@ -70,20 +72,26 @@ export function pivot(pieces: Piece[]): [number, number] {
   return [middle(0), middle(2)];
 }
 
-/** The pieces with `edits` applied in order; pieces an edit names that are already deleted are skipped. */
+const moved = (piece: Piece, by: [number, number, number]): Piece => ({
+  ...piece,
+  pos: [0, 1, 2].map((k) => piece.pos[k] + by[k]) as Piece["pos"],
+});
+
+/** The pieces with `edits` applied in order; pieces an edit names that are already deleted are skipped. Copies come last. */
 export function applyEdits(pieces: Piece[], edits: Edit[]): Piece[] {
+  // A Map keeps its order: changed pieces stay in place, copies are appended.
   const byId = new Map(pieces.map((p) => [p.id, p]));
   for (const edit of edits)
-    for (const id of edit.ids) {
+    edit.ids.forEach((id, i) => {
       const piece = byId.get(id);
-      if (!piece) continue;
+      if (!piece) return;
       if (edit.kind === "delete") byId.delete(id);
-      else if (edit.kind === "move")
-        byId.set(id, { ...piece, pos: [0, 1, 2].map((k) => piece.pos[k] + edit.by[k]) as Piece["pos"] });
+      else if (edit.kind === "move") byId.set(id, moved(piece, edit.by));
       else if (edit.kind === "color") byId.set(id, { ...piece, color: edit.color });
+      else if (edit.kind === "duplicate") byId.set(edit.first + i, { ...moved(piece, edit.by), id: edit.first + i });
       else byId.set(id, turn(piece, edit.turns, edit.about));
-    }
-  return pieces.filter((p) => byId.has(p.id)).map((p) => byId.get(p.id)!);
+    });
+  return [...byId.values()];
 }
 
 /** The model as an LDraw file, one STEP per build step, like the toolkit writes it. */
