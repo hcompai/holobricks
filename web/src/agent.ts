@@ -96,19 +96,19 @@ async function message(
   return { type: "user_message", message: text, images: photos, files };
 }
 
-/** Start a build; the session starts empty, then takes the first message with the toolkit, `attached` and the photos. */
+/** Start a build with its first message: the toolkit, `attached` and the photos. */
 export async function create(text: string, photos: string[], attached: Record<string, Blob> = {}): Promise<string> {
   const toolkit = await fetch(TOOLKIT);
   if (!toolkit.ok) throw new Error("The Brickyard toolkit is missing from this site.");
   const first = await message(text, photos, { "brickyard.tgz": await toolkit.blob(), ...attached });
   const session = await client.startSession({
     agent: agent(),
+    messages: [first],
     maxSteps: MAX_STEPS,
     maxTimeS: MAX_TIME_S,
     idleTimeoutS: IDLE_TIMEOUT_S,
     deleteAfterMin: null,
   });
-  await session.sendMessage(first);
   return session.id;
 }
 

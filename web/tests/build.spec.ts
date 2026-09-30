@@ -184,7 +184,7 @@ test("a new build sends the toolkit and the photos; Stop makes Holo answer and t
     environments: [{ kind: "workstation", id: "brickyard" }],
   });
   expect(session.agent.tools.map((t: { name: string }) => t.name)).toEqual(["look"]);
-  const [first] = agp.posted("/messages");
+  const [first] = session.messages;
   expect(first.message).toBe(prompt);
   expect(first.images).toEqual([expect.stringMatching(/^data:image\/jpeg;base64,/)]);
   expect(first.files.map((f: { name: string }) => f.name)).toEqual(["brickyard.tgz", "photo-1.jpg"]);
@@ -199,8 +199,8 @@ test("a new build sends the toolkit and the photos; Stop makes Holo answer and t
 
   await page.getByPlaceholder("Describe how to change it…").fill("Add the lighthouse");
   await send.click();
-  await expect.poll(() => agp.posted("/messages")).toHaveLength(2);
-  expect(agp.posted("/messages")[1]).toMatchObject({ message: "Add the lighthouse", files: [] });
+  await expect.poll(() => agp.posted("/messages")).toHaveLength(1);
+  expect(agp.posted("/messages")[0]).toMatchObject({ message: "Add the lighthouse", files: [] });
 });
 
 test("the library shows my builds by the names Holo gave them; showcases under Public", async ({ page }) => {

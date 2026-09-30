@@ -106,7 +106,7 @@ test("a remix of a public build starts a private session from a script placing e
   await page.getByRole("button", { name: "Send", exact: true }).click();
   await expect(page).toHaveURL(/\?build=new-build$/);
   await expect(page.locator("header .title")).toHaveText("Ada's tower remix");
-  const [first] = agp.posted("/messages");
+  const [first] = agp.posted("/api/v2/sessions")[0].messages;
   expect(first.message).toBe("Make it twice as tall");
   expect(first.files.map((f: { name: string }) => f.name)).toEqual(["brickyard.tgz", "remix.py"]);
   const script = Buffer.from(first.files[1].source, "base64").toString();
