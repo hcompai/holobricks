@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { gunzipSync } from "node:zlib";
+import { gunzipSync, gzipSync } from "node:zlib";
 import { fixture, site } from "./fixtures";
 import { platform } from "./platform";
 
@@ -19,6 +19,7 @@ test("recover a failed build with its exact checkpoint, original requests and ph
   agp.session("failed", "failed");
   agp.say("failed", "Build a tower", [photo]);
   agp.say("failed", "Make the roof red");
+  agp.attach("failed", "remix.py", Buffer.from("old starting model"));
   agp.step("failed", "Adding the roof.", "PRIVATE_REASONING");
   agp.share("failed", saved);
   await page.goto("/?build=failed");
@@ -33,6 +34,7 @@ test("recover a failed build with its exact checkpoint, original requests and ph
   expect(created.messages[0].images).toEqual([photo]);
   const file = created.messages[0].files.find((f: any) => f.name === "recovery-model.json.gz");
   expect(gunzipSync(Buffer.from(file.source, "base64")).toString()).toBe(JSON.stringify(saved));
+  expect(created.messages[0].files.some((f: any) => f.name === "remix.py")).toBe(false);
   expect(JSON.stringify(created)).not.toContain("PRIVATE_REASONING");
   expect(agp.posted("/messages")).toHaveLength(0);
   await page.getByRole("link", { name: "Open original build" }).click();
@@ -71,7 +73,9 @@ test("legacy builds honestly restart with the same request; failed creation pres
   agp.refuse = [503];
   await page.goto("/?build=legacy");
   const retry = page.getByRole("button", { name: "Try again with same request" });
-  await expect(page.getByRole("region", { name: "Build recovery" })).toContainText("will start over");
+  await expect(page.getByRole("region", { name: "Build recovery" })).toContainText(
+    "will restart from its original inputs",
+  );
   await retry.click();
   await expect(page.getByRole("alert")).toContainText("original build is unchanged");
   expect(agp.posted("/api/v2/sessions")).toHaveLength(1);
@@ -95,5 +99,39 @@ test("a missing original photo never silently creates a different build", async 
   await page.goto("/?build=failed");
   await page.getByRole("button", { name: "Try again with same request" }).click();
   await expect(page.getByRole("alert")).toBeVisible();
+  expect(agp.posted("/api/v2/sessions")).toHaveLength(0);
+});
+
+for (const seed of ["remix.py", "recovery-model.json.gz"]) {
+  test(`retry before the first share preserves the original ${seed}`, async ({ page }) => {
+    await site(page);
+    const agp = await platform(page);
+    const original =
+      seed === "remix.py"
+        ? Buffer.from('step("Tower")\nplace("3001", 4, (40, -8, 20))')
+        : gzipSync(JSON.stringify(model()));
+    agp.session("failed", "failed");
+    agp.say("failed", "Make the roof red");
+    agp.attach("failed", seed, original);
+    await page.goto("/?build=failed");
+    await page.getByRole("button", { name: "Try again with same request" }).click();
+    await expect(page).toHaveURL(/build=new-build$/);
+    const [created] = agp.posted("/api/v2/sessions");
+    const file = created.messages[0].files.find((f: any) => f.name === seed);
+    expect(Buffer.from(file.source, "base64")).toEqual(original);
+    expect(created.messages[0].message).toBe("Make the roof red");
+  });
+}
+
+test("a missing original remix model blocks retry instead of dropping the model", async ({ page }) => {
+  await site(page);
+  const agp = await platform(page);
+  agp.session("failed", "failed");
+  agp.say("failed", "Make the roof red");
+  const url = agp.attach("failed", "remix.py", Buffer.from("model"));
+  agp.files.delete(url);
+  await page.goto("/?build=failed");
+  await page.getByRole("button", { name: "Try again with same request" }).click();
+  await expect(page.getByRole("alert")).toContainText("original starting model could not be retrieved");
   expect(agp.posted("/api/v2/sessions")).toHaveLength(0);
 });

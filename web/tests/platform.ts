@@ -17,6 +17,7 @@ interface Session {
   events: object[];
   shared: number;
   group?: string;
+  error?: string;
 }
 
 interface Request {
@@ -57,6 +58,20 @@ export class Platform {
 
   say(id: string, text: string, images: unknown[] = []) {
     this.agent(id, { kind: "message_event", caller_id: "user", content: [text, ...images] });
+  }
+
+  attach(id: string, name: string, contents: Buffer) {
+    const url = `${AGP}/files/${id}/${name}`;
+    this.files.set(url, contents);
+    this.push(id, "AttachmentEvent", {
+      origin: "user",
+      name,
+      path: `/workspace/files/${name}`,
+      media_type: "application/octet-stream",
+      size_bytes: contents.length,
+      url,
+    });
+    return url;
   }
 
   step(id: string, content: string, reasoning = "", calls: { tool_name: string; args: object; id: string }[] = []) {
@@ -144,12 +159,16 @@ export async function platform(page: Page): Promise<Platform> {
       return reply(202);
     }
     if (action === "tool_results" || action === "force_answer") return reply(202);
-    if (action === "status") return reply(200, { status: session.status, error: null });
+    if (action === "status") return reply(200, { status: session.status, error: session.error ?? null });
     if (action === "changes") {
       if (agp.offline) return reply(503, { detail: "Unavailable" });
       const from = Number(url.searchParams.get("from_index") ?? 0);
       if (from < session.events.length)
-        return reply(200, { status: session.status, error: null, new_events: session.events.slice(from) });
+        return reply(200, {
+          status: session.status,
+          error: session.error ?? null,
+          new_events: session.events.slice(from),
+        });
       await new Promise((resolve) => setTimeout(resolve, 200));
       return reply(204);
     }

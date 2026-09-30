@@ -2402,3 +2402,60 @@ main {
   padding: 8px 14px;
   font-size: 12px;
 }
+
+.app.has-running {
+  grid-template-rows: 56px auto minmax(0, 1fr);
+}
+.build-notice {
+  grid-column: 1 / -1;
+  padding: 9px 20px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  background: var(--background-building);
+  border-bottom: 1px solid var(--stroke-default);
+}
+.build-notice strong {
+  color: var(--text-default);
+}
+.tab-hint {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin: 8px 0;
+}
+.failure-detail {
+  overflow-wrap: anywhere;
+  font-family: monospace;
+  font-size: 11px;
+}
+.recovery-panel details {
+  margin-top: 10px;
+}
+.recovery-panel summary {
+  cursor: pointer;
+}
+.gallery-note:has(.recovery-panel) {
+  display: block;
+  max-height: calc(100% - 20px);
+  overflow-y: auto;
+}
+.gallery-note:has(.recovery-panel) > button {
+  margin-top: 10px;
+  background: transparent;
+  color: var(--text-default);
+  border: 1px solid var(--stroke-default);
+}
+@media (max-width: 760px) {
+  .app.has-running {
+    grid-template-rows: 56px auto minmax(0, 11fr) minmax(0, 9fr);
+  }
+  .app.has-running main {
+    grid-row: 3;
+  }
+  .app.has-running aside {
+    grid-row: 4;
+  }
+  .build-notice {
+    padding: 8px 12px;
+  }
+}

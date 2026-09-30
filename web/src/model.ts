@@ -95,6 +95,8 @@ export interface Build extends Model {
   messages: Message[];
   /** Whether the builder takes a new message. */
   open: boolean;
+  /** Operational failure details, shown only on request. */
+  failure?: string | null;
 }
 
 /** Where a build is read from: a session of the signed-in user, the public library, or the showcases. */

@@ -130,6 +130,7 @@ function follow(id: string, signal: AbortSignal, notify: Listener, displayed: ()
         status: buildStatus(session),
         messages: shown(end ? [...transcript.messages, end] : transcript.messages),
         open: session === "idle",
+        failure: failure ?? transcript.error,
       },
       activity: buildStatus(session) === "building" ? activity(transcript) : null,
     });

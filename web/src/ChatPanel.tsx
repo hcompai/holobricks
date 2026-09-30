@@ -286,12 +286,13 @@ export function ChatPanel({ build, loading, activity, closed, onCreate, onSay, o
         )}
         {busy && activity && <Live activity={activity} />}
       </div>
+      {home && <p className="tab-hint">Keep this tab open while Holo builds: your browser provides the renders.</p>}
       {closed && !remixing && (
         <div className="gallery-note">
           <div>{closed}</div>
           {!!build?.pieces.length && (
             <button onClick={() => setRemixing(true)} title="Start your own build from a copy of this one">
-              <ShuffleIcon size={14} weight="bold" /> Remix
+              <ShuffleIcon size={14} weight="bold" /> {typeof closed === "string" ? "Remix" : "Remix a copy"}
             </button>
           )}
         </div>
