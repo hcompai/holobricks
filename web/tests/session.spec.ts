@@ -7,7 +7,9 @@ process.env.BRICKYARD_SECRET = "test-secret";
 
 const TOKEN = `h.${Buffer.from(JSON.stringify({ access: { org_id: "org-1" } })).toString("base64url")}.s`;
 
-/** The portal, vouching for `email`; returns the calls it got. */
+const keyNames = new Set<string>();
+
+/** The portal, vouching for `email`, with key names unique across the organization; returns the calls it got. */
 function portal(email: string) {
   const calls: string[] = [];
   const real = globalThis.fetch;
@@ -15,7 +17,13 @@ function portal(email: string) {
     const url = String(input);
     calls.push(`${init?.method ?? "GET"} ${url.replace(H.portal, "")}`);
     if (url.endsWith("/auth/me")) return Response.json({ user: { id: "u-1", email } });
-    if (init?.method === "POST") return Response.json({ id: "key-2", key: "hk-new", expires_at: "2026-10-30" });
+    if (init?.method === "POST") {
+      const { name } = JSON.parse(String(init.body));
+      if (keyNames.has(name))
+        return Response.json({ detail: "An API key with this name already exists" }, { status: 400 });
+      keyNames.add(name);
+      return Response.json({ id: "key-2", key: "hk-new", expires_at: "2026-10-30" });
+    }
     return new Response(null, { status: 204 });
   };
   return { calls, restore: () => void (globalThis.fetch = real) };
@@ -30,7 +38,7 @@ async function comeBack(cookies: Record<string, string>) {
   return { response, handoff: JSON.parse(cookie(handed.split(";")[0], HANDOFF)!) };
 }
 
-test("the portal's Google sign-in comes back as a key and a pass for H accounts only, where the user left", async () => {
+test("the portal's Google sign-in comes back as a key and a pass for every H account, and only them, where the user left", async () => {
   const pending = JSON.stringify({ previous: "key-1", back: "/?public=tower" });
   const h = portal("jane.doe@hcompany.ai");
   try {
@@ -50,6 +58,13 @@ test("the portal's Google sign-in comes back as a key and a pass for H accounts 
     ]);
   } finally {
     h.restore();
+  }
+
+  const colleague = portal("john.roe@hcompany.ai");
+  try {
+    expect((await comeBack({ [H.token]: TOKEN })).handoff).toMatchObject({ keyId: "key-2" });
+  } finally {
+    colleague.restore();
   }
 
   const outsider = portal("ada@example.com");
