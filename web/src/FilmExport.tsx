@@ -1,5 +1,6 @@
 import { CopyIcon, DownloadSimpleIcon, ShareNetworkIcon, XIcon } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
+import { BrickLoader } from "./BrickLoader";
 import type { Build } from "./model";
 import { FilmRenderer } from "./film";
 import { encodeGif } from "./filmGif";
@@ -195,7 +196,7 @@ export function FilmExport({ build, onClose }: Props) {
         >
           <canvas ref={canvas} hidden={!!url || !ready} aria-label="Film preview" />
           {url && <img src={url} alt={`Film of ${build.name}`} />}
-          {!ready && <span>{error ? "Preview unavailable" : "Loading the bricks…"}</span>}
+          {!ready && (error ? <span>Preview unavailable</span> : <BrickLoader label="Loading the bricks…" />)}
         </div>
         <div className="film-controls">
           <p className="film-context">
