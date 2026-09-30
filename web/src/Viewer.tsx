@@ -1,6 +1,6 @@
 import { type Ref, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { ArrowsClockwiseIcon, PencilSimpleIcon, PersonSimpleWalkIcon } from "@phosphor-icons/react";
-import type { Build, Piece, RenderRequest } from "./model";
+import type { Build, Piece } from "./model";
 import { BrickLoader } from "./BrickLoader";
 import { buildRevision } from "./buildRevision";
 import { ACTION_KEYS, type Action, EditBar, EditPanel } from "./EditPanel";
@@ -100,12 +100,9 @@ interface Props {
   /** What is opening, shown until its pieces are drawn; null when no build is open. */
   opening: string | null;
   step: number;
-  renderRequest: RenderRequest | null;
   syncError?: string | null;
   framing: Framing;
   spin: boolean;
-  /** Hand the builder a render it asked for; true once it has it. */
-  onRender: (request: RenderRequest, png: Blob) => Promise<boolean>;
   /** Called with a thumbnail once a finished revision is drawn. */
   onThumbnail: (png: Blob) => void;
   /** What shows before any build is open. */
@@ -121,13 +118,12 @@ interface Props {
 }
 
 export function Viewer(props: Props) {
-  const { ref, build, opening, step, renderRequest, framing, spin, onRender, onThumbnail, syncError, empty } = props;
+  const { ref, build, opening, step, framing, spin, onThumbnail, syncError, empty } = props;
   const { mode, edits, describe, palette, onMode } = props;
   const container = useRef<HTMLDivElement>(null);
   const scene = useRef<BrickScene | null>(null);
   const framedBuild = useRef<string | null>(null);
   const thumbnailed = useRef(new Set<string>());
-  const answered = useRef(new Set<string>());
   const [drawn, setDrawn] = useState<{ id: string; key: string; pieces: Build["pieces"] } | null>(null);
   const [renderError, setRenderError] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
@@ -230,31 +226,6 @@ export function Viewer(props: Props) {
       clearTimeout(timer);
     };
   }, [ready, build?.status, version]);
-
-  useEffect(() => {
-    const s = scene.current;
-    if (!s || !ready || syncError || !build || !renderRequest || answered.current.has(renderRequest.request)) return;
-    const { request, camera, box, revision } = renderRequest;
-    if (build.revision !== revision) return;
-    let active = true;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const answer = async () => {
-      try {
-        const png = await s.renderBuild(build.pieces, revision, camera, box);
-        if (!active || !png || answered.current.has(request)) return;
-        if (await onRender(renderRequest, png)) answered.current.add(request);
-        else if (active) timer = setTimeout(answer, 2000);
-      } catch (error) {
-        console.error("Could not answer a render request", error);
-        if (active) timer = setTimeout(answer, 2000);
-      }
-    };
-    void answer();
-    return () => {
-      active = false;
-      clearTimeout(timer);
-    };
-  }, [renderRequest, build?.id, build?.pieces, ready, syncError]);
 
   useEffect(() => scene.current?.setVisibleStep(step), [step, retry]);
 

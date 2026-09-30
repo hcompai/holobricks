@@ -19,6 +19,7 @@ import { FilmExport } from "./FilmExport";
 import { InstructionsExport } from "./InstructionsExport";
 import { library, publish, remember, thumbnail, unpublish } from "./library";
 import { type BuildRef, useBuild } from "./useBuild";
+import { useKeeper } from "./useSession";
 import { ThemeToggle } from "./ThemeToggle";
 import { type Framing, type Mode, ViewControls, Viewer, type ViewerHandle } from "./Viewer";
 
@@ -59,7 +60,7 @@ export default function App({ account }: { account: Account }) {
   opened.current = ref;
   const [libraryOpen, setLibraryOpen] = useState(urlLibrary);
   const buildId = ref?.id ?? null;
-  const { build: live, loading, thinking, renderRequest, error, syncError, answer } = useBuild(ref);
+  const { build: live, loading, thinking, error, syncError } = useBuild(ref);
   const edits = useEdits(live);
   /** The build as shown, with this browser's hand edits. */
   const build = edits.build;
@@ -109,6 +110,10 @@ export default function App({ account }: { account: Account }) {
   }, []);
 
   useEffect(() => refreshBuilds(), [refreshBuilds, account.user.id, libraryOpen]);
+  useKeeper(
+    builds?.filter((b) => b.source === "session" && b.status === "building").map((b) => b.id) ?? [],
+    refreshBuilds,
+  );
 
   const summary = builds?.find((b) => b.id === buildId && b.source === ref?.source);
   const heading = build ?? summary;
@@ -361,11 +366,9 @@ export default function App({ account }: { account: Account }) {
               build={build}
               opening={buildId && !error ? `Opening ${heading?.name ?? "the build"}` : null}
               step={visibleStep}
-              renderRequest={renderRequest}
               syncError={syncError}
               framing={framing}
               spin={spin}
-              onRender={answer}
               onThumbnail={saveThumbnail}
               empty="Describe a model in the chat to start building."
               mode={mode}

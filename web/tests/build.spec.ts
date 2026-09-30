@@ -58,6 +58,26 @@ test("a live build shows the loader until its first model, each shared model, an
   expect(agp.posted("/tool_results")[2].result[0]).toMatch(`Revision ${recolored.revision.slice(0, 8)}`);
 });
 
+test("Holo keeps getting its renders while the user browses other builds", async ({ page }) => {
+  const showcase = { ...fixture(), id: "paris", name: "Paris" };
+  await site(page, [showcase]);
+  const agp = await platform(page);
+  const model = fixture();
+  agp.session("live");
+  agp.share("live", model);
+  await page.goto("/?build=live");
+  await shown(page, model.revision);
+  await page.getByRole("button", { name: "Library" }).click();
+  await page.getByRole("region", { name: "Public" }).locator(".tile").click();
+  await shown(page, showcase.revision);
+
+  agp.look("live", "away", { angle: 180 });
+  await expect.poll(() => agp.posted("/tool_results")).toHaveLength(1);
+  const [caption, image] = agp.posted("/tool_results")[0].result;
+  expect(caption).toMatch(`Revision ${model.revision.slice(0, 8)}`);
+  expect(image).toMatch(/^data:image\/png;base64,/);
+});
+
 test("a lost connection hides the model until the platform answers again", async ({ page }) => {
   await site(page);
   const agp = await platform(page);
