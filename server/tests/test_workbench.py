@@ -141,6 +141,31 @@ def test_a_part_mounted_on_a_wall_face_hangs_there_without_raising_the_wall(benc
             assert ("nothing behind it" in moved.text) == floats, (facing, x, y)
 
 
+def test_a_model_copied_as_exact_placements_rebuilds_the_same_pieces_and_takes_edits(bench, tmp_path):
+    built = bench.run_script(
+        'step("Base")\nbrick("3001", 10, 10, 0, 4)\nbrick("3001", 14, 10, 0, 4, 90)\n'
+        'step("Window and finial")\nbrick("60592", 10, 10, 3, 15)\n'
+        'place("3024", 15, (260.5, -32, 230.25), (0.707107, 0, 0.707107, 0, 1, 0, -0.707107, 0, 0.707107))\n'
+    )
+    assert built.problems == 0 and "Floating" not in built.text, built.text
+    tinted = [p.model_copy(update={"color": 40}) if p.part == "60601.dat" else p for p in bench.pieces]
+    copied = "".join(
+        f"step({json.dumps(s.title)})\n"
+        + "".join(f"place({p.part!r}, {p.color}, {p.pos}, {p.rot})\n" for p in tinted if p.step == s.index)
+        for s in bench.workspace.build.steps
+    )
+    (tmp_path / "copy").mkdir()
+    copy = Workbench(Workspace.open(tmp_path / "copy"))
+    result = copy.run_script(copied)
+    assert result.problems == 0 and "Floating" not in result.text, result.text
+    assert copy.pieces == tinted and [p.part for p in copy.pieces].count("60601.dat") == 1
+    assert [s.title for s in copy.workspace.build.steps] == ["Base", "Window and finial"]
+
+    edited = copy.run_script(copied + 'step("Roof")\nbrick("3001", 10, 10, top(10, 10), 4)\n')
+    assert edited.problems == 0 and "kept steps 1 to 2 unchanged" in edited.text, edited.text
+    assert grid(copy.pieces[-1]) == (10, 10, 9, 0)
+
+
 def test_a_run_names_its_parts_so_a_color_passed_as_the_part_shows(bench):
     result = bench.run_script('WHITE = 15\nstep("Wall")\nfor z in range(0, 12, 4):\n    brick(WHITE, 0, 0, z, WHITE)\n')
     assert "Parts: 15 Minifig Hips and Legs" in result.text, result.text

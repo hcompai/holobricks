@@ -2,7 +2,7 @@ import { PlusIcon, ShoppingBagIcon, SquaresFourIcon } from "@phosphor-icons/reac
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Account } from "./account";
 import { AccountMenu } from "./AccountMenu";
-import { create, say, stop } from "./agent";
+import { create, remix, say, stop } from "./agent";
 import { useEdits } from "./edits";
 import { type Build, type BuildSummary, type Piece, type Source, verified } from "./model";
 import { type Color, usePalette } from "./palette";
@@ -191,11 +191,13 @@ export default function App({ account }: { account: Account }) {
     setFollowing(s >= last);
   };
 
-  const start = async (prompt: string, images: string[]) => {
+  /** Start a build and open it: a new one, or a remix of `from`. */
+  const start = async (prompt: string, images: string[], from?: Build) => {
     setStarting(true);
     try {
-      const id = await create(prompt, images);
-      remember(id, { name: prompt.slice(0, 60) || "Untitled build", prompt });
+      const id = await (from ? remix(from, prompt, images) : create(prompt, images));
+      const name = from ? `${from.name} remix` : prompt || "Untitled build";
+      remember(id, { name: name.slice(0, 60), prompt });
       open({ id, source: "session" });
       refreshBuilds();
     } finally {
@@ -229,11 +231,11 @@ export default function App({ account }: { account: Account }) {
 
   const closed =
     ref?.source === "showcase"
-      ? "A showcase from the gallery. Start a new build to make your own."
+      ? "A showcase from the gallery: remix it to make your own."
       : ref?.source === "public"
-        ? `Shared by ${summary?.author ?? "an H builder"}. Start a new build to make your own.`
+        ? `Shared by ${summary?.author ?? "an H builder"}: remix it to make your own.`
         : build && !build.open && build.status !== "building"
-          ? "This build's session has ended. Start a new build to make another."
+          ? "This build's session has ended: remix it to keep building."
           : null;
 
   const visibleStep = Math.min(step, last);
@@ -339,6 +341,9 @@ export default function App({ account }: { account: Account }) {
             }}
             onStop={async () => {
               if (build) await stop(build.id);
+            }}
+            onRemix={async (text, images) => {
+              if (build) await start(text, images, build);
             }}
           />
         </div>

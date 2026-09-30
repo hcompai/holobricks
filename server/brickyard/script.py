@@ -7,14 +7,16 @@ import io
 import json
 import random
 import sys
+from collections.abc import Sequence
 
 from brickyard import catalog, ldraw, shapes
+from brickyard.model import IDENTITY, Placement, bounds, extent
 from brickyard.shapes import Brick, Cell
 
 SOURCE = "<script>"
 MAX_BRICKS = 100_000
 PRINT_LIMIT = 2000
-API = ("step", "brick", "mount", "top", "colors")
+API = ("step", "brick", "mount", "place", "top", "colors")
 
 
 class Script:
@@ -50,13 +52,21 @@ class Script:
                 self.steps[-1]["bricks"].append(b | {"line": line})
                 continue
             try:
-                w, d = shapes.footprint(b["part"], b["rotation"])
-                height = ldraw.info(ldraw.resolve(b["part"]) or b["part"]).plates
+                x, y, w, d, z, height = self._extent(b)
             except (KeyError, ValueError):
                 pass
             else:
-                self._occupy(shapes.rect(b["x"], b["y"], w, d), b["z"], b["z"] + height)
+                self._occupy(shapes.rect(x, y, w, d), z, z + height)
             self.steps[-1]["bricks"].append(b | {"line": line})
+
+    @staticmethod
+    def _extent(b: Brick) -> tuple[int, int, int, int, int, int]:
+        """(x, y, w, d, z, height) that the brick fills on the grid."""
+        part = ldraw.resolve(b["part"]) or b["part"]
+        if "pos" in b:
+            return extent(bounds(Placement(part=part, color=b["color"], pos=b["pos"], rot=b["rot"])))
+        w, d = shapes.footprint(b["part"], b["rotation"])
+        return b["x"], b["y"], w, d, b["z"], ldraw.info(part).plates
 
     def step(self, title: str) -> None:
         """Start a manual step; the calls after it go into it, with `random` seeded from its title."""
@@ -69,6 +79,13 @@ class Script:
     def mount(self, part: str, x: int, y: int, z: int, color: int, facing: str) -> None:
         """A part on a wall's face, its top toward `facing`; `top` does not count it."""
         self._add([{"part": str(part), "x": x, "y": y, "z": z, "color": color, "facing": facing}])
+
+    def place(self, part: str, color: int, pos: Sequence[float], rot: Sequence[float] = IDENTITY) -> None:
+        """A part exactly where LDraw puts it: `pos` in LDU, `rot` 9 numbers row by row; no glass comes with it."""
+        pos, rot = [float(v) for v in pos], [float(v) for v in rot]
+        if len(pos) != 3 or len(rot) != 9:
+            raise ValueError("place takes pos as 3 numbers and rot as 9")
+        self._add([{"part": str(part), "color": color, "pos": pos, "rot": rot}])
 
     def top(self, x: int, y: int, w: int = 1, d: int = 1) -> int:
         """The highest plate height filled over the rectangle, 0 on bare ground."""

@@ -90,6 +90,32 @@ test("a colleague's public build opens from the library's Public section, under 
   await expect(page.getByRole("button", { name: "Publish", exact: true })).toHaveCount(0);
 });
 
+test("a remix of a public build starts a private session from a script placing each of its pieces, step by step", async ({
+  page,
+}) => {
+  const tower = { ...fixture(), id: "tower", name: "Ada's tower" };
+  await site(page);
+  const agp = await platform(page);
+  await library(page, [entry(tower, "Ada Lovelace", "u-ada")], [tower]);
+  await page.goto("/?public=tower");
+  await shown(page, tower.revision);
+
+  await page.locator(".gallery-note").getByRole("button", { name: "Remix" }).click();
+  await page.getByPlaceholder("What should Holo change?").fill("Make it twice as tall");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await expect(page).toHaveURL(/\?build=new-build$/);
+  await expect(page.locator("header .title")).toHaveText("Ada's tower remix");
+  const [first] = agp.posted("/messages");
+  expect(first.message).toBe("Make it twice as tall");
+  expect(first.files.map((f: { name: string }) => f.name)).toEqual(["brickyard.tgz", "remix.py"]);
+  const script = Buffer.from(first.files[1].source, "base64").toString();
+  expect(script.match(/^place\(/gm)).toHaveLength(tower.pieces.length);
+  expect(script.match(/^step\(.*\)$/gm)).toEqual(tower.steps.map((s) => `step("${s.title}")`));
+  expect(script).toMatch(
+    /^step\("Layer 1"\)\nplace\("test-brick", 4, \(0, 0, 0\)\)\nplace\("test-brick", 4, \(40, 0, 0\)\)\n/,
+  );
+});
+
 test("the author publishes a build after a confirmation, stays on it, then makes it private after another", async ({
   page,
 }) => {

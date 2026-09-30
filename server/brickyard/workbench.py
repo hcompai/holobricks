@@ -15,21 +15,28 @@ from pydantic import BaseModel, ValidationError
 
 from brickyard import assembly, catalog, ldraw
 from brickyard.model import (
+    ACCESSORIES,
     FACINGS,
+    IDENTITY,
     ROTATIONS,
+    Matrix,
     Piece,
     Placement,
     bounds,
+    extent,
     footprint,
     grid,
     mount,
     place,
+    top,
     with_accessories,
 )
 from brickyard.workspace import MODEL, Workspace
 
 STUD_HEIGHT = 4
 EPS = 0.5
+TURN_TOLERANCE = 1e-3
+"""How far a rotation's rows may stray from unit length and right angles, as in LDraw files rounded to 6 digits."""
 CELL = 4 * ldraw.STUD
 PROBLEM_LIMIT = 12
 PARTS_SHOWN = 12
@@ -44,13 +51,16 @@ BACKS = {"south": (2, 1), "north": (2, -1), "west": (0, 1), "east": (0, -1)}
 
 class Brick(BaseModel):
     part: str
-    x: int
-    y: int
-    z: int
+    x: int = 0
+    y: int = 0
+    z: int = 0
     color: int
     rotation: int = 0
     facing: str | None = None
     """Set for a part mounted on a wall, its top turned to face that side."""
+    pos: tuple[float, float, float] | None = None
+    """Set for an exact LDraw placement in LDU, turned by `rot`; x, y, z, rotation and facing then go unused."""
+    rot: Matrix = IDENTITY
     label: str | None = None
     """How problems name the brick, like the script line that made it."""
 
@@ -86,14 +96,19 @@ def _behind(box: tuple, facing: str) -> tuple:
     return tuple(lo), tuple(hi)
 
 
+def _turns(rot: Matrix) -> bool:
+    """Whether `rot` only turns or mirrors a part: its rows have length 1 and meet at right angles."""
+    rows = [rot[k : k + 3] for k in (0, 3, 6)]
+    return all(
+        abs(sum(a * b for a, b in zip(r, s, strict=True)) - (i == j)) < TURN_TOLERANCE
+        for i, r in enumerate(rows)
+        for j, s in enumerate(rows)
+    )
+
+
 def _cells(box: tuple) -> list[tuple[int, int]]:
     xs = range(int(box[0][0] // CELL), int(box[1][0] // CELL) + 1)
     return [(cx, cz) for cx in xs for cz in range(int(box[0][2] // CELL), int(box[1][2] // CELL) + 1)]
-
-
-def _top(box: tuple) -> int:
-    """Plate height of a box's top surface; studs, when there are any, add less than a plate."""
-    return math.floor((-box[0][1] + EPS) / ldraw.PLATE)
 
 
 def _where(p: Placement | Piece) -> str:
@@ -178,14 +193,33 @@ class Workbench:
         accepted: list[tuple[Placement, tuple, str, str, bool, str | None]] = []
         rejected = []
         candidates: list[tuple[str, str, Placement, bool, str | None]] = []
+        exact: set[int] = set()
+        frames = {
+            (ACCESSORIES[frame][0], b.pos, b.rot)
+            for b in bricks
+            if b.pos is not None and (frame := ldraw.resolve(b.part)) in ACCESSORIES
+        }
+        inserts: dict[tuple, list[Placement]] = defaultdict(list)
         for n, brick in enumerate(bricks, 1):
-            label = f"{brick.label or f'brick {n}'} ({brick.part} at x={brick.x} y={brick.y} z={brick.z})"
+            at = f"x={brick.x} y={brick.y} z={brick.z}" if brick.pos is None else f"pos={brick.pos}"
+            label = f"{brick.label or f'brick {n}'} ({brick.part} at {at})"
             origin = brick.label or label
             part = ldraw.resolve(brick.part)
             if part is None:
                 rejected.append(f"{label}: unknown part; use bricks parts")
             elif brick.color not in ldraw.colors():
                 rejected.append(f"{label}: unknown color {brick.color}")
+            elif brick.pos is not None:
+                placement = Placement(part=part, color=brick.color, pos=brick.pos, rot=brick.rot)
+                if not all(map(math.isfinite, brick.pos)) or not _turns(brick.rot):
+                    rejected.append(f"{label}: pos must be finite and rot a turn, rows of length 1 at right angles")
+                elif (part, brick.pos, brick.rot) in frames:
+                    inserts[part, brick.pos, brick.rot].append(placement)
+                else:
+                    exact.add(id(placement))
+                    facing = next((f for f, m in FACINGS.items() if m == brick.rot), None)
+                    raised = facing is None and bounds(placement)[1][1] < -EPS
+                    candidates.append((origin, label, placement, raised, facing))
             elif brick.rotation not in ROTATIONS:
                 rejected.append(f"{label}: rotation must be 0, 90, 180 or 270")
             elif brick.z < 0:
@@ -213,7 +247,7 @@ class Workbench:
             neighbors = near(box)
             hit = next(((other, what) for other, what in neighbors if _collides(box, other)), None)
             if hit:
-                rejected.append(f"{label}: overlaps {name(hit[1])}, which fills up to z={_top(hit[0])}")
+                rejected.append(f"{label}: overlaps {name(hit[1])}, which fills up to z={top(hit[0])}")
                 continue
             accepted.append((placement, box, origin, label, needs_support, facing))
             for cell in _cells(box):
@@ -243,7 +277,14 @@ class Workbench:
                 floating.append((origin, f"{label}: nothing under or above it"))
             elif facing and not backed(box, facing):
                 floating.append((origin, f"{label}: nothing behind it"))
-        return [p for placement, *_ in accepted for p in with_accessories(placement)], rejected, floating
+
+        def fitted(p: Placement) -> list[Placement]:
+            """The placement and its inserts: those placed exactly with it, else the usual ones."""
+            if id(p) not in exact:
+                return with_accessories(p)
+            return [p, *inserts.pop((ACCESSORIES.get(p.part, ("",))[0], p.pos, p.rot), [])]
+
+        return [p for placement, *_ in accepted for p in fitted(placement)], rejected, floating
 
     def add(self, title: str, bricks: list[dict], mounted: list[Placement] = ()) -> Result:
         """Check the bricks and place the ones that fit as one step, if the whole model stays verified."""
@@ -366,13 +407,7 @@ class Workbench:
 
     def _taken(self, steps: int) -> list[list[int]]:
         """(x, y, w, d, z, height) on the grid of every piece in the first `steps` steps, except a baseplate."""
-        s, out = ldraw.STUD, []
-        for p, (lo, hi) in self._index().values():
-            if p.step < steps and p.part != BASEPLATE:
-                x, y, z = round(lo[0] / s), round(lo[2] / s), round(-hi[1] / ldraw.PLATE)
-                w, d = round(hi[0] / s) - x, round(hi[2] / s) - y
-                out.append([x, y, max(1, w), max(1, d), z, max(1, _top((lo, hi)) - z)])
-        return out
+        return [list(extent(box)) for p, box in self._index().values() if p.step < steps and p.part != BASEPLATE]
 
     def find_parts(self, query: str) -> Result:
         """The catalog's parts matching `query`, or the exact part asked for, each with its number of colors."""
@@ -433,11 +468,11 @@ class Workbench:
             return "Nothing is built yet."
         boxes = [grid(p) for p in pieces]
         indexed = self._index()
-        top = max(_top(indexed[p.id][1]) for p in pieces)
+        highest = max(top(indexed[p.id][1]) for p in pieces)
         xs, ys = [b[0] for b in boxes], [b[1] for b in boxes]
         return (
             f"{len(pieces)} pieces in {len(self.workspace.build.steps)} steps, spanning x {min(xs)}-{max(xs)}, "
-            f"y {min(ys)}-{max(ys)}, up to plate height {top}."
+            f"y {min(ys)}-{max(ys)}, up to plate height {highest}."
         )
 
     def describe(self) -> str:
@@ -457,7 +492,7 @@ class Workbench:
             los, his = [b[0] for b in boxes[step.index]], [b[1] for b in boxes[step.index]]
             x = studs(min(v[0] for v in los), max(v[0] for v in his))
             y = studs(min(v[2] for v in los), max(v[2] for v in his))
-            z = f"{max(0, round(min(-v[1] for v in his) / ldraw.PLATE))}-{max(map(_top, boxes[step.index]))}"
+            z = f"{max(0, round(min(-v[1] for v in his) / ldraw.PLATE))}-{max(map(top, boxes[step.index]))}"
             n = len(boxes[step.index])
             lines.append(f"{step.index + 1} {step.title}: {n} piece{'s' * (n != 1)}, x {x}, y {y}, z {z}")
         return "\n".join(lines) or "No pieces yet."

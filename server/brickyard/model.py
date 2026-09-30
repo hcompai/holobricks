@@ -279,6 +279,18 @@ def bounds(p: Placement | Piece) -> tuple[Vec, Vec]:
     return tuple(lo), tuple(hi)  # type: ignore[return-value]
 
 
+def top(box: tuple[Vec, Vec]) -> int:
+    """Plate height of a box's top surface; studs, when there are any, add less than a plate."""
+    return math.floor((-box[0][1] + 0.5) / ldraw.PLATE)
+
+
+def extent(box: tuple[Vec, Vec]) -> tuple[int, int, int, int, int, int]:
+    """(x, y, w, d, z, height) of a box on the stud and plate grid, at least one of each."""
+    (x0, _, y0), (x1, bottom, y1) = box
+    x, y, z = round(x0 / ldraw.STUD), round(y0 / ldraw.STUD), round(-bottom / ldraw.PLATE)
+    return x, y, max(1, round(x1 / ldraw.STUD) - x), max(1, round(y1 / ldraw.STUD) - y), z, max(1, top(box) - z)
+
+
 def grid(p: Placement | Piece) -> tuple[int, int, int, int | None]:
     """(x, y, z, rotation) in the same stud and plate units `place` takes."""
     lo, hi = bounds(p)
