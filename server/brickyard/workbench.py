@@ -541,15 +541,19 @@ def _digest(step: dict) -> str:
 
 
 def _execute(code: str, taken: list[list[int]]) -> dict:
-    """Run a build script in a fresh process with an empty environment and a time limit."""
+    """Run a build script in a fresh process with a fixed hash seed, a clean environment and a time limit."""
     job = json.dumps({"code": code, "taken": taken})
     try:
         done = subprocess.run(
-            [sys.executable, "-I", "-m", "brickyard.script"],
+            [sys.executable, "-s", "-P", "-m", "brickyard.script"],
             input=job,
             capture_output=True,
             text=True,
-            env={"BRICKYARD_LDRAW": str(ldraw.LDRAW), "BRICKYARD_CATALOG": str(catalog.SNAPSHOT)},
+            env={
+                "BRICKYARD_LDRAW": str(ldraw.LDRAW),
+                "BRICKYARD_CATALOG": str(catalog.SNAPSHOT),
+                "PYTHONHASHSEED": "0",
+            },
             cwd=tempfile.gettempdir(),
             timeout=SCRIPT_TIMEOUT_S,
             check=False,
