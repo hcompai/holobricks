@@ -89,7 +89,7 @@ test("anyone can open a public build from the library, shown under its author's 
   await expect(page.getByRole("button", { name: "Publish", exact: true })).toHaveCount(0);
 });
 
-test("the author publishes a build with its render and the signed-in key, lands on it, then takes it out", async ({
+test("the author publishes a build with its render and the signed-in key, lands on it, then makes it private after a confirmation", async ({
   page,
 }) => {
   const model = fixture();
@@ -107,7 +107,7 @@ test("the author publishes a build with its render and the signed-in key, lands 
   await expect(page).toHaveURL(/\?public=mine$/);
   await shown(page, model.revision);
   const unpublish = page.getByRole("button", { name: "Public", exact: true });
-  await expect(unpublish).toHaveAttribute("aria-pressed", "true");
+  await expect(unpublish).toBeVisible();
   const post = calls.find((c) => c.method === "POST")!;
   expect(post.headers).toMatchObject({ authorization: `Bearer ${ACCOUNT.pass}`, "x-agents-key": ACCOUNT.key });
   expect(post.body).toEqual({ id: "mine", thumbnail: expect.stringMatching(/^data:image\/webp;base64,/), edits: null });
@@ -120,7 +120,13 @@ test("the author publishes a build with its render and the signed-in key, lands 
   await expect(tiles).toContainText(`by ${ACCOUNT.user.name}`);
   await shelf.click();
 
+  const confirm = page.getByRole("dialog", { name: "Make private" });
   await unpublish.click();
+  await confirm.getByRole("button", { name: "Cancel" }).click();
+  await expect(confirm).toBeHidden();
+  expect(calls.some((c) => c.method === "DELETE")).toBe(false);
+  await unpublish.click();
+  await confirm.getByRole("button", { name: "Make private" }).click();
   await expect(page).toHaveURL(/\?build=mine$/);
   await expect(page.getByRole("button", { name: "Publish", exact: true })).toBeVisible();
   expect(calls.find((c) => c.method === "DELETE")).toMatchObject({

@@ -637,6 +637,31 @@ aside {
   border-color: var(--accent);
 }
 
+.menu-list.publish-confirm {
+  width: 280px;
+  gap: 6px;
+  padding: 14px;
+  white-space: normal;
+}
+
+.publish-confirm p {
+  margin: 0;
+}
+
+.publish-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.publish-actions .primary {
+  background: var(--background-primary);
+  color: var(--text-on-primary);
+  border-color: transparent;
+  font-weight: 600;
+}
+
 .avatar {
   border-radius: 999px;
   font-weight: 700;

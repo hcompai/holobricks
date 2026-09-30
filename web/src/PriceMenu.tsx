@@ -1,7 +1,7 @@
 import { ArrowSquareOutIcon, DownloadSimpleIcon } from "@phosphor-icons/react";
-import { useEffect, useRef, useState } from "react";
 import type { Build } from "./model";
 import { estimate, money, type PriceTable, storeUrl, UPLOAD_LIMIT, uploadLists } from "./pickabrick";
+import { useMenu } from "./useMenu";
 
 interface Props {
   build: Build;
@@ -12,25 +12,8 @@ interface Props {
 
 /** A quiet estimate beside the piece count; it opens the details and the lists to upload to Pick a Brick. */
 export function PriceMenu({ build, table, edited }: Props) {
-  const [open, setOpen] = useState(false);
-  const root = useRef<HTMLDivElement>(null);
+  const { open, setOpen, root } = useMenu();
   const found = estimate(build.pieces, table);
-
-  useEffect(() => {
-    if (!open) return;
-    const outside = (e: PointerEvent) => {
-      if (!root.current?.contains(e.target as Node)) setOpen(false);
-    };
-    const escape = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("pointerdown", outside);
-    document.addEventListener("keydown", escape);
-    return () => {
-      document.removeEventListener("pointerdown", outside);
-      document.removeEventListener("keydown", escape);
-    };
-  }, [open]);
 
   if (!found.priced) return null;
   const files = uploadLists(found.lines);
