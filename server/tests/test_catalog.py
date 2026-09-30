@@ -100,7 +100,10 @@ def test_the_builder_keeps_unambiguous_mappings_and_colors_seen_in_real_sets(mon
     colors = [
         {"id": 4, "external_ids": ids([4], [5])},
         {"id": 15, "external_ids": ids([15], [1, 99])},
+        {"id": 0, "external_ids": ids([0, 256], [11])},
         {"id": 70, "external_ids": ids([70, 6], [88])},
+        {"id": 6, "external_ids": ids([6], [7])},
+        {"id": -1, "external_ids": ids([16, 24], [0])},
     ]
     parts = [
         {"part_num": "3001", "external_ids": {"BrickLink": ["3001"]}},
@@ -112,7 +115,7 @@ def test_the_builder_keeps_unambiguous_mappings_and_colors_seen_in_real_sets(mon
         {"part_num": "3070bpr", "external_ids": {"LDraw": ["3070b"], "BrickLink": ["3070pb01"]}},
         {"part_num": "4150", "external_ids": {"LDraw": ["4150"]}},
     ]
-    inventories = "part_num,color_id\n3001,4\n3001,15\n3001,70\n3069b,4\n4150,999\n"
+    inventories = "part_num,color_id\n3001,0\n3001,4\n3001,15\n3001,70\n3069b,4\n4150,999\n"
 
     def handler(request):
         if request.url.path.endswith("/colors/"):
@@ -127,12 +130,17 @@ def test_the_builder_keeps_unambiguous_mappings_and_colors_seen_in_real_sets(mon
         rebrickable.httpx, "Client", lambda **kwargs: original(transport=httpx.MockTransport(handler), **kwargs)
     )
     built = rebrickable.build("key")
+    black = {"rebrickable": 0, "bricklink": 11, "bricklink_name": "BL"}
     assert built["colors"] == {
+        0: black,
+        256: black,
         4: {"rebrickable": 4, "bricklink": 5, "bricklink_name": "BL"},
         15: {"rebrickable": 15, "bricklink": None, "bricklink_name": None},
+        70: {"rebrickable": 70, "bricklink": 88, "bricklink_name": "BL"},
+        6: {"rebrickable": 6, "bricklink": 7, "bricklink_name": "BL"},
     }
     assert built["parts"] == {
-        "3001.dat": {"rebrickable": "3001", "bricklink": "3001", "colors": [4, 15]},
+        "3001.dat": {"rebrickable": "3001", "bricklink": "3001", "colors": [0, 4, 15, 70, 256]},
         "3069b.dat": {"rebrickable": "3069b", "bricklink": None, "colors": [4]},
         "3070b.dat": {"rebrickable": "3070b", "bricklink": "3070", "colors": []},
         "4150.dat": {"rebrickable": "4150", "bricklink": None, "colors": []},

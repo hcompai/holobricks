@@ -43,26 +43,26 @@ def _one(values: list) -> object | None:
     return values[0] if len(set(values)) == 1 else None
 
 
-def _unique(pairs: list[tuple]) -> dict:
-    """Keys claimed by exactly one value; a key two sources claim is dropped."""
-    claims: dict = {}
-    for key, value in pairs:
-        claims.setdefault(key, set()).add(json.dumps(value, sort_keys=True))
-    return {key: json.loads(next(iter(values))) for key, values in claims.items() if len(values) == 1}
-
-
 def colors(results: list[dict]) -> dict[int, dict]:
-    pairs = []
+    """LDraw code -> its Rebrickable color; of several claimants, only the one claiming that code alone is kept."""
+    claims: dict[int, list[tuple[bool, dict]]] = {}
     for color in results:
+        if color["id"] < 0:  # placeholders such as [Unknown], which claim LDraw's own placeholder codes
+            continue
         ids = color.get("external_ids") or {}
-        code = _one((ids.get("LDraw") or {}).get("ext_ids") or [])
         bricklink = ids.get("BrickLink") or {}
         link = _one(bricklink.get("ext_ids") or [])
-        if code is None:
-            continue
         name = bricklink["ext_descrs"][0][0] if link is not None and bricklink.get("ext_descrs") else None
-        pairs.append((int(code), {"rebrickable": color["id"], "bricklink": link, "bricklink_name": name}))
-    return _unique(pairs)
+        codes = {int(code) for code in (ids.get("LDraw") or {}).get("ext_ids") or []}
+        for code in codes:
+            record = {"rebrickable": color["id"], "bricklink": link, "bricklink_name": name}
+            claims.setdefault(code, []).append((len(codes) == 1, record))
+    mapped = {}
+    for code, claimants in claims.items():
+        chosen = claimants if len(claimants) == 1 else [c for c in claimants if c[0]]
+        if len(chosen) == 1:
+            mapped[code] = chosen[0][1]
+    return mapped
 
 
 def parts(results: list[dict], library: set[str]) -> dict[str, dict]:
@@ -99,10 +99,12 @@ def build(key: str) -> dict:
         palette = colors(_pages(client, f"{API}/colors/?page_size={PAGE_SIZE}"))
         mapped = parts(_pages(client, f"{API}/parts/?page_size={PAGE_SIZE}&inc_part_details=1"), set(ldraw.catalog()))
         combos = known_colors(client)
-    by_rebrickable = {color["rebrickable"]: code for code, color in palette.items()}
+    by_rebrickable: dict[int, list[int]] = {}
+    for code, color in palette.items():
+        by_rebrickable.setdefault(color["rebrickable"], []).append(code)
     for record in mapped.values():
         found = combos.get(record["rebrickable"], set())
-        record["colors"] = sorted(by_rebrickable[c] for c in found if c in by_rebrickable)
+        record["colors"] = sorted(code for c in found for code in by_rebrickable.get(c, []))
     return {"schema": catalog.SCHEMA, "built_at": time.time(), "colors": palette, "parts": mapped}
 
 
