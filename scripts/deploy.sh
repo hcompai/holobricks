@@ -44,7 +44,8 @@ else
   echo "warning: Pick a Brick did not answer; deploying the last price table" >&2
   gh release download "$release" --pattern pick-a-brick.json --dir web/public --clobber
 fi
-[[ -f web/.vercel/project.json ]] || (cd web && vercel link --yes --scope h-company --project brickyard ${vercel[@]+"${vercel[@]}"})
+# A project token cannot link; CI names the project with VERCEL_ORG_ID and VERCEL_PROJECT_ID instead.
+[[ -f web/.vercel/project.json || -n "${VERCEL_PROJECT_ID:-}" ]] || (cd web && vercel link --yes --scope h-company --project brickyard ${vercel[@]+"${vercel[@]}"})
 (cd web && npm run build)
 rm -rf web/.vercel/output && mkdir -p web/.vercel/output
 cp -R web/dist web/.vercel/output/static
