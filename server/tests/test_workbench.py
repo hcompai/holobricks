@@ -111,6 +111,15 @@ def test_a_script_rebuilds_from_its_first_changed_step_and_names_the_lines_of_it
     assert Build.model_validate_json((bench.workspace.folder / BUILD).read_text()).script == code
 
 
+def test_a_step_with_floating_bricks_is_rebuilt_and_reported_every_run(bench):
+    code = 'step("Base")\nbrick("3001", 0, 0, 0, 4)\nstep("Lantern")\nbrick("3005", 10, 10, 6, 4)\n'
+    bench.run_script(code)
+    for _ in range(2):
+        result = bench.run_script(code)
+        assert "kept step 1 unchanged, rebuilt and checked 1 step." in result.text, result.text
+        assert 'line 4 `brick("3005", 10, 10, 6, 4)` (3005 at x=10 y=10 z=6): nothing under' in result.text
+
+
 def test_a_run_with_problems_in_every_step_leads_with_its_revision_and_stays_short(bench):
     code = "".join(f'step("Floor {n}")\nfor x in range(40):\n    brick("3001", -1, x, 0, 4)\n' for n in range(9))
     result = bench.run_script(code)

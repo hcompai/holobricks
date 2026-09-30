@@ -351,7 +351,7 @@ class Workbench:
                 continue
             placements, rejected, flags = draft._check(parsed)
             if placements:
-                candidate.add_step(s["title"], placements, "" if rejected else key)
+                candidate.add_step(s["title"], placements, "" if rejected or flags else key)
             if rejected:
                 reports.append((n, s["title"], rejected))
             floating += [(n, *flag) for flag in flags]
