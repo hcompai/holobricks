@@ -1,25 +1,12 @@
 import { useSyncExternalStore } from "react";
 import { H } from "./hosts";
+import { type Account, cookie, HANDOFF, type Handoff, PENDING, type Pending, setCookie } from "./signin";
+
+export type { Account, User } from "./signin";
 
 const STORE = "brickyard.account";
 /** The key of the last sign-out, revoked at the next sign-in. */
 const PREVIOUS = "brickyard.previous-key";
-
-export interface User {
-  id: string;
-  email: string;
-  name: string;
-}
-
-/** A sign-in: the user, their Agents API key, and the pass for Brickyard's own API. */
-export interface Account {
-  user: User;
-  key: string;
-  keyId: string;
-  /** In seconds. */
-  expires: number;
-  pass: string;
-}
 
 function load(): Account | null {
   try {
@@ -30,7 +17,29 @@ function load(): Account | null {
   }
 }
 
+/** The sign-in /api/session handed this page, once: the cookie is cleared as it is read. */
+function handedOver(): Handoff | null {
+  const value = cookie(document.cookie, HANDOFF);
+  if (value === null) return null;
+  document.cookie = setCookie(HANDOFF, "", 0);
+  try {
+    return JSON.parse(value);
+  } catch {
+    return { error: "The sign-in failed: try again." };
+  }
+}
+
+const handoff = handedOver();
+/** Why the last sign-in failed, if it just did. */
+export const signInError = handoff && "error" in handoff ? handoff.error : null;
+
 let account = load();
+if (handoff && !("error" in handoff)) {
+  account = handoff;
+  localStorage.setItem(STORE, JSON.stringify(handoff));
+  localStorage.removeItem(PREVIOUS);
+}
+
 const listeners = new Set<() => void>();
 const notify = () => listeners.forEach((l) => l());
 
@@ -66,49 +75,15 @@ export function signOut() {
   set(null);
 }
 
-/** The portal's access token, from its sign-in window; null if the window closes first. */
-function portalToken(): Promise<string | null> {
-  const query = new URLSearchParams({ sdk_auth: "true", return_origin: window.location.origin });
-  const popup = window.open(`${H.login}/login?${query}`, "brickyard-sign-in", "popup,width=480,height=720");
-  if (!popup) return Promise.reject(new Error("Allow pop-ups for this site to sign in."));
-  return new Promise((resolve, reject) => {
-    const finish = () => {
-      window.removeEventListener("message", receive);
-      clearInterval(watch);
-    };
-    const receive = (e: MessageEvent) => {
-      if (e.origin !== H.login || e.source !== popup) return;
-      if (e.data?.type === "H_PORTAL_AUTH_ERROR") {
-        finish();
-        reject(new Error(e.data.error || "The sign-in failed."));
-      } else if (e.data?.type === "H_PORTAL_AUTH_SUCCESS" && typeof e.data.accessToken === "string") {
-        finish();
-        resolve(e.data.accessToken);
-      }
-    };
-    const watch = setInterval(() => {
-      if (!popup.closed) return;
-      finish();
-      resolve(null);
-    }, 500);
-    window.addEventListener("message", receive);
-  });
-}
-
-/** Sign in with an H account in the portal's window; resolves once signed in, or once the window is closed. */
-export async function signIn(): Promise<void> {
-  const accessToken = await portalToken();
-  if (!accessToken) return;
-  const previousKey = account?.keyId ?? localStorage.getItem(PREVIOUS);
-  const response = await fetch("/api/session", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ accessToken, previousKey }),
-  });
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body.error ?? `The sign-in failed (HTTP ${response.status}).`);
-  localStorage.removeItem(PREVIOUS);
-  set(body);
+/** Leave for the portal's Google sign-in; it comes back through /api/session, then to this page. */
+export function signIn() {
+  const pending: Pending = {
+    previous: localStorage.getItem(PREVIOUS),
+    back: window.location.pathname + window.location.search,
+  };
+  document.cookie = setCookie(PENDING, JSON.stringify(pending), 600, "/api/session");
+  const query = new URLSearchParams({ provider: "google", redirect_uri: `${window.location.origin}/api/session` });
+  window.location.assign(`${H.portal}/auth/authorize?${query}`);
 }
 
 /** The key stopped working, revoked or expired: sign out. */

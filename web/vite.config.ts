@@ -26,7 +26,8 @@ function api(): Plugin {
           });
           const response: Response = await handler(request);
           res.statusCode = response.status;
-          response.headers.forEach((value, key) => res.setHeader(key, value));
+          response.headers.forEach((value, key) => key !== "set-cookie" && res.setHeader(key, value));
+          if (response.headers.has("set-cookie")) res.setHeader("set-cookie", response.headers.getSetCookie());
           res.end(Buffer.from(await response.arrayBuffer()));
         } catch (e) {
           next(e);

@@ -1,10 +1,12 @@
 import { expect, test, type Page } from "@playwright/test";
 import { gzipSync } from "node:zlib";
 import type { Build } from "../src/model";
+import { cookie, HANDOFF, PENDING, setCookie } from "../src/signin";
 import { ACCOUNT, fixture, site } from "./fixtures";
 import { platform } from "./platform";
 
 const BLOB = "https://blob.test";
+const PORTAL = "https://portal.api.eu.hcompany.ai/api";
 
 const shown = (page: Page, revision: string) =>
   expect(page.locator(".viewer")).toHaveAttribute("data-revision", revision);
@@ -68,20 +70,17 @@ async function library(page: Page, published: ReturnType<typeof entry>[], builds
   return calls;
 }
 
-test("anyone can open a public build from the library, shown under its author's name", async ({ page }) => {
+test("a colleague's public build opens from the Public shelf, under its author's name", async ({ page }) => {
   const tower = { ...fixture(), id: "tower", name: "Ada's tower" };
   await site(page);
   await library(page, [entry(tower, "Ada Lovelace", "u-ada")], [tower]);
   await page.goto("/");
-  await expect(page.locator(".gallery-note")).toContainText("Sign in with your H account to build with Holo.");
 
   await page.getByRole("button", { name: "Library" }).click();
-  await expect(page).toHaveURL(/\?library=public$/);
+  await expect(page).toHaveURL(/\?library=mine$/);
+  await page.getByRole("tab", { name: /^Public/ }).click();
   const tile = page.locator(".library-page .tile");
   await expect(tile).toContainText("by Ada Lovelace");
-  await page.getByRole("tab", { name: /^Mine/ }).click();
-  await expect(page.locator(".library-page")).toContainText("Sign in with your H account");
-  await page.getByRole("tab", { name: /^Public/ }).click();
   await tile.click();
   await expect(page).toHaveURL(/\?public=tower$/);
   await shown(page, tower.revision);
@@ -138,34 +137,50 @@ test("the author publishes a build with its render and the signed-in key, lands 
   await expect(tiles).toHaveCount(0);
 });
 
-test("signing in goes through the H portal's window, and the next sign-in revokes the last key", async ({
+test("signed out, only the sign-in page shows; Google brings the user back signed in where they left", async ({
   page,
   context,
 }) => {
-  await site(page);
-  await context.route("https://portal.hcompany.ai/login*", (route) =>
-    route.fulfill({
-      contentType: "text/html",
-      body: `<script>opener.postMessage({ type: "H_PORTAL_AUTH_SUCCESS", accessToken: "portal-token" }, "*")</script>`,
-    }),
-  );
-  const signIns: unknown[] = [];
-  await page.route("**/api/session", (route) => {
-    signIns.push(route.request().postDataJSON());
-    return route.fulfill({ json: { ...ACCOUNT, keyId: `key-${signIns.length}` } });
+  const tower = fixture();
+  await site(page, [tower], null);
+  let handoff: object = { error: "Brickyard is open to H Company accounts." };
+  const pending: unknown[] = [];
+  await page.route(`${PORTAL}/auth/authorize?*`, (route) => {
+    const url = new URL(route.request().url());
+    expect(url.searchParams.get("provider")).toBe("google");
+    // Playwright routes no request that follows a redirect, so this portal navigates on instead.
+    const next = JSON.stringify(url.searchParams.get("redirect_uri"));
+    return route.fulfill({ contentType: "text/html", body: `<script>location.replace(${next})</script>` });
   });
-  await page.goto("/");
+  await page.route("**/api/session", async (route) => {
+    const back = JSON.parse(cookie(await route.request().headerValue("cookie"), PENDING)!);
+    pending.push(back);
+    return route.fulfill({
+      status: 303,
+      headers: { location: back.back, "set-cookie": setCookie(HANDOFF, JSON.stringify(handoff), 60) },
+    });
+  });
+  const google = page.getByRole("button", { name: "Continue with Google" });
 
-  await page.getByRole("button", { name: "Sign in", exact: true }).first().click();
-  await expect(page.getByPlaceholder("Describe what to build…")).toBeVisible();
-  expect(signIns).toEqual([{ accessToken: "portal-token", previousKey: null }]);
+  await page.goto(`/?showcase=${tower.id}`);
+  await expect(page.getByRole("heading", { name: "Brickyard" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Library" })).toHaveCount(0);
+  await google.click();
+  await expect(page.getByRole("alert")).toHaveText("Brickyard is open to H Company accounts.");
+
+  handoff = ACCOUNT;
+  await google.click();
+  await expect(page.getByRole("button", { name: "Account" })).toBeVisible();
+  await expect(page).toHaveURL(new RegExp(`\\?showcase=${tower.id}$`));
+  expect((await context.cookies()).map((c) => c.name)).not.toContain(HANDOFF);
 
   await page.getByRole("button", { name: "Account" }).click();
-  await expect(page.getByRole("menu")).toContainText(ACCOUNT.user.email);
   await page.getByRole("menuitem", { name: "Sign out" }).click();
-  await expect(page.locator(".gallery-note")).toContainText("Sign in with your H account");
-
-  await page.getByRole("button", { name: "Sign in", exact: true }).first().click();
+  await google.click();
   await expect(page.getByRole("button", { name: "Account" })).toBeVisible();
-  expect(signIns[1]).toEqual({ accessToken: "portal-token", previousKey: "key-1" });
+  expect(pending).toEqual([
+    { previous: null, back: `/?showcase=${tower.id}` },
+    { previous: null, back: `/?showcase=${tower.id}` },
+    { previous: ACCOUNT.keyId, back: `/?showcase=${tower.id}` },
+  ]);
 });

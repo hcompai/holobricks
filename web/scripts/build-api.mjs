@@ -17,7 +17,7 @@ for (const file of (await readdir("api")).filter((f) => f.endsWith(".ts"))) {
     input: join("api", file),
     platform: "node",
     logLevel: "warn",
-    transform: { define: { "import.meta.env.VITE_PLATFORM": JSON.stringify(VITE_PLATFORM) } },
+    transform: { define: { "import.meta.env": JSON.stringify({ VITE_PLATFORM }) } },
   });
   await bundle.write({ file: join(dir, "index.mjs"), format: "esm", codeSplitting: false });
   await writeFile(

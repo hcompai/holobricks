@@ -1,4 +1,3 @@
-import { SignInButton } from "./AccountMenu";
 import type { BuildSummary } from "./model";
 import type { BuildRef } from "./useBuild";
 
@@ -12,7 +11,6 @@ interface Props {
   /** Whether the last fetch of the library failed. */
   failed: boolean;
   shelf: Shelf;
-  signedIn: boolean;
   active: BuildRef | null;
   onShelf: (shelf: Shelf) => void;
   onRetry: () => void;
@@ -30,7 +28,7 @@ function meta(b: BuildSummary, published: Set<string>): string {
     .join(" · ");
 }
 
-export function LibraryPage({ builds, failed, shelf, signedIn, active, onShelf, onRetry, onOpen }: Props) {
+export function LibraryPage({ builds, failed, shelf, active, onShelf, onRetry, onOpen }: Props) {
   const mine = builds?.filter((b) => b.source === "session") ?? [];
   const everyone = builds?.filter((b) => b.source !== "session") ?? [];
   const published = new Set(everyone.filter((b) => b.source === "public").map((b) => b.id));
@@ -71,11 +69,6 @@ export function LibraryPage({ builds, failed, shelf, signedIn, active, onShelf, 
               </div>
             </div>
           ))}
-        </div>
-      ) : shelf === "mine" && !signedIn ? (
-        <div className="library-empty">
-          <span>Sign in with your H account to build with Holo; your builds show up here.</span>
-          <SignInButton />
         </div>
       ) : !shown.length ? (
         <div className="library-empty">No builds yet. Describe one in the chat.</div>

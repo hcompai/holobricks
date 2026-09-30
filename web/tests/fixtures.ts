@@ -76,8 +76,9 @@ export async function signedIn(page: Page, account = ACCOUNT) {
   await page.addInitScript((a) => localStorage.setItem("brickyard.account", JSON.stringify(a)), account);
 }
 
-/** Serve the static files the app reads: the palette, the toolkit and these showcases; the Agents API has no sessions and the public library is empty. */
-export async function site(page: Page, showcases: Build[] = []) {
+/** Serve the static files the app reads: the palette, the toolkit and these showcases; the Agents API has no sessions and the public library is empty. `account` is signed in, if any. */
+export async function site(page: Page, showcases: Build[] = [], account: typeof ACCOUNT | null = ACCOUNT) {
+  if (account) await signedIn(page, account);
   await page.route("https://agp.eu.hcompany.ai/**", (route) =>
     route.fulfill({
       headers: { "access-control-allow-origin": "*", "access-control-allow-headers": "*" },

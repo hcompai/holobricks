@@ -611,7 +611,6 @@ aside {
   text-align: center;
 }
 
-.sign-in,
 .publish {
   display: inline-flex;
   align-items: center;
@@ -626,10 +625,104 @@ aside {
   max-width: 280px;
 }
 
-.gallery-note .sign-in {
+.sign-in-page {
+  min-height: 100dvh;
   display: flex;
-  flex-wrap: wrap;
-  margin-top: 10px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 24px;
+  text-align: center;
+  background: radial-gradient(60% 50% at 50% 38%, var(--background-muted), transparent 70%), var(--background-card);
+  animation: fade-in 0.4s ease-out both;
+}
+
+.sign-in-brick {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 18px;
+}
+
+.brick-float {
+  padding-top: 12px;
+  perspective: 500px;
+  animation: float 3.2s ease-in-out infinite;
+}
+
+.sign-in-brick .brick {
+  --w: 76px;
+  animation: turn 18s linear infinite;
+}
+
+.sign-in-brick .brick-shadow {
+  width: 92px;
+  height: 12px;
+  margin: 26px 0 0;
+  animation: float-shadow 3.2s ease-in-out infinite;
+}
+
+.sign-in-page h1 {
+  margin: 0;
+  font-size: 30px;
+  line-height: 36px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.sign-in-lead {
+  margin: 0 0 18px;
+  color: var(--text-secondary);
+  font-size: 15px;
+}
+
+.sign-in-google {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-width: 240px;
+  height: 44px;
+  padding: 0 20px;
+  border-radius: 999px;
+  border-color: transparent;
+  background: var(--background-primary);
+  color: var(--text-on-primary);
+  font-size: 15px;
+  font-weight: 600;
+  transition:
+    transform 0.15s,
+    box-shadow 0.15s;
+}
+
+.sign-in-google:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+}
+
+.sign-in-page .sign-in-error {
+  margin: 4px 0 0;
+  max-width: 320px;
+}
+
+.sign-in-fine {
+  margin: 6px 0 0;
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+@keyframes float {
+  50% {
+    transform: translateY(-12px);
+  }
+}
+
+@keyframes float-shadow {
+  50% {
+    transform: scale(0.75);
+    opacity: 0.55;
+  }
 }
 
 .publish-button.active {
@@ -942,6 +1035,7 @@ aside {
 
 @media (prefers-reduced-motion: reduce) {
   .brick-hop,
+  .brick-float,
   .brick,
   .brick-shadow,
   .skeleton .tile-thumb,

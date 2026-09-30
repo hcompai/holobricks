@@ -1,7 +1,7 @@
 import { PlusIcon, ShoppingBagIcon, SquaresFourIcon } from "@phosphor-icons/react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useAccount } from "./account";
-import { AccountMenu, SignInButton } from "./AccountMenu";
+import type { Account } from "./account";
+import { AccountMenu } from "./AccountMenu";
 import { create, say, stop } from "./agent";
 import { useEdits } from "./edits";
 import { type Build, type BuildSummary, type Piece, type Source, verified } from "./model";
@@ -24,7 +24,6 @@ import { type Framing, type Mode, ViewControls, Viewer, type ViewerHandle } from
 
 const STEP_MS = 700;
 const TITLE = document.title;
-const SIGN_IN = "Sign in with your H account to build with Holo.";
 /** The URL parameter naming the open build, by where it is read from. */
 const PARAMS: Record<Source, string> = { session: "build", public: "public", showcase: "showcase" };
 
@@ -57,8 +56,7 @@ function describer(build: Build | null, palette: Color[]): (piece: Piece) => str
   return (p) => `${titles.get(p.part) ?? p.part.replace(/\.dat$/, "")} · ${colors.get(p.color) ?? `color ${p.color}`}`;
 }
 
-export default function App() {
-  const account = useAccount();
+export default function App({ account }: { account: Account }) {
   const [ref, setRef] = useState<BuildRef | null>(urlBuild);
   const opened = useRef(ref);
   opened.current = ref;
@@ -113,7 +111,7 @@ export default function App() {
     );
   }, []);
 
-  useEffect(() => refreshBuilds(), [refreshBuilds, account?.user.id, !!shelf]);
+  useEffect(() => refreshBuilds(), [refreshBuilds, account.user.id, !!shelf]);
 
   const summary = builds?.find((b) => b.id === buildId && b.source === ref?.source);
   const heading = build ?? summary;
@@ -213,22 +211,16 @@ export default function App() {
   };
 
   /** The signed-in user's build, from their session or as they published it. */
-  const owned =
-    !!account && (ref?.source === "session" || (ref?.source === "public" && summary?.owner === account.user.id));
+  const owned = ref?.source === "session" || (ref?.source === "public" && summary?.owner === account.user.id);
 
-  const unavailable = account ? null : SIGN_IN;
   const closed =
-    ref?.source === "showcase" ? (
-      "A showcase from the gallery. Start a new build to make your own."
-    ) : ref?.source === "public" ? (
-      `Shared by ${summary?.author ?? "an H builder"}. Start a new build to make your own.`
-    ) : unavailable ? (
-      <>
-        {unavailable} <SignInButton />
-      </>
-    ) : build && !build.open && build.status !== "building" ? (
-      "This build's session has ended. Start a new build to make another."
-    ) : null;
+    ref?.source === "showcase"
+      ? "A showcase from the gallery. Start a new build to make your own."
+      : ref?.source === "public"
+        ? `Shared by ${summary?.author ?? "an H builder"}. Start a new build to make your own.`
+        : build && !build.open && build.status !== "building"
+          ? "This build's session has ended. Start a new build to make another."
+          : null;
 
   const visibleStep = Math.min(step, last);
 
@@ -242,7 +234,7 @@ export default function App() {
         <button
           className={shelf ? "library-toggle active" : "library-toggle"}
           aria-pressed={!!shelf}
-          onClick={() => navigate(ref, shelf ? null : account ? "mine" : "public")}
+          onClick={() => navigate(ref, shelf ? null : "mine")}
         >
           <SquaresFourIcon size={16} /> Library
         </button>
@@ -264,7 +256,7 @@ export default function App() {
           </>
         )}
         <span className="spacer" />
-        {build && account && owned && (
+        {build && owned && (
           <PublishButton
             published={ref?.source === "public" || !!listed}
             blocked={
@@ -296,7 +288,7 @@ export default function App() {
           </button>
         )}
         <ThemeToggle />
-        <AccountMenu />
+        <AccountMenu account={account} />
         {build && (
           <DownloadMenu
             build={build}
@@ -378,7 +370,7 @@ export default function App() {
               spin={spin}
               onRender={answer}
               onThumbnail={saveThumbnail}
-              empty={unavailable ?? "Describe a model in the chat to start building."}
+              empty="Describe a model in the chat to start building."
               mode={mode}
               edits={edits}
               describe={describer(live, palette)}
@@ -419,7 +411,6 @@ export default function App() {
             builds={builds}
             failed={buildsFailed}
             shelf={shelf}
-            signedIn={!!account}
             active={ref}
             onShelf={(next) => navigate(ref, next)}
             onRetry={refreshBuilds}
