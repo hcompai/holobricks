@@ -1,13 +1,23 @@
 import { gzipSync } from "node:zlib";
 import { holder, isAdmin } from "./lib/account";
-import { body, Refusal, route } from "./lib/http";
+import { body, Refusal, route, SHARED } from "./lib/http";
 import { snapshot } from "./lib/snapshot";
-import { enter, files, find, findOwn, library, privateOf, type Published, save, setPrivate, unlist } from "./lib/store";
+import {
+  enter,
+  files,
+  find,
+  findOwn,
+  ID,
+  library,
+  privateOf,
+  type Published,
+  save,
+  setPrivate,
+  unlist,
+} from "./lib/store";
 
-const ID = /^[\w-]{1,100}$/;
 const THUMBNAIL = /^data:image\/(webp|png|jpeg);base64,([A-Za-z0-9+/=]+)$/;
 const MAX_THUMBNAIL = 512 * 1024;
-const SHARED = { "Cache-Control": "public, max-age=0, s-maxage=15, stale-while-revalidate=60" };
 
 /** Republishing overwrites a build's files in place: its URLs carry the time, past the Blob CDN's cache. */
 const versioned = (url: string, at: number) => `${url}?v=${at}`;

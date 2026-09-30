@@ -9,6 +9,7 @@ import { type Color, usePalette } from "./palette";
 import { usePrices } from "./pickabrick";
 import { PriceMenu } from "./PriceMenu";
 import { ChatPanel } from "./ChatPanel";
+import { CopyLink } from "./CopyLink";
 import { DownloadMenu } from "./DownloadMenu";
 import { ImportBuild } from "./ImportBuild";
 import { LibraryPage } from "./LibraryPage";
@@ -38,6 +39,8 @@ function urlBuild(): BuildRef | null {
   }
   return null;
 }
+
+const linkTo = (ref: BuildRef) => `${window.location.origin}/?${new URLSearchParams({ [PARAMS[ref.source]]: ref.id })}`;
 
 const LIBRARY = "library";
 
@@ -129,6 +132,9 @@ export default function App({ account }: { account: Account }) {
   const summary = builds?.find((b) => b.id === buildId && b.source === ref?.source);
   const heading = build ?? summary;
   const listed = builds?.find((b) => b.id === buildId && b.source === "public");
+  /** The build as anyone opens it: a showcase, or in the public library. */
+  const shared: BuildRef | null =
+    ref?.source === "session" ? (listed ? { id: ref.id, source: "public" } : null) : summary?.private ? null : ref;
 
   useEffect(() => {
     if (build && builds && summary?.status !== build.status) refreshBuilds();
@@ -315,6 +321,7 @@ export default function App({ account }: { account: Account }) {
             onUnpublish={unpublishBuild}
           />
         )}
+        {build && shared && <CopyLink url={linkTo(shared)} />}
         {build && imported && <DeleteButton name={build.name} onDelete={deleteBuild} />}
         {build && (
           <button

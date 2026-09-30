@@ -16,6 +16,7 @@ export interface Published {
   build: string;
 }
 
+export const ID = /^[\w-]{1,100}$/;
 const PUBLIC = { access: "public", addRandomSuffix: false, allowOverwrite: true, cacheControlMaxAge: 60 } as const;
 const PARALLEL = 16;
 const entry = (id: string) => `library/${id}.json`;

@@ -116,6 +116,19 @@ test("a remix of a public build starts a private session from a script placing e
   );
 });
 
+test("a public build's link copies to the clipboard", async ({ page, context }) => {
+  const tower = { ...fixture(), id: "tower", name: "Ada's tower" };
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await site(page);
+  await library(page, [entry(tower, "Ada Lovelace", "u-ada")], [tower]);
+  await page.goto("/?public=tower");
+  await shown(page, tower.revision);
+
+  await page.getByRole("button", { name: "Copy link" }).click();
+  await expect(page.getByRole("button", { name: "Link copied" })).toBeVisible();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(`${new URL(page.url()).origin}/?public=tower`);
+});
+
 test("the author publishes a build after a confirmation, stays on it, then makes it private after another", async ({
   page,
 }) => {
@@ -129,6 +142,8 @@ test("the author publishes a build after a confirmation, stays on it, then makes
   const calls = await library(page, [], [{ ...model, id: "mine" }]);
   await page.goto("/?build=mine");
   await shown(page, model.revision);
+  const copyLink = page.getByRole("button", { name: "Copy link" });
+  await expect(copyLink).toHaveCount(0);
 
   const publishing = page.getByRole("dialog", { name: "Publish" });
   await page.getByRole("button", { name: "Publish", exact: true }).click();
@@ -138,6 +153,7 @@ test("the author publishes a build after a confirmation, stays on it, then makes
   await expect(page).toHaveURL(/\?build=mine$/);
   const unpublish = page.getByRole("button", { name: "Public", exact: true });
   await expect(unpublish).toBeVisible();
+  await expect(copyLink).toBeVisible();
   const post = calls.find((c) => c.method === "POST")!;
   expect(post.headers).toMatchObject({ authorization: `Bearer ${ACCOUNT.pass}`, "x-agents-key": ACCOUNT.key });
   expect(post.body).toEqual({ id: "mine", thumbnail: expect.stringMatching(/^data:image\/webp;base64,/), edits: null });
@@ -159,6 +175,7 @@ test("the author publishes a build after a confirmation, stays on it, then makes
   await confirm.getByRole("button", { name: "Make private" }).click();
   await expect(page).toHaveURL(/\?build=mine$/);
   await expect(page.getByRole("button", { name: "Publish", exact: true })).toBeVisible();
+  await expect(copyLink).toHaveCount(0);
   expect(calls.find((c) => c.method === "DELETE")).toMatchObject({
     search: "?id=mine",
     headers: { authorization: `Bearer ${ACCOUNT.pass}`, "x-agents-key": ACCOUNT.key },

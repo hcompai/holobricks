@@ -1,5 +1,5 @@
-// Bundle each function in api/ into a Vercel Build Output directory: node scripts/build-api.mjs .vercel/output
-import { mkdir, readdir, writeFile } from "node:fs/promises";
+// Bundle each function in api/ into a Vercel Build Output directory, with its routes: node scripts/build-api.mjs .vercel/output
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { rolldown } from "rolldown";
 import { loadEnv } from "vite";
@@ -8,6 +8,18 @@ const out = process.argv[2];
 if (!out) throw new Error("usage: node scripts/build-api.mjs <output directory>");
 const MAX_DURATION_S = { builds: 300 };
 const { VITE_PLATFORM = "" } = loadEnv("production", process.cwd(), "VITE_");
+/** A link to a public build or a showcase gets the app's page with that build's link preview. */
+const ROUTES = [
+  ...["public", "showcase"].map((key) => ({ src: "^/$", has: [{ type: "query", key }], dest: "/api/preview" })),
+  { handle: "filesystem" },
+];
+
+/** Vite's `?raw` imports, such as the built index.html: the file's text. */
+const raw = {
+  name: "raw",
+  load: async (id) =>
+    id.endsWith("?raw") ? { code: await readFile(id.slice(0, -4), "utf8"), moduleType: "text" } : null,
+};
 
 for (const file of (await readdir("api")).filter((f) => f.endsWith(".ts"))) {
   const name = file.slice(0, -3);
@@ -17,6 +29,7 @@ for (const file of (await readdir("api")).filter((f) => f.endsWith(".ts"))) {
     input: join("api", file),
     platform: "node",
     logLevel: "warn",
+    plugins: [raw],
     transform: { define: { "import.meta.env": JSON.stringify({ VITE_PLATFORM }) } },
   });
   await bundle.write({ file: join(dir, "index.mjs"), format: "esm", codeSplitting: false });
@@ -32,3 +45,4 @@ for (const file of (await readdir("api")).filter((f) => f.endsWith(".ts"))) {
   );
   console.log(`api/${name}`);
 }
+await writeFile(join(out, "config.json"), JSON.stringify({ version: 3, routes: ROUTES }));
