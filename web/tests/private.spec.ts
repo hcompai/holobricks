@@ -85,6 +85,7 @@ test("an imported build goes private and stays under Mine, goes public again, th
   await expect(confirm).toContainText("stays under Mine for you alone");
   await confirm.getByRole("button", { name: "Make private" }).click();
   await expect(page.getByRole("button", { name: "Publish", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Copy link" })).toHaveCount(0);
   expect(calls.find((c) => c.method === "PATCH")).toMatchObject({
     body: { id: "import-1", private: true },
     auth: `Bearer ${ACCOUNT.pass}`,
@@ -101,6 +102,7 @@ test("an imported build goes private and stays under Mine, goes public again, th
   await page.getByRole("button", { name: "Publish", exact: true }).click();
   await page.getByRole("dialog", { name: "Publish" }).getByRole("button", { name: "Publish" }).click();
   await expect(page.getByRole("button", { name: "Public", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Copy link" })).toBeVisible();
   expect(calls.filter((c) => c.method === "PATCH").map((c) => c.body)).toEqual([
     { id: "import-1", private: true },
     { id: "import-1", private: false },

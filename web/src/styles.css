@@ -167,7 +167,7 @@ aside {
 
   header {
     padding: 0 12px;
-    gap: 6px;
+    gap: 4px;
   }
 
   header .brand {
@@ -184,6 +184,13 @@ aside {
   header .publish-button span,
   header .shop-trigger span {
     font-size: 0;
+  }
+
+  /* Hidden labels give back the button's gap before them too. */
+  header .library-toggle span,
+  header .publish-button span,
+  header .shop-trigger span {
+    margin-left: -6px;
   }
 
   .center-bar {

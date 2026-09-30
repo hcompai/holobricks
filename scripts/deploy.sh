@@ -50,5 +50,4 @@ fi
 rm -rf web/.vercel/output && mkdir -p web/.vercel/output
 cp -R web/dist web/.vercel/output/static
 (cd web && node scripts/build-api.mjs .vercel/output)
-echo '{"version": 3}' > web/.vercel/output/config.json
 (cd web && vercel deploy --prebuilt ${target[@]+"${target[@]}"} ${vercel[@]+"${vercel[@]}"})

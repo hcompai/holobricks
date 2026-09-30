@@ -1,3 +1,5 @@
+export const SHARED = { "Cache-Control": "public, max-age=0, s-maxage=15, stale-while-revalidate=60" };
+
 /** A request the API turns down, with the status and the message the caller sees. */
 export class Refusal extends Error {
   constructor(
