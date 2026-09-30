@@ -36,7 +36,7 @@ jobs:
       - run: test -d ldraw || scripts/fetch-ldraw.sh
       - uses: astral-sh/setup-uv@v6
       - working-directory: server
-        run: uv sync --locked --no-dev
+        run: uv sync --locked
       - uses: actions/setup-node@v4
         with:
           node-version: 24

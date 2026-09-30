@@ -32,7 +32,9 @@ else
 fi
 
 # The toolkit refuses a catalog snapshot after 30 days, so each deploy ships one with at least 10 left.
-server/.venv/bin/brickyard-catalog --max-age 20
+catalog=${BRICKYARD_CATALOG:-data/rebrickable.json.gz}
+server/.venv/bin/brickyard-catalog --out "$catalog" --max-age 20
+[[ "$catalog" -ef data/rebrickable.json.gz ]] || cp "$catalog" data/rebrickable.json.gz
 gh release upload "$release" data/rebrickable.json.gz --clobber
 server/.venv/bin/python scripts/pack-toolkit.py
 server/.venv/bin/brickyard-prices   # web/public/pick-a-brick.json: today's Pick a Brick prices for the estimate
