@@ -7,9 +7,10 @@ from collections.abc import Iterable
 
 from brickyard import ldraw, shapes
 from brickyard.model import Build, Message, Placement, mount, place
-from brickyard.session import Session, Store
 from brickyard.shapes import BRICK_RUN, BRICKS, MOSAIC, PLATES, Cell, footprint, rect, split
+from brickyard.store import Store
 from brickyard.workbench import Workbench
+from brickyard.workspace import Workspace
 
 FACINGS = {"south": 0, "west": 90, "north": 180, "east": 270}
 
@@ -18,10 +19,10 @@ class Kit:
     """Collects bricks into validated steps of the build `id`, replacing any earlier version in the library."""
 
     def __init__(self, id: str, name: str, prompt: str):
-        self.build = Build(id=id, name=name, prompt=prompt, builder="claude", status="done")
-        self.session = Session(self.build, Store())
-        self.session.store.thumbnail(id).unlink(missing_ok=True)
-        self.bench = Workbench(self.session)
+        self.store = Store()
+        self.store.thumbnail(id).unlink(missing_ok=True)
+        self.workspace = Workspace(Build(id=id, name=name, prompt=prompt, builder="claude", status="done"))
+        self.bench = Workbench(self.workspace)
         self.pending: list[dict] = []
         self.mounted: list[Placement] = []
         self.problems: list[str] = []
@@ -41,7 +42,7 @@ class Kit:
         """A part hung on the wall behind stud (x, y), its top facing `facing`."""
         self.mounted.append(mount(ldraw.resolve(part) or part, x, y, z, color, facing))
 
-    async def step(self, title: str) -> None:
+    def step(self, title: str) -> None:
         """Checks the pending bricks as one step, each moved `offset` studs along x and y."""
         if not self.pending and not self.mounted:
             return
@@ -51,17 +52,21 @@ class Kit:
             p.model_copy(update={"pos": (p.pos[0] + ox * ldraw.STUD, p.pos[1], p.pos[2] + oy * ldraw.STUD)})
             for p in self.mounted
         ]
-        result = await self.bench.add(title, bricks, mounted)
+        result = self.bench.add(title, bricks, mounted)
         if result.problems:
             self.problems.append(f"[{title}] {result.text}")
         self.pending, self.mounted = [], []
+
+    @property
+    def build(self) -> Build:
+        return self.workspace.build
 
     def save(self, story: list[str]) -> Build:
         self.build.messages = [
             Message(role="user", text=self.build.prompt),
             *(Message(role="assistant", text=s) for s in story),
         ]
-        self.session.store.save(self.build)
+        self.store.save(self.build)
         return self.build
 
     def run(self, x: int, y: int, z: int, length: int, color: int, axis: str = "x", kind=BRICK_RUN, stagger=False):

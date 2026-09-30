@@ -211,12 +211,12 @@ class Ground:
             )
         )
 
-    async def lake(self) -> None:
+    def lake(self) -> None:
         self.kit.cover({s for c in self.height for s in self.studs(*c)}, 0, DBLUE)
-        await self.kit.step("The bed of the Black Lake")
+        self.kit.step("The bed of the Black Lake")
         water = {s for c, h in self.height.items() if h == 0 for s in self.studs(*c)}
         self.kit.scatter(water, 1, [(TMBLUE, 14), (TLBLUE, 1)], self.rng, WATER)
-        await self.kit.step("The Black Lake")
+        self.kit.step("The Black Lake")
 
     def bevels(self) -> list[tuple[str, int, int, int, int, int]]:
         out = []
@@ -246,12 +246,12 @@ class Ground:
             out.append((part, S * X, S * Y, 1 + 3 * (h - size), color, rotation))
         return out
 
-    async def mesh(self) -> None:
+    def mesh(self) -> None:
         bevels = self.bevels()
         for (X, Y), h in self.height.items():
             low = next((k for k in range(h) if (X, Y, k) in self.claimed or self.exposed(X, Y, k)), 0)
             self.kit.pending += _column(S * X, S * Y, 1, 1 + 3 * low)
-        await self.kit.step("Hidden columns under the rock faces")
+        self.kit.step("Hidden columns under the rock faces")
         top = max(self.height.values())
         for k0 in range(0, top, 4):
             for k in range(k0, min(k0 + 4, top)):
@@ -262,10 +262,10 @@ class Ground:
                         groups.setdefault(color, set()).add((X, Y))
                 for color, group in groups.items():
                     self.blocks(group, 1 + 3 * k, color)
-            await self.kit.step(f"The crag, courses {k0 + 1} to {min(k0 + 4, top)}")
+            self.kit.step(f"The crag, courses {k0 + 1} to {min(k0 + 4, top)}")
         for part, x, y, z, color, rotation in bevels:
             self.kit.add(part, x, y, z, color, rotation)
-        await self.kit.step("Crags: the angled faces of the rock")
+        self.kit.step("Crags: the angled faces of the rock")
 
     def blocks(self, cells: set[Cell], z: int, color: int) -> None:
         """2-stud-wide bricks over whole cells, runs of 1 to 4 cells along x or y."""
@@ -286,7 +286,7 @@ class Ground:
             if h > 0 and (X, Y, h - 1) not in self.claimed and not self.exposed(X, Y, h - 1)
         }
 
-    async def surface(self, paved: dict[str, Callable[[int, int], int]]) -> None:
+    def surface(self, paved: dict[str, Callable[[int, int], int]]) -> None:
         """Top plates flush with the rock over the hollow cells, each held by a hidden column."""
         groups: dict[tuple[str, int], set[Cell]] = {}
         for X, Y in self.hollow_tops():
@@ -300,9 +300,9 @@ class Ground:
                 built = [k for k in range(h) if (x // S, y // S, k) in self.claimed or self.exposed(x // S, y // S, k)]
                 columns += _column(x, y, 1 + 3 * (max(built) + 1) if built else 1, 3 * h)
         plates, self.kit.pending = self.kit.pending, columns
-        await self.kit.step("Hidden columns under the ground")
+        self.kit.step("Hidden columns under the ground")
         self.kit.pending = plates
-        await self.kit.step("The tops of the crag and the grounds")
+        self.kit.step("The tops of the crag and the grounds")
 
 
 WATER = ((4, 2, "3020"), (2, 2, "3022"), (4, 4, "3031"), (6, 2, "3795"), (2, 1, "3023b"), (1, 1, "3024"))
@@ -721,7 +721,7 @@ def castle(sc: Sculpture, finials: Finials) -> None:
     easter_eggs(sc)
 
 
-async def boats(kit: Kit, ground: Ground) -> None:
+def boats(kit: Kit, ground: Ground) -> None:
     """The first years' little boats crossing the lake in a line, a lantern at each bow."""
     for i in range(12):
         x, y = 6 + 9 * i, 6 + round(3 * math.sin(i * 0.9))
@@ -729,13 +729,13 @@ async def boats(kit: Kit, ground: Ground) -> None:
             continue
         kit.add("3020", x, y, 2, BROWN, 90)
         kit.add("3062b", x, y + 3, 3, LIT)
-    await kit.step("Boats with lanterns crossing the Black Lake")
+    kit.step("Boats with lanterns crossing the Black Lake")
 
 
-async def life(kit: Kit, sc: Sculpture, ground: Ground, rng: random.Random) -> None:
+def life(kit: Kit, sc: Sculpture, ground: Ground, rng: random.Random) -> None:
     """The clock, the Whomping Willow with the Ford Anglia in its branches, the forest and flowers, the giant squid."""
     kit.mount("4150p03", CX - 8, CY - 23, 1 + 3 * (PLATEAU + 33), WHITE, "east")
-    await kit.step("The clock in the Great Hall's gable")
+    kit.step("The clock in the Great Hall's gable")
     x, y, z = CX - 36, CY - 10, 1 + 3 * PLATEAU
     for i in range(3):
         kit.add("3941", x, y, z + 3 * i, BROWN)
@@ -745,7 +745,7 @@ async def life(kit: Kit, sc: Sculpture, ground: Ground, rng: random.Random) -> N
     kit.add("3021", x - 1, y, z + 14, AZURE)
     kit.add("3004", x, y, z + 15, CLEAR, 90)
     kit.add("3023", x, y, z + 18, AZURE, 90)
-    await kit.step("The Whomping Willow, with a flying Ford Anglia stuck in it")
+    kit.step("The Whomping Willow, with a flying Ford Anglia stuck in it")
     tops = {
         c: h
         for c, h in ground.height.items()
@@ -768,7 +768,7 @@ async def life(kit: Kit, sc: Sculpture, ground: Ground, rng: random.Random) -> N
             part, color = rng.choice(PINES)
             kit.add(part, S * X, S * Y, 1 + 3 * h, color)
             used.update(cells)
-    await kit.step("Pines of the Forbidden Forest and bushes on the crag")
+    kit.step("Pines of the Forbidden Forest and bushes on the crag")
     for (X, Y), h in sorted(tops.items()):
         if (X, Y) in used or not free([(X, Y)], h, 1):
             continue
@@ -776,7 +776,7 @@ async def life(kit: Kit, sc: Sculpture, ground: Ground, rng: random.Random) -> N
             if rng.random() < 0.06:
                 flower = rng.random() < 0.6
                 kit.add("24866" if flower else "32607", x, y, 1 + 3 * h, rng.choice(FLOWERS) if flower else DGREEN)
-    await kit.step("Wild flowers and ferns on the ledges")
+    kit.step("Wild flowers and ferns on the ledges")
     for x, y in ((126, 5), (131, 8), (137, 4)):
         if not all(ground.water(u, v) for u in range(x, x + 3) for v in (y, y + 1)):
             continue
@@ -789,14 +789,14 @@ async def life(kit: Kit, sc: Sculpture, ground: Ground, rng: random.Random) -> N
             ("4589", 2, 15),
         ):
             kit.add(part, x + dx, y, z, SQUID)
-    await kit.step("The giant squid's tentacles out of the Black Lake")
+    kit.step("The giant squid's tentacles out of the Black Lake")
     x, y = 104, 8
     k = max((k + 1 for (u, v, k) in sc.solid if (u, v) == (x, y)), default=ground.course(x, y))
     kit.add("33320", x, y, 1 + 3 * k, GREEN)
-    await kit.step("Trevor the toad, found at the foot of the boathouse stairs")
+    kit.step("Trevor the toad, found at the foot of the boathouse stairs")
 
 
-async def raise_castle(kit: Kit, sc: Sculpture, ground: Ground, finials: Finials, band: int = 6) -> None:
+def raise_castle(kit: Kit, sc: Sculpture, ground: Ground, finials: Finials, band: int = 6) -> None:
     pieces = sc.mesh(ground.course)
     for k0 in range(0, int(pieces[-1][0]) + 1, band):
         chunk = [(owner, b) for k, owner, b in pieces if k0 <= int(k) < k0 + band]
@@ -805,26 +805,26 @@ async def raise_castle(kit: Kit, sc: Sculpture, ground: Ground, finials: Finials
         names = [name for name, _ in Counter(owner for owner, _ in chunk).most_common(3)]
         listed = ", ".join(names[:-1]) + " and " + names[-1] if len(names) > 1 else names[0]
         kit.pending = [b for _, b in chunk]
-        await kit.step(f"Courses {k0 + 1} to {k0 + band}: {listed}")
+        kit.step(f"Courses {k0 + 1} to {k0 + band}: {listed}")
     for x, y, k in finials:
         kit.centered("4589", x, y, 1 + 3 * k, DBG)
         kit.centered("30374", x, y, 4 + 3 * k, GOLD)
-    await kit.step("Gold finials on every spire")
+    kit.step("Gold finials on every spire")
 
 
-async def build() -> Kit:
+def build() -> Kit:
     kit = Kit("hogwarts", "Hogwarts", PROMPT)
     rng = random.Random(7)
     sc, finials = Sculpture(), []
     castle(sc, finials)
     ground = Ground(kit, rng, *pads(sc))
     sc.clip(ground.course)
-    await ground.lake()
-    await ground.mesh()
-    await ground.surface({"castle": lambda x, y: LBG, "footing": lambda x, y: DBG, "crag": lambda x, y: grass(x, y)})
-    await raise_castle(kit, sc, ground, finials)
-    await life(kit, sc, ground, rng)
-    await boats(kit, ground)
+    ground.lake()
+    ground.mesh()
+    ground.surface({"castle": lambda x, y: LBG, "footing": lambda x, y: DBG, "crag": lambda x, y: grass(x, y)})
+    raise_castle(kit, sc, ground, finials)
+    life(kit, sc, ground, rng)
+    boats(kit, ground)
     kit.save(STORY)
     print(f"{sc.overhangs} bricks hang from the one above")
     return kit

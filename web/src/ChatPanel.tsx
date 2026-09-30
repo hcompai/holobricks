@@ -2,7 +2,7 @@ import { ArrowUpIcon, PlusIcon, StopIcon, XIcon } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { api, GALLERY, type Build } from "./api";
+import type { Build } from "./model";
 import { Lightbox } from "./Lightbox";
 import { imageFiles, reference } from "./references";
 
@@ -34,8 +34,6 @@ const SUGGESTIONS = [
   },
 ];
 
-const BUILDER_LABELS: Record<string, string> = { holo: "Holo", demo: "Scripted demo", claude: "Claude" };
-
 const WAITING = [
   "Sorting the parts bin",
   "Counting studs",
@@ -53,7 +51,12 @@ const WAITING = [
   "Trying another angle",
 ];
 const WAITING_S = 4;
+const TYPING_FRAMES = 60;
 const MAX_ATTACHMENTS = 2;
+const WHO = "Holo";
+
+/** A gallery image's small WebP; other images show as they are. */
+const small = (src: string) => (src.startsWith("/gallery/") ? src.replace(/[^/]+$/, "small/$&.webp") : src);
 
 /** A waiting line that changes every few seconds while `active`, never twice in a row. */
 function useWaitingLine(active: boolean): string {
@@ -69,15 +72,37 @@ function useWaitingLine(active: boolean): string {
   return WAITING[line];
 }
 
+function useTyped(text: string): string {
+  const [typed, setTyped] = useState({ text, shown: 0 });
+  useEffect(() => {
+    const step = matchMedia("(prefers-reduced-motion: reduce)").matches
+      ? text.length
+      : Math.ceil(text.length / TYPING_FRAMES);
+    let shown = 0;
+    let frame = 0;
+    const tick = () => {
+      shown = Math.min(text.length, shown + step);
+      setTyped({ text, shown });
+      if (shown < text.length) frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [text]);
+  return typed.text === text ? text.slice(0, typed.shown) : "";
+}
+
 interface Props {
   build: Build | null;
   loading: boolean;
   thinking: string;
+  /** Why the builder takes no message here, or null when it does. */
+  closed: string | null;
   onCreate: (prompt: string, images: string[]) => Promise<void>;
   onSay: (text: string, images: string[]) => Promise<void>;
+  onStop: () => Promise<void>;
 }
 
-export function ChatPanel({ build, loading, thinking, onCreate, onSay }: Props) {
+export function ChatPanel({ build, loading, thinking, closed, onCreate, onSay, onStop }: Props) {
   const [text, setText] = useState("");
   const [attachments, setAttachments] = useState<string[]>([]);
   const [sending, setSending] = useState(false);
@@ -91,7 +116,12 @@ export function ChatPanel({ build, loading, thinking, onCreate, onSay }: Props) 
   const scrolled = useRef<string | null>(null);
   const busy = build?.status === "building";
   const waiting = useWaitingLine(busy);
+  const typed = useTyped(thinking);
   const changing = Boolean(build || loading);
+  const [stopping, setStopping] = useState(false);
+  useEffect(() => {
+    if (!busy) setStopping(false);
+  }, [busy]);
 
   useEffect(() => {
     const jump = scrolled.current !== (build?.id ?? null);
@@ -106,7 +136,7 @@ export function ChatPanel({ build, loading, thinking, onCreate, onSay }: Props) 
 
   useEffect(() => {
     thought.current?.scrollTo({ top: thought.current.scrollHeight });
-  }, [thinking]);
+  }, [typed]);
 
   const attach = async (files: File[]) => {
     if (!files.length) return;
@@ -134,8 +164,6 @@ export function ChatPanel({ build, loading, thinking, onCreate, onSay }: Props) 
     }
   };
 
-  const who = (build && BUILDER_LABELS[build.builder]) ?? build?.builder ?? "Builder";
-
   return (
     <div className="chat">
       <div className="chat-log" ref={log}>
@@ -159,8 +187,8 @@ export function ChatPanel({ build, loading, thinking, onCreate, onSay }: Props) 
             </div>
           </div>
         ) : (
-          build.messages.map((m) => (
-            <div key={`${m.at}-${m.role}`} className={`msg ${m.role}`}>
+          build.messages.map((m, i) => (
+            <div key={i} className={`msg ${m.role}`}>
               {m.role === "assistant" ? (
                 <div className="markdown">
                   <Markdown remarkPlugins={[remarkGfm]}>{m.text}</Markdown>
@@ -176,8 +204,8 @@ export function ChatPanel({ build, loading, thinking, onCreate, onSay }: Props) 
                   title={m.role === "user" ? "Open the image" : "Open the render"}
                 >
                   <img
-                    src={api.smallImageUrl(src)}
-                    alt={m.role === "user" ? "Your reference image" : `The render ${who} saw`}
+                    src={small(src)}
+                    alt={m.role === "user" ? "Your reference image" : `The render ${WHO} saw`}
                     loading="lazy"
                     decoding="async"
                   />
@@ -188,21 +216,21 @@ export function ChatPanel({ build, loading, thinking, onCreate, onSay }: Props) 
         )}
         {busy && (
           <div className="msg assistant thinking">
-            <div className="thinking-head" title={`${who} is ${thinking ? "thinking" : "working"}`}>
+            <div className="thinking-head" title={`${WHO} is ${thinking ? "thinking" : "working"}`}>
               <span key={waiting} className="shimmer">
                 {waiting}
               </span>
             </div>
-            {thinking && (
+            {typed && (
               <div className="thinking-text" ref={thought}>
-                {thinking}
+                {typed}
               </div>
             )}
           </div>
         )}
       </div>
-      {GALLERY && <p className="gallery-note">Read-only gallery. New builds run in the local app with Holo.</p>}
-      {!GALLERY && (
+      {closed && <p className="gallery-note">{closed}</p>}
+      {!closed && (
         <div
           className={dragging ? "composer dragging" : "composer"}
           onDragOver={(e) => {
@@ -273,7 +301,19 @@ export function ChatPanel({ build, loading, thinking, onCreate, onSay }: Props) 
             <PlusIcon size={14} weight="bold" />
           </button>
           {busy && build ? (
-            <button className="round send stop" title="Stop" aria-label="Stop" onClick={() => api.stop(build.id)}>
+            <button
+              className="round send stop"
+              title={stopping ? "Stopping after this step" : "Stop"}
+              aria-label="Stop"
+              disabled={stopping}
+              onClick={() => {
+                setStopping(true);
+                onStop().catch((e) => {
+                  setStopping(false);
+                  setError(`Could not stop: ${e instanceof Error ? e.message : e}`);
+                });
+              }}
+            >
               <StopIcon size={12} weight="fill" />
             </button>
           ) : (

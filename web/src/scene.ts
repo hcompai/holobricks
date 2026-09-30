@@ -3,8 +3,9 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { LDrawLoader } from "three/examples/jsm/loaders/LDrawLoader.js";
 import { LDrawConditionalLineMaterial } from "three/examples/jsm/materials/LDrawConditionalLineMaterial.js";
-import { api, type Box, type Camera, type Piece } from "./api";
-import { loadAsset, pieceRevision } from "./loadAsset";
+import type { Box, Camera, Piece } from "./model";
+import { buildRevision } from "./buildRevision";
+import { loadAsset } from "./loadAsset";
 
 export type View = "iso" | "isoBack" | "front" | "top";
 
@@ -21,6 +22,14 @@ const SHEET: { view: View; label: string }[] = [
   { view: "front", label: "Front" },
   { view: "top", label: "Top (back is up)" },
 ];
+
+const PALETTE = "/LDConfig.ldr";
+/** Every part the loaded models use, as one LDraw MPD each; a part's geometry never changes, so all scenes share them. */
+const PARTS = new Map<string, string>();
+
+export function provideParts(parts: Record<string, string>) {
+  for (const [part, packed] of Object.entries(parts)) PARTS.set(part, packed);
+}
 
 const BACKDROP = "#f6f6f9";
 const STUD = 20;
@@ -304,7 +313,6 @@ export class BrickScene {
   private loader = new LDrawLoader();
   private root = new THREE.Group();
   private batches = new Map<string, Batch>();
-  private parts = new Map<string, Promise<string>>();
   private templates = new Map<string, Promise<THREE.Group>>();
   private materials: Promise<void> | null = null;
   private lifetime = new AbortController();
@@ -502,7 +510,7 @@ export class BrickScene {
 
   private palette(): Promise<void> {
     if (!this.materials) {
-      const pending = loadAsset(api.ldconfigUrl, this.lifetime.signal).then(async (text) => {
+      const pending = loadAsset(PALETTE, this.lifetime.signal).then(async (text) => {
         if (!/^0 !COLOUR /m.test(text)) throw new Error("Empty LDraw color palette");
         const url = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
         try {
@@ -519,24 +527,16 @@ export class BrickScene {
     return this.materials;
   }
 
-  /** Failed fetches/parses are evicted, so retrying can actually recover. */
+  /** Failed parses are evicted, so retrying can actually recover. */
   private template(part: string, color: number): Promise<THREE.Group> {
     const key = `${part}:${color}`;
     let template = this.templates.get(key);
     if (!template) {
-      let text = this.parts.get(part);
-      if (!text) {
-        text = loadAsset(api.partUrl(part), this.lifetime.signal);
-        this.parts.set(part, text);
-        const pending = text;
-        void pending.catch(() => {
-          if (this.parts.get(part) === pending) this.parts.delete(part);
-        });
-      }
-      template = Promise.all([text, this.palette()]).then(([packed]) => {
+      template = this.palette().then(() => {
         this.assertAvailable();
-        // Never parse HTML/JSON errors or follow external references from an incomplete pack.
-        if (!packed.startsWith("0 FILE ") || !/\n[134] /m.test(packed))
+        const packed = PARTS.get(part);
+        // Never parse an incomplete pack or follow its external references.
+        if (!packed?.startsWith("0 FILE ") || !/\n[134] /m.test(packed))
           throw new Error(`Invalid render asset: ${part}`);
         return new Promise<THREE.Group>((resolve, reject) => {
           const timer = setTimeout(() => reject(new Error(`Parsing ${part} timed out`)), 12000);
@@ -587,7 +587,7 @@ export class BrickScene {
     const render = this.loading
       .catch(() => undefined)
       .then(async () => {
-        if (this.wanted !== pieces || this.shown !== pieces || (await pieceRevision(pieces)) !== revision) return null;
+        if (this.wanted !== pieces || this.shown !== pieces || (await buildRevision(pieces)) !== revision) return null;
         this.assertAvailable();
         return camera ? this.view(camera, box) : this.sheet(box);
       });

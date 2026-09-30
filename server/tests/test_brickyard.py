@@ -1,13 +1,14 @@
 import io
-import time
+import json
 from pathlib import Path
 
 import PIL.Image
 import pytest
-from fastapi.testclient import TestClient
 
 from brickyard import ldraw
-from brickyard.model import place
+from brickyard.gallery import export
+from brickyard.model import Build, Message, Piece, place
+from brickyard.store import Store
 
 pytestmark = pytest.mark.skipif(not ldraw.LDRAW.exists(), reason="LDraw library not downloaded")
 
@@ -29,223 +30,32 @@ def test_packed_part_embeds_every_subfile_under_the_names_the_viewer_resolves():
     assert all(not n.startswith(("s/", "48/")) for n in names)
 
 
-def test_demo_build_streams_to_completion_and_exports_steps(tmp_path, monkeypatch, offline_catalog):
-    monkeypatch.setenv("BRICKYARD_DATA", str(tmp_path))
-    from brickyard import app as app_module
-    from brickyard.builders import BUILDERS
-    from brickyard.session import Store
-
-    monkeypatch.setattr(app_module, "store", Store(tmp_path))
-    monkeypatch.setattr(BUILDERS["demo"], "delay", 0)
-    with TestClient(app_module.app) as client:
-        created = client.post("/api/builds", json={"prompt": "a cottage", "builder": "demo"}).json()
-        for _ in range(300):
-            build = client.get(f"/api/builds/{created['id']}").json()
-            if build["status"] in ("done", "error"):
-                break
-            time.sleep(0.1)
-        assert build["status"] == "done"
-        assert len(build["steps"]) > 10 and len(build["pieces"]) > 150
-        assert {p["step"] for p in build["pieces"]} == set(range(len(build["steps"])))
-        ldr = client.get(f"/api/builds/{created['id']}/download.ldr").text
-        assert ldr.count("0 STEP") == len(build["steps"])
-        bom = client.get(f"/api/builds/{created['id']}/bom").json()
-        assert bom["validation"]["status"] == "verified"
-        assert sum(line["count"] for line in bom["lines"]) == len(build["pieces"])
-
-
 def test_gallery_export_holds_every_file_the_static_site_reads(tmp_path, offline_catalog):
-    import json
-
-    from brickyard.gallery import export
-    from brickyard.model import Build, Message, Piece
-    from brickyard.session import Store
-
     store = Store(tmp_path / "data")
     png = io.BytesIO()
     PIL.Image.new("RGB", (800, 600), "red").save(png, "PNG")
-    image = store.save_image(png.getvalue(), "image/png")
+    store.image("look.png").parent.mkdir()
+    store.image("look.png").write_bytes(png.getvalue())
     pieces = [place("3001.dat", 0, 0, 0, 4), place("3024.dat", 0, 0, 3, 15)]
     build = Build(
         status="done",
         pieces=[Piece(id=i, step=0, **p.model_dump()) for i, p in enumerate(pieces)],
-        messages=[Message(role="tool", text="Looked", images=[image])],
+        messages=[Message(role="tool", text="Looked", images=["/api/images/look.png"])],
     )
     store.save(build)
     out = export(store, [build.id], tmp_path / "site")
 
     assert [b["id"] for b in json.loads((out / "builds.json").read_text())] == [build.id]
-    exported = Build.model_validate_json((out / "builds" / f"{build.id}.json").read_text())
-    shown = exported.messages[0].images[0]
+    exported = json.loads((out / "builds" / f"{build.id}.json").read_text())
+    shown = exported["messages"][0]["images"][0]
     assert shown.startswith("/gallery/") and (out.parent / shown.lstrip("/")).read_bytes() == png.getvalue()
     with PIL.Image.open(out / "images" / "small" / f"{Path(shown).name}.webp") as small:
         assert small.size == (320, 240)
-    assert all((out / "parts" / p.part).exists() for p in exported.pieces)
-    assert (out / "builds" / f"{build.id}.bom.json").exists() and (out / "LDConfig.ldr").exists()
+    assert exported["parts"].keys() == {p.part for p in build.pieces}
+    assert exported["status"] == "done" and exported["bom"]["validation"]["status"] == "verified"
 
 
-def test_changing_a_hand_scripted_build_hands_it_to_holo_not_demo(tmp_path, monkeypatch):
-    from brickyard import app as app_module
-    from brickyard.builders import BUILDERS
-    from brickyard.model import Build
-    from brickyard.session import Store
-
-    store = Store(tmp_path)
-    monkeypatch.setattr(app_module, "store", store)
-
-    class HoloRecorder:
-        name = "holo"
-
-        async def run(self, session, request, references):
-            pass
-
-    monkeypatch.setitem(BUILDERS, "holo", HoloRecorder())
-    build = Build(prompt="Paris", builder="claude", status="done")
-    store.save(build)
-    with TestClient(app_module.app) as client:
-        changed = client.post(f"/api/builds/{build.id}/messages", json={"text": "add a tree"}).json()
-    assert changed["builder"] == "holo"
-
-
-@pytest.mark.parametrize("explicit", [False, True])
-def test_new_build_without_holo_fails_before_saving_anything(tmp_path, monkeypatch, explicit):
-    from brickyard import app as app_module
-    from brickyard.session import Store
-
-    class DemoMustNotRun:
-        name = "demo"
-
-        async def run(self, *args):
-            pytest.fail("An unavailable Holo must never substitute the demo")
-
-    store = Store(tmp_path)
-    monkeypatch.setattr(app_module, "store", store)
-    monkeypatch.setattr(app_module, "BUILDERS", {"demo": DemoMustNotRun()})
-    body = {"prompt": "Build the Citadelle de Port-Louis", "images": ["data:image/jpeg;base64,anBlZw=="]}
-    if explicit:
-        body["builder"] = "holo"
-    with TestClient(app_module.app) as client:
-        response = client.post("/api/builds", json=body)
-    assert response.status_code == 503
-    assert "Holo is not configured" in response.json()["detail"]
-    assert store.summaries() == []
-    assert not list(tmp_path.rglob("*.jpg"))
-
-
-def test_default_new_build_reaches_holo_with_verbatim_prompt_even_if_demo_is_first(tmp_path, monkeypatch):
-    from brickyard import app as app_module
-    from brickyard.session import Store
-
-    seen = []
-
-    class Recorder:
-        def __init__(self, name):
-            self.name = name
-
-        async def run(self, session, request, references):
-            seen.append((self.name, request, [p.read_bytes() for p in references]))
-
-    monkeypatch.setattr(app_module, "store", Store(tmp_path))
-    monkeypatch.setattr(app_module, "BUILDERS", {"demo": Recorder("demo"), "holo": Recorder("holo")})
-    prompt = "Construis la Citadelle de Port-Louis à Lorient"
-    with TestClient(app_module.app) as client:
-        response = client.post("/api/builds", json={"prompt": prompt, "images": ["data:image/jpeg;base64,anBlZw=="]})
-        assert response.status_code == 200 and response.json()["builder"] == "holo"
-        for _ in range(50):
-            if seen:
-                break
-            time.sleep(0.01)
-    assert seen == [("holo", prompt, [b"jpeg"])]
-
-
-@pytest.mark.parametrize("saved_builder", ["holo", "claude"])
-def test_followup_without_holo_preserves_existing_build_and_does_not_start_demo(tmp_path, monkeypatch, saved_builder):
-    from brickyard import app as app_module
-    from brickyard.model import Build
-    from brickyard.session import Store
-
-    store = Store(tmp_path)
-    monkeypatch.setattr(app_module, "store", store)
-    monkeypatch.setattr(app_module, "BUILDERS", {"demo": app_module.BUILDERS["demo"]})
-    build = Build(prompt="Citadelle", builder=saved_builder, status="done")
-    store.save(build)
-    before = build.model_dump()
-    with TestClient(app_module.app) as client:
-        response = client.post(f"/api/builds/{build.id}/messages", json={"text": "Add the entrance gate"})
-        assert response.status_code == 503
-        assert client.get(f"/api/builds/{build.id}").json() == before
-    assert store.load(build.id).model_dump() == before
-
-
-def test_reference_images_reach_the_chat_and_the_builder_within_holos_image_budget(tmp_path, monkeypatch):
-    import base64
-    import re
-    from pathlib import Path
-
-    from brickyard import app as app_module
-    from brickyard.builders import BUILDERS
-    from brickyard.session import Store
-
-    seen = []
-
-    class Recorder:
-        name = "demo"
-
-        async def run(self, session, request, references):
-            seen.append([p.read_bytes() for p in references])
-
-    holo = (Path(__file__).resolve().parents[2] / "agent" / "holo.yaml").read_text()
-    assert app_module.MAX_REFERENCES == int(re.search(r"^  message: (\d+)$", holo, re.MULTILINE).group(1))
-    monkeypatch.setattr(app_module, "store", Store(tmp_path))
-    monkeypatch.setitem(BUILDERS, "demo", Recorder())
-    photo = "data:image/jpeg;base64," + base64.b64encode(b"jpeg").decode()
-    with TestClient(app_module.app) as client:
-        body = {"prompt": "a barn", "builder": "demo"}
-        assert client.post("/api/builds", json=body | {"images": [photo] * 3}).status_code == 400
-        assert client.post("/api/builds", json=body | {"images": ["data:text/plain;base64,aGk="]}).status_code == 400
-        created = client.post("/api/builds", json=body | {"images": [photo]}).json()
-        for _ in range(50):
-            if seen:
-                break
-            time.sleep(0.05)
-        message = client.get(f"/api/builds/{created['id']}").json()["messages"][0]
-        assert client.get(message["images"][0]).content == b"jpeg"
-    assert len(Store(tmp_path).summaries()) == 1
-    assert seen == [[b"jpeg"]]
-
-
-def test_a_build_left_building_by_a_dead_server_is_done_after_a_restart(tmp_path, monkeypatch):
-    from brickyard import app as app_module
-    from brickyard.model import Build
-    from brickyard.session import Store
-
-    store = Store(tmp_path)
-    monkeypatch.setattr(app_module, "store", store)
-    build = Build(prompt="Tower Bridge", status="building")
-    store.save(build)
-    with TestClient(app_module.app) as client:
-        served = client.get(f"/api/builds/{build.id}").json()
-    assert served["status"] == "done" and served["messages"][-1]["text"] == "Stopped: the server restarted."
-
-
-def test_an_idle_build_rewritten_on_disk_is_served_fresh(tmp_path, monkeypatch):
-    from brickyard import app as app_module
-    from brickyard.model import Build
-    from brickyard.session import Store
-
-    store = Store(tmp_path)
-    monkeypatch.setattr(app_module, "store", store)
-    build = Build(prompt="Paris", name="old", builder="claude", status="done")
-    store.save(build)
-    with TestClient(app_module.app) as client:
-        assert client.get(f"/api/builds/{build.id}").json()["name"] == "old"
-        store.save(build.model_copy(update={"name": "new"}))
-        assert client.get(f"/api/builds/{build.id}").json()["name"] == "new"
-
-
-def test_file_names_from_requests_cannot_leave_the_data_folder(tmp_path):
-    from brickyard.session import Store
-
+def test_build_ids_cannot_leave_the_data_folder(tmp_path):
     (tmp_path / "secret.json").write_text("{}")
     store = Store(tmp_path / "data")
     assert store.load("../../secret") is None

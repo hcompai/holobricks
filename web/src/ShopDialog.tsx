@@ -1,7 +1,7 @@
 import { ArrowUpRightIcon, CheckIcon, CopyIcon, CubeIcon, ShoppingBagIcon, XIcon } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
-import type { Build } from "./api";
-import { HOLOTAB_INSTALL, prepareShopping, shoppingPrompt, shoppingUrl, type ShoppingPackage } from "./shopping";
+import type { Build, ShoppingPackage } from "./model";
+import { HOLOTAB_INSTALL, prepareShopping, shoppingPrompt } from "./shopping";
 
 interface Props {
   build: Build;
@@ -14,7 +14,6 @@ export function ShopDialog({ build, preview, onClose }: Props) {
   const fallback = useRef<HTMLTextAreaElement>(null);
   const [pack, setPack] = useState<ShoppingPackage | null>(null);
   const [error, setError] = useState("");
-  const [attempt, setAttempt] = useState(0);
   const [image, setImage] = useState("");
   const [copied, setCopied] = useState(false);
   const [manual, setManual] = useState(false);
@@ -42,22 +41,16 @@ export function ShopDialog({ build, preview, onClose }: Props) {
   }, [preview]);
 
   useEffect(() => {
-    const controller = new AbortController();
-    setError("");
-    setPack(null);
     setCopied(false);
     setManual(false);
-    prepareShopping(build, controller.signal).then(
-      (result) => {
-        if (!controller.signal.aborted) setPack(result);
-      },
-      (reason) => {
-        if (!controller.signal.aborted)
-          setError(reason instanceof Error ? reason.message : "Could not prepare your parts.");
-      },
-    );
-    return () => controller.abort();
-  }, [build, attempt]);
+    try {
+      setPack(prepareShopping(build));
+      setError("");
+    } catch (reason) {
+      setPack(null);
+      setError(reason instanceof Error ? reason.message : "Could not prepare your parts.");
+    }
+  }, [build]);
 
   useEffect(() => {
     if (manual) {
@@ -142,7 +135,6 @@ export function ShopDialog({ build, preview, onClose }: Props) {
       {error ? (
         <div className="shop-error" role="alert">
           <p style={{ whiteSpace: "pre-line" }}>{error}</p>
-          <button onClick={() => setAttempt((n) => n + 1)}>Try again</button>
         </div>
       ) : (
         <button className="shop-copy" disabled={!pack || copying} onClick={copy}>
@@ -161,8 +153,11 @@ export function ShopDialog({ build, preview, onClose }: Props) {
       )}
       <div className="shop-footer">
         {pack && (
-          <a href={shoppingUrl(pack)} target="_blank" rel="noopener noreferrer">
-            View or download parts <ArrowUpRightIcon size={13} />
+          <a
+            href={`data:application/xml;charset=utf-8,${encodeURIComponent(pack.xml)}`}
+            download={`brickyard-${pack.id.slice(0, 12)}-parts.xml`}
+          >
+            Download parts XML <ArrowUpRightIcon size={13} />
           </a>
         )}
         <p>Prices and availability are checked on BrickLink. Printed instructions aren’t included yet.</p>

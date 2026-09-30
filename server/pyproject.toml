@@ -1,13 +1,11 @@
 [project]
 name = "brickyard"
 version = "0.1.0"
-description = "Web shell for watching an agent build Lego models from real LDraw parts"
+description = "Toolkit for an agent building Lego models from real LDraw parts"
 requires-python = ">=3.12"
 dependencies = [
-  "fastapi>=0.115",
   "httpx>=0.27",
   "pydantic>=2.7",
-  "uvicorn[standard]>=0.30",
 ]
 
 [dependency-groups]
@@ -18,8 +16,7 @@ dev = [
 ]
 
 [project.scripts]
-brickyard = "brickyard.app:main"
-brickyard-film = "brickyard.film:main"
+brickyard-catalog = "brickyard.rebrickable:main"
 brickyard-gallery = "brickyard.gallery:main"
 bricks = "brickyard.client:main"
 

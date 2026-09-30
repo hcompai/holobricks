@@ -1,6 +1,6 @@
 import { CopyIcon, DownloadSimpleIcon, ShareNetworkIcon, XIcon } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
-import { api, type Build, type FilmJob } from "./api";
+import type { Build } from "./model";
 import { FilmRenderer } from "./film";
 import { encodeGif } from "./filmGif";
 import {
@@ -19,9 +19,6 @@ const BROWSER_FPS = 20;
 const BROWSER_BUDGET_MS = 30000;
 const BROWSER_MOST_SAMPLES = 8;
 const PREVIEW_SAMPLES = 4;
-const POLL_MS = 1000;
-
-type Engine = "server" | "browser";
 
 interface Props {
   /** Frozen at open, including during a live run. */
@@ -43,7 +40,6 @@ export function FilmExport({ build, onClose }: Props) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const renderer = useRef<FilmRenderer | null>(null);
   const job = useRef<AbortController | null>(null);
-  const [engine, setEngine] = useState<Engine | null>(null);
   const [aspect, setAspect] = useState<FilmAspect>("16:9");
   const [seconds, setSeconds] = useState(20);
   const [branded, setBranded] = useState(brandable(build));
@@ -51,7 +47,6 @@ export function FilmExport({ build, onClose }: Props) {
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState(0);
   const [status, setStatus] = useState("");
-  const [film, setFilm] = useState<FilmJob | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [url, setUrl] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -63,17 +58,11 @@ export function FilmExport({ build, onClose }: Props) {
   const update = <T,>(set: (value: T) => void, value: T) => {
     set(value);
     setFile(null);
-    setFilm(null);
   };
 
   useEffect(() => {
     dialog.current?.showModal();
-    let current = true;
-    void api.filmsUnavailable().then((reason) => current && setEngine(reason ? "browser" : "server"));
-    return () => {
-      current = false;
-      job.current?.abort();
-    };
+    return () => job.current?.abort();
   }, []);
 
   useEffect(() => {
@@ -135,26 +124,6 @@ export function FilmExport({ build, onClose }: Props) {
     if (ready) preview();
   }, [ready, aspect, seconds, branded]);
 
-  const renderOnServer = async (signal: AbortSignal) => {
-    let current = await api.createFilm(build.id, { aspect, seconds, branded });
-    signal.addEventListener("abort", () => void api.cancelFilm(current.id), { once: true });
-    while (current.status === "queued" || current.status === "rendering" || current.status === "encoding") {
-      setProgress(current.progress);
-      setStatus(
-        current.status === "queued"
-          ? "Waiting for another film…"
-          : current.status === "encoding"
-            ? "Encoding MP4 and GIF…"
-            : `Rendering… ${Math.round(current.progress * 100)}%`,
-      );
-      await new Promise((resolve) => setTimeout(resolve, POLL_MS));
-      signal.throwIfAborted();
-      current = await api.film(current.id);
-    }
-    if (current.status !== "done") throw new Error(current.error ?? "The film could not be rendered.");
-    setFilm(current);
-  };
-
   const renderInBrowser = async (signal: AbortSignal) => {
     const r = renderer.current!;
     try {
@@ -172,18 +141,17 @@ export function FilmExport({ build, onClose }: Props) {
   };
 
   const generate = async () => {
-    if (!renderer.current || !ready || busy || !engine) return;
+    if (!renderer.current || !ready || busy) return;
     const controller = new AbortController();
     job.current = controller;
     setBusy(true);
     setProgress(0);
     setStatus("");
     setFile(null);
-    setFilm(null);
     setError("");
     setNotice("");
     try {
-      await (engine === "server" ? renderOnServer : renderInBrowser)(controller.signal);
+      await renderInBrowser(controller.signal);
     } catch (e) {
       if (!controller.signal.aborted) setError(e instanceof Error ? e.message : "Could not make the film.");
     } finally {
@@ -205,18 +173,12 @@ export function FilmExport({ build, onClose }: Props) {
     }
   };
 
-  const mp4 = film?.files.mp4;
-  const gif = film?.files.gif;
   return (
     <dialog className="film-dialog" ref={dialog} aria-labelledby="film-title" onCancel={onClose}>
       <div className="film-heading">
         <div>
           <h2 id="film-title">Share the build</h2>
-          <p>
-            {engine === "server"
-              ? "Render a film of the build: an MP4 for video, a GIF for posts."
-              : "Turn the timeline into a looping GIF."}
-          </p>
+          <p>Turn the timeline into a looping GIF.</p>
         </div>
         <button className="icon-button" aria-label="Close export" onClick={onClose}>
           <XIcon size={20} />
@@ -231,18 +193,8 @@ export function FilmExport({ build, onClose }: Props) {
           }}
           aria-busy={!ready || busy}
         >
-          <canvas ref={canvas} hidden={!!url || !!film || !ready} aria-label="Film preview" />
+          <canvas ref={canvas} hidden={!!url || !ready} aria-label="Film preview" />
           {url && <img src={url} alt={`Film of ${build.name}`} />}
-          {film && mp4 && (
-            <video
-              src={api.filmUrl(film.id, "mp4")}
-              aria-label={`Film of ${build.name}`}
-              autoPlay
-              muted
-              loop
-              playsInline
-            />
-          )}
           {!ready && <span>{error ? "Preview unavailable" : "Loading the bricks…"}</span>}
         </div>
         <div className="film-controls">
@@ -297,14 +249,8 @@ export function FilmExport({ build, onClose }: Props) {
                 </div>
               </>
             ) : (
-              <button className="film-primary" disabled={!ready || !engine} onClick={generate}>
-                {engine === "server"
-                  ? film
-                    ? "Render again"
-                    : "Render MP4 + GIF"
-                  : file
-                    ? "Generate again"
-                    : "Generate GIF"}
+              <button className="film-primary" disabled={!ready} onClick={generate}>
+                {file ? "Generate again" : "Generate GIF"}
               </button>
             )}
             {error && (
@@ -313,30 +259,6 @@ export function FilmExport({ build, onClose }: Props) {
               </div>
             )}
           </div>
-          {film && (
-            <div className="film-result">
-              <p>
-                {film.options.width} × {film.options.height} · {film.options.fps} fps · {film.samples} samples per frame
-              </p>
-              <div className="film-actions">
-                {mp4 && (
-                  <a className="film-primary" href={api.filmUrl(film.id, "mp4")} download>
-                    <DownloadSimpleIcon size={16} /> Download MP4 · {megabytes(mp4.size)}
-                  </a>
-                )}
-                {gif && (
-                  <a href={api.filmUrl(film.id, "gif")} download>
-                    <DownloadSimpleIcon size={16} /> Download GIF · {megabytes(gif.size)}
-                  </a>
-                )}
-              </div>
-              {gif && (
-                <p className="small muted">
-                  GIF: {gif.width} × {gif.height} at {gif.fps} fps, under 15 MB for X. Use the MP4 wherever video works.
-                </p>
-              )}
-            </div>
-          )}
           {file && url && (
             <div className="film-result">
               <p>

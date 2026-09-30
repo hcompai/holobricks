@@ -18,9 +18,7 @@ if destination.exists():
     if marker.exists() and json.loads(marker.read_text()).get("commit") == COMMIT:
         print("Pinned connector library already installed.")
         raise SystemExit(0)
-    raise SystemExit(
-        "shadow/ already exists with different or unknown provenance; move it aside before installing."
-    )
+    raise SystemExit("shadow/ already exists with different or unknown provenance; move it aside before installing.")
 with urllib.request.urlopen(URL, timeout=90) as response:
     data = response.read(80_000_001)
 if len(data) > 80_000_000:
@@ -39,9 +37,7 @@ with tempfile.TemporaryDirectory(prefix=".shadow-", dir=root) as tmp:
             if member.isdir():
                 continue
             if not member.isfile():
-                raise SystemExit(
-                    "Unexpected link or special file in connector archive."
-                )
+                raise SystemExit("Unexpected link or special file in connector archive.")
             total += member.size
             if total > 150_000_000:
                 raise SystemExit("Connector library exceeds size limit.")

@@ -1,6 +1,7 @@
 import { PlusIcon, ShoppingBagIcon } from "@phosphor-icons/react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, GALLERY, type Build, type BuildSummary } from "./api";
+import { create, say, stop, unavailable } from "./agent";
+import type { Build, BuildSummary } from "./model";
 import { ChatPanel } from "./ChatPanel";
 import { DownloadMenu } from "./DownloadMenu";
 import { LibraryPanel } from "./LibraryPanel";
@@ -8,24 +9,31 @@ import { PartsPanel } from "./PartsPanel";
 import { ShopDialog } from "./ShopDialog";
 import { Timeline } from "./Timeline";
 import { FilmExport } from "./FilmExport";
-import { useBuild } from "./useBuild";
+import { library, remember, thumbnail } from "./library";
+import { type BuildRef, useBuild } from "./useBuild";
 import { ThemeToggle } from "./ThemeToggle";
 import { type Framing, ViewControls, Viewer, type ViewerHandle } from "./Viewer";
 
 const STEP_MS = 700;
 const TITLE = document.title;
 
-function urlBuildId(): string | null {
-  return new URLSearchParams(window.location.search).get("build");
+function urlBuild(): BuildRef | null {
+  const params = new URLSearchParams(window.location.search);
+  const session = params.get("build");
+  const showcase = params.get("showcase");
+  return session ? { id: session, showcase: false } : showcase ? { id: showcase, showcase: true } : null;
 }
 
+const same = (a: BuildRef | null, b: BuildRef | null) => a?.id === b?.id && a?.showcase === b?.showcase;
+
 export default function App() {
-  const [buildId, setBuildId] = useState<string | null>(urlBuildId);
-  const { build, loading, thinking, renderRequest, error, syncError } = useBuild(buildId);
+  const [ref, setRef] = useState<BuildRef | null>(urlBuild);
+  const buildId = ref?.id ?? null;
+  const { build, loading, thinking, renderRequest, error, syncError, answer } = useBuild(ref);
   const viewer = useRef<ViewerHandle>(null);
   const [builds, setBuilds] = useState<BuildSummary[] | null>(null);
   const [buildsFailed, setBuildsFailed] = useState(false);
-  const [left, setLeft] = useState<"chat" | "library">(GALLERY ? "library" : "chat");
+  const [left, setLeft] = useState<"chat" | "library">("chat");
   const [center, setCenter] = useState<"model" | "parts">("model");
   const [step, setStep] = useState(Infinity);
   const [following, setFollowing] = useState(true);
@@ -47,7 +55,7 @@ export default function App() {
 
   const refreshBuilds = useCallback(() => {
     setBuildsFailed(false);
-    api.builds().then(setBuilds, (e) => {
+    library().then(setBuilds, (e) => {
       console.error(e);
       setBuildsFailed(true);
     });
@@ -66,36 +74,33 @@ export default function App() {
     document.title = buildId && heading ? `${heading.name} · ${TITLE}` : TITLE;
   }, [buildId, heading?.name]);
 
-  const show = useCallback((id: string | null) => {
-    setBuildId(id);
+  const show = useCallback((next: BuildRef | null) => {
+    setRef(next);
     setStep(Infinity);
     setFollowing(true);
     setPlaying(false);
   }, []);
 
   const open = useCallback(
-    (id: string | null, replace = false) => {
-      show(id);
-      if (id === urlBuildId()) return;
+    (next: BuildRef | null) => {
+      show(next);
+      if (same(next, urlBuild())) return;
       const url = new URL(window.location.href);
-      if (id) url.searchParams.set("build", id);
-      else url.searchParams.delete("build");
-      window.history[replace ? "replaceState" : "pushState"](null, "", url);
+      url.searchParams.delete("build");
+      url.searchParams.delete("showcase");
+      if (next) url.searchParams.set(next.showcase ? "showcase" : "build", next.id);
+      window.history.pushState(null, "", url);
     },
     [show],
   );
 
   useEffect(() => {
-    const sync = () => show(urlBuildId());
+    const sync = () => show(urlBuild());
     window.addEventListener("popstate", sync);
     return () => window.removeEventListener("popstate", sync);
   }, [show]);
 
-  const home = () => (GALLERY ? open(builds?.[0]?.id ?? null) : open(null));
-
-  useEffect(() => {
-    if (GALLERY && builds?.length && !builds.some((b) => b.id === buildId)) open(builds[0].id, true);
-  }, [buildId, builds, open]);
+  const home = () => open(null);
 
   useEffect(() => {
     if (following) setStep(last);
@@ -118,12 +123,27 @@ export default function App() {
     setFollowing(s >= last);
   };
 
-  const create = async (prompt: string, images: string[]) => {
-    const created = await api.create(prompt, images);
-    open(created.id);
+  const start = async (prompt: string, images: string[]) => {
+    const id = await create(prompt, images);
+    remember(id, { name: prompt.slice(0, 60) || "Untitled build", prompt });
+    open({ id, showcase: false });
     setLeft("chat");
     refreshBuilds();
   };
+
+  const saveThumbnail = async (png: Blob) => {
+    if (!ref || ref.showcase) return;
+    remember(ref.id, { thumbnail: await thumbnail(png) });
+    refreshBuilds();
+  };
+
+  const closed =
+    unavailable ??
+    (ref?.showcase
+      ? "A showcase from the gallery. Start a new build to make your own."
+      : build && !build.open && build.status !== "building"
+        ? "This build's session has ended. Start a new build to make another."
+        : null);
 
   const visibleStep = Math.min(step, last);
 
@@ -189,7 +209,7 @@ export default function App() {
               Library
             </button>
           </div>
-          {buildId && !GALLERY && (
+          {ref && (
             <button
               className="new-build"
               onClick={() => {
@@ -208,9 +228,13 @@ export default function App() {
               build={build}
               loading={loading}
               thinking={thinking}
-              onCreate={create}
+              closed={closed}
+              onCreate={start}
               onSay={async (text, images) => {
-                if (build) await api.say(build.id, text, images);
+                if (build) await say(build.id, text, images);
+              }}
+              onStop={async () => {
+                if (build) await stop(build.id);
               }}
             />
           ) : (
@@ -219,9 +243,9 @@ export default function App() {
               failed={buildsFailed}
               onRetry={refreshBuilds}
               activeId={buildId}
-              onOpen={(id) => {
-                open(id);
-                if (!GALLERY) setLeft("chat");
+              onOpen={(b) => {
+                open({ id: b.id, showcase: b.showcase });
+                setLeft("chat");
               }}
             />
           )}
@@ -252,10 +276,9 @@ export default function App() {
               syncError={syncError}
               framing={framing}
               spin={spin}
-              thumbnailFresh={
-                builds && build ? summary?.thumbnail != null && summary.thumbnail >= build.updated * 1000 : undefined
-              }
-              onThumbnail={refreshBuilds}
+              onRender={answer}
+              onThumbnail={saveThumbnail}
+              empty={unavailable ?? "Describe a model in the chat to start building."}
             />
           </div>
           {center === "parts" && build && (

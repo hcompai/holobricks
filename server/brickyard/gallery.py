@@ -7,9 +7,9 @@ import json
 import shutil
 from pathlib import Path
 
-from brickyard import ldraw, shopping
 from brickyard.model import Build
-from brickyard.session import Store
+from brickyard.store import Store
+from brickyard.workspace import bundle
 
 URL = "/gallery"
 
@@ -18,32 +18,18 @@ def export(store: Store, ids: list[str], site: Path) -> Path:
     """Write every file the viewer reads for these builds under `site/gallery`; returns that folder."""
     out = site / URL.strip("/")
     shutil.rmtree(out, ignore_errors=True)
-    for folder in ("builds", "parts", "images/small", "thumbnails"):
+    for folder in ("builds", "images/small", "thumbnails"):
         (out / folder).mkdir(parents=True, exist_ok=True)
-    builds = [_load(store, i) for i in ids]
     summaries = []
-    for build in builds:
+    for build in (_load(store, i) for i in ids):
         for message in build.messages:
             message.images = [_image(store, url, out) for url in message.images]
-        (out / "builds" / f"{build.id}.json").write_text(build.model_dump_json())
-        try:
-            bom = build.bom(store.root.parent / "bricklink-catalog")
-        except ValueError as exc:
-            bom = {"error": str(exc)}
-        (out / "builds" / f"{build.id}.bom.json").write_text(json.dumps(bom))
-        (out / "builds" / f"{build.id}.ldr").write_text(build.to_ldraw())
-        try:
-            package = shopping.save(build, out / "shopping", store.root.parent / "bricklink-catalog")
-        except ValueError as exc:
-            package = {"error": str(exc)}
-        (out / "builds" / f"{build.id}.shopping.json").write_text(json.dumps(package))
+        shown = bundle(build) | build.model_dump(include={"status", "messages"})
+        (out / "builds" / f"{build.id}.json").write_text(json.dumps(shown, separators=(",", ":")))
         thumbnail = store.thumbnail(build.id)
         if thumbnail.exists():
             shutil.copy(thumbnail, out / "thumbnails" / f"{build.id}.png")
         summaries.append(build.summary() | {"thumbnail": store.thumbnail_version(build.id)})
-    for part in {p.part for build in builds for p in build.pieces}:
-        (out / "parts" / part).write_text(ldraw.pack(part))
-    shutil.copy(ldraw.LDRAW / "LDConfig.ldr", out / "LDConfig.ldr")
     (out / "builds.json").write_text(json.dumps(summaries))
     return out
 
