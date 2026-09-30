@@ -1,7 +1,7 @@
 import { type Ref, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { ArrowsClockwiseIcon, PencilSimpleIcon, PersonSimpleWalkIcon } from "@phosphor-icons/react";
 import * as THREE from "three";
-import type { Build, Piece, RenderRequest } from "./model";
+import type { Build, Piece } from "./model";
 import { BrickLoader } from "./BrickLoader";
 import { buildRevision } from "./buildRevision";
 import { ACTION_KEYS, type Action, EditBar, EditPanel } from "./EditPanel";
@@ -9,6 +9,9 @@ import { type Edit, type Edits, PLATE, pivot, STUD } from "./edits";
 import type { Color } from "./palette";
 import { BrickScene, typing, type View } from "./scene";
 import { Shortcuts } from "./Shortcuts";
+
+/** Hand edits come in bursts; the library tile waits for a pause. */
+const THUMBNAIL_IDLE_MS = 1500;
 
 const VIEWS: { id: View; label: string }[] = [
   { id: "iso", label: "3/4" },
@@ -66,7 +69,7 @@ export function ViewControls({
         className={mode === "edit" ? "active" : ""}
         aria-pressed={mode === "edit"}
         disabled={!canEdit && mode !== "edit"}
-        title={canEdit ? "Select pieces to move, turn or delete them" : "Pieces can be edited once the builder is done"}
+        title={canEdit ? "Select pieces to move, turn or delete them" : "Pieces can be edited once Holo is done"}
         onClick={() => toggle("edit")}
       >
         <PencilSimpleIcon size={14} weight="bold" />
@@ -90,6 +93,8 @@ export function ViewControls({
 export interface ViewerHandle {
   /** The current view as a PNG. */
   image: () => Promise<Blob | null>;
+  /** The model as a library tile: a square 3/4 view on a light background. */
+  thumbnail: () => Promise<Blob | null>;
 }
 
 interface Props {
@@ -98,12 +103,9 @@ interface Props {
   /** What is opening, shown until its pieces are drawn; null when no build is open. */
   opening: string | null;
   step: number;
-  renderRequest: RenderRequest | null;
   syncError?: string | null;
   framing: Framing;
   spin: boolean;
-  /** Hand the builder a render it asked for; true once it has it. */
-  onRender: (request: RenderRequest, png: Blob) => Promise<boolean>;
   /** Called with a thumbnail once a finished revision is drawn. */
   onThumbnail: (png: Blob) => void;
   /** What shows before any build is open. */
@@ -119,14 +121,13 @@ interface Props {
 }
 
 export function Viewer(props: Props) {
-  const { ref, build, opening, step, renderRequest, framing, spin, onRender, onThumbnail, syncError, empty } = props;
+  const { ref, build, opening, step, framing, spin, onThumbnail, syncError, empty } = props;
   const { mode, edits, describe, palette, onMode } = props;
   const container = useRef<HTMLDivElement>(null);
   const scene = useRef<BrickScene | null>(null);
   const framedBuild = useRef<string | null>(null);
   const thumbnailed = useRef(new Set<string>());
-  const answered = useRef(new Set<string>());
-  const [drawn, setDrawn] = useState<{ key: string; pieces: Build["pieces"] } | null>(null);
+  const [drawn, setDrawn] = useState<{ id: string; key: string; pieces: Build["pieces"] } | null>(null);
   const [renderError, setRenderError] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
   const [hover, setHover] = useState<number | null>(null);
@@ -139,7 +140,11 @@ export function Viewer(props: Props) {
   const selectedPieces = build?.pieces.filter((p) => selected.includes(p.id)) ?? [];
   const selectedColors = [...new Set(selectedPieces.map((p) => p.color))];
   const version = build ? `${build.id}:${build.revision}` : null;
+  /** This exact revision is drawn. */
   const ready = !!build && drawn?.key === version && drawn.pieces === build.pieces && !renderError;
+  /** Some revision of this build is drawn; the scene keeps it up until the next one is ready. */
+  const shown = !!build && drawn?.id === build.id && !renderError;
+  const waiting = shown && !build.pieces.length;
   const failed = (error: unknown) => {
     setDrawn(null);
     setRenderError(error instanceof Error ? error.message : "Could not draw the latest model");
@@ -166,8 +171,12 @@ export function Viewer(props: Props) {
     ref,
     () => ({
       image: () => (ready && !syncError ? (scene.current?.image() ?? Promise.resolve(null)) : Promise.resolve(null)),
+      thumbnail: () =>
+        ready && !syncError && build
+          ? (scene.current?.renderThumbnail(build.pieces) ?? Promise.resolve(null))
+          : Promise.resolve(null),
     }),
-    [ready, syncError],
+    [ready, syncError, build?.pieces],
   );
 
   useEffect(() => {
@@ -185,11 +194,13 @@ export function Viewer(props: Props) {
         }
         if (!current) return;
         if (build.pieces.length && (framedBuild.current !== build.id || !s.userMoved)) {
+          const same = framedBuild.current === build.id;
+          if (!same) s.userMoved = false;
           framedBuild.current = build.id;
-          s.frameView(framing.view, width, depth);
+          s.frameView(framing.view, width, depth, same);
         }
         s.drawCurrent();
-        setDrawn({ key: version!, pieces: build.pieces });
+        setDrawn({ id: build.id, key: version!, pieces: build.pieces });
       })
       .catch((error) => {
         if (current) failed(error);
@@ -203,42 +214,23 @@ export function Viewer(props: Props) {
     const s = scene.current;
     if (!s || !ready || !build?.pieces.length || build.status !== "done" || thumbnailed.current.has(version!)) return;
     let current = true;
-    s.renderThumbnail(build.pieces)
-      .then((png) => {
-        if (!current || !png) return;
-        thumbnailed.current.add(version!);
-        onThumbnail(png);
-      })
-      .catch((error) => console.error("Could not make the thumbnail", error));
+    const timer = setTimeout(
+      () =>
+        s
+          .renderThumbnail(build.pieces)
+          .then((png) => {
+            if (!current || !png) return;
+            thumbnailed.current.add(version!);
+            onThumbnail(png);
+          })
+          .catch((error) => console.error("Could not make the thumbnail", error)),
+      THUMBNAIL_IDLE_MS,
+    );
     return () => {
       current = false;
-    };
-  }, [ready, build?.status, version]);
-
-  useEffect(() => {
-    const s = scene.current;
-    if (!s || !ready || syncError || !build || !renderRequest || answered.current.has(renderRequest.request)) return;
-    const { request, camera, box, revision } = renderRequest;
-    if (build.revision !== revision) return;
-    let active = true;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const answer = async () => {
-      try {
-        const png = await s.renderBuild(build.pieces, revision, camera, box);
-        if (!active || !png || answered.current.has(request)) return;
-        if (await onRender(renderRequest, png)) answered.current.add(request);
-        else if (active) timer = setTimeout(answer, 2000);
-      } catch (error) {
-        console.error("Could not answer a render request", error);
-        if (active) timer = setTimeout(answer, 2000);
-      }
-    };
-    void answer();
-    return () => {
-      active = false;
       clearTimeout(timer);
     };
-  }, [renderRequest, build?.id, build?.pieces, ready, syncError]);
+  }, [ready, build?.status, version]);
 
   useEffect(() => scene.current?.setVisibleStep(step), [step, retry]);
 
@@ -396,7 +388,7 @@ export function Viewer(props: Props) {
         className="viewer-canvas"
         ref={container}
         style={{
-          visibility: ready && !syncError ? "visible" : "hidden",
+          visibility: shown && !syncError ? "visible" : "hidden",
           cursor: (editing && hover !== null) || (mode === "walk" && !locked) ? "pointer" : undefined,
         }}
         onPointerDownCapture={boxStart}
@@ -407,7 +399,7 @@ export function Viewer(props: Props) {
         onPointerLeave={() => setHover(null)}
         onClick={clicked}
       />
-      {ready && (edits.stale > 0 || edits.hidden > 0) && (
+      {shown && (edits.stale > 0 || edits.hidden > 0) && (
         <div className="edit-notice" role="status">
           {edits.stale > 0 ? (
             <>
@@ -415,13 +407,13 @@ export function Viewer(props: Props) {
               <button onClick={edits.reset}>Discard</button>
             </>
           ) : (
-            `Your ${edits.hidden} edit${edits.hidden === 1 ? " is" : "s are"} hidden while the builder works.`
+            `Your ${edits.hidden} edit${edits.hidden === 1 ? " is" : "s are"} hidden while Holo works.`
           )}
         </div>
       )}
       {box && <div className="select-box" style={boxStyle(box, container.current)} />}
-      {editing && ready && <EditBar edits={edits} />}
-      {editing && ready && selectedPieces.length > 0 && (
+      {editing && shown && <EditBar edits={edits} />}
+      {editing && shown && selectedPieces.length > 0 && (
         <EditPanel
           label={selectedPieces.length === 1 ? describe(selectedPieces[0]) : `${selectedPieces.length} pieces`}
           onAction={act}
@@ -435,7 +427,7 @@ export function Viewer(props: Props) {
           }}
         />
       )}
-      {mode === "walk" && ready && !locked && (
+      {mode === "walk" && shown && !locked && (
         <div className="walk-hint">
           <b>Click to walk</b>
           <span>WASD or arrows to move · mouse to look · Space/E up · C/Q down · Shift to run</span>
@@ -448,7 +440,15 @@ export function Viewer(props: Props) {
           {!syncError && <button onClick={() => setRetry((n) => n + 1)}>Reload model</button>}
         </div>
       ) : (
-        opening && !ready && <BrickLoader label={build ? "Loading the latest model…" : opening} />
+        <>
+          {opening && !shown && <BrickLoader label={build ? "Loading the model…" : opening} />}
+          {waiting &&
+            (build.status === "building" ? (
+              <BrickLoader label="Holo is planning the build…" />
+            ) : (
+              <BrickLoader idle label="Nothing built yet. Ask Holo in the chat." />
+            ))}
+        </>
       )}
       {!build && !opening && <BrickLoader idle label={empty} />}
     </div>

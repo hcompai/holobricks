@@ -38,6 +38,8 @@ const PLATE = 8;
 const SHADOW_MAP = 2048;
 /** Edge opacity by how many pixels a stud covers: none where a stud's lines would pile into a dark film, crisp up close. */
 const EDGE_FADE = { opacity: 0.6, fromPixels: 3, toPixels: 30 };
+/** Vertical fields of view, in degrees: narrow to frame the model, wide to look around inside it. */
+const FOV = { orbit: 35, walk: 70 };
 /** Walking at a minifig's eye height, in LDraw units per second. */
 const WALK = { eye: 80, speed: 6 * STUD, run: 3, lookDistance: 20 * STUD };
 const HOVER = { color: 0x4f8cff, opacity: 0.25 };
@@ -52,6 +54,12 @@ interface Light {
 }
 
 /** The user's view: a sun from the upper left, so the default camera sees the shadows it casts. */
+const FLOOR_SHADOW = 0.18;
+const GLIDE_MS = 450;
+const RENDER_QUALITY = 0.9;
+const SETTLE_MS = 400;
+/** Pieces past which a moving view drops to one pixel per point. */
+const LARGE_MODEL = 5000;
 const VIEW_LIGHT: Light = {
   sun: new THREE.Vector3(-0.5, 1, 0.6).normalize(),
   intensity: 2.6,
@@ -381,7 +389,7 @@ export class BrickScene {
   /** Exposed for offline renderers that compose their own passes; the live view only goes through methods. */
   readonly renderer: THREE.WebGLRenderer;
   readonly scene = new THREE.Scene();
-  readonly camera = new THREE.PerspectiveCamera(35, 1, 1, 100000);
+  readonly camera = new THREE.PerspectiveCamera(FOV.orbit, 1, 1, 100000);
   readonly sun = new THREE.DirectionalLight();
   readonly sky = new THREE.HemisphereLight(0xffffff, 0x6f6f6f);
   private sunDistance = 1;
@@ -427,6 +435,12 @@ export class BrickScene {
   private keys = new Set<string>();
   private timer = new THREE.Timer();
   private ground = 0;
+  /** Catches the model's shadow in the user's view. */
+  private floor: THREE.Mesh<THREE.PlaneGeometry, THREE.ShadowMaterial> | null = null;
+  /** The camera easing from one framing to the next: [position, target] at each end. */
+  private glide: { from: THREE.Vector3[]; to: THREE.Vector3[]; start: number } | null = null;
+  private dragging = false;
+  private settling: ReturnType<typeof setTimeout> | undefined;
 
   constructor(
     private container: HTMLElement,
@@ -458,8 +472,25 @@ export class BrickScene {
 
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
-    this.controls.addEventListener("start", () => (this.userMoved = true));
-    this.controls.addEventListener("change", () => (this.dirty = true));
+    this.controls.addEventListener("start", () => {
+      this.userMoved = true;
+      this.glide = null;
+      clearTimeout(this.settling);
+      this.dragging = true;
+      this.sharpen();
+    });
+    this.controls.addEventListener("end", () => {
+      this.settling = setTimeout(() => {
+        this.dragging = false;
+        this.sharpen();
+      }, SETTLE_MS);
+    });
+    this.controls.addEventListener("change", () => {
+      this.dirty = true;
+      if (this.walking) return;
+      this.camera.near = Math.max(1, this.camera.position.distanceTo(this.controls.target) / 100);
+      this.camera.updateProjectionMatrix();
+    });
     this.controls.autoRotateSpeed = 1.2;
 
     this.loader.smoothNormals = true;
@@ -469,6 +500,13 @@ export class BrickScene {
     this.renderer.domElement.addEventListener("webglcontextlost", this.contextLost);
 
     if (!interactive) return;
+    this.floor = new THREE.Mesh(
+      new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2),
+      new THREE.ShadowMaterial({ opacity: FLOOR_SHADOW }),
+    );
+    this.floor.receiveShadow = true;
+    this.floor.visible = false;
+    this.scene.add(this.floor);
     this.resizeObserver.observe(container);
     this.resize();
     this.frameView("iso", 32, 32);
@@ -476,8 +514,11 @@ export class BrickScene {
       this.frame = requestAnimationFrame(tick);
       const seconds = Math.min(this.timer.update(time).getDelta(), 0.1);
       if (this.walking) this.walk(seconds);
-      else this.controls.update();
-      if (this.dirty) this.draw();
+      else {
+        this.ease();
+        this.controls.update();
+      }
+      if (this.dirty && this.container.checkVisibility({ visibilityProperty: true })) this.draw();
     };
     tick();
   }
@@ -506,8 +547,14 @@ export class BrickScene {
   /** Aim the sun's shadow camera at the whole model and redraw its shadow map on the next render. */
   private fitShadows() {
     this.shadowsStale = false;
-    const sphere = this.modelBox().getBoundingSphere(new THREE.Sphere());
+    const box = this.modelBox();
+    const sphere = box.getBoundingSphere(new THREE.Sphere());
     const r = Math.max(sphere.radius, STUD);
+    if (this.floor) {
+      this.floor.visible = !box.isEmpty();
+      this.floor.position.set(sphere.center.x, box.min.y - 0.1, sphere.center.z);
+      this.floor.scale.setScalar(4 * r);
+    }
     this.sun.target.position.copy(sphere.center);
     this.sun.target.updateMatrixWorld();
     this.sunDistance = 2 * r;
@@ -563,6 +610,7 @@ export class BrickScene {
     this.lifetime.abort();
     this.renderer.domElement.removeEventListener("webglcontextlost", this.contextLost);
     cancelAnimationFrame(this.frame);
+    clearTimeout(this.settling);
     this.resizeObserver.disconnect();
     this.stopListening();
     this.walker?.unlock();
@@ -575,6 +623,8 @@ export class BrickScene {
     this.batches.clear();
     this.environment.dispose();
     this.sun.shadow.dispose();
+    this.floor?.geometry.dispose();
+    this.floor?.material.dispose();
     // Parsing may still be in flight when an export is cancelled. Release its resources too.
     void Promise.allSettled(this.templates.values()).then((results) => {
       const geometries = new Set<THREE.BufferGeometry>();
@@ -640,28 +690,31 @@ export class BrickScene {
     const key = `${part}:${color}`;
     let template = this.templates.get(key);
     if (!template) {
-      template = this.palette().then(() => {
-        this.assertAvailable();
-        const packed = PARTS.get(part);
-        // Never parse an incomplete pack or follow its external references.
-        if (!packed?.startsWith("0 FILE ") || !/\n[134] /m.test(packed))
-          throw new Error(`Invalid render asset: ${part}`);
-        return new Promise<THREE.Group>((resolve, reject) => {
-          const timer = setTimeout(() => reject(new Error(`Parsing ${part} timed out`)), 12000);
-          this.loader.parse(
-            packed.replace("\n1 16 ", `\n1 ${color} `),
-            (group) => {
-              clearTimeout(timer);
-              if (new THREE.Box3().setFromObject(group).isEmpty()) reject(new Error(`Empty render asset: ${part}`));
-              else resolve(group);
-            },
-            (error) => {
-              clearTimeout(timer);
-              reject(error);
-            },
-          );
+      template = this.palette()
+        // Each parse gets its own task so a big model keeps the page responsive while it loads.
+        .then(() => new Promise((resolve) => setTimeout(resolve)))
+        .then(() => {
+          this.assertAvailable();
+          const packed = PARTS.get(part);
+          // Never parse an incomplete pack or follow its external references.
+          if (!packed?.startsWith("0 FILE ") || !/\n[134] /m.test(packed))
+            throw new Error(`Invalid render asset: ${part}`);
+          return new Promise<THREE.Group>((resolve, reject) => {
+            const timer = setTimeout(() => reject(new Error(`Parsing ${part} timed out`)), 12000);
+            this.loader.parse(
+              packed.replace("\n1 16 ", `\n1 ${color} `),
+              (group) => {
+                clearTimeout(timer);
+                if (new THREE.Box3().setFromObject(group).isEmpty()) reject(new Error(`Empty render asset: ${part}`));
+                else resolve(group);
+              },
+              (error) => {
+                clearTimeout(timer);
+                reject(error);
+              },
+            );
+          });
         });
-      });
       this.templates.set(key, template);
       const pending = template;
       void pending.catch(() => {
@@ -766,6 +819,16 @@ export class BrickScene {
 
   setSpin(spin: boolean) {
     this.controls.autoRotate = spin;
+    this.sharpen();
+  }
+
+  /** Big models move at one pixel per point, and sharpen again once still. */
+  private sharpen() {
+    const moving = this.dragging || this.controls.autoRotate;
+    const ratio = moving && (this.shown?.length ?? 0) > LARGE_MODEL ? 1 : Math.min(window.devicePixelRatio, 2);
+    if (ratio === this.renderer.getPixelRatio()) return;
+    this.renderer.setPixelRatio(ratio);
+    this.resize();
   }
 
   /** The piece drawn under the client point (`x`, `y`), among the pieces shown up to the visible step. */
@@ -859,7 +922,10 @@ export class BrickScene {
   setWalk(walk: boolean) {
     if (walk === this.walking) return;
     this.walking = walk;
+    this.glide = null;
     this.keys.clear();
+    this.camera.fov = walk ? FOV.walk : FOV.orbit;
+    this.camera.updateProjectionMatrix();
     if (walk) {
       this.walker ??= this.makeWalker();
       this.controls.enabled = false;
@@ -971,9 +1037,27 @@ export class BrickScene {
     this.dirty = true;
   }
 
-  frameView(view: View, width: number, depth: number) {
+  /** Frame the model from `view`; `smooth` eases the camera there instead of cutting. */
+  frameView(view: View, width: number, depth: number, smooth = false) {
     this.framing = { view, width, depth };
-    if (!this.walking) this.aim(VIEW_DIRECTIONS[view], width, depth);
+    if (this.walking) return;
+    const from = [this.camera.position.clone(), this.controls.target.clone()];
+    this.aim(VIEW_DIRECTIONS[view], width, depth);
+    this.glide = null;
+    if (!smooth) return;
+    this.glide = { from, to: [this.camera.position.clone(), this.controls.target.clone()], start: performance.now() };
+    this.ease();
+  }
+
+  private ease() {
+    if (!this.glide) return;
+    const { from, to, start } = this.glide;
+    const t = Math.min(1, (performance.now() - start) / GLIDE_MS);
+    const eased = 1 - (1 - t) ** 3;
+    this.camera.position.lerpVectors(from[0], to[0], eased);
+    this.controls.target.lerpVectors(from[1], to[1], eased);
+    if (t === 1) this.glide = null;
+    this.dirty = true;
   }
 
   /** Point the camera along `direction` so the whole model (or the empty baseplate, or `focus`) fills the frame, then close in `zoom` times on `at`. */
@@ -1015,10 +1099,10 @@ export class BrickScene {
     this.dirty = true;
   }
 
-  /** Square renders of the whole model, or only of what lies in `box`, as a PNG, leaving the user's camera and timeline untouched. */
+  /** Square renders of the whole model, or only of what lies in `box`, as a JPEG, leaving the user's camera and timeline untouched. */
   private offscreen(...args: Parameters<BrickScene["paint"]>): Promise<Blob | null> {
     const canvas = this.paint(...args);
-    return new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
+    return new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", RENDER_QUALITY));
   }
 
   /**

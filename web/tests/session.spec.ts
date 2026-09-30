@@ -7,6 +7,7 @@ process.env.BRICKYARD_SECRET = "test-secret";
 
 const TOKEN = `h.${Buffer.from(JSON.stringify({ access: { org_id: "org-1" } })).toString("base64url")}.s`;
 
+const LOCAL = "http://127.0.0.1:5173";
 const keyNames = new Set<string>();
 
 /** The portal, vouching for `email`, with key names unique across the organization; returns the calls it got. */
@@ -17,6 +18,11 @@ function portal(email: string) {
     const url = String(input);
     calls.push(`${init?.method ?? "GET"} ${url.replace(H.portal, "")}`);
     if (url.endsWith("/auth/me")) return Response.json({ user: { id: "u-1", email } });
+    if (url.endsWith("/auth/desktop/exchange")) {
+      const { code, code_verifier, redirect_uri } = JSON.parse(String(init!.body));
+      const known = code === "one-time" && code_verifier === "verifier" && redirect_uri === `${LOCAL}/api/session`;
+      return known ? Response.json({ access_token: TOKEN }) : new Response(null, { status: 401 });
+    }
     if (init?.method === "POST") {
       const { name } = JSON.parse(String(init.body));
       if (keyNames.has(name))
@@ -29,11 +35,11 @@ function portal(email: string) {
   return { calls, restore: () => void (globalThis.fetch = real) };
 }
 
-async function comeBack(cookies: Record<string, string>) {
+async function comeBack(cookies: Record<string, string>, url = "https://bricks.test/api/session") {
   const header = Object.entries(cookies)
     .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
     .join("; ");
-  const response = await GET(new Request("https://bricks.test/api/session", { headers: { cookie: header } }));
+  const response = await GET(new Request(url, { headers: { cookie: header } }));
   const handed = response.headers.getSetCookie().find((c) => c.startsWith(`${HANDOFF}=`))!;
   return { response, handoff: JSON.parse(cookie(handed.split(";")[0], HANDOFF)!) };
 }
@@ -76,5 +82,19 @@ test("the portal's Google sign-in comes back as a key and a pass for every H acc
     expect((await comeBack({})).handoff).toEqual({ error: "The H sign-in did not reach Brickyard: try again." });
   } finally {
     outsider.restore();
+  }
+});
+
+test("a local dev server, which the portal's cookie never reaches, signs in with its one-time code and PKCE verifier", async () => {
+  const pending = JSON.stringify({ previous: null, back: "/", verifier: "verifier" });
+  const h = portal("jane.doe@hcompany.ai");
+  try {
+    const signedIn = await comeBack({ [PENDING]: pending }, `${LOCAL}/api/session?code=one-time`);
+    expect(signedIn.handoff).toMatchObject({ user: { email: "jane.doe@hcompany.ai" }, key: "hk-new" });
+    expect(h.calls).toEqual(["POST /auth/desktop/exchange", "GET /auth/me", "POST /organizations/org-1/keys/"]);
+    const replayed = await comeBack({ [PENDING]: pending }, `${LOCAL}/api/session?code=stolen`);
+    expect(replayed.handoff).toEqual({ error: "The sign-in expired: try again." });
+  } finally {
+    h.restore();
   }
 });

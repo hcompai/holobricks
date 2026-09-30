@@ -23,17 +23,12 @@ PLATES = {1: "3024", 2: "3023b", 3: "3623", 4: "3710", 6: "3666", 8: "3460"}
 LENS = (1, 2, 3, 4, 6, 8)
 GLASS_LENS = {"brick": (1,), "plate": (1, 2)}
 
-# colors BrickLink has no record of for these parts (from `bricks colors`), and the nearest shade that exists
-LACKS = {"3001": {10}, "3007": {10, 27, 28, 288}, "3039": {10, 308}, "3045": {10, 288}, "3678b": {10, 288},
-         "3684c": {10}, "3022": {288}, "3031": {308}, "2356": {288}, "6141": {288}, "3062b": {28},
-         "3742": {2, 10, 25, 27}, "24866": {13}, "3633": {28, 308}, "3009": {10}, "3008": {10, 288},
-         "3666": {10}, "3460": {10}}
-NEAREST = {10: 2, 27: 2, 288: 2, 28: 19, 308: 70, 13: 29, 25: 14, 2: 15}
+NEAREST = {10: 2, 27: 2, 288: 2, 28: 19, 308: 70, 13: 29, 25: 14, 2: 15}   # the next shade to try
 
 
 def fit(part, color):
-    """The palette's color if BrickLink has it for this part, else the nearest shade it has."""
-    while color in LACKS.get(part, ()):
+    """The palette's color if the part comes in it, else the nearest shade it comes in."""
+    while color not in colors(part):
         color = NEAREST[color]
     return color
 

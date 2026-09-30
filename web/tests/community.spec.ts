@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { createHash } from "node:crypto";
 import { gzipSync } from "node:zlib";
 import type { Build } from "../src/model";
 import { cookie, HANDOFF, PENDING, setCookie } from "../src/signin";
@@ -89,7 +90,7 @@ test("a colleague's public build opens from the library's Public section, under 
   await expect(page.getByRole("button", { name: "Publish", exact: true })).toHaveCount(0);
 });
 
-test("the author publishes a build with its render and the signed-in key, lands on it, then makes it private after a confirmation", async ({
+test("the author publishes a build after a confirmation, stays on it, then makes it private after another", async ({
   page,
 }) => {
   const model = fixture();
@@ -103,9 +104,12 @@ test("the author publishes a build with its render and the signed-in key, lands 
   await page.goto("/?build=mine");
   await shown(page, model.revision);
 
+  const publishing = page.getByRole("dialog", { name: "Publish" });
   await page.getByRole("button", { name: "Publish", exact: true }).click();
-  await expect(page).toHaveURL(/\?public=mine$/);
-  await shown(page, model.revision);
+  await expect(publishing).toContainText("the chat, and the photos you attached");
+  await publishing.getByRole("button", { name: "Publish" }).click();
+  await expect(publishing).toBeHidden();
+  await expect(page).toHaveURL(/\?build=mine$/);
   const unpublish = page.getByRole("button", { name: "Public", exact: true });
   await expect(unpublish).toBeVisible();
   const post = calls.find((c) => c.method === "POST")!;
@@ -145,10 +149,13 @@ test("signed out, only the sign-in page shows; Google brings the user back signe
   const tower = fixture();
   await site(page, [tower], null);
   let handoff: object = { error: "Brickyard is open to H Company accounts." };
-  const pending: unknown[] = [];
+  const pending: { verifier: string }[] = [];
+  const challenges: (string | null)[] = [];
   await page.route(`${PORTAL}/auth/authorize?*`, (route) => {
     const url = new URL(route.request().url());
     expect(url.searchParams.get("provider")).toBe("google");
+    expect(url.searchParams.get("code_challenge_method")).toBe("S256");
+    challenges.push(url.searchParams.get("code_challenge"));
     // Playwright routes no request that follows a redirect, so this portal navigates on instead.
     const next = JSON.stringify(url.searchParams.get("redirect_uri"));
     return route.fulfill({ contentType: "text/html", body: `<script>location.replace(${next})</script>` });
@@ -179,9 +186,11 @@ test("signed out, only the sign-in page shows; Google brings the user back signe
   await page.getByRole("menuitem", { name: "Sign out" }).click();
   await google.click();
   await expect(page.getByRole("button", { name: "Account" })).toBeVisible();
+  const verifier = expect.stringMatching(/^[\w-]{43}$/);
   expect(pending).toEqual([
-    { previous: null, back: `/?showcase=${tower.id}` },
-    { previous: null, back: `/?showcase=${tower.id}` },
-    { previous: ACCOUNT.keyId, back: `/?showcase=${tower.id}` },
+    { previous: null, back: `/?showcase=${tower.id}`, verifier },
+    { previous: null, back: `/?showcase=${tower.id}`, verifier },
+    { previous: ACCOUNT.keyId, back: `/?showcase=${tower.id}`, verifier },
   ]);
+  expect(challenges).toEqual(pending.map((p) => createHash("sha256").update(p.verifier).digest("base64url")));
 });

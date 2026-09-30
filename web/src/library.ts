@@ -176,16 +176,26 @@ export async function unpublish(id: string) {
   await api(`${API}?id=${encodeURIComponent(id)}`, { method: "DELETE", headers: signed() });
 }
 
-/** The signed-in user's builds, newest first, then everyone's public builds, then the showcases. */
-export async function library(): Promise<BuildSummary[]> {
-  const [mine, shared, shown] = await Promise.all([
-    current() ? sessions() : [],
-    community().catch((e) => {
-      console.error(e);
-      return [];
-    }),
+/** A part of the library that loads on its own. */
+export type Shelf = "mine" | "public";
+
+/** The signed-in user's builds, newest first, then everyone's public builds, then the showcases; with the shelves that failed to load. */
+export async function library(): Promise<{ builds: BuildSummary[]; failed: Shelf[] }> {
+  const [sessionsLoaded, sharedLoaded, shownLoaded] = await Promise.allSettled([
+    current() ? sessions() : Promise.resolve([]),
+    community(),
     showcases(),
   ]);
+  const failed: Shelf[] = [];
+  const value = <T>(result: PromiseSettledResult<T[]>, shelf: Shelf): T[] => {
+    if (result.status === "fulfilled") return result.value;
+    console.error(result.reason);
+    if (!failed.includes(shelf)) failed.push(shelf);
+    return [];
+  };
+  const mine = value(sessionsLoaded, "mine");
+  const shared = value(sharedLoaded, "public");
+  const shown = value(shownLoaded, "public");
   const known = cards();
   const listed = new Map(shared.map((p) => [p.id, p]));
   const builds = mine.map((s): BuildSummary => {
@@ -205,7 +215,7 @@ export async function library(): Promise<BuildSummary[]> {
       owner: null,
     };
   });
-  return [...builds.sort((a, b) => b.created - a.created), ...shared, ...shown];
+  return { builds: [...builds.sort((a, b) => b.created - a.created), ...shared, ...shown], failed };
 }
 
 const THUMBNAIL_SIDE = 320;

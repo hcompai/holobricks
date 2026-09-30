@@ -1,29 +1,53 @@
 #!/usr/bin/env bash
 # Build the web app with the toolkit and the showcases, and deploy it to Vercel: scripts/deploy.sh --preview|--prod
+# Pushes to master that pass CI deploy to production: the deploy job in .github/workflows/ci.yml runs this with CI set.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 builds=(hogwarts 6eb28d127e london paris)
 data=${BRICKYARD_DATA:-data}
+# The GitHub release holding what a deploy needs beyond git: the exported showcases and the catalog snapshot.
+release=deploy-data
 
 case "${1:-}" in
   --preview) target=() ;;
   --prod) target=(--prod) ;;
   *) echo "usage: $0 --preview|--prod" >&2; exit 2 ;;
 esac
+vercel=()
+[[ -n "${VERCEL_TOKEN:-}" ]] && vercel=(--token "$VERCEL_TOKEN")
 
-for id in "${builds[@]}"; do
-  [[ -f "$data/builds/$id.json" ]] || { echo "missing build $id: run server/.venv/bin/python -m brickyard.showcase $id" >&2; exit 1; }
-  [[ -f "$data/thumbnails/$id.png" ]] || echo "warning: no thumbnail for $id yet" >&2
-done
+mkdir -p data
+if [[ -n "${CI:-}" ]]; then
+  gh release download "$release" --dir data --clobber
+  rm -rf web/public/gallery && tar xzf data/gallery.tgz -C web/public
+else
+  for id in "${builds[@]}"; do
+    [[ -f "$data/builds/$id.json" ]] || { echo "missing build $id: run server/.venv/bin/python -m brickyard.showcase $id" >&2; exit 1; }
+    [[ -f "$data/thumbnails/$id.png" ]] || echo "warning: no thumbnail for $id yet" >&2
+  done
+  BRICKYARD_DATA=$data server/.venv/bin/brickyard-gallery web/public "${builds[@]}"
+  tar czf data/gallery.tgz -C web/public gallery
+  gh release upload "$release" data/gallery.tgz --clobber
+fi
 
+# The toolkit refuses a catalog snapshot after 30 days, so each deploy ships one with at least 10 left.
+catalog=${BRICKYARD_CATALOG:-data/rebrickable.json.gz}
+server/.venv/bin/brickyard-catalog --out "$catalog" --max-age 20
+[[ "$catalog" -ef data/rebrickable.json.gz ]] || cp "$catalog" data/rebrickable.json.gz
+gh release upload "$release" data/rebrickable.json.gz --clobber
 server/.venv/bin/python scripts/pack-toolkit.py
-server/.venv/bin/brickyard-prices   # web/public/pick-a-brick.json: today's Pick a Brick prices for the estimate
-BRICKYARD_DATA=$data server/.venv/bin/brickyard-gallery web/public "${builds[@]}"
-[[ -f web/.vercel/project.json ]] || (cd web && vercel link --yes --scope h-company --project brickyard)
+# web/public/pick-a-brick.json: today's Pick a Brick prices for the estimate, else the last table fetched.
+if server/.venv/bin/brickyard-prices; then
+  gh release upload "$release" web/public/pick-a-brick.json --clobber
+else
+  echo "warning: Pick a Brick did not answer; deploying the last price table" >&2
+  gh release download "$release" --pattern pick-a-brick.json --dir web/public --clobber
+fi
+[[ -f web/.vercel/project.json ]] || (cd web && vercel link --yes --scope h-company --project brickyard ${vercel[@]+"${vercel[@]}"})
 (cd web && npm run build)
 rm -rf web/.vercel/output && mkdir -p web/.vercel/output
 cp -R web/dist web/.vercel/output/static
 (cd web && node scripts/build-api.mjs .vercel/output)
 echo '{"version": 3}' > web/.vercel/output/config.json
-(cd web && vercel deploy --prebuilt ${target[@]+"${target[@]}"})
+(cd web && vercel deploy --prebuilt ${target[@]+"${target[@]}"} ${vercel[@]+"${vercel[@]}"})

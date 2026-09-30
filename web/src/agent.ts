@@ -67,10 +67,11 @@ const LOOK: HaiAgents.ToolDefinition = {
 function agent(): HaiAgents.Agent {
   const instructions = prompt
     .replace("{{date}}", new Date().toISOString().slice(0, 10))
-    .replace("{{max_steps}}", String(MAX_STEPS));
+    .replace("{{max_steps}}", String(MAX_STEPS))
+    .replaceAll("{{max_minutes}}", String(MAX_TIME_S / 60));
   return {
     name: AGENT,
-    description: "Designs LEGO models from real LDraw parts, step by step, in Brickyard.",
+    description: "Designs brick models from real LDraw parts, step by step, in Brickyard.",
     model: MODEL,
     instructions,
     environments: [{ kind: "workstation", id: AGENT }],
@@ -78,13 +79,15 @@ function agent(): HaiAgents.Agent {
   };
 }
 
+/** A message with its photos saved under `prefix-N.jpg`, so later photos never overwrite earlier ones. */
 async function message(
   text: string,
   photos: string[],
   toolkit: boolean,
+  prefix = "photo",
 ): Promise<HaiAgents.UserMessageEvent & { type: "user_message" }> {
   const blobs = await Promise.all(photos.map((src) => fetch(src).then((r) => r.blob())));
-  const files = await Promise.all(blobs.map((blob, i) => fileFromBlob(blob, `photo-${i + 1}.jpg`)));
+  const files = await Promise.all(blobs.map((blob, i) => fileFromBlob(blob, `${prefix}-${i + 1}.jpg`)));
   if (toolkit) {
     const response = await fetch(TOOLKIT);
     if (!response.ok) throw new Error("The Brickyard toolkit is missing from this site.");
@@ -101,13 +104,14 @@ export async function create(text: string, photos: string[]): Promise<string> {
     maxSteps: MAX_STEPS,
     maxTimeS: MAX_TIME_S,
     idleTimeoutS: IDLE_TIMEOUT_S,
+    deleteAfterMin: null,
   });
   await session.sendMessage(first);
   return session.id;
 }
 
 export async function say(id: string, text: string, photos: string[]) {
-  await client.session(id).sendMessage(await message(text, photos, false));
+  await client.session(id).sendMessage(await message(text, photos, false, `photo-${Date.now()}`));
 }
 
 /** Holo ends its current step and answers; the session stays open for the next message. */

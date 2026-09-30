@@ -54,6 +54,7 @@ const WAITING_S = 4;
 const TYPING_FRAMES = 60;
 const MAX_ATTACHMENTS = 2;
 const WHO = "Holo";
+const PINNED_PX = 80;
 
 /** A gallery image's small WebP; other images show as they are. */
 const small = (src: string) => (src.startsWith("/gallery/") ? src.replace(/[^/]+$/, "small/$&.webp") : src);
@@ -114,6 +115,8 @@ export function ChatPanel({ build, loading, thinking, closed, onCreate, onSay, o
   const [opened, setOpened] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const scrolled = useRef<string | null>(null);
+  /** Whether the log sits at its end, so new lines scroll it and reading earlier ones is left alone. */
+  const pinned = useRef(true);
   const busy = build?.status === "building";
   const waiting = useWaitingLine(busy);
   const typed = useTyped(thinking);
@@ -126,7 +129,8 @@ export function ChatPanel({ build, loading, thinking, closed, onCreate, onSay, o
   useEffect(() => {
     const jump = scrolled.current !== (build?.id ?? null);
     scrolled.current = build?.id ?? null;
-    log.current?.scrollTo({ top: log.current.scrollHeight, behavior: jump ? "instant" : "smooth" });
+    if (jump) pinned.current = true;
+    if (pinned.current) log.current?.scrollTo({ top: log.current.scrollHeight, behavior: jump ? "instant" : "smooth" });
   }, [build?.id, build?.messages.length, busy]);
 
   const home = !build && !loading;
@@ -166,11 +170,22 @@ export function ChatPanel({ build, loading, thinking, closed, onCreate, onSay, o
 
   return (
     <div className="chat">
-      <div className="chat-log" ref={log}>
-        {loading ? null : !build ? (
+      <div
+        className="chat-log"
+        ref={log}
+        onScroll={(e) => {
+          const el = e.currentTarget;
+          pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < PINNED_PX;
+        }}
+      >
+        {loading ? (
+          <div className="msg assistant thinking">
+            <span className="shimmer">Opening the chat…</span>
+          </div>
+        ) : !build ? (
           <div className="chat-intro">
             <h2>What should we build?</h2>
-            <p>Describe a model. The builder designs it in real LDraw bricks, step by step, while you watch.</p>
+            <p>Describe a model. {WHO} designs it in real bricks, step by step, while you watch.</p>
             <div className="label">Try one</div>
             <div className="chips">
               {SUGGESTIONS.map((s) => (
@@ -265,7 +280,13 @@ export function ChatPanel({ build, loading, thinking, closed, onCreate, onSay, o
           <textarea
             ref={input}
             value={text}
-            placeholder={changing ? "Describe how to change it…" : "Describe what to build…"}
+            placeholder={
+              busy
+                ? `${WHO} is building: Stop to change course`
+                : changing
+                  ? "Describe how to change it…"
+                  : "Describe what to build…"
+            }
             onChange={(e) => setText(e.target.value)}
             onPaste={(e) => {
               const files = imageFiles(e.clipboardData.files);

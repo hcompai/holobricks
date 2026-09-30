@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from brickyard import ldraw, script
+from brickyard import catalog, ldraw, script
 from brickyard.model import Build, grid
 from brickyard.workbench import Workbench
 from brickyard.workspace import BUILD, MODEL, Workspace
@@ -45,7 +45,7 @@ def test_workbench_places_valid_bricks_anywhere_from_x_and_y_0_and_explains_ever
     assert "overlaps brick 1 (3001 at x=4 y=4 z=0) of this step" in result.text
     assert "brick 3 (3001 at x=-1 y=0 z=0): x and y start at 0" in result.text
     assert "unknown part" in result.text
-    assert "brick 6 (3001 at x=10 y=10 z=6): floating" in result.text
+    assert "brick 6 (3001 at x=10 y=10 z=6): nothing under or above it" in result.text
     placed = [grid(p) for p in bench.pieces]
     assert placed == [(4, 4, 0, 0), (200, 150, 0, 0), (10, 10, 6, 0), (4, 4, 3, 90)]
     assert (bench.workspace.build.width, bench.workspace.build.depth) == (204, 152)
@@ -87,7 +87,7 @@ for x in range(0, 32, 2):
 
 def test_a_script_rebuilds_from_its_first_changed_step_and_names_the_lines_of_its_problems(bench):
     first = bench.run_script(HOUSE)
-    assert first.problems == 0 and "roof top 18" in first.text and "disconnected_model" in first.text, first.text
+    assert first.problems == 0 and "roof top 18" in first.text, first.text
     assert [s.title for s in bench.workspace.build.steps] == ["Walls", "Roof", "Paving"]
     walls = [p for p in bench.pieces if p.step == 0]
 
@@ -100,7 +100,6 @@ def test_a_script_rebuilds_from_its_first_changed_step_and_names_the_lines_of_it
     for _ in range(2):
         result = bench.run_script(stray)
         assert result.problems == 1 and "kept steps 1 to 2 unchanged, rebuilt and checked 1 step." in result.text
-        assert "disconnected_model" in result.text
         assert 'line 12 `brick("3001", -1, 0, 0, 4)` (3001 at x=-1 y=0 z=0): x and y start at 0' in result.text
     assert {p.step for p in bench.pieces} == {0, 1, 2}
 
@@ -134,6 +133,12 @@ def test_a_part_mounted_on_a_wall_face_hangs_there_without_raising_the_wall(benc
     assert "top 0 12" in result.text and "Floating" not in result.text, result.text
     assert "2 Clock: 1 piece, x 4-5, y 3-3, z 4-9" in result.text
     assert result.problems == 1 and "facing must be south, north, west or east" in result.text
+    walls = {"south": ((4, 3), (4, 2)), "north": ((4, 6), (4, 7)), "west": ((3, 4), (2, 4)), "east": ((6, 4), (7, 4))}
+    for facing, (backed, away) in walls.items():
+        for (x, y), floats in ((backed, False), (away, True)):
+            moved = bench.run_script(code.replace('4, 3, 4, 15, "south"', f'{x}, {y}, 4, 15, "{facing}"'))
+            assert moved.problems == 1 and "2 Clock: 1 piece" in moved.text, moved.text
+            assert ("nothing behind it" in moved.text) == floats, (facing, x, y)
 
 
 def test_a_run_names_its_parts_so_a_color_passed_as_the_part_shows(bench):
@@ -161,12 +166,13 @@ def test_a_step_builds_the_same_bricks_whatever_randomness_the_steps_before_it_u
     assert trees_after(1) == trees_after(50)
 
 
-def test_the_showcase_builds_with_no_problems_and_notes_what_keeps_it_from_one_kit(bench):
+@pytest.mark.skipif(not catalog.SNAPSHOT.exists(), reason="catalog snapshot not built")
+def test_the_showcase_builds_with_no_problems_against_the_real_catalog(tmp_path):
     example = (Path(__file__).resolve().parents[2] / "agent" / "showcase" / "bag-end.py").read_text()
+    bench = Workbench(Workspace.open(tmp_path))
     result = bench.run_script(example)
     assert len(bench.workspace.build.pieces) > 7_000, result.text
-    assert "No problems: every brick is known, fits" in result.text
-    assert result.problems == 0 and "Kit, a note for ordering" in result.text and "disconnected_model" in result.text
+    assert result.problems == 0 and "No problems: every brick is known, fits" in result.text, result.text
 
 
 def test_the_prompt_names_only_real_parts_sizes_and_colors():

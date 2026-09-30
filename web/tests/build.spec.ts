@@ -14,7 +14,9 @@ const PHOTO = {
 const shown = (page: Page, revision: string) =>
   expect(page.locator(".viewer")).toHaveAttribute("data-revision", revision);
 
-test("a live build shows each shared model and answers `look` with a render of that revision", async ({ page }) => {
+test("a live build shows the loader until its first model, each shared model, and answers `look` with a render of that revision", async ({
+  page,
+}) => {
   await site(page);
   const agp = await platform(page);
   agp.session("live");
@@ -33,16 +35,19 @@ test("a live build shows each shared model and answers `look` with a render of t
   await expect(holo.locator("strong")).toHaveText("too thin");
   await expect(holo.locator("li")).toHaveCount(2);
   await expect(page.locator(".msg.user")).toHaveText("A tower of **bricks**");
+  const planning = page.getByText("Holo is planning the build…");
+  await expect(planning).toBeVisible();
 
   const model = fixture();
   agp.state("live", "running");
   agp.share("live", model);
   agp.look("live", "side", { angle: 90 });
   await shown(page, model.revision);
+  await expect(planning).toHaveCount(0);
   await expect.poll(() => agp.posted("/tool_results")).toHaveLength(2);
   const [caption, image] = agp.posted("/tool_results")[1].result;
   expect(caption).toMatch(new RegExp(`^Revision ${model.revision.slice(0, 8)}, 8 pieces\\. The view from 90 degrees`));
-  expect(image).toMatch(/^data:image\/png;base64,/);
+  expect(image).toMatch(/^data:image\/jpeg;base64,/);
 
   const recolored = revised({ ...model, pieces: model.pieces.map((p) => ({ ...p, color: 1 })) });
   agp.state("live", "running");
@@ -51,6 +56,26 @@ test("a live build shows each shared model and answers `look` with a render of t
   await shown(page, recolored.revision);
   await expect.poll(() => agp.posted("/tool_results")).toHaveLength(3);
   expect(agp.posted("/tool_results")[2].result[0]).toMatch(`Revision ${recolored.revision.slice(0, 8)}`);
+});
+
+test("Holo keeps getting its renders while the user browses other builds", async ({ page }) => {
+  const showcase = { ...fixture(), id: "paris", name: "Paris" };
+  await site(page, [showcase]);
+  const agp = await platform(page);
+  const model = fixture();
+  agp.session("live");
+  agp.share("live", model);
+  await page.goto("/?build=live");
+  await shown(page, model.revision);
+  await page.getByRole("button", { name: "Library" }).click();
+  await page.getByRole("region", { name: "Public" }).locator(".tile").click();
+  await shown(page, showcase.revision);
+
+  agp.look("live", "away", { angle: 180 });
+  await expect.poll(() => agp.posted("/tool_results")).toHaveLength(1);
+  const [caption, image] = agp.posted("/tool_results")[0].result;
+  expect(caption).toMatch(`Revision ${model.revision.slice(0, 8)}`);
+  expect(image).toMatch(/^data:image\/jpeg;base64,/);
 });
 
 test("a lost connection hides the model until the platform answers again", async ({ page }) => {

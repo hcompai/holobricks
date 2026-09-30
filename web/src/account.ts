@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { H } from "./hosts";
-import { type Account, cookie, HANDOFF, type Handoff, PENDING, type Pending, setCookie } from "./signin";
+import { type Account, cookie, HANDOFF, type Handoff, LOOPBACK, PENDING, type Pending, setCookie } from "./signin";
 
 export type { Account, User } from "./signin";
 
@@ -75,14 +75,28 @@ export function signOut() {
   set(null);
 }
 
+const base64url = (bytes: Uint8Array) =>
+  btoa(String.fromCharCode(...bytes))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+
 /** Leave for the portal's Google sign-in; it comes back through /api/session, then to this page. */
-export function signIn() {
+export async function signIn() {
+  const loopback = window.location.hostname === LOOPBACK;
+  const verifier = loopback ? base64url(crypto.getRandomValues(new Uint8Array(32))) : null;
   const pending: Pending = {
     previous: localStorage.getItem(PREVIOUS),
     back: window.location.pathname + window.location.search,
+    verifier,
   };
   document.cookie = setCookie(PENDING, JSON.stringify(pending), 600, "/api/session");
   const query = new URLSearchParams({ provider: "google", redirect_uri: `${window.location.origin}/api/session` });
+  if (verifier) {
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
+    query.set("code_challenge", base64url(new Uint8Array(digest)));
+    query.set("code_challenge_method", "S256");
+  }
   window.location.assign(`${H.portal}/auth/authorize?${query}`);
 }
 

@@ -1,6 +1,7 @@
 import react from "@vitejs/plugin-react";
 import { defineConfig, loadEnv, type Plugin } from "vite";
 import { platformOf } from "./src/hosts";
+import { LOOPBACK } from "./src/signin";
 
 /** Serves api/<name>.ts at /api/<name> in development, as the Vercel functions do once deployed. */
 function api(): Plugin {
@@ -8,6 +9,11 @@ function api(): Plugin {
     name: "brickyard-api",
     configureServer(server) {
       Object.assign(process.env, loadEnv("development", process.cwd(), ""));
+      server.middlewares.use((req, res, next) => {
+        const host = req.headers.host ?? "";
+        if (!host.startsWith("localhost:")) return next();
+        res.writeHead(307, { Location: `http://${host.replace("localhost", LOOPBACK)}${req.url}` }).end();
+      });
       server.middlewares.use(async (req, res, next) => {
         const name = req.url?.match(/^\/api\/(\w+)(?:\?|$)/)?.[1];
         if (!name) return next();
@@ -51,6 +57,7 @@ function site(): Plugin {
 export default defineConfig({
   plugins: [react(), api(), site()],
   server: {
+    host: LOOPBACK,
     port: 5173,
     fs: { allow: [".."] },
   },

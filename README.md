@@ -28,7 +28,7 @@ browser: this web app                  Agents API (agp.eu.hcompany.ai)          
 ```
 
 - The app talks to the Agents API with the `hai-agents` SDK (`web/src/agent.ts`). A build is a session of the agent `brickyard`; the Library lists them, and the browser keeps each one's name, piece count and thumbnail in localStorage.
-- The first message attaches the toolkit, `web/public/brickyard.tgz`: the `bricks` CLI, its Python package, the catalog snapshot and the showcases. Holo's first call runs `.brickyard/setup.sh`, which installs it and fetches LDraw and the connector data.
+- The first message attaches the toolkit, `web/public/brickyard.tgz`: the `bricks` CLI, its Python package, the catalog snapshot and the showcases. Holo's first call runs `.brickyard/setup.sh`, which installs it and fetches LDraw and the connector data; a second call waits for the first. `BRICKYARD_MINUTES`, the session's time limit, starts the clock each `bricks run` reports.
 - `bricks run` rebuilds the model from `build.py` and writes `model.json.gz`: the steps and pieces, the LDraw parts they use, the `.ldr`, and the verified parts list and shopping XML (or why they could not be verified). Holo shares it with `share_files`; the browser downloads it and shows it.
 - `look` is a custom tool: the browser renders the shared revision on your GPU and returns the image. Keep the tab open while Holo builds; it waits for the render.
 
@@ -43,25 +43,26 @@ server/.venv/bin/brickyard-prices                             # web/public/pick-
 server/.venv/bin/python scripts/pack-toolkit.py               # web/public/brickyard.tgz and LDConfig.ldr
 cd web && npm install
 vercel link --yes --scope h-company --project brickyard && vercel env pull .env.local   # the server's secrets
-npm run dev                                                                            # http://localhost:5173
+npm run dev                                                                            # http://127.0.0.1:5173
 ```
 
-Anyone can browse the showcases and the public library. Building with Holo needs a sign-in with an `@hcompany.ai` Google account on the H portal. Export the showcases for local use with
+Brickyard is open to H Company: everything sits behind a sign-in with an `@hcompany.ai` Google account on the H portal. Export the showcases for local use with
 `BRICKYARD_DATA=<data dir> server/.venv/bin/brickyard-gallery web/public hogwarts 6eb28d127e london paris`.
 
 ## Accounts and the public library
 
 ```
-browser ──popup──▶ portal.hcompany.ai ──access token──▶ browser
-browser ──POST /api/session──▶ portal API: who is it? mint a 30-day "Brickyard" key
+browser ──same tab──▶ portal ──Google──▶ portal sets its access token cookie
+portal ──redirect──▶ GET /api/session: who is it? mint a 30-day "Brickyard <email> <time>" key ──▶ back where the user was
 browser ──key──▶ Agents API (Holo builds, sessions listed per user)
 browser ──POST /api/builds (pass + key)──▶ snapshot of the session ──▶ Vercel Blob (public)
-anyone  ──GET /api/builds──▶ the public library
+signed in ──GET /api/builds──▶ the public library
 ```
 
 - `web/api/` holds the Vercel functions; `web/scripts/build-api.mjs` bundles them, and `npm run dev` serves them too.
+- The portal's cookie never reaches a local dev server, so there the portal sends a one-time code instead (PKCE, RFC 8252); it only redirects to `127.0.0.1`, where `localhost` forwards.
 - Signing in again revokes the previous key. The key lives in the browser's local storage; the pass, signed with `BRICKYARD_SECRET`, names its holder to the functions.
-- Publishing copies the session's model, transcript and images, so a public build outlives its session (sessions are deleted after 30 days). Only its author can publish or unpublish a build; the emails in `BRICKYARD_ADMINS` can unpublish any.
+- Publishing copies the session's model, transcript and images, so a public build stands on its own, even if its session is deleted. Only its author can publish or unpublish a build; the emails in `BRICKYARD_ADMINS` can unpublish any.
 - Server environment: `BRICKYARD_SECRET`, `BRICKYARD_ADMINS`, and `BLOB_READ_WRITE_TOKEN` from the `brickyard-library` Blob store.
 
 | To change | Edit |
@@ -83,7 +84,9 @@ server/.venv/bin/python -m brickyard.showcase paris   # or london, hogwarts: reg
 scripts/deploy.sh --preview                           # or --prod
 ```
 
-`deploy.sh` packs the toolkit, exports the showcases into `web/public/gallery`, builds the app and its functions, and deploys them to the Vercel project `brickyard`. Shopping packages expire with the catalog snapshot: rebuild it and redeploy at least every 30 days.
+Every push to master that passes CI deploys to production (the `deploy` job in `.github/workflows/ci.yml`, secrets `VERCEL_TOKEN` and `REBRICKABLE_API_KEY`); run CI by hand on master from the Actions tab, or deploy from a laptop as above.
+
+`deploy.sh` exports the showcases into `web/public/gallery`, rebuilds the catalog snapshot once it is 20 days old (that needs `REBRICKABLE_API_KEY`), packs the toolkit, builds the app and its functions, and deploys them to the Vercel project `brickyard`. It keeps both on the GitHub release `deploy-data`: a laptop deploy uploads them, and CI, which has no showcase data, downloads them. `bricks run` and shopping packages refuse a snapshot after 30 days, so each deploy stays valid for at least 10: redeploy within that.
 
 ## Tests
 
@@ -104,7 +107,7 @@ corridors against conservative envelopes from the full part meshes. It never use
 clipped footprint as a collision proof. Scaled/mirrored placements, nonorthogonal rotations and
 unsupported joint dependencies are unverified, not silently accepted.
 
-Every `bricks run` reports assembly findings. `bricks assembly` searches an order by accessible
+`bricks assembly` reports assembly findings (`bricks run` leaves them out to stay fast) and searches an order by accessible
 removal, keeping the remainder connected, and reverses that order into assembly operations.
 Connected cuts at articulation points can produce subassemblies; this is a bounded search, not a
 complete solver. If it cannot find an order, Holo can submit `bricks assembly plan.json`:

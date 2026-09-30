@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { publicBuild, showcase } from "./library";
-import type { Build, RenderRequest, Source } from "./model";
+import type { Build, Source } from "./model";
 import { provideParts } from "./scene";
 import { useSession } from "./useSession";
 
@@ -13,15 +13,10 @@ export interface LiveBuild {
   build: Build | null;
   loading: boolean;
   thinking: string;
-  renderRequest: RenderRequest | null;
   error: string | null;
   /** A shown model can remain available, but must not be presented as confirmed live. */
   syncError: string | null;
-  /** Hand the builder the render it asked for; true once it has it. */
-  answer: (request: RenderRequest, png: Blob) => Promise<boolean>;
 }
-
-const noAnswer = async () => false;
 
 /** A finished build that no builder works on: a showcase, or a public build. */
 function useFinished(ref: BuildRef | null): LiveBuild {
@@ -53,10 +48,8 @@ function useFinished(ref: BuildRef | null): LiveBuild {
     build: shown,
     loading: id !== null && !shown && !error,
     thinking: "",
-    renderRequest: null,
     error,
     syncError: null,
-    answer: noAnswer,
   };
 }
 
