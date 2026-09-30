@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { gzipSync } from "node:zlib";
 import { holder, isAdmin } from "./lib/account";
-import { body, Refusal, route, SHARED } from "./lib/http";
+import { body, Refusal, route } from "./lib/http";
 import { snapshot } from "./lib/snapshot";
 import {
   enter,
@@ -41,22 +41,18 @@ function thumbnail(value: unknown): { data: Buffer; type: string } | null {
   return { data, type: `image/${match[1]}` };
 }
 
-const OWN = { "Cache-Control": "private, no-store" };
+const PRIVATE = { "Cache-Control": "private, no-store" };
 
-/**
- * The public library, or one public build with `?id=`. Signed in, `?mine=1` lists the caller's private builds, and
- * `?id=` also finds one of them.
- */
+/** For signed-in users: the public library, or one build with `?id=` (public or the caller's); `?mine=1` lists the caller's private builds. */
 export const GET = route(async (request) => {
+  const { user } = holder(request);
   const params = new URL(request.url).searchParams;
-  if (params.has("mine")) return Response.json(await privateOf(holder(request).user.id), { headers: OWN });
+  if (params.has("mine")) return Response.json(await privateOf(user.id), { headers: PRIVATE });
   const id = params.get("id");
-  if (!id) return Response.json(await library(), { headers: SHARED });
-  const shared = await find(buildId(id));
-  if (shared) return Response.json(shared, { headers: SHARED });
-  const own = request.headers.has("authorization") ? await findOwn(holder(request).user.id, buildId(id)) : null;
-  if (!own) throw new Refusal(404, "This build is not public.");
-  return Response.json(own, { headers: OWN });
+  if (!id) return Response.json(await library(), { headers: PRIVATE });
+  const found = (await find(buildId(id))) ?? (await findOwn(user.id, buildId(id)));
+  if (!found) throw new Refusal(404, "This build is not public.");
+  return Response.json(found, { headers: PRIVATE });
 });
 
 /** Make one of the caller's imported builds private or public again: `{ id, private }`. Its files and link stay the same. */

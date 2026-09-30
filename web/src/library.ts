@@ -109,11 +109,10 @@ async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   return body as T;
 }
 
-/** The library API's URL; signed-in users can change the library, so they skip the shared cache. */
-function read(params: Record<string, string> = {}): string {
+/** Read the library API as the signed-in user. */
+function read<T>(params: Record<string, string> = {}): Promise<T> {
   const query = new URLSearchParams(params);
-  if (current()) query.set("t", String(Date.now()));
-  return query.size ? `${API}?${query}` : API;
+  return api<T>(query.size ? `${API}?${query}` : API, { headers: signed() });
 }
 
 /** What this browser published: the library's Blob reads can lag a publication by a minute. */
@@ -126,12 +125,12 @@ const newest = (p: Published) => {
 
 /** Everyone's public builds, newest first. */
 async function community(): Promise<BuildSummary[]> {
-  return (await api<Published[]>(read())).map(newest).map(summary);
+  return (await read<Published[]>()).map(newest).map(summary);
 }
 
 /** The signed-in user's private library builds, newest first. */
 async function hidden(): Promise<BuildSummary[]> {
-  return (await api<Published[]>(read({ mine: "1" }), { headers: signed() })).map((p) => ({
+  return (await read<Published[]>({ mine: "1" })).map((p) => ({
     ...summary(p),
     private: true,
   }));
@@ -151,8 +150,7 @@ const summary = (p: Published): BuildSummary => ({
 });
 
 export async function publicBuild(id: string): Promise<Build> {
-  // Signed in, the owner can open their private builds too.
-  const published = newest(await api<Published>(read({ id }), current() ? { headers: signed() } : {}));
+  const published = newest(await read<Published>({ id }));
   const response = await fetch(published.build);
   if (!response.ok) throw new Error(`No public build ${id}`);
   return { ...(await unpack<Build>(await response.blob())), id, open: false };
@@ -233,9 +231,9 @@ export type Shelf = "mine" | "public";
 /** The signed-in user's builds, newest first, then everyone's public builds, then the showcases; with the shelves that failed to load. */
 export async function library(): Promise<{ builds: BuildSummary[]; failed: Shelf[] }> {
   const [sessionsLoaded, sharedLoaded, hiddenLoaded, shownLoaded] = await Promise.allSettled([
-    current() ? sessions() : Promise.resolve([]),
+    sessions(),
     community(),
-    current() ? hidden() : Promise.resolve([]),
+    hidden(),
     showcases(),
   ]);
   const failed: Shelf[] = [];

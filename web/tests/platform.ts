@@ -18,6 +18,8 @@ interface Session {
   shared: number;
   group?: string;
   error?: string;
+  /** Whose session it is: the signed-in user's unless a teammate's. */
+  teammate?: boolean;
 }
 
 interface Request {
@@ -38,8 +40,8 @@ export class Platform {
   now = Date.parse(NOW);
   loseCreationResponse = false;
 
-  session(id: string, status = "running") {
-    this.sessions.set(id, { id, status, events: [], shared: 0 });
+  session(id: string, status = "running", { teammate = false } = {}) {
+    this.sessions.set(id, { id, status, events: [], shared: 0, teammate });
     return this;
   }
 
@@ -131,6 +133,7 @@ export async function platform(page: Page): Promise<Platform> {
     if (url.pathname === "/api/v2/sessions" && method === "GET") {
       const items = [...agp.sessions.values()]
         .filter((s) => !url.searchParams.has("group_id") || s.group === url.searchParams.get("group_id"))
+        .filter((s) => url.searchParams.get("owner") !== "me" || !s.teammate)
         .map((s) => ({
           id: s.id,
           agent: "brickyard",

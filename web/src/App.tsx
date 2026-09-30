@@ -126,6 +126,9 @@ export default function App({ account }: { account: Account }) {
   }, []);
 
   useEffect(() => void refreshBuilds(), [refreshBuilds, account.user.id, libraryOpen]);
+  /** Sessions this tab started, before the library lists them. */
+  const started = useRef(new Set<string>());
+  const mine = (id: string) => started.current.has(id) || !!builds?.some((b) => b.source === "session" && b.id === id);
   const running = [
     ...new Set([
       ...(builds ?? [])
@@ -133,7 +136,7 @@ export default function App({ account }: { account: Account }) {
           (b) => b.source === "session" && b.status === "building" && (b.id !== live?.id || live.status === "building"),
         )
         .map((b) => b.id),
-      ...(live?.status === "building" ? [live.id] : []),
+      ...(live?.status === "building" && mine(live.id) ? [live.id] : []),
     ]),
   ];
   useKeeper(running, refreshBuilds);
@@ -215,6 +218,7 @@ export default function App({ account }: { account: Account }) {
     setStarting(true);
     try {
       const id = await (from ? remix(from, prompt, images) : create(prompt, images));
+      started.current.add(id);
       const name = from ? `${from.name} remix` : prompt || "Untitled build";
       remember(id, { name: name.slice(0, 60), prompt });
       open({ id, source: "session" });
@@ -251,7 +255,8 @@ export default function App({ account }: { account: Account }) {
   };
 
   /** The signed-in user's build, from their session or as they published it. */
-  const owned = ref?.source === "session" || (ref?.source === "public" && summary?.owner === account.user.id);
+  const owned =
+    ref?.source === "session" ? mine(ref.id) : ref?.source === "public" && summary?.owner === account.user.id;
   /** An imported build of theirs: it lives only in the library, with no session to fall back to. */
   const imported = owned && ref?.source === "public" && ref.id.startsWith("import-");
 
@@ -284,12 +289,15 @@ export default function App({ account }: { account: Account }) {
       "A showcase from the gallery: remix it to make your own."
     ) : ref?.source === "public" ? (
       `Shared by ${summary?.author ?? "an H builder"}: remix it to make your own.`
+    ) : ref?.source === "session" && builds && !buildsFailed.includes("mine") && !owned ? (
+      "A teammate's build: remix it to make your own."
     ) : build && !build.open && build.status !== "building" ? (
       <RecoveryPanel
         key={build.id}
         build={live!}
         edited={edited}
         onOpen={(id) => {
+          started.current.add(id);
           if (opened.current?.source === "session" && opened.current.id === build.id) open({ id, source: "session" });
           refreshBuilds();
         }}
@@ -467,8 +475,8 @@ export default function App({ account }: { account: Account }) {
               syncError={syncError}
               framing={framing}
               spin={spin}
-              onThumbnail={ref?.source === "session" ? saveThumbnail : undefined}
-              thumbnailed={ref?.source === "session" ? card(ref.id)?.revision : undefined}
+              onThumbnail={ref?.source === "session" && owned ? saveThumbnail : undefined}
+              thumbnailed={ref?.source === "session" && owned ? card(ref.id)?.revision : undefined}
               empty="Describe a model in the chat to start building."
               mode={mode}
               edits={edits}

@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { createHash } from "node:crypto";
 import { gzipSync } from "node:zlib";
+import { GET } from "../api/builds";
 import type { Build } from "../src/model";
 import { cookie, HANDOFF, PENDING, setCookie } from "../src/signin";
 import { ACCOUNT, fixture, site } from "./fixtures";
@@ -183,6 +184,40 @@ test("the author publishes a build after a confirmation, stays on it, then makes
   await shelf.click();
   await expect(everyone).toHaveCount(0);
   await expect(mine).not.toContainText("public");
+});
+
+test("the library answers only signed-in users, and the app signs every read", async ({ page }) => {
+  for (const url of ["https://bricks.test/api/builds", "https://bricks.test/api/builds?id=tower"])
+    expect((await GET(new Request(url))).status).toBe(401);
+
+  const tower = { ...fixture(), id: "tower", name: "Ada's tower" };
+  await site(page);
+  const calls = await library(page, [entry(tower, "Ada Lovelace", "u-ada")], [tower]);
+  await page.goto("/?public=tower");
+  await shown(page, tower.revision);
+  const reads = calls.filter((c) => c.method === "GET");
+  expect(reads.map((c) => c.search)).toEqual(expect.arrayContaining(["", "?mine=1", "?id=tower"]));
+  for (const read of reads)
+    expect(read.headers).toMatchObject({ authorization: `Bearer ${ACCOUNT.pass}`, "x-agents-key": ACCOUNT.key });
+});
+
+test("a teammate's build link opens read only, to remix", async ({ page }) => {
+  const model = fixture();
+  await site(page);
+  const agp = await platform(page);
+  agp.session("theirs", "idle", { teammate: true });
+  agp.say("theirs", "A little tower");
+  agp.share("theirs", model);
+  agp.answer("theirs", "Built.");
+  await library(page, []);
+  await page.goto("/?build=theirs");
+  await shown(page, model.revision);
+
+  await expect(page.locator(".gallery-note")).toHaveText(/^A teammate's build: remix it to make your own\./);
+  await expect(page.getByRole("button", { name: "Publish", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("textbox")).toHaveCount(0);
+  await page.locator(".gallery-note").getByRole("button", { name: "Remix" }).click();
+  await expect(page.getByPlaceholder("What should Holo change?")).toBeVisible();
 });
 
 test("signed out, only the sign-in page shows; Google brings the user back signed in where they left", async ({

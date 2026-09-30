@@ -139,10 +139,18 @@ export async function createRecovery(messages: HaiAgents.UserMessageEvent[], sou
 /** Holo ends its current step and answers; the session stays open for the next message. */
 export const stop = (id: string) => client.session(id).forceAnswer();
 
+/** The caller's own Brickyard sessions, newest first. */
 export async function sessions(): Promise<HaiAgents.SessionSummary[]> {
-  // hai-agents 1.0.12 sends the `agent` list as a JSON string, which matches no session.
-  const page = await client.sessions.listSessions({ size: 100 }, { queryParams: { agent: AGENT } });
-  return page.items;
+  const all: HaiAgents.SessionSummary[] = [];
+  for (let page = 1; ; page++) {
+    // hai-agents 1.0.12 sends the `agent` list as a JSON string, which matches no session.
+    const { items, total } = await client.sessions.listSessions(
+      { owner: "me", page, size: 100 },
+      { queryParams: { agent: AGENT } },
+    );
+    all.push(...items);
+    if (!items.length || all.length >= total) return all;
+  }
 }
 
 /** An attachment or image the platform serves behind the API key. */
