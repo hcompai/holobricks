@@ -1,6 +1,6 @@
+import { H } from "../../src/hosts";
 import { Refusal } from "./http";
 
-const PORTAL_API = "https://portal.api.eu.hcompany.ai/api";
 const KEY_NAME = "Brickyard";
 const KEY_DAYS = 30;
 
@@ -12,7 +12,7 @@ export interface Key {
 }
 
 const call = (path: string, access: string, init: RequestInit = {}) =>
-  fetch(`${PORTAL_API}${path}`, {
+  fetch(`${H.portal}${path}`, {
     ...init,
     headers: { Authorization: `Bearer ${access}`, "Content-Type": "application/json", ...init.headers },
   });

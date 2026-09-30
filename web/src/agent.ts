@@ -1,6 +1,7 @@
-import { fileFromBlob, HaiAgentsClient, HaiAgentsEnvironment, type HaiAgents } from "hai-agents";
+import { fileFromBlob, HaiAgentsClient, type HaiAgents } from "hai-agents";
 import prompt from "../../agent/holo.md?raw";
 import { expired, key } from "./account";
+import { H } from "./hosts";
 import { AGENT } from "./session";
 const MODEL = "holo4-27b";
 const MAX_STEPS = 300;
@@ -18,7 +19,7 @@ async function call(input: RequestInfo | URL, init?: RequestInit): Promise<Respo
 }
 
 export const client = new HaiAgentsClient({
-  environment: HaiAgentsEnvironment.Eu,
+  environment: H.agents,
   apiKey: key,
   headers: { "X-HCompany-Client-Name": AGENT },
   // Safari sends the SDK's User-Agent in CORS preflights, and the Agents API does not allow it.

@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
+import { H } from "./hosts";
 
-const PORTAL = "https://portal.hcompany.ai";
 const STORE = "brickyard.account";
 /** The key of the last sign-out, revoked at the next sign-in. */
 const PREVIOUS = "brickyard.previous-key";
@@ -69,7 +69,7 @@ export function signOut() {
 /** The portal's access token, from its sign-in window; null if the window closes first. */
 function portalToken(): Promise<string | null> {
   const query = new URLSearchParams({ sdk_auth: "true", return_origin: window.location.origin });
-  const popup = window.open(`${PORTAL}/login?${query}`, "brickyard-sign-in", "popup,width=480,height=720");
+  const popup = window.open(`${H.login}/login?${query}`, "brickyard-sign-in", "popup,width=480,height=720");
   if (!popup) return Promise.reject(new Error("Allow pop-ups for this site to sign in."));
   return new Promise((resolve, reject) => {
     const finish = () => {
@@ -77,7 +77,7 @@ function portalToken(): Promise<string | null> {
       clearInterval(watch);
     };
     const receive = (e: MessageEvent) => {
-      if (e.origin !== PORTAL || e.source !== popup) return;
+      if (e.origin !== H.login || e.source !== popup) return;
       if (e.data?.type === "H_PORTAL_AUTH_ERROR") {
         finish();
         reject(new Error(e.data.error || "The sign-in failed."));

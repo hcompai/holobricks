@@ -1,5 +1,6 @@
-import { HaiAgentsClient, HaiAgentsEnvironment, HaiAgentsError, type HaiAgents } from "hai-agents";
+import { HaiAgentsClient, HaiAgentsError, type HaiAgents } from "hai-agents";
 import { buildRevision } from "../../src/buildRevision";
+import { H } from "../../src/hosts";
 import { applyEdits, type Edit, toLdraw } from "../../src/edits";
 import { type Build, EMPTY_MODEL, type Message, type Model } from "../../src/model";
 import { AGENT, EMPTY_TRANSCRIPT, read, status, type Transcript, unpack } from "../../src/session";
@@ -22,7 +23,7 @@ export type Keep = (name: string, image: Blob) => Promise<string>;
 
 const platform = (key: string) =>
   new HaiAgentsClient({
-    environment: HaiAgentsEnvironment.Eu,
+    environment: H.agents,
     apiKey: key,
     headers: { "X-HCompany-Client-Name": AGENT },
   });
