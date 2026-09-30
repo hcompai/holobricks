@@ -18,6 +18,7 @@ for id in "${builds[@]}"; do
 done
 
 server/.venv/bin/python scripts/pack-toolkit.py
+server/.venv/bin/brickyard-prices   # web/public/pick-a-brick.json: today's Pick a Brick prices for the estimate
 BRICKYARD_DATA=$data server/.venv/bin/brickyard-gallery web/public "${builds[@]}"
 [[ -f web/.vercel/project.json ]] || (cd web && vercel link --yes --scope h-company --project brickyard)
 # The bundle is public: it must never carry an API key.

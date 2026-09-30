@@ -38,6 +38,7 @@ scripts/fetch-ldraw.sh                        # LDraw parts library into ./ldraw
 python3 scripts/fetch-connectors.py           # pinned LDCad stud/socket data for assembly plans
 cd server && uv sync && cd ..
 REBRICKABLE_API_KEY=... server/.venv/bin/brickyard-catalog   # data/rebrickable.json.gz, valid 30 days
+server/.venv/bin/brickyard-prices                             # web/public/pick-a-brick.json (--locale en-US for another store)
 server/.venv/bin/python scripts/pack-toolkit.py               # web/public/brickyard.tgz and LDConfig.ldr
 cd web && npm install
 VITE_HAI_API_KEY=$(grep '^HAI_API_KEY=' ~/code/hai/.env | cut -d= -f2- | tr -d '"') npm run dev   # http://localhost:5173
