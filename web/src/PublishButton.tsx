@@ -61,7 +61,7 @@ export function PublishButton({ published, blocked, author, onPublish, onUnpubli
         }
       >
         {published ? <GlobeIcon size={16} /> : <LockSimpleIcon size={16} />}
-        {published ? "Public" : "Publish"}
+        <span>{published ? "Public" : "Publish"}</span>
         {published && <CaretDownIcon size={12} />}
       </button>
       {open && (

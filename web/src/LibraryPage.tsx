@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { Brick } from "./BrickLoader";
 import type { Shelf } from "./library";
 import type { BuildSummary } from "./model";
 import { typing } from "./scene";
@@ -79,6 +80,12 @@ export function LibraryPage({ builds, failed, active, onRetry, onOpen, onClose }
             >
               {b.thumbnail != null ? (
                 <img className="tile-thumb" src={b.thumbnail} alt="" loading="lazy" decoding="async" />
+              ) : b.status === "building" ? (
+                <div className="tile-thumb">
+                  <div className="brick-hop">
+                    <Brick />
+                  </div>
+                </div>
               ) : (
                 <div className="tile-thumb">{b.name.slice(0, 1).toUpperCase()}</div>
               )}

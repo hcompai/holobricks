@@ -175,8 +175,13 @@ aside {
     margin-right: 0;
   }
 
+  header > :not(.title) {
+    flex-shrink: 0;
+  }
+
   header .brand,
   header .library-toggle span,
+  header .publish-button span,
   header .shop-trigger span {
     font-size: 0;
   }
