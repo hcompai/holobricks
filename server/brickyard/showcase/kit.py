@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import math
 import random
 from collections.abc import Iterable
+from functools import cache
 
-from brickyard import ldraw, shapes
+from brickyard import catalog, ldraw, shapes
 from brickyard.model import Build, Message, Placement, mount, place
 from brickyard.shapes import BRICK_RUN, BRICKS, MOSAIC, PLATES, Cell, footprint, rect, split
 from brickyard.store import Store
@@ -13,6 +15,80 @@ from brickyard.workbench import Workbench
 from brickyard.workspace import Workspace
 
 FACINGS = {"south": 0, "west": 90, "north": 180, "east": 270}
+
+
+CLEAR_RUN = {4: "3066", 2: "3065", 1: "3005"}
+FINISHES = (
+    "Trans",
+    "Glitter",
+    "Glow",
+    "Pearl",
+    "Metallic",
+    "Chrome",
+    "Flat Silver",
+    "Speckle",
+    "Satin",
+    "Opal",
+    "Milky",
+)
+
+
+@cache
+def listed(part: str) -> tuple[int, ...]:
+    """The colors the catalog lists for `part`, none if it can't be looked up."""
+    try:
+        record = catalog.entry(ldraw.resolve(part) or part)
+    except ValueError:
+        return ()
+    return tuple(c["color"] for c in catalog.available_colors(record))
+
+
+def finish(code: int) -> frozenset[str]:
+    """The special finishes in the name of an LDraw color, like Trans or Pearl."""
+    return frozenset(f for f in FINISHES if f in ldraw.colors()[code][0])
+
+
+def lab(code: int) -> tuple[float, float, float]:
+    """CIELAB of an LDraw color with hue counted twice, so greys stay grey rather than tinted at the same lightness."""
+    value = ldraw.colors()[code][1].lstrip("#")
+    srgb = [int(value[i : i + 2], 16) / 255 for i in (0, 2, 4)]
+    r, g, b = (c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4 for c in srgb)
+    xyz = (
+        (0.4124 * r + 0.3576 * g + 0.1805 * b) / 0.9505,
+        0.2126 * r + 0.7152 * g + 0.0722 * b,
+        (0.0193 * r + 0.1192 * g + 0.9505 * b) / 1.089,
+    )
+    fx, fy, fz = (t ** (1 / 3) if t > 0.008856 else 7.787 * t + 16 / 116 for t in xyz)
+    return 116 * fy - 16, 1000 * (fx - fy), 400 * (fy - fz)
+
+
+@cache
+def verified(part: str, color: int) -> int:
+    """`color` if the catalog lists it for `part`, else the nearest listed color of the same finish."""
+    part = part.removesuffix(".dat")
+    if color not in ldraw.colors() or color in listed(part) or not listed(part):
+        return color
+    options = (
+        [c for c in listed(part) if finish(c) == finish(color)]
+        or [c for c in listed(part) if finish(c) <= {"Trans"}]
+        or listed(part)
+    )
+    return min(options, key=lambda c: math.dist(lab(c), lab(color)))
+
+
+def orderable(b: dict) -> list[dict]:
+    """`b` as bricks the catalog lists: a clear 1-wide brick split into tube-less ones of its color, else recolored."""
+    part, color = b["part"].removesuffix(".dat"), b["color"]
+    length = next((n for n, p in BRICK_RUN.items() if p == part), None)
+    if length and "Trans" in finish(color) and color not in listed(part):
+        along_y = b["rotation"] in (90, 270)
+        pieces, at = [], 0
+        for n in split(length, CLEAR_RUN, stagger=False):
+            pieces.append(b | {"part": CLEAR_RUN[n], "x": b["x"] + at * (not along_y), "y": b["y"] + at * along_y})
+            at += n
+        if all(color in listed(p["part"]) for p in pieces):
+            return pieces
+    return [b | {"color": verified(part, color)}]
 
 
 class Kit:
@@ -43,13 +119,18 @@ class Kit:
         self.mounted.append(mount(ldraw.resolve(part) or part, x, y, z, color, facing))
 
     def step(self, title: str) -> None:
-        """Checks the pending bricks as one step, each moved `offset` studs along x and y."""
+        """Checks the pending bricks as one step, each moved `offset` studs along x and y, in verified colors."""
         if not self.pending and not self.mounted:
             return
         ox, oy = self.offset
-        bricks = [b | {"x": b["x"] + ox, "y": b["y"] + oy} for b in self.pending]
+        bricks = [b | {"x": b["x"] + ox, "y": b["y"] + oy} for a in self.pending for b in orderable(a)]
         mounted = [
-            p.model_copy(update={"pos": (p.pos[0] + ox * ldraw.STUD, p.pos[1], p.pos[2] + oy * ldraw.STUD)})
+            p.model_copy(
+                update={
+                    "pos": (p.pos[0] + ox * ldraw.STUD, p.pos[1], p.pos[2] + oy * ldraw.STUD),
+                    "color": verified(p.part, p.color),
+                }
+            )
             for p in self.mounted
         ]
         result = self.bench.add(title, bricks, mounted)
@@ -88,11 +169,6 @@ class Kit:
 
     def mosaic(self, x0, y0, w, d, z, palette, rng, skip: Iterable[Cell] = (), **kwargs) -> None:
         self.scatter(rect(x0, y0, w, d) - set(skip), z, palette, rng, **kwargs)
-
-    def support(self, z: int, solid: set[Cell], column: list[tuple[str, int]], color: int) -> list[dict]:
-        """Takes the pending plates at height `z`, leaving hidden columns under each one missing `solid`."""
-        plates, self.pending = self.pending, shapes.support(self.pending, z, solid, column, color)
-        return plates
 
     def ridge(self, x: int, y: int, w: int, d: int, z: int, color: int) -> None:
         self.pending += shapes.ridge(x, y, w, d, z, color)

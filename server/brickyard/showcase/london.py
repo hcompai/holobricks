@@ -157,9 +157,6 @@ def street_plates(kit: Kit) -> None:
             kit.add("3005", 9, y, z, WHITE)
     kit.step("Area wall")
     kit.cover(PIT | BASEMENT, 7, DBG)
-    plates = kit.support(7, set(), [("3005", 3)] * 2, DBG)
-    kit.step("Hidden basement pillars")
-    kit.pending = plates
     kit.step("Basement area floor")
     kit.cover(PIT, 8, DBG, TILES)
     lit = {(h + i, 11) for h, _, _ in HOUSES for i in (1, 2)}
@@ -169,11 +166,6 @@ def street_plates(kit: Kit) -> None:
         kit.cover(BASEMENT, z, WHITE)
     kit.step("Lit basement windows below the terraces")
     kit.cover(rect(0, 0, QUAY + 1, D) - STATION - PIT, 13, DBG)
-    solid = {c for c in rect(0, 0, QUAY + 1, D) if c[0] in (0, QUAY) or c[1] in (0, D - 1)}
-    solid |= {(9, 9), (9, 10)} | BASEMENT
-    plates = kit.support(13, solid, [("3005", 3)] * 4, DBG)
-    kit.step("Hidden street pillars")
-    kit.pending = plates
     kit.step("Street plates")
 
 
@@ -212,10 +204,6 @@ def tower_bridge(kit: Kit) -> None:
     walkway = rect(TOWERS[0] + 3, 1, 6, 4)
     kit.cover(walkway, z, MBLUE)
     kit.cover(piers - walkway, z, LBG)
-    walls = {(x, y) for x, y in piers if x in (TOWERS[0], TOWERS[0] + 3, TOWERS[1], TOWERS[1] + 3) or y in (0, 5)}
-    plates = kit.support(z, walls, [("3005", 3)], VLBG)
-    kit.step("Hidden tower cores")
-    kit.pending = plates
     for y in (1, 4):
         kit.add("3185", TOWERS[0] + 4, y, z + 1, MBLUE)
     kit.cover(rect(TOWERS[0] + 4, 1, 4, 4), z + 7, MBLUE)
@@ -250,7 +238,7 @@ def barge(kit: Kit) -> None:
     x = x0 + 1
     for z, y, n in ((5, y0 + 1, 4), (8, y0 + 1, 4), (11, y0 + 2, 3), (14, y0 + 2, 3), (17, y0 + 3, 2), (20, y0 + 4, 1)):
         kit.run(x, y, z, n, RBROWN, "y")
-    kit.add("3957a", x, y0 + 5, 5, BLACK)
+    kit.add("3957b", x, y0 + 5, 5, BLACK)
     kit.step("Red-brown sails")
 
 

@@ -80,7 +80,7 @@ disconnected_model: The supported connection graph has 32 separate islands: #1 (
 The steps before the first one you changed are kept as they are. In the rebuilt steps:
 - A brick that overlaps another, is not a known part, goes below x or y 0 or has no valid `facing` is not placed; the report names it by its script line, and the rest of the model is built.
 - A part in a color it never came in is placed, and the report lists the colors it does come in. Pick one that matches the photos, or a different part in the color you need.
-- A floating brick, with nothing directly under or above it, is placed and listed as a note: fine only if the subject hangs or flies there.
+- A floating brick, with nothing directly under or above it, is placed and listed as a note. Hollow shapes need no hidden supports: fix a note only where the gap shows.
 
 `bricks run` exits 1 when the report has a problem or the script stops. If the script stops, the model stays as it was.
 
@@ -146,7 +146,7 @@ A fix then happens once and reaches every copy. Signature details are the except
 - Slopes at rotation 0 descend toward the front (-y), at 180 toward the back (+y), at 90 toward -x, at 270 toward +x.
 - A part rests only on what is directly under it (or hangs from what is directly above it): before narrower walls go on top of wider ones (a tower on a pier, a storey set back), lay plates across the lower walls' top.
 - Bridges and decks over open space: span the gap with long plates that reach both supports, then tile or plate on top of them; or stand the deck on columns.
-- Raised ground (a street above a river, a terrace, a cliff) is hollow: a retaining wall on its open sides, hidden pillars of bricks every 3 or 4 studs inside, then plates on top. Never fill a volume with solid bricks.
+- Raised ground (a street above a river, a terrace, a cliff) is hollow: a retaining wall on its open sides, then plates on top. Never fill a volume with solid bricks.
 - Build everything that stands on the ground first (buildings, piers, trunks), then lay the ground and water around it as the last steps of that level.
 
 ## Parts (`bricks parts` finds any other)
@@ -197,11 +197,11 @@ A request may be a detailed brief or a few words. Follow every requirement it st
 ### Showcases
 
 `showcase/` holds four strong models. View their renders with `view_image` to learn technique and composition.
-- `showcase/bag-end.jpg` and `showcase/bag-end.py`: Bag End under the Hill, 11245 pieces on a rounded base within 88x78 studs, built in this harness with the calls you have; the bar for ambition and density, not a style to copy. A plastered face with a green round door and windows set back in their frames, sunk into the hill under lumpy turf that bulges over them and trails ferns; a hollow hill rising gently from the door to the crest and stepping down into the garden, rounded by grassy slopes, flowering in patches, with chimneys poking through the turf and rock outcrops on its back; a gnarled oak on the crest whose crown hangs over its rim; the lane, stone stairs, a rail fence, a gate, hedges, and Sam's garden gone wild with weeds around an apple tree, a vegetable patch and flower beds.
-- `showcase/hogwarts.jpg`: Hogwarts above the Black Lake, 36677 pieces. The layout comes from the film castle's floor plan, on a sculpted crag, and every level has life: gardens, ivy, lamps, boats with lanterns, a pine forest, and easter eggs (the Whomping Willow holding the Ford Anglia, the giant squid). `showcase/hogwarts.md` is how it was built: references, a plan, a rejected first version, the layout redone from a floor plan, then the details.
-- `showcase/paris.jpg` and `showcase/london.jpg`: the Seine at Saint-Germain and Tower Bridge on the Thames, 2169 and 1555 pieces at a smaller scale than yours.
+- `showcase/bag-end.jpg` and `showcase/bag-end.py`: Bag End under the Hill, 7329 pieces on a rounded base within 88x78 studs, built in this harness with the calls you have; the bar for ambition and density, not a style to copy. A plastered face with a green round door and windows set back in their frames, sunk into the hill under lumpy turf that bulges over them and trails ferns; a hollow hill rising gently from the door to the crest and stepping down into the garden, rounded by grassy slopes, flowering in patches, with chimneys poking through the turf and rock outcrops on its back; a gnarled oak on the crest whose crown hangs over its rim; the lane, stone stairs, a rail fence, a gate, hedges, and Sam's garden gone wild with weeds around an apple tree, a vegetable patch and flower beds.
+- `showcase/hogwarts.jpg`: Hogwarts above the Black Lake, 26815 pieces. The layout comes from the film castle's floor plan, on a sculpted crag, and every level has life: gardens, ivy, lamps, boats with lanterns, a pine forest, and easter eggs (the Whomping Willow holding the Ford Anglia, the giant squid). `showcase/hogwarts.md` is how it was built: references, a plan, a rejected first version, the layout redone from a floor plan, then the details.
+- `showcase/paris.jpg` and `showcase/london.jpg`: the Seine at Saint-Germain and Tower Bridge on the Thames, 2123 and 1534 pieces at a smaller scale than yours.
 
-Claude hand-scripted Hogwarts, Paris and London, and wrote its own library for them first: `showcase/kit.py` (bonded wall runs, rings of walls, plate covers, tile mosaics, hip roofs, ridges, hidden columns under plates) and, for Hogwarts, `showcase/sculpt.py`, which declares the castle's walls, towers, roofs and cones as solids and turns them into bricks, slopes and hidden supports. `build.py` has neither: write the helpers your subject needs at its top, in the same spirit, and take the showcases' techniques, never their calls, coordinates or layout. The log's tooling (renders over HTTP, part tests) is what `bricks`, `look` and this prompt give you.
+Claude hand-scripted Hogwarts, Paris and London, and wrote its own library for them first: `showcase/kit.py` (bonded wall runs, rings of walls, plate covers, tile mosaics, hip roofs, ridges) and, for Hogwarts, `showcase/sculpt.py`, which declares the castle's walls, towers, roofs and cones as solids and turns them into bricks, slopes and bridges over gaps. `build.py` has neither: write the helpers your subject needs at its top, in the same spirit, and take the showcases' techniques, never their calls, coordinates or layout. The log's tooling (renders over HTTP, part tests) is what `bricks`, `look` and this prompt give you.
 
 ### User references
 

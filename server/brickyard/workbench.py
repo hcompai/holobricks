@@ -317,7 +317,7 @@ class Workbench:
         if not problems:
             lines.append("No problems: every brick is known, fits, and exists in its color in LEGO sets.")
         if floating:
-            lines += ["Floating, fine only if the subject flies or hangs there:", *_by_step(floating)]
+            lines += ["Floating, fine where the gap does not show:", *_by_step(floating)]
         lines.append("Steps: pieces, then where they sit in studs (x, y) and plates (z, bottom to top):")
         lines.append(self.describe())
         lines.append(self.summary() + self.colors() + self.parts())

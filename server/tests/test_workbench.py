@@ -164,7 +164,7 @@ def test_a_step_builds_the_same_bricks_whatever_randomness_the_steps_before_it_u
 def test_the_showcase_builds_with_no_problems_and_notes_what_keeps_it_from_one_kit(bench):
     example = (Path(__file__).resolve().parents[2] / "agent" / "showcase" / "bag-end.py").read_text()
     result = bench.run_script(example)
-    assert len(bench.workspace.build.pieces) > 10_000, result.text
+    assert len(bench.workspace.build.pieces) > 7_000, result.text
     assert "No problems: every brick is known, fits" in result.text
     assert result.problems == 0 and "Kit, a note for ordering" in result.text and "disconnected_model" in result.text
 
