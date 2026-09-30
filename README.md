@@ -148,3 +148,11 @@ omit the recovery source.
 After installing the toolkit in a fresh Workstation, `bricks restore files/recovery-model.json.gz`
 restores the model and `build.py` without executing it. It rejects mismatched revisions and an existing
 workspace. Restore is not assembly verification. Models from older toolkits may lack a checkpoint.
+
+Ended sessions offer **Continue from saved version** when they have a checkpoint, or **Try again with
+same request** otherwise. Recovery downloads every original reference before creating a new session,
+submits its inputs with creation, and preserves the original session. It copies user requests, not
+private reasoning. The new session's `groupId` points to the source, so an accepted attempt can be
+found after a lost response. Recovery is user-triggered and creation is not automatically retried.
+The current toolkit is used; temporary files, arbitrary dependencies and unshared edits are not
+restored. A legacy retry starts over and may produce a different model.

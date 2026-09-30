@@ -2253,3 +2253,21 @@ main {
   color: var(--text-error);
   text-align: right;
 }
+/* Recovery keeps the original model available while a new attempt is prepared. */
+.recovery-panel {
+  padding: 12px;
+  border: 1px solid var(--stroke-strong);
+  border-radius: 10px;
+}
+.recovery-panel p {
+  margin: 8px 0;
+  line-height: 1.5;
+}
+.recovery-panel button {
+  padding: 8px 12px;
+  border-radius: 7px;
+}
+.recovery-origin {
+  padding: 8px 14px;
+  font-size: 12px;
+}

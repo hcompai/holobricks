@@ -16,6 +16,7 @@ interface Session {
   status: string;
   events: object[];
   shared: number;
+  group?: string;
 }
 
 interface Request {
@@ -34,6 +35,7 @@ export class Platform {
   offline = false;
   /** When the next event happens, in ms since the epoch. */
   now = Date.parse(NOW);
+  loseCreationResponse = false;
 
   session(id: string, status = "running") {
     this.sessions.set(id, { id, status, events: [], shared: 0 });
@@ -53,8 +55,8 @@ export class Platform {
     this.push(id, "ActiveStateChangeEvent", { state, pending_tool_calls: pending });
   }
 
-  say(id: string, text: string) {
-    this.agent(id, { kind: "message_event", caller_id: "user", content: [text] });
+  say(id: string, text: string, images: unknown[] = []) {
+    this.agent(id, { kind: "message_event", caller_id: "user", content: [text, ...images] });
   }
 
   step(id: string, content: string, reasoning = "", calls: { tool_name: string; args: object; id: string }[] = []) {
@@ -112,19 +114,27 @@ export async function platform(page: Page): Promise<Platform> {
     const session = id ? agp.sessions.get(id) : undefined;
 
     if (url.pathname === "/api/v2/sessions" && method === "GET") {
-      const items = [...agp.sessions.values()].map((s) => ({
-        id: s.id,
-        agent: "brickyard",
-        status: s.status,
-        first_message: null,
-        created_at: NOW,
-      }));
+      const items = [...agp.sessions.values()]
+        .filter((s) => !url.searchParams.has("group_id") || s.group === url.searchParams.get("group_id"))
+        .map((s) => ({
+          id: s.id,
+          agent: "brickyard",
+          status: s.status,
+          first_message: null,
+          created_at: NOW,
+        }));
       return reply(200, { items, total: items.length, page: 1 });
     }
     if (url.pathname === "/api/v2/sessions" && method === "POST") {
       const refused = agp.refuse.shift();
       if (refused) return reply(refused, { detail: "The platform is unavailable." });
       agp.session("new-build", "pending");
+      agp.sessions.get("new-build")!.group = body.group_id;
+      for (const m of body.messages ?? []) agp.say("new-build", m.message, m.images ?? []);
+      if (agp.loseCreationResponse) {
+        agp.loseCreationResponse = false;
+        return reply(503, { detail: "Response lost" });
+      }
       return reply(200, { id: "new-build", request: body, status: "pending", created_at: NOW });
     }
     if (!session) return reply(404, { detail: "No such session" });
