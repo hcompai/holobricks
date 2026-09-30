@@ -38,6 +38,8 @@ const PLATE = 8;
 const SHADOW_MAP = 2048;
 /** Edge opacity by how many pixels a stud covers: none where a stud's lines would pile into a dark film, crisp up close. */
 const EDGE_FADE = { opacity: 0.6, fromPixels: 3, toPixels: 30 };
+/** Vertical fields of view, in degrees: narrow to frame the model, wide to look around inside it. */
+const FOV = { orbit: 35, walk: 70 };
 /** Walking at a minifig's eye height, in LDraw units per second. */
 const WALK = { eye: 80, speed: 6 * STUD, run: 3, lookDistance: 20 * STUD };
 const HOVER = { color: 0x4f8cff, opacity: 0.25 };
@@ -387,7 +389,7 @@ export class BrickScene {
   /** Exposed for offline renderers that compose their own passes; the live view only goes through methods. */
   readonly renderer: THREE.WebGLRenderer;
   readonly scene = new THREE.Scene();
-  readonly camera = new THREE.PerspectiveCamera(35, 1, 1, 100000);
+  readonly camera = new THREE.PerspectiveCamera(FOV.orbit, 1, 1, 100000);
   readonly sun = new THREE.DirectionalLight();
   readonly sky = new THREE.HemisphereLight(0xffffff, 0x6f6f6f);
   private sunDistance = 1;
@@ -922,6 +924,8 @@ export class BrickScene {
     this.walking = walk;
     this.glide = null;
     this.keys.clear();
+    this.camera.fov = walk ? FOV.walk : FOV.orbit;
+    this.camera.updateProjectionMatrix();
     if (walk) {
       this.walker ??= this.makeWalker();
       this.controls.enabled = false;
