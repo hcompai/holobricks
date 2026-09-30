@@ -143,6 +143,69 @@ test("the selection takes a new color, the model's own colors listed first", asy
   await expect(page.getByRole("row", { name: `3× test-brick ${next}` })).toBeVisible();
 });
 
+test("duplicates take new ids after the model's, beside their originals, and come last", () => {
+  const [a, b, c] = fixture().pieces;
+  const edited = applyEdits(
+    [a, b, c],
+    [
+      { kind: "duplicate", ids: [0, 1], by: [80, 0, 0], first: 3 },
+      { kind: "move", ids: [3], by: [0, -8, 0] },
+      { kind: "delete", ids: [1] },
+    ],
+  );
+  expect(edited.map((p) => [p.id, p.pos[0], p.pos[1] + 0])).toEqual([
+    [0, 0, 0],
+    [2, 0, -24],
+    [3, 80, -8],
+    [4, 120, 0],
+  ]);
+});
+
+test("Shift-drag selects every piece in the box, and ⌘D duplicates the selection beside it", async ({ page }) => {
+  await open(page);
+  const pieces = page.locator(".chip").first();
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  const box = (await page.locator(".viewer-canvas").boundingBox())!;
+  await page.keyboard.down("Shift");
+  await page.mouse.move(box.x + 10, box.y + 10);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 4 });
+  await expect(page.locator(".select-box")).toBeVisible();
+  await page.mouse.move(box.x + box.width - 10, box.y + box.height - 10, { steps: 4 });
+  await page.mouse.up();
+  await page.keyboard.up("Shift");
+  await expect(page.locator(".select-box")).toBeHidden();
+  const panel = page.getByRole("dialog", { name: "Selection" });
+  await expect(panel.locator("b")).toHaveText("8 pieces");
+
+  await page.keyboard.press("ControlOrMeta+d");
+  await expect(pieces).toHaveText("16 pieces");
+  await expect(panel.locator("b")).toHaveText("8 pieces");
+  await expect(page.getByRole("toolbar", { name: "Edit mode" })).toContainText("1 change");
+  await panel.getByRole("button", { name: "Duplicate" }).click();
+  await expect(pieces).toHaveText("24 pieces");
+
+  await page.getByRole("button", { name: "Undo" }).click();
+  await page.getByRole("button", { name: "Undo" }).click();
+  await expect(pieces).toHaveText("8 pieces");
+  await expect(panel).toBeHidden();
+});
+
+test("the ? key or the Shortcuts button lists every shortcut", async ({ page }) => {
+  await open(page);
+  const help = page.getByRole("dialog", { name: "Shortcuts" });
+  await page.keyboard.press("?");
+  await expect(help).toContainText("Duplicate beside it");
+  await expect(help).toContainText("Add the pieces seen in a box");
+  await expect(help).toContainText("Release the mouse; again to stop walking");
+  await page.keyboard.press("Escape");
+  await expect(help).toBeHidden();
+  await page.getByRole("button", { name: "Shortcuts" }).click();
+  await expect(help).toBeVisible();
+  await page.getByRole("button", { name: "Shortcuts" }).click();
+  await expect(help).toBeHidden();
+});
+
 test("walk mode explains its controls and Escape leaves it", async ({ page }) => {
   await open(page);
   const walk = page.getByRole("button", { name: "Walk", exact: true });
