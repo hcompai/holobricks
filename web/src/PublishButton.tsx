@@ -1,5 +1,5 @@
 import { CaretDownIcon, GlobeIcon, LockSimpleIcon } from "@phosphor-icons/react";
-import { useState } from "react";
+import { Confirm } from "./Confirm";
 import { useMenu } from "./useMenu";
 
 interface Props {
@@ -16,20 +16,6 @@ interface Props {
 /** Publishes the build to the public library under the author's name, or makes it private again, each after a confirmation. */
 export function PublishButton({ published, blocked, author, imported = false, onPublish, onUnpublish }: Props) {
   const { open, setOpen, root } = useMenu();
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const run = async (action: () => Promise<void>) => {
-    setBusy(true);
-    setError(null);
-    try {
-      await action();
-      setOpen(false);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
-  };
   const ask = published
     ? {
         name: "Make private",
@@ -70,26 +56,7 @@ export function PublishButton({ published, blocked, author, imported = false, on
         <span>{published ? "Public" : "Publish"}</span>
         {published && <CaretDownIcon size={12} />}
       </button>
-      {open && (
-        <div className="menu-list publish-confirm" role="dialog" aria-label={ask.name}>
-          <b>{ask.question}</b>
-          <p className="muted">{ask.note}</p>
-          {error && (
-            <p className="publish-error" role="alert">
-              {error}
-            </p>
-          )}
-          <div className="publish-actions">
-            <button onClick={() => setOpen(false)} disabled={busy} autoFocus>
-              Cancel
-            </button>
-            <button className="primary" onClick={() => run(ask.action)} disabled={busy}>
-              {ask.icon}
-              {busy ? ask.doing : ask.name}
-            </button>
-          </div>
-        </div>
-      )}
+      {open && <Confirm {...ask} onClose={() => setOpen(false)} />}
     </div>
   );
 }

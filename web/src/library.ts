@@ -61,7 +61,6 @@ interface Published {
   published: number;
   thumbnail: string | null;
   build: string;
-  private?: boolean;
 }
 
 async function showcases(): Promise<BuildSummary[]> {
@@ -121,7 +120,6 @@ const summary = (p: Published): BuildSummary => ({
   source: "public",
   author: p.author,
   owner: p.owner,
-  private: !!p.private,
 });
 
 export async function publicBuild(id: string): Promise<Build> {
@@ -186,7 +184,7 @@ export async function importModel(model: ModelFile): Promise<string> {
 
 /** Make one of the user's library builds private, or public again; it keeps its link. */
 export async function setPrivate(id: string, value: boolean) {
-  return api<Published>(API, {
+  await api(API, {
     method: "PATCH",
     headers: { ...signed(), "Content-Type": "application/json" },
     body: JSON.stringify({ id, private: value }),

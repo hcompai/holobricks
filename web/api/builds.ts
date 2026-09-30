@@ -45,15 +45,18 @@ export const GET = route(async (request) => {
   return Response.json(own, { headers: OWN });
 });
 
-/** Make one of the caller's builds private or public again: `{ id, private }`. Its files and link stay the same. */
+/** Make one of the caller's imported builds private or public again: `{ id, private }`. Its files and link stay the same. */
 export const PATCH = route(async (request) => {
   const { user } = holder(request);
   const given = await body<{ id?: unknown; private?: unknown }>(request);
   if (typeof given.private !== "boolean") throw new Refusal(400, "Say whether the build is private.");
-  const published = await findOwn(user.id, buildId(given.id));
+  const id = buildId(given.id);
+  if (!id.startsWith("import-"))
+    throw new Refusal(400, "Only an imported build is kept private; unpublish a session's build.");
+  const published = await findOwn(user.id, id);
   if (!published || published.owner !== user.id) throw new Refusal(404, "No such build of yours.");
-  if (!!published.private === given.private) return Response.json(published);
-  return Response.json(await setPrivate(published, given.private));
+  await setPrivate(published, given.private);
+  return new Response(null, { status: 204 });
 });
 
 /** Publish the caller's build, as it is now; publishing again replaces it. */

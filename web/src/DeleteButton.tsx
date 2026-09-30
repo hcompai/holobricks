@@ -1,25 +1,10 @@
 import { TrashIcon } from "@phosphor-icons/react";
-import { useState } from "react";
+import { Confirm } from "./Confirm";
 import { useMenu } from "./useMenu";
 
 /** Deletes an imported build for good, after a confirmation naming what goes. */
 export function DeleteButton({ name, onDelete }: { name: string; onDelete: () => Promise<void> }) {
   const { open, setOpen, root } = useMenu();
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const run = async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      await onDelete();
-      setOpen(false);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
-  };
-
   return (
     <div className="menu publish" ref={root}>
       <button
@@ -33,26 +18,16 @@ export function DeleteButton({ name, onDelete }: { name: string; onDelete: () =>
         <TrashIcon size={16} />
       </button>
       {open && (
-        <div className="menu-list publish-confirm" role="dialog" aria-label="Delete">
-          <b>Delete {name}?</b>
-          <p className="muted">
-            It leaves your library and the public one, and its link stops working. This cannot be undone.
-          </p>
-          {error && (
-            <p className="publish-error" role="alert">
-              {error}
-            </p>
-          )}
-          <div className="publish-actions">
-            <button onClick={() => setOpen(false)} disabled={busy} autoFocus>
-              Cancel
-            </button>
-            <button className="primary danger" onClick={run} disabled={busy}>
-              <TrashIcon size={16} />
-              {busy ? "Deleting…" : "Delete"}
-            </button>
-          </div>
-        </div>
+        <Confirm
+          name="Delete"
+          question={`Delete ${name}?`}
+          note="It leaves your library and the public one, and its link stops working. This cannot be undone."
+          doing="Deleting…"
+          icon={<TrashIcon size={16} />}
+          danger
+          action={onDelete}
+          onClose={() => setOpen(false)}
+        />
       )}
     </div>
   );

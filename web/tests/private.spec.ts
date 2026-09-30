@@ -53,9 +53,8 @@ async function library(page: import("@playwright/test").Page, build: Build) {
     });
     if (method === "PATCH") {
       const { id, private: hidden } = request.postDataJSON();
-      const entry = entries.find((e) => e.id === id)!;
-      entry.private = hidden;
-      return route.fulfill({ json: entry });
+      entries.find((e) => e.id === id)!.private = hidden;
+      return route.fulfill({ status: 204 });
     }
     if (method === "DELETE") {
       entries.splice(0, entries.length);

@@ -14,8 +14,6 @@ export interface Published {
   published: number;
   thumbnail: string | null;
   build: string;
-  /** Kept out of the public library, listed to its owner only; set on imported builds, which have no session. */
-  private?: boolean;
 }
 
 const PUBLIC = { access: "public", addRandomSuffix: false, allowOverwrite: true, cacheControlMaxAge: 60 } as const;
@@ -78,15 +76,13 @@ export async function privateOf(owner: string): Promise<Published[]> {
   return found.filter((p): p is Published => p !== null).sort((a, b) => b.published - a.published);
 }
 
-/** Move a build between the public library and its owner's private shelf; its files stay where they are. */
-export async function setPrivate(published: Published, value: boolean): Promise<Published> {
-  const moved = { ...published, private: value };
+/** Move a build between the public library and its owner's private shelf; its files stay, and a retry finishes a half-done move. */
+export async function setPrivate(published: Published, value: boolean) {
   const [to, from] = value
     ? [hidden(published.owner, published.id), entry(published.id)]
     : [entry(published.id), hidden(published.owner, published.id)];
-  await put(to, JSON.stringify(moved), { ...PUBLIC, contentType: "application/json" });
-  await del(from).catch(() => undefined);
-  return moved;
+  await put(to, JSON.stringify(published), { ...PUBLIC, contentType: "application/json" });
+  await del(from);
 }
 
 /** Every public build, newest first. */
