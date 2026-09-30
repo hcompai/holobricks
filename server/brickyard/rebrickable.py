@@ -108,13 +108,30 @@ def build(key: str) -> dict:
     return {"schema": catalog.SCHEMA, "built_at": time.time(), "colors": palette, "parts": mapped}
 
 
+def _age_days(path: Path) -> float | None:
+    """Days since the snapshot at `path` was built, None when it cannot be read."""
+    try:
+        return (time.time() - json.loads(gzip.decompress(path.read_bytes()))["built_at"]) / 86400
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="brickyard-catalog", description=__doc__)
     parser.add_argument("--out", type=Path, default=catalog.SNAPSHOT)
+    parser.add_argument("--max-age", type=float, metavar="DAYS", help="keep a snapshot built less than DAYS ago")
     args = parser.parse_args()
+    age = _age_days(args.out)
+    if args.max_age is not None and age is not None and age < args.max_age:
+        print(f"Kept {args.out}, built {age:.0f} days ago.")
+        return
     key = os.environ.get("REBRICKABLE_API_KEY")
     if not key:
-        raise SystemExit("Set REBRICKABLE_API_KEY (free at rebrickable.com, Settings > API).")
+        found = "missing or unreadable" if age is None else f"{age:.0f} days old"
+        raise SystemExit(
+            f"The catalog snapshot at {args.out} is {found}. "
+            "Set REBRICKABLE_API_KEY (free at rebrickable.com, Settings > API) to build it."
+        )
     snapshot = build(key)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_bytes(gzip.compress(json.dumps(snapshot, separators=(",", ":")).encode()))

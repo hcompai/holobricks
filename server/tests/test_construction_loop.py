@@ -1,6 +1,7 @@
 import gzip
 import json
 import sys
+import time
 from itertools import permutations
 
 import pytest
@@ -54,6 +55,7 @@ def test_automatically_inserted_glass_must_also_have_a_verified_catalog_color(be
 def test_a_run_reports_a_piece_in_an_unverified_color_with_the_verified_choices(bench):
     result = bench.run_script(CORE.replace(", 4)", ", 503)"))
     assert result.problems == 1 and "not a known color" in result.text and "14 Yellow" in result.text
+    assert 'From line 2 `brick("3001", 0, 0, 0, 503)`' in result.text
     assert [p.color for p in bench.pieces] == [503]
     assert not bench.run_script(CORE.replace(", 4)", ", 14)")).problems
     choices = bench.catalog_colors("3001")
@@ -96,7 +98,7 @@ def test_a_run_writes_the_complete_revision_once(bench, monkeypatch):
     monkeypatch.setattr(Workspace, "save", record)
     code = CORE + 'step("Top")\nbrick("3001", 0, 0, 3, 15)\nstep("Side")\nbrick("3001", 5, 0, 0, 14)\n'
     result = bench.run_script(code)
-    assert result.problems == 0 and "disconnected_model" in result.text
+    assert result.problems == 0
     assert len(writes) == 1 and len(writes[0].steps) == len(writes[0].pieces) == 3 and writes[0].script == code
 
 
@@ -153,13 +155,14 @@ def test_support_is_checked_on_the_complete_step_in_any_line_order(bench):
 
 def test_floating_bricks_are_placed_with_a_note_and_cannot_support_each_other(bench):
     result = bench.run_script('step("Floating pair")\nbrick("3001", 0, 0, 6, 4)\nbrick("3001", 0, 0, 9, 4)')
-    assert result.problems == 0 and "Floating" in result.text and result.text.count("vertical contact path") == 2
+    assert result.problems == 0 and "Floating, placed but flagged: 2 bricks in step 1" in result.text
+    assert result.text.count("nothing under or above it") == 2
     assert len(bench.pieces) == 2
 
 
 def test_a_later_step_cannot_retroactively_support_an_earlier_step(bench):
     result = bench.run_script('step("Top first")\nbrick("3001", 0, 0, 3, 4)\n' + CORE)
-    assert "Top first" in result.text and "vertical contact path" in result.text
+    assert "1 brick in step 1" in result.text and "nothing under or above it" in result.text
 
 
 def test_fixed_manual_steps_survive_script_rejection_and_script_removal(bench):
@@ -209,12 +212,25 @@ def test_bricks_works_on_the_build_in_its_directory_and_exits_1_on_problems(
     assert bricks("name", "Red brick") == 0 and saved(Workbench(Workspace.open(tmp_path))).name == "Red brick"
     (tmp_path / "loose.py").write_text(CORE + 'step("Loose")\nbrick("3001", 8, 0, 0, 4)\n')
     assert bricks("run", "loose.py") == 0
-    assert "disconnected_model" in capsys.readouterr().out
+    assert "disconnected_model" not in capsys.readouterr().out
+    assert bricks("assembly") == 1 and "disconnected_model" in capsys.readouterr().out
     (tmp_path / "outside.py").write_text(CORE + 'brick("3001", -1, 0, 0, 4)\n')
     assert bricks("run", "outside.py") == 1
     plan = tmp_path / "plan.json"
     plan.write_text(json.dumps({"revision": "stale", "root": "model", "groups": []}))
     assert bricks("assembly", str(plan)) == 1
+    (tmp_path / client.CLOCK).write_text(json.dumps({"started": time.time() - 150 * 60, "minutes": 180}))
+    bricks("run")
+    capsys.readouterr()
+    bricks("run")
+    assert capsys.readouterr().out.startswith("Run 2 · 150 of 180 min used: start nothing new")
+
+
+def test_part_search_lists_only_parts_sold_in_real_sets_with_their_number_of_colors(bench):
+    hits = bench.find_parts("tile 1 x 2").text.splitlines()
+    assert hits and all(line.endswith("| in 7 colors") for line in hits), hits
+    assert {line.split(":")[0] for line in hits} <= {"3069", "3069a", "3069b", "3069bp01"}
+    assert bench.find_parts("3005").text.endswith("| in 0 colors")
 
 
 @pytest.mark.parametrize("part", ["4282", "3034", "3020"])

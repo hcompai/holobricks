@@ -63,9 +63,9 @@ def catalog() -> dict[str, str]:
     return titles
 
 
-def search(query: str, limit: int = 20) -> list[str]:
+def search(query: str) -> list[str]:
     """Exact part IDs first; otherwise rank complete title words ahead of prefix matches."""
-    if limit <= 0 or not query.strip():
+    if not query.strip():
         return []
     exact = resolve(query)
     if exact is not None:
@@ -85,7 +85,7 @@ def search(query: str, limit: int = 20) -> list[str]:
             continue
         if all(any(t == w or (not w.isdecimal() and t.startswith(w)) for t in terms) for w in words):
             hits.append((sum(w not in terms for w in words), len(title), part))
-    return [part for _, _, part in sorted(hits)[:limit]]
+    return [part for _, _, part in sorted(hits)]
 
 
 @cache

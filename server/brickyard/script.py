@@ -8,13 +8,13 @@ import json
 import random
 import sys
 
-from brickyard import ldraw, shapes
+from brickyard import catalog, ldraw, shapes
 from brickyard.shapes import Brick, Cell
 
 SOURCE = "<script>"
 MAX_BRICKS = 100_000
 PRINT_LIMIT = 2000
-API = ("step", "brick", "mount", "top")
+API = ("step", "brick", "mount", "top", "colors")
 
 
 class Script:
@@ -73,6 +73,12 @@ class Script:
     def top(self, x: int, y: int, w: int = 1, d: int = 1) -> int:
         """The highest plate height filled over the rectangle, 0 on bare ground."""
         return max((b for cell in shapes.rect(x, y, w, d) for _, b in self.columns.get(cell, ())), default=0)
+
+    @staticmethod
+    def colors(part: str) -> set[int]:
+        """The LDraw codes of the colors `part` comes in, empty for a part the catalog does not know."""
+        record = catalog.snapshot().parts.get(ldraw.resolve(str(part)) or "")
+        return {c["color"] for c in catalog.available_colors(record)} if record else set()
 
 
 def _explain(error: BaseException, code: str) -> str:

@@ -17,6 +17,8 @@ for id in "${builds[@]}"; do
   [[ -f "$data/thumbnails/$id.png" ]] || echo "warning: no thumbnail for $id yet" >&2
 done
 
+# The toolkit refuses a catalog snapshot after 30 days, so each deploy ships one with at least 10 left.
+server/.venv/bin/brickyard-catalog --max-age 20
 server/.venv/bin/python scripts/pack-toolkit.py
 server/.venv/bin/brickyard-prices   # web/public/pick-a-brick.json: today's Pick a Brick prices for the estimate
 BRICKYARD_DATA=$data server/.venv/bin/brickyard-gallery web/public "${builds[@]}"

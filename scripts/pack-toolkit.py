@@ -8,7 +8,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from brickyard import ldraw
+from brickyard import catalog, ldraw
 
 ROOT = Path(__file__).resolve().parents[1]
 PUBLIC = ROOT / "web" / "public"
@@ -21,9 +21,9 @@ def files() -> list[tuple[str, bytes]]:
     server = ROOT / "server"
     sources = [server / "pyproject.toml", server / "uv.lock", *sorted((server / "brickyard").rglob("*.py"))]
     sources += [ROOT / "setup.sh", ROOT / "scripts" / "fetch-ldraw.sh", ROOT / "scripts" / "fetch-connectors.py"]
-    sources += [ROOT / "data" / "rebrickable.json.gz"]
     sources += sorted(p for p in (ROOT / "agent" / "showcase").iterdir() if p.suffix in (".py", ".md"))
     out = [(str(p.relative_to(ROOT)), p.read_bytes()) for p in sources]
+    out.append(("data/rebrickable.json.gz", catalog.SNAPSHOT.read_bytes()))
     for png in sorted((ROOT / "agent" / "showcase").glob("*.png")):
         jpeg = io.BytesIO()
         with Image.open(png) as image:
@@ -33,7 +33,7 @@ def files() -> list[tuple[str, bytes]]:
 
 
 def main() -> None:
-    if not (ROOT / "data" / "rebrickable.json.gz").exists():
+    if not catalog.SNAPSHOT.exists():
         sys.exit("Build the catalog snapshot first: server/.venv/bin/brickyard-catalog")
     OUT.parent.mkdir(parents=True, exist_ok=True)
     with tarfile.open(OUT, "w:gz") as archive:

@@ -148,12 +148,14 @@ def validate(pieces) -> dict:
 
 def describe(report: dict) -> str:
     if report["valid"]:
-        return f"All {report['pieces']} pieces exist in their colors in LEGO sets (stock and physical assembly not certified)."
+        return f"All {report['pieces']} pieces exist in their colors in real sets (stock and physical assembly not certified)."
     lines = ["Parts list is not ready to order. No unchecked or partial shopping file can be exported."]
     for issue in report["issues"]:
         lines.append(
             f"{issue.get('count', 0)} × {issue.get('part', '')}, LDraw color {issue.get('color', '')}: {issue['reason']}"
         )
+        if where := issue.get("lines"):
+            lines.append("From " + ", ".join(where))
         if colors := issue.get("available_colors"):
             lines.append(
                 "Verified choices (LDraw codes; choose for visual fidelity): "

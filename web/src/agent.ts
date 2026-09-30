@@ -67,7 +67,8 @@ const LOOK: HaiAgents.ToolDefinition = {
 function agent(): HaiAgents.Agent {
   const instructions = prompt
     .replace("{{date}}", new Date().toISOString().slice(0, 10))
-    .replace("{{max_steps}}", String(MAX_STEPS));
+    .replace("{{max_steps}}", String(MAX_STEPS))
+    .replaceAll("{{max_minutes}}", String(MAX_TIME_S / 60));
   return {
     name: AGENT,
     description: "Designs brick models from real LDraw parts, step by step, in Brickyard.",
