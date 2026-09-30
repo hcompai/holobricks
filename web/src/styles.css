@@ -1831,8 +1831,7 @@ main {
 /* Edit and walk modes, drawn over the viewer. */
 .edit-bar,
 .edit-panel,
-.edit-notice,
-.walk-hint {
+.edit-notice {
   position: absolute;
   z-index: 2;
   background: var(--background-card);
@@ -1932,23 +1931,139 @@ main {
   top: 60px;
 }
 
-.walk-hint {
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
+/* Frosted glass over the model, never in the mouse's way. */
+.walk-hud,
+.walk-flying {
+  position: absolute;
+  z-index: 2;
+  inset-inline: 12px;
+  width: fit-content;
+  margin-inline: auto;
+  background: color-mix(in srgb, var(--background-card) 70%, transparent);
+  backdrop-filter: blur(20px) saturate(1.8);
+  border: 1px solid color-mix(in srgb, var(--stroke-strong) 70%, transparent);
+  box-shadow:
+    0 12px 32px rgba(0, 0, 0, 0.14),
+    var(--elevation-1);
+  pointer-events: none;
+  transition:
+    opacity 0.2s ease,
+    visibility 0.2s;
+}
+
+.walk-hud.away,
+.walk-flying.away {
+  opacity: 0;
+  visibility: hidden;
+}
+
+@starting-style {
+  .walk-hud {
+    opacity: 0;
+  }
+}
+
+.walk-hud {
+  bottom: 20px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
-  max-width: calc(100% - 32px);
-  padding: 14px 18px;
+  gap: 12px;
+  padding: 14px 20px 12px;
+  border-radius: 20px;
   text-align: center;
-  color: var(--text-secondary);
-  pointer-events: none;
 }
 
-.walk-hint b {
+.walk-hud b {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 15px;
+}
+
+.walk-keys {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: flex-end;
+  gap: 10px 14px;
+  font-size: 11px;
+  line-height: 14px;
+  color: var(--text-tertiary);
+}
+
+.walk-keys > div {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.walk-keys span {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.walk-keys .walk-wasd {
+  display: grid;
+  grid-template-columns: repeat(3, auto);
+}
+
+.walk-wasd kbd:first-child {
+  grid-column: 2;
+}
+
+.walk-wasd kbd:nth-child(2) {
+  grid-column: 1;
+}
+
+.walk-keys kbd {
+  display: grid;
+  place-items: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 5px;
+  border: 1px solid var(--stroke-strong);
+  border-radius: 6px;
+  background: var(--background-selected);
+  box-shadow: 0 1px 0 var(--stroke-strong);
+  font-family: inherit;
+  font-weight: 600;
   color: var(--text-default);
+}
+
+.walk-keys .wide {
+  width: 52px;
+}
+
+.walk-keys small {
+  font-size: inherit;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.walk-flying {
+  top: 12px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 12px 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 600;
+}
+
+.edit-notice ~ .walk-flying {
+  top: 60px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .walk-hud,
+  .walk-flying {
+    transition: none;
+  }
 }
 
 @media (max-width: 760px) {
@@ -1961,6 +2076,15 @@ main {
     left: 12px;
     right: 12px;
     width: auto;
+  }
+
+  .walk-hud {
+    bottom: 12px;
+    padding: 10px 14px;
+  }
+
+  .walk-keys {
+    column-gap: 10px;
   }
 }
 

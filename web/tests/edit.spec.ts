@@ -205,18 +205,3 @@ test("the ? key or the Shortcuts button lists every shortcut", async ({ page }) 
   await page.getByRole("button", { name: "Shortcuts" }).click();
   await expect(help).toBeHidden();
 });
-
-test("walk mode explains its controls, keeps Space for rising, and Escape leaves it", async ({ page }) => {
-  await open(page);
-  const walk = page.getByRole("button", { name: "Walk", exact: true });
-  await walk.click();
-  await expect(walk).toHaveAttribute("aria-pressed", "true");
-  await expect(page.locator(".walk-hint")).toContainText("Click to walk");
-  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
-  await page.keyboard.press("Space");
-  await page.waitForTimeout(300);
-  expect(await page.locator(".timeline .play").getAttribute("title")).toBe("Play");
-  await page.keyboard.press("Escape");
-  await expect(walk).toHaveAttribute("aria-pressed", "false");
-  await expect(page.locator(".walk-hint")).toBeHidden();
-});

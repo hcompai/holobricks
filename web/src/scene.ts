@@ -7,6 +7,7 @@ import { LDrawConditionalLineMaterial } from "three/examples/jsm/materials/LDraw
 import type { Box, Camera, Piece } from "./model";
 import { buildRevision } from "./buildRevision";
 import { paletteFile } from "./palette";
+import { Solids, WALK, Walker } from "./walker";
 
 export type View = "iso" | "isoBack" | "front" | "top";
 
@@ -31,6 +32,12 @@ export function provideParts(parts: Record<string, string>) {
   for (const [part, packed] of Object.entries(parts)) PARTS.set(part, packed);
 }
 
+/** Parts walking goes through: a box would close the opening of an arch or a door, and plants are soft. */
+const PASSABLE = /^0 ~?(Arch|Door|Plant)\b/;
+
+/** Whether `part` is passable, by its LDraw description: the line after the pack's first embedded file. */
+const passable = (part: string) => PASSABLE.test(PARTS.get(part)?.match(/\n0 FILE [^\n]+\n([^\n]*)/)?.[1] ?? "");
+
 const BACKDROP = "#f6f6f9";
 const STUD = 20;
 const PLATE = 8;
@@ -39,8 +46,6 @@ const SHADOW_MAP = 2048;
 const EDGE_FADE = { opacity: 0.6, fromPixels: 3, toPixels: 30 };
 /** Vertical fields of view, in degrees: narrow to frame the model, wide to look around inside it. */
 const FOV = { orbit: 35, walk: 70 };
-/** Walking at a minifig's eye height, in LDraw units per second. */
-const WALK = { eye: 80, speed: 6 * STUD, run: 3, lookDistance: 20 * STUD };
 const HOVER = { color: 0x4f8cff, opacity: 0.25 };
 const SELECTED = { color: 0xf76808, opacity: 0.35, through: 0.12 };
 
@@ -277,6 +282,12 @@ class Batch {
     for (const p of this.pieces.slice(0, this.visible)) yield [p, middle.clone().applyMatrix4(pieceMatrix(p, matrix))];
   }
 
+  /** The bounds of each piece shown up to the visible step, in the root's local space. */
+  shownBounds(): THREE.Box3[] {
+    const matrix = new THREE.Matrix4();
+    return this.pieces.slice(0, this.visible).map((p) => this.bounds.clone().applyMatrix4(pieceMatrix(p, matrix)));
+  }
+
   /** Grow `target` by every piece, in the root's local space. */
   expand(target: THREE.Box3) {
     const matrix = new THREE.Matrix4();
@@ -346,26 +357,11 @@ export interface SceneOptions {
   material?: (material: THREE.Material) => THREE.Material;
   /** Called when walking takes or releases the mouse pointer. */
   onWalkLock?: (locked: boolean) => void;
+  /** Called when walking starts or stops flying. */
+  onFly?: (flying: boolean) => void;
   /** How highlighted pieces show: tinted and outlined (the default), or only outlined, as instructions draw new pieces. */
   marks?: "tint" | "outline";
 }
-
-const WALK_KEYS = new Set([
-  "KeyW",
-  "KeyA",
-  "KeyS",
-  "KeyD",
-  "KeyE",
-  "KeyQ",
-  "KeyC",
-  "Space",
-  "ShiftLeft",
-  "ShiftRight",
-  "ArrowUp",
-  "ArrowDown",
-  "ArrowLeft",
-  "ArrowRight",
-]);
 
 function mark(color: number, opacity: number, through = false): THREE.MeshBasicMaterial {
   return new THREE.MeshBasicMaterial({
@@ -429,9 +425,11 @@ export class BrickScene {
     selected: new THREE.LineBasicMaterial({ color: SELECTED.color, depthTest: false, transparent: true }),
   };
   private outlineBox = new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1));
-  private walker: PointerLockControls | null = null;
+  private pointer: PointerLockControls | null = null;
   private walking = false;
-  private keys = new Set<string>();
+  private walker: Walker | null = null;
+  /** What walking collides with: the pieces shown, rebuilt once they change. */
+  private solids: Solids | null = null;
   private timer = new THREE.Timer();
   private ground = 0;
   /** Catches the model's shadow in the user's view. */
@@ -612,8 +610,8 @@ export class BrickScene {
     clearTimeout(this.settling);
     this.resizeObserver.disconnect();
     this.stopListening();
-    this.walker?.unlock();
-    this.walker?.dispose();
+    this.pointer?.unlock();
+    this.pointer?.dispose();
     this.controls.dispose();
     this.overlay.clear();
     for (const material of [...Object.values(this.marks), ...Object.values(this.outlines)]) material.dispose();
@@ -798,6 +796,7 @@ export class BrickScene {
       batch.set(group, this.visibleStep);
     });
     this.shown = pieces;
+    this.solids = null;
     this.dirty = this.shadowsStale = true;
     this.drawHighlights();
     return true;
@@ -812,6 +811,7 @@ export class BrickScene {
   setVisibleStep(step: number) {
     this.visibleStep = step;
     for (const batch of this.batches.values()) batch.show(step);
+    this.solids = null;
     this.dirty = this.shadowsStale = true;
     this.drawHighlights();
   }
@@ -922,11 +922,10 @@ export class BrickScene {
     if (walk === this.walking) return;
     this.walking = walk;
     this.glide = null;
-    this.keys.clear();
     this.camera.fov = walk ? FOV.walk : FOV.orbit;
     this.camera.updateProjectionMatrix();
     if (walk) {
-      this.walker ??= this.makeWalker();
+      this.pointer ??= this.makePointer();
       this.controls.enabled = false;
       this.controls.autoRotate = false;
       this.userMoved = true;
@@ -936,7 +935,8 @@ export class BrickScene {
       window.addEventListener("blur", this.releaseKeys);
     } else {
       this.stopListening();
-      this.walker?.unlock();
+      this.walker = null;
+      this.pointer?.unlock();
       this.controls.enabled = true;
       this.userMoved = false;
       this.frameView(this.framing.view, this.framing.width, this.framing.depth);
@@ -946,15 +946,18 @@ export class BrickScene {
 
   /** Take the mouse pointer to look around, while walking; the browser needs a click for it. */
   lockPointer() {
-    if (this.walking) this.walker?.lock();
+    if (this.walking) this.pointer?.lock();
   }
 
-  private makeWalker(): PointerLockControls {
-    const walker = new PointerLockControls(this.camera, this.renderer.domElement);
-    walker.addEventListener("change", () => (this.dirty = true));
-    walker.addEventListener("lock", () => this.options.onWalkLock?.(true));
-    walker.addEventListener("unlock", () => this.options.onWalkLock?.(false));
-    return walker;
+  private makePointer(): PointerLockControls {
+    const pointer = new PointerLockControls(this.camera, this.renderer.domElement);
+    pointer.pointerSpeed = WALK.pointerSpeed;
+    pointer.minPolarAngle = WALK.tilt;
+    pointer.maxPolarAngle = Math.PI - WALK.tilt;
+    pointer.addEventListener("change", () => (this.dirty = true));
+    pointer.addEventListener("lock", () => this.options.onWalkLock?.(true));
+    pointer.addEventListener("unlock", () => this.options.onWalkLock?.(false));
+    return pointer;
   }
 
   /** Stand in front of the model, on its ground, looking at its middle. */
@@ -964,42 +967,50 @@ export class BrickScene {
       box.set(new THREE.Vector3(0, 0, -this.framing.depth * STUD), new THREE.Vector3(this.framing.width * STUD, 0, 0));
     const center = box.getCenter(new THREE.Vector3());
     this.ground = box.min.y;
-    const eye = this.ground + WALK.eye;
-    this.camera.position.set(center.x, eye, box.max.z + 8 * STUD);
+    this.solids = null;
+    const feet = { x: center.x, y: this.ground, z: box.max.z + 8 * STUD };
+    this.walker = new Walker(feet, (flying) => this.options.onFly?.(flying));
+    this.camera.position.set(feet.x, this.walker.eye, feet.z);
     this.camera.near = 1;
     this.camera.far = Math.max(100000, box.getSize(new THREE.Vector3()).length() * 10);
     this.camera.updateProjectionMatrix();
-    this.camera.lookAt(center.x, eye, center.z);
+    this.camera.lookAt(center.x, this.walker.eye, center.z);
+  }
+
+  /** The pieces shown, in world space, over the ground. */
+  private collider(): Solids {
+    this.root.updateMatrixWorld(true);
+    const boxes = [...this.batches]
+      .filter(([key]) => !passable(key.slice(0, key.lastIndexOf(":"))))
+      .flatMap(([, batch]) => batch.shownBounds());
+    for (const box of boxes) box.applyMatrix4(this.root.matrixWorld);
+    return new Solids(boxes, this.ground);
   }
 
   private walk(seconds: number) {
-    const held = (...codes: string[]) => (codes.some((c) => this.keys.has(c)) ? 1 : 0);
-    const forward = held("KeyW", "ArrowUp") - held("KeyS", "ArrowDown");
-    const right = held("KeyD", "ArrowRight") - held("KeyA", "ArrowLeft");
-    const up = held("Space", "KeyE") - held("KeyC", "KeyQ");
-    if (!this.walker || (!forward && !right && !up)) return;
-    const distance = WALK.speed * (held("ShiftLeft", "ShiftRight") ? WALK.run : 1) * seconds;
-    this.walker.moveForward(forward * distance);
-    this.walker.moveRight(right * distance);
-    this.camera.position.y = Math.max(this.ground + PLATE, this.camera.position.y + up * distance);
+    if (!this.walker) return;
+    this.solids ??= this.collider();
+    this.walker.step(seconds, new THREE.Euler().setFromQuaternion(this.camera.quaternion, "YXZ").y, this.solids);
+    const eye = new THREE.Vector3(this.walker.x, this.walker.eye, this.walker.z);
+    if (eye.equals(this.camera.position)) return;
+    this.camera.position.copy(eye);
     this.dirty = true;
   }
 
   private keyDown = (event: KeyboardEvent) => {
-    if (typing(event) || !WALK_KEYS.has(event.code)) return;
-    event.preventDefault();
-    this.keys.add(event.code);
+    if (typing(event) || event.metaKey || event.ctrlKey || event.altKey) return;
+    if (this.walker?.press(event.code, event.timeStamp)) event.preventDefault();
   };
 
-  private keyUp = (event: KeyboardEvent) => this.keys.delete(event.code);
+  private keyUp = (event: KeyboardEvent) => this.walker?.release(event.code);
 
-  private releaseKeys = () => this.keys.clear();
+  private releaseKeys = () => this.walker?.releaseAll();
 
   private stopListening() {
     window.removeEventListener("keydown", this.keyDown);
     window.removeEventListener("keyup", this.keyUp);
     window.removeEventListener("blur", this.releaseKeys);
-    this.keys.clear();
+    this.walker?.releaseAll();
   }
 
   private drawHighlights() {

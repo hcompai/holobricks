@@ -38,8 +38,10 @@ const SECTIONS: { title: string; rows: [string, string][] }[] = [
     rows: [
       ["Click", "Take the mouse to look around"],
       ["W A S D, arrows", "Walk"],
-      ["Space, E / C, Q", "Go up / down"],
-      ["Shift", "Run"],
+      ["W W", "Sprint: tap twice, then hold"],
+      ["Space", "Jump"],
+      ["Space Space", "Fly, or drop to the ground"],
+      ["Space / Shift", "Fly up / down"],
       ["Esc", "Release the mouse; again to stop walking"],
     ],
   },
