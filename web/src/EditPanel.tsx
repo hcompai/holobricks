@@ -57,7 +57,9 @@ export function EditBar({ edits }: { edits: Edits }) {
   const count = edits.edits.length;
   return (
     <div className="edit-bar" role="toolbar" aria-label="Edit mode">
-      <span>{count ? `${count} change${count === 1 ? "" : "s"}` : "Click a piece to select it"}</span>
+      <span>
+        {count ? `${count} change${count === 1 ? "" : "s"}` : "Click a piece to select it, Shift-click to add more"}
+      </span>
       <button className="icon-button" onClick={edits.undo} disabled={!count} title="Undo (⌘Z)" aria-label="Undo">
         <ArrowUUpLeftIcon size={16} weight="bold" />
       </button>
@@ -77,7 +79,7 @@ export function EditBar({ edits }: { edits: Edits }) {
   );
 }
 
-/** The selected piece's controls: move a stud or a plate, turn a quarter, or delete it. */
+/** The selection's controls: move a stud or a plate, turn a quarter about its middle, or delete it. */
 export function EditPanel({
   label,
   onAction,
@@ -88,7 +90,7 @@ export function EditPanel({
   onClose: () => void;
 }) {
   return (
-    <div className="edit-panel" role="dialog" aria-label="Selected piece">
+    <div className="edit-panel" role="dialog" aria-label="Selection">
       <div className="edit-panel-head">
         <b title={label}>{label}</b>
         <button className="icon-button" onClick={onClose} title="Deselect (Esc)" aria-label="Deselect">

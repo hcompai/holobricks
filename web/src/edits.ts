@@ -2,14 +2,19 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { buildRevision } from "./buildRevision";
 import type { Build, Matrix, Piece } from "./model";
 
-/** One change made by hand in the viewer, in LDraw units: x right, y down, z away from the front. */
+/**
+ * One change made by hand in the viewer to one or more pieces, undone as one, in LDraw units:
+ * x right, y down, z away from the front. A turn is a quarter about the vertical line through `about` (x, z).
+ */
 export type Edit =
-  | { kind: "delete"; id: number }
-  | { kind: "move"; id: number; by: [number, number, number] }
-  | { kind: "rotate"; id: number; turns: 1 | -1 };
+  | { kind: "delete"; ids: number[] }
+  | { kind: "move"; ids: number[]; by: [number, number, number] }
+  | { kind: "rotate"; ids: number[]; turns: 1 | -1; about: [number, number] };
 
 export const STUD = 20;
 export const PLATE = 8;
+/** Pivots snap to half a stud, so a quarter turn keeps pieces on the grid they were on. */
+const HALF_STUD = STUD / 2;
 
 const STORE = "brickyard.edits";
 const EDITED =
@@ -40,25 +45,42 @@ function save(id: string, value: Saved | null) {
   }
 }
 
-/** A quarter turn about the vertical axis, applied before `rot`: turning the piece in place. */
-function turn(rot: Matrix, turns: 1 | -1): Matrix {
-  const [a, b, c, d, e, f, g, h, i] = rot;
+// `|| 0` keeps -0 out of turned pieces, so they print like any other.
+const clean = <T extends number[]>(values: T) => values.map((v) => v || 0) as T;
+
+/** A quarter turn of `piece` about the vertical line through `about`; clockwise seen from above for 1. */
+function turn(piece: Piece, turns: 1 | -1, [cx, cz]: [number, number]): Piece {
+  const [a, b, c, d, e, f, g, h, i] = piece.rot;
+  const [x, y, z] = piece.pos;
   const s = turns;
-  // `|| 0` keeps -0 out of the matrix, so a turned piece prints like any other.
-  return [s * g, s * h, s * i, d, e, f, -s * a, -s * b, -s * c].map((v) => v || 0) as Matrix;
+  return {
+    ...piece,
+    pos: clean([cx + s * (z - cz), y, cz - s * (x - cx)]),
+    rot: clean<Matrix>([s * g, s * h, s * i, d, e, f, -s * a, -s * b, -s * c]),
+  };
 }
 
-/** The pieces with `edits` applied in order; edits of pieces already deleted are ignored. */
+/** Where a group turns: the middle of its pieces' positions, on the half-stud grid. */
+export function pivot(pieces: Piece[]): [number, number] {
+  const middle = (k: 0 | 2) => {
+    const values = pieces.map((p) => p.pos[k]);
+    return Math.round((Math.min(...values) + Math.max(...values)) / 2 / HALF_STUD) * HALF_STUD;
+  };
+  return [middle(0), middle(2)];
+}
+
+/** The pieces with `edits` applied in order; pieces an edit names that are already deleted are skipped. */
 export function applyEdits(pieces: Piece[], edits: Edit[]): Piece[] {
   const byId = new Map(pieces.map((p) => [p.id, p]));
-  for (const edit of edits) {
-    const piece = byId.get(edit.id);
-    if (!piece) continue;
-    if (edit.kind === "delete") byId.delete(edit.id);
-    else if (edit.kind === "move")
-      byId.set(edit.id, { ...piece, pos: [0, 1, 2].map((k) => piece.pos[k] + edit.by[k]) as Piece["pos"] });
-    else byId.set(edit.id, { ...piece, rot: turn(piece.rot, edit.turns) });
-  }
+  for (const edit of edits)
+    for (const id of edit.ids) {
+      const piece = byId.get(id);
+      if (!piece) continue;
+      if (edit.kind === "delete") byId.delete(id);
+      else if (edit.kind === "move")
+        byId.set(id, { ...piece, pos: [0, 1, 2].map((k) => piece.pos[k] + edit.by[k]) as Piece["pos"] });
+      else byId.set(id, turn(piece, edit.turns, edit.about));
+    }
   return pieces.filter((p) => byId.has(p.id)).map((p) => byId.get(p.id)!);
 }
 
@@ -98,7 +120,9 @@ export function useEdits(build: Build | null): Edits {
   const [edited, setEdited] = useState<Build | null>(null);
 
   useEffect(() => {
-    setState(id ? (saved()[id] ?? null) : null);
+    const kept = id ? saved()[id] : undefined;
+    // Edits saved before they named groups of pieces have no `ids`; they were only ever drafts.
+    setState(kept ? { ...kept, edits: kept.edits.filter((e) => Array.isArray(e.ids)) } : null);
     setUndone([]);
   }, [id]);
 

@@ -12,7 +12,7 @@
   Checks use bounding boxes and supported stud connections; they do not certify strength or stability.
 - **Replay** the steps, browse the parts list, download the `.ldr` or a PNG, export a GIF of the build.
 - **Shop bricks**: copy a ready-made request into HoloTab, which imports the verified parts list on BrickLink and prepares carts for you to review and pay. See [SHOPPING.md](SHOPPING.md).
-- **Edit** by hand: choose **Edit**, click a piece (the one under the pointer is outlined), then move it a stud or a plate, turn it a quarter, or delete it; undo, redo and reset. Edits are saved in this browser per build and revision, and the `.ldr` download includes them. The builder never sees them: shopping stays off while a model is edited, edits are hidden while the builder works, and a new revision leaves them to discard.
+- **Edit** by hand: choose **Edit**, click a piece (the one under the pointer is outlined) and Shift-click to add more, then move them a stud or a plate, turn them a quarter about their middle, or delete them; undo, redo and reset. Edits are saved in this browser per build and revision, and the `.ldr` download includes them. The builder never sees them: shopping stays off while a model is edited, edits are hidden while the builder works, and a new revision leaves them to discard.
 - **Walk** through the model at a minifig's eye height: choose **Walk**, click the model, then WASD or the arrows to move, the mouse to look, Space/E and C/Q to go up and down, Shift to run, Esc to release the mouse and Esc again to leave.
 - **Follow up** on a finished build for an hour; **Stop** makes Holo wrap up with an answer, and the build stays open.
 

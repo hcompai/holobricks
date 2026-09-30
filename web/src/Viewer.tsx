@@ -4,7 +4,7 @@ import type { Build, Piece, RenderRequest } from "./model";
 import { BrickLoader } from "./BrickLoader";
 import { buildRevision } from "./buildRevision";
 import { ACTION_KEYS, type Action, EditBar, EditPanel } from "./EditPanel";
-import { type Edit, type Edits, PLATE, STUD } from "./edits";
+import { type Edit, type Edits, PLATE, pivot, STUD } from "./edits";
 import { BrickScene, typing, type View } from "./scene";
 
 const VIEWS: { id: View; label: string }[] = [
@@ -107,7 +107,7 @@ interface Props {
   mode: Mode;
   /** The open build's hand edits; `build` already shows them. */
   edits: Edits;
-  /** The selected piece's name, such as "Brick 2 x 4 · Red". */
+  /** A piece's name, such as "Brick 2 x 4 · Red". */
   describe: (piece: Piece) => string;
   onMode: (mode: Mode) => void;
 }
@@ -124,12 +124,12 @@ export function Viewer(props: Props) {
   const [renderError, setRenderError] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
   const [hover, setHover] = useState<number | null>(null);
-  const [selected, setSelected] = useState<number | null>(null);
+  const [selected, setSelected] = useState<number[]>([]);
   const [locked, setLocked] = useState(false);
   const pointer = useRef<{ x: number; y: number } | null>(null);
   const hoverFrame = useRef(0);
   const editing = mode === "edit";
-  const selectedPiece = selected === null ? null : (build?.pieces.find((p) => p.id === selected) ?? null);
+  const selectedPieces = build?.pieces.filter((p) => selected.includes(p.id)) ?? [];
   const version = build ? `${build.id}:${build.revision}` : null;
   const ready = !!build && drawn?.key === version && drawn.pieces === build.pieces && !renderError;
   const failed = (error: unknown) => {
@@ -239,18 +239,19 @@ export function Viewer(props: Props) {
     if (mode !== "walk") setLocked(false);
     if (!editing) {
       setHover(null);
-      setSelected(null);
+      setSelected([]);
     }
   }, [mode, retry]);
 
-  useEffect(() => setSelected(null), [build?.id]);
+  useEffect(() => setSelected([]), [build?.id]);
 
+  // Undoing or resetting can remove selected pieces; keep only those still in the model.
   useEffect(() => {
-    if (selected !== null && !selectedPiece) setSelected(null);
-  }, [selectedPiece]);
+    if (selectedPieces.length !== selected.length) setSelected(selectedPieces.map((p) => p.id));
+  }, [build?.pieces]);
 
   useEffect(
-    () => scene.current?.setHighlight(editing ? hover : null, editing ? selected : null),
+    () => scene.current?.setHighlight(editing ? hover : null, editing ? selected : []),
     [editing, hover, selected, drawn, retry],
   );
 
@@ -263,18 +264,19 @@ export function Viewer(props: Props) {
     return () => window.removeEventListener("keydown", leave);
   }, [mode, locked]);
 
-  /** Apply `action` to the selected piece; moves follow the view, snapped to the model's axes. */
+  /** Apply `action` to the selected pieces as one edit; moves follow the view, snapped to the model's axes. */
   const act = (action: Action) => {
     const s = scene.current;
-    if (!s || selected === null || !edits.editable) return;
+    const ids = selectedPieces.map((p) => p.id);
+    if (!s || !ids.length || !edits.editable) return;
     const push = (edit: Edit) => edits.push(edit);
     if (action === "delete") {
-      push({ kind: "delete", id: selected });
-      setSelected(null);
+      push({ kind: "delete", ids });
+      setSelected([]);
       return;
     }
     if (action === "turnLeft" || action === "turnRight") {
-      push({ kind: "rotate", id: selected, turns: action === "turnRight" ? 1 : -1 });
+      push({ kind: "rotate", ids, turns: action === "turnRight" ? 1 : -1, about: pivot(selectedPieces) });
       return;
     }
     const { right, forward } = s.screenAxes();
@@ -287,7 +289,7 @@ export function Viewer(props: Props) {
       up: [0, -PLATE, 0] as [number, number, number],
       down: [0, PLATE, 0] as [number, number, number],
     }[action];
-    push({ kind: "move", id: selected, by });
+    push({ kind: "move", ids, by });
   };
 
   useEffect(() => {
@@ -300,8 +302,8 @@ export function Viewer(props: Props) {
         else edits.undo();
         return;
       }
-      if (event.metaKey || event.ctrlKey || event.altKey || selected === null) return;
-      if (event.key === "Escape") return setSelected(null);
+      if (event.metaKey || event.ctrlKey || event.altKey || !selected.length) return;
+      if (event.key === "Escape") return setSelected([]);
       const action = ACTION_KEYS[event.key];
       if (!action) return;
       event.preventDefault();
@@ -327,7 +329,11 @@ export function Viewer(props: Props) {
     const start = pointer.current;
     pointer.current = null;
     if (!editing || !start || Math.hypot(event.clientX - start.x, event.clientY - start.y) > 5) return;
-    setSelected(scene.current?.pick(event.clientX, event.clientY)?.id ?? null);
+    const id = scene.current?.pick(event.clientX, event.clientY)?.id;
+    // Shift, Cmd or Ctrl adds a piece to the selection or takes it out; a plain click selects only it.
+    if (event.shiftKey || event.metaKey || event.ctrlKey) {
+      if (id !== undefined) setSelected(selected.includes(id) ? selected.filter((s) => s !== id) : [...selected, id]);
+    } else setSelected(id === undefined ? [] : [id]);
   };
   useEffect(() => scene.current?.setSpin(spin), [spin, retry]);
 
@@ -369,8 +375,12 @@ export function Viewer(props: Props) {
         </div>
       )}
       {editing && ready && <EditBar edits={edits} />}
-      {editing && ready && selectedPiece && (
-        <EditPanel label={describe(selectedPiece)} onAction={act} onClose={() => setSelected(null)} />
+      {editing && ready && selectedPieces.length > 0 && (
+        <EditPanel
+          label={selectedPieces.length === 1 ? describe(selectedPieces[0]) : `${selectedPieces.length} pieces`}
+          onAction={act}
+          onClose={() => setSelected([])}
+        />
       )}
       {mode === "walk" && ready && !locked && (
         <div className="walk-hint">

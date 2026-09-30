@@ -393,7 +393,7 @@ export class BrickScene {
   private raycaster = new THREE.Raycaster();
   /** Tints drawn over the hovered and the selected piece; never picked or rendered for the builder. */
   private overlay = new THREE.Group();
-  private highlighted: { hover: number | null; selected: number | null } = { hover: null, selected: null };
+  private highlighted: { hover: number | null; selected: number[] } = { hover: null, selected: [] };
   private marks = {
     hover: mark(HOVER.color, HOVER.opacity),
     selected: mark(SELECTED.color, SELECTED.opacity),
@@ -771,9 +771,10 @@ export class BrickScene {
     return null;
   }
 
-  /** Tint the piece under the pointer and the selected piece, by id; null clears either. */
-  setHighlight(hover: number | null, selected: number | null) {
-    if (this.highlighted.hover === hover && this.highlighted.selected === selected) return;
+  /** Tint the piece under the pointer and the selected pieces, by id. */
+  setHighlight(hover: number | null, selected: number[]) {
+    const same = (a: number[], b: number[]) => a.length === b.length && a.every((id, i) => id === b[i]);
+    if (this.highlighted.hover === hover && same(this.highlighted.selected, selected)) return;
     this.highlighted = { hover, selected };
     this.drawHighlights();
   }
@@ -876,8 +877,10 @@ export class BrickScene {
   private drawHighlights() {
     this.overlay.clear();
     const { hover, selected } = this.highlighted;
-    const add = (id: number | null, materials: THREE.Material[], outline: THREE.LineBasicMaterial) => {
-      const piece = id === null ? undefined : this.shown?.find((p) => p.id === id);
+    const wanted = new Set([...selected, ...(hover === null ? [] : [hover])]);
+    const pieces = new Map((this.shown ?? []).filter((p) => wanted.has(p.id)).map((p) => [p.id, p]));
+    const add = (id: number, materials: THREE.Material[], outline: THREE.LineBasicMaterial) => {
+      const piece = pieces.get(id);
       const batch = piece && this.batches.get(`${piece.part}:${piece.color}`);
       if (!piece || !batch || piece.step > this.visibleStep) return;
       const matrix = pieceMatrix(piece, new THREE.Matrix4());
@@ -899,8 +902,8 @@ export class BrickScene {
         }
       });
     };
-    if (hover !== selected) add(hover, [this.marks.hover], this.outlines.hover);
-    add(selected, [this.marks.selected, this.marks.through], this.outlines.selected);
+    if (hover !== null && !selected.includes(hover)) add(hover, [this.marks.hover], this.outlines.hover);
+    for (const id of selected) add(id, [this.marks.selected, this.marks.through], this.outlines.selected);
     this.dirty = true;
   }
 
