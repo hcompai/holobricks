@@ -166,7 +166,7 @@ class PartInfo:
     @property
     def plates(self) -> int:
         """Body height in plates, at least one; studs on top (4 LDU) are not counted."""
-        return max(1, int((self.hi[1] - self.lo[1]) // PLATE))
+        return max(1, int((self.hi[1] - self.lo[1] + 0.5) // PLATE))
 
 
 @cache

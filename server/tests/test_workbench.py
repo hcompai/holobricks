@@ -169,6 +169,13 @@ def test_the_showcase_builds_with_no_problems_and_notes_what_keeps_it_from_one_k
     assert result.problems == 0 and "Kit, a note for ordering" in result.text and "disconnected_model" in result.text
 
 
+def test_the_prompts_worked_example_builds_with_no_problems_or_floating_bricks(bench):
+    prompt = (Path(__file__).resolve().parents[2] / "agent" / "holo.md").read_text()
+    example = prompt.split("\n# Worked example")[1].split("```python\n")[1].split("```")[0]
+    result = bench.run_script(example)
+    assert result.problems == 0 and "No problems" in result.text and "Floating" not in result.text, result.text
+
+
 def test_the_prompt_names_only_real_parts_sizes_and_colors():
     prompt = (Path(__file__).resolve().parents[2] / "agent" / "holo.md").read_text()
     rows = re.findall(r"^- (\d+) tall[^:]*: (.*)$", prompt.split("\n## Parts")[1].split("\n## ")[0], re.MULTILINE)

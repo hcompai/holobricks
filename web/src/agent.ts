@@ -1,7 +1,5 @@
 import { fileFromBlob, HaiAgentsClient, HaiAgentsEnvironment, type HaiAgents } from "hai-agents";
 import prompt from "../../agent/holo.md?raw";
-import bagEnd from "../../agent/showcase/bag-end.py?raw";
-
 export const AGENT = "brickyard";
 const MODEL = "holo4-27b";
 const MAX_STEPS = 300;
@@ -63,7 +61,6 @@ const LOOK: HaiAgents.ToolDefinition = {
 
 function agent(): HaiAgents.Agent {
   const instructions = prompt
-    .replace("{{bag_end}}", () => bagEnd.trimEnd())
     .replace("{{date}}", new Date().toISOString().slice(0, 10))
     .replace("{{max_steps}}", String(MAX_STEPS));
   return {
