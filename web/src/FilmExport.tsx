@@ -42,7 +42,7 @@ export function FilmExport({ build, onClose }: Props) {
   const renderer = useRef<FilmRenderer | null>(null);
   const job = useRef<AbortController | null>(null);
   const [aspect, setAspect] = useState<FilmAspect>("16:9");
-  const [seconds, setSeconds] = useState(20);
+  const [seconds, setSeconds] = useState(8);
   const [branded, setBranded] = useState(brandable(build));
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);

@@ -95,6 +95,9 @@ export default function App({ account }: { account: Account }) {
   const exportReplay = () => {
     if (build?.pieces.length) setExportBuild(structuredClone(build));
   };
+  const exportInstructions = () => {
+    if (build?.pieces.length) setInstructionsBuild(structuredClone(build));
+  };
   const last = (build?.steps.length ?? 0) - 1;
 
   const latest = useRef(0);
@@ -307,14 +310,7 @@ export default function App({ account }: { account: Account }) {
         )}
         <ThemeToggle />
         <AccountMenu account={account} />
-        {build && (
-          <DownloadMenu
-            build={build}
-            image={() => viewer.current?.image() ?? Promise.resolve(null)}
-            onReplay={exportReplay}
-            onInstructions={() => build?.pieces.length && setInstructionsBuild(structuredClone(build))}
-          />
-        )}
+        {build && <DownloadMenu build={build} image={() => viewer.current?.image() ?? Promise.resolve(null)} />}
       </header>
       <aside>
         <div className="aside-bar">
@@ -423,6 +419,7 @@ export default function App({ account }: { account: Account }) {
             }}
             onSpeed={setSpeed}
             onReplay={exportReplay}
+            onInstructions={exportInstructions}
             spaceKey={mode !== "walk"}
           />
         )}

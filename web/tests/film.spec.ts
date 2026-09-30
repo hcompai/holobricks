@@ -27,7 +27,7 @@ async function mock(page: Page, build: Build = fixture()) {
   page.on("request", (r) => r.method() !== "GET" && requests.push(`${r.method()} ${r.url()}`));
   await site(page, [build]);
   await page.goto(`/?showcase=${build.id}`);
-  await expect(page.getByRole("button", { name: "Export film", exact: true })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Share a GIF", exact: true })).toBeEnabled();
   return { requests };
 }
 
@@ -83,7 +83,7 @@ test("the browser makes a looping GIF and leaves the viewer untouched", async ({
   const { requests } = await mock(page);
   await expect(page.locator(".brick-loader")).toHaveCount(0);
   await page.getByRole("slider", { name: "Step", exact: true }).fill("1");
-  await page.getByRole("button", { name: "Export film", exact: true }).click();
+  await page.getByRole("button", { name: "Share a GIF", exact: true }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByRole("button", { name: "Generate GIF", exact: true })).toBeEnabled({ timeout: 60000 });
   const branding = dialog.getByRole("checkbox", { name: "H Company logo" });
@@ -92,7 +92,7 @@ test("the browser makes a looping GIF and leaves the viewer untouched", async ({
   await expect.poll(async () => (await preview(page)).frame).not.toBe(branded.frame);
   expect((await preview(page)).model).toBe(branded.model);
   await branding.check();
-  await dialog.getByRole("combobox", { name: "Duration", exact: true }).selectOption("8");
+  await expect(dialog.getByRole("combobox", { name: "Duration", exact: true })).toHaveValue("8");
   const still = await preview(page);
   await dialog.screenshot({ path: info.outputPath("preview.png") });
   const viewer = () =>
@@ -148,7 +148,7 @@ test("missing parts block exporting a misleading partial model; other builders c
   page,
 }) => {
   await mock(page, { ...fixture(), builder: "claude", parts: {} });
-  await page.getByRole("button", { name: "Export film", exact: true }).click();
+  await page.getByRole("button", { name: "Share a GIF", exact: true }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByRole("alert")).toContainText("Invalid render asset: test-brick");
   await expect(dialog.getByRole("button", { name: "Generate GIF", exact: true })).toBeDisabled();

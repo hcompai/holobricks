@@ -1,16 +1,14 @@
-import { BookOpenIcon, CubeIcon, DownloadSimpleIcon, FilmStripIcon, ImageIcon } from "@phosphor-icons/react";
+import { CubeIcon, DownloadSimpleIcon, ImageIcon } from "@phosphor-icons/react";
 import type { Build } from "./model";
 import { useMenu } from "./useMenu";
 
 interface Props {
   build: Build;
   image: () => Promise<Blob | null>;
-  onReplay: () => void;
-  onInstructions: () => void;
 }
 
 /** An icon button opening the build's downloads: the LDraw model, or the view as a PNG. */
-export function DownloadMenu({ build, image, onReplay, onInstructions }: Props) {
+export function DownloadMenu({ build, image }: Props) {
   const { open, setOpen, root } = useMenu();
 
   const save = (blob: Blob, extension: string) => {
@@ -53,26 +51,6 @@ export function DownloadMenu({ build, image, onReplay, onInstructions }: Props) 
           <button role="menuitem" onClick={saveImage}>
             <ImageIcon size={16} />
             Download image
-          </button>
-          <button
-            role="menuitem"
-            disabled={!build.pieces.length}
-            onClick={() => {
-              setOpen(false);
-              onReplay();
-            }}
-          >
-            <FilmStripIcon size={16} /> Export timeline film
-          </button>
-          <button
-            role="menuitem"
-            disabled={!build.pieces.length}
-            onClick={() => {
-              setOpen(false);
-              onInstructions();
-            }}
-          >
-            <BookOpenIcon size={16} /> Building instructions (PDF)
           </button>
         </div>
       )}
