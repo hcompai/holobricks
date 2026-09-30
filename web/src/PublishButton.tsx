@@ -21,7 +21,7 @@ export function PublishButton({ published, blocked, author, imported = false, on
         name: "Make private",
         question: "Make this build private?",
         note: imported
-          ? "It leaves the public library and stays under Mine for you alone. Its link still opens it for anyone who has it. You can publish it again."
+          ? "It leaves the public library and stays under Mine for you alone: its link only opens it for you. You can publish it again."
           : "It leaves the public library and its link stops working. You can publish it again.",
         doing: "Making private…",
         icon: <LockSimpleIcon size={16} />,
