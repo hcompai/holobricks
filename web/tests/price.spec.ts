@@ -21,7 +21,8 @@ async function open(page: Page, table: PriceTable | null) {
   const build = fixture();
   await site(page, [build]);
   await page.route("**/pick-a-brick.json", (route) =>
-    table ? route.fulfill({ json: table }) : route.fulfill({ status: 404 }),
+    // Without a table, a static host answers with the app's page, as Vite's preview and Vercel do.
+    table ? route.fulfill({ json: table }) : route.fulfill({ contentType: "text/html", body: "<!doctype html>" }),
   );
   await page.goto(`/?showcase=${build.id}`);
   await expect(page.locator(".viewer")).toHaveAttribute("data-render-state", "ready");
@@ -70,6 +71,9 @@ test("the estimate follows edits, and stays away without a price table", async (
   );
 
   await page.unrouteAll({ behavior: "ignoreErrors" });
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
   await open(page, null);
   await expect(page.getByRole("button", { name: /^≈/ })).toHaveCount(0);
+  expect(errors).toEqual([]);
 });
