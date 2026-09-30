@@ -7,6 +7,7 @@ const MAX_TIME_S = 3 * 3600;
 /** How long a finished build keeps its Workstation for a follow-up message. */
 const IDLE_TIMEOUT_S = 3600;
 const TOOLKIT = "/brickyard.tgz";
+const DOWNLOAD_S = 60;
 
 const API_KEY: string | undefined = import.meta.env.VITE_HAI_API_KEY;
 
@@ -116,7 +117,11 @@ export async function sessions(): Promise<HaiAgents.SessionSummary[]> {
 
 /** An attachment or image the platform serves behind the API key. */
 export async function download(url: string, signal?: AbortSignal): Promise<Blob> {
-  const response = await fetch(url, { headers: { Authorization: `Bearer ${API_KEY}` }, signal });
+  const timeout = AbortSignal.timeout(DOWNLOAD_S * 1000);
+  const response = await fetch(url, {
+    headers: { Authorization: `Bearer ${API_KEY}` },
+    signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+  });
   if (!response.ok) throw new Error(`Could not download ${url} (HTTP ${response.status})`);
   return response.blob();
 }
