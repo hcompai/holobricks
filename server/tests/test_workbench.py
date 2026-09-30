@@ -128,6 +128,17 @@ def test_problems_made_in_a_helper_name_each_line_that_called_it(bench):
         assert cited in result.text, result.text
 
 
+def test_an_invalid_brick_is_rejected_by_its_line_and_the_rest_is_built(bench):
+    code = (
+        'step("Wall")\nbrick("3001", 0, 0, 0, 4)\nbrick("3001", 5 / 2, 0, 0, 4)\nbrick("3001", 8, 0, 0, None)\n'
+        'step("Roof")\nbrick("3001", 0, 0, 3, 4)\n'
+    )
+    result = bench.run_script(code)
+    assert 'line 3 `brick("3001", 5 / 2, 0, 0, 4)`: x 2.5: Input should be a valid integer' in result.text
+    assert 'line 4 `brick("3001", 8, 0, 0, None)`: color None: Input should be a valid integer' in result.text
+    assert [s.title for s in bench.workspace.build.steps] == ["Wall", "Roof"] and len(bench.pieces) == 2
+
+
 def test_a_run_with_problems_in_every_step_leads_with_its_revision_and_stays_short(bench):
     code = "".join(f'step("Floor {n}")\nfor x in range(40):\n    brick("3001", -1, x, 0, 4)\n' for n in range(9))
     result = bench.run_script(code)

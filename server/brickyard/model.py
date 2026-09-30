@@ -36,6 +36,22 @@ class Piece(BaseModel):
     step: int
 
 
+class Brick(BaseModel):
+    part: str
+    x: int = 0
+    y: int = 0
+    z: int = 0
+    color: int
+    rotation: int = 0
+    facing: str | None = None
+    """Set for a part mounted on a wall, its top turned to face that side."""
+    pos: tuple[float, float, float] | None = None
+    """Set for an exact LDraw placement in LDU, turned by `rot`; x, y, z, rotation and facing then go unused."""
+    rot: Matrix = IDENTITY
+    label: str | None = None
+    """How problems name the brick, like the script line that made it."""
+
+
 class Step(BaseModel):
     index: int
     title: str

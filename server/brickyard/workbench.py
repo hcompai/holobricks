@@ -11,14 +11,14 @@ import tempfile
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 
-from pydantic import BaseModel, ValidationError
+from pydantic import ValidationError
 
 from brickyard import assembly, catalog, ldraw
 from brickyard.model import (
     ACCESSORIES,
     FACINGS,
-    IDENTITY,
     ROTATIONS,
+    Brick,
     Matrix,
     Piece,
     Placement,
@@ -47,22 +47,6 @@ SCRIPT_TIMEOUT_S = 60
 BASEPLATE = "3811.dat"
 BACKS = {"south": (2, 1), "north": (2, -1), "west": (0, 1), "east": (0, -1)}
 """For each facing, the LDU axis and direction from a mounted part to the wall behind it."""
-
-
-class Brick(BaseModel):
-    part: str
-    x: int = 0
-    y: int = 0
-    z: int = 0
-    color: int
-    rotation: int = 0
-    facing: str | None = None
-    """Set for a part mounted on a wall, its top turned to face that side."""
-    pos: tuple[float, float, float] | None = None
-    """Set for an exact LDraw placement in LDU, turned by `rot`; x, y, z, rotation and facing then go unused."""
-    rot: Matrix = IDENTITY
-    label: str | None = None
-    """How problems name the brick, like the script line that made it."""
 
 
 @dataclass
@@ -116,6 +100,10 @@ def _where(p: Placement | Piece) -> str:
     facing = next((f for f, m in FACINGS.items() if m == tuple(p.rot)), None)
     turn = f" facing={facing}" if facing else f" rot={rotation}" if rotation else ""
     return f"{p.part.removesuffix('.dat')} at x={x} y={y} z={z}{turn}"
+
+
+def _invalid(error: ValidationError) -> str:
+    return "; ".join(f"{'.'.join(map(str, e['loc']))} {e['input']!r:.40}: {e['msg']}" for e in error.errors())
 
 
 def _first(lines: list[str]) -> str:
@@ -173,7 +161,7 @@ class Workbench:
         return self._indexed
 
     def _check(
-        self, bricks: list[Brick], mounted: list[Placement] = ()
+        self, bricks: list[dict], mounted: list[Placement] = ()
     ) -> tuple[list[Placement], list[str], list[tuple[str, str]]]:
         """Placements that fit, rejection lines, and (script line, note) per floating brick, for a batch.
 
@@ -192,15 +180,21 @@ class Workbench:
 
         accepted: list[tuple[Placement, tuple, str, str, bool, str | None]] = []
         rejected = []
+        parsed: list[tuple[int, Brick]] = []
+        for n, raw in enumerate(bricks, 1):
+            try:
+                parsed.append((n, Brick.model_validate(raw)))
+            except ValidationError as e:
+                rejected.append(f"{raw.get('label') or f'brick {n}'}: {_invalid(e)}")
         candidates: list[tuple[str, str, Placement, bool, str | None]] = []
         exact: set[int] = set()
         frames = {
             (ACCESSORIES[frame][0], b.pos, b.rot)
-            for b in bricks
+            for _, b in parsed
             if b.pos is not None and (frame := ldraw.resolve(b.part)) in ACCESSORIES
         }
         inserts: dict[tuple, list[Placement]] = defaultdict(list)
-        for n, brick in enumerate(bricks, 1):
+        for n, brick in parsed:
             at = f"x={brick.x} y={brick.y} z={brick.z}" if brick.pos is None else f"pos={brick.pos}"
             label = f"{brick.label or f'brick {n}'} ({brick.part} at {at})"
             origin = brick.label or label
@@ -288,13 +282,9 @@ class Workbench:
 
     def add(self, title: str, bricks: list[dict], mounted: list[Placement] = ()) -> Result:
         """Check the bricks and place the ones that fit as one step, if the whole model stays verified."""
-        try:
-            parsed = [Brick.model_validate(b) for b in bricks]
-        except ValidationError as e:
-            return Result(f"Invalid bricks in '{title}': {e.errors(include_url=False)}", problems=len(bricks))
-        if not parsed and not mounted:
+        if not bricks and not mounted:
             return Result("No bricks given.")
-        placements, rejected, floating = self._check(parsed, list(mounted))
+        placements, rejected, floating = self._check(bricks, list(mounted))
         lines = []
         if placements:
             candidate = self.workspace.build.model_copy(deep=True)
@@ -344,12 +334,7 @@ class Workbench:
         reports, floating = [], []
         for n, (s, key) in enumerate(zip(steps[same:], keys[same:], strict=True), kept_steps + 1):
             bricks = [b | {"label": _cite(source, b["line"], b["call"])} for b in s["bricks"]]
-            try:
-                parsed = [Brick.model_validate(b) for b in bricks]
-            except ValidationError as e:
-                reports.append((n, s["title"], [f"invalid bricks: {e.errors(include_url=False)}"]))
-                continue
-            placements, rejected, flags = draft._check(parsed)
+            placements, rejected, flags = draft._check(bricks)
             if placements:
                 candidate.add_step(s["title"], placements, "" if rejected or flags else key)
             if rejected:

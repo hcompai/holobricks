@@ -86,7 +86,7 @@ Steps: pieces, then where they sit in studs (x, y) and plates (z, bottom to top)
 ```
 
 The first line counts your runs and the minutes used since setup. The steps before the first one you changed are kept as they are, up to the first one with a rejected or floating brick, which is rebuilt and reported again. In the rebuilt steps:
-- A brick that overlaps another, is not a known part, goes below x or y 0 or has no valid `facing` is rejected: it is not placed, the report names it by its script line, and the rest of the model is built.
+- A brick that overlaps another, is not a known part, has a coordinate or color that is not a whole number, goes below x or y 0 or has no valid `facing` is rejected: it is not placed, the report names it by its script line, and the rest of the model is built.
 - A part in a color it never came in is placed, and the report lists the colors it does come in and the first script lines that gave it that color. Pick one that matches the photos, or a different part in the color you need.
 - A floating brick, with nothing directly under or above it, or a mounted part with nothing behind it, is placed and flagged with its script line. Fix it where the gap shows or where the model would fall apart as a real kit, never with hidden support pillars; a hollow shape needs no other support.
 

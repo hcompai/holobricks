@@ -10,8 +10,8 @@ import sys
 from collections.abc import Sequence
 
 from brickyard import catalog, ldraw, shapes
-from brickyard.model import IDENTITY, Placement, bounds, extent
-from brickyard.shapes import Brick, Cell
+from brickyard.model import IDENTITY, Brick, Placement, bounds, extent
+from brickyard.shapes import Cell
 
 SOURCE = "<script>"
 MAX_BRICKS = 100_000
@@ -44,7 +44,7 @@ class Script:
             frame = frame.f_back
         return (lines[0], lines[-1]) if lines else (0, 0)
 
-    def _add(self, bricks: list[Brick]) -> None:
+    def _add(self, bricks: list[dict]) -> None:
         if not self.steps:
             self.step("Build")
         self.count += len(bricks)
@@ -53,23 +53,22 @@ class Script:
         line, call = self._lines()
         for b in bricks:
             self.steps[-1]["bricks"].append(b | {"line": line, "call": call})
-            if "facing" in b:
-                continue
             try:
-                x, y, w, d, z, height = self._extent(b)
-            except (KeyError, ValueError):
-                pass
-            else:
+                brick = Brick.model_validate(b)
+                x, y, w, d, z, height = self._extent(brick)
+            except (ArithmeticError, KeyError, ValueError):
+                continue
+            if brick.facing is None:
                 self._occupy(shapes.rect(x, y, w, d), z, z + height)
 
     @staticmethod
     def _extent(b: Brick) -> tuple[int, int, int, int, int, int]:
         """(x, y, w, d, z, height) that the brick fills on the grid."""
-        part = ldraw.resolve(b["part"]) or b["part"]
-        if "pos" in b:
-            return extent(bounds(Placement(part=part, color=b["color"], pos=b["pos"], rot=b["rot"])))
-        w, d = shapes.footprint(b["part"], b["rotation"])
-        return b["x"], b["y"], w, d, b["z"], ldraw.info(part).plates
+        part = ldraw.resolve(b.part) or b.part
+        if b.pos is not None:
+            return extent(bounds(Placement(part=part, color=b.color, pos=b.pos, rot=b.rot)))
+        w, d = shapes.footprint(b.part, b.rotation)
+        return b.x, b.y, w, d, b.z, ldraw.info(part).plates
 
     def step(self, title: str) -> None:
         """Start a manual step; the calls after it go into it, with `random` seeded from its title."""
