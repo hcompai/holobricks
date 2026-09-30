@@ -10,7 +10,7 @@ import { usePrices } from "./pickabrick";
 import { PriceMenu } from "./PriceMenu";
 import { ChatPanel } from "./ChatPanel";
 import { DownloadMenu } from "./DownloadMenu";
-import { LibraryPage, type Shelf } from "./LibraryPage";
+import { LibraryPage } from "./LibraryPage";
 import { countParts, PartsPanel } from "./PartsPanel";
 import { PublishButton } from "./PublishButton";
 import { ShopDialog } from "./ShopDialog";
@@ -36,12 +36,9 @@ function urlBuild(): BuildRef | null {
   return null;
 }
 
-const SHELF = "library";
+const LIBRARY = "library";
 
-function urlShelf(): Shelf | null {
-  const shelf = new URLSearchParams(window.location.search).get(SHELF);
-  return shelf === "mine" || shelf === "public" ? shelf : null;
-}
+const urlLibrary = () => new URLSearchParams(window.location.search).has(LIBRARY);
 
 const same = (a: BuildRef | null, b: BuildRef | null) => a?.id === b?.id && a?.source === b?.source;
 
@@ -60,7 +57,7 @@ export default function App({ account }: { account: Account }) {
   const [ref, setRef] = useState<BuildRef | null>(urlBuild);
   const opened = useRef(ref);
   opened.current = ref;
-  const [shelf, setShelf] = useState<Shelf | null>(urlShelf);
+  const [libraryOpen, setLibraryOpen] = useState(urlLibrary);
   const buildId = ref?.id ?? null;
   const { build: live, loading, thinking, renderRequest, error, syncError, answer } = useBuild(ref);
   const edits = useEdits(live);
@@ -111,7 +108,7 @@ export default function App({ account }: { account: Account }) {
     );
   }, []);
 
-  useEffect(() => refreshBuilds(), [refreshBuilds, account.user.id, !!shelf]);
+  useEffect(() => refreshBuilds(), [refreshBuilds, account.user.id, libraryOpen]);
 
   const summary = builds?.find((b) => b.id === buildId && b.source === ref?.source);
   const heading = build ?? summary;
@@ -133,26 +130,26 @@ export default function App({ account }: { account: Account }) {
     setPlaying(false);
   }, []);
 
-  /** Show this build, with the library open on `nextShelf` over it, and put both in the URL. */
+  /** Show this build, with the library over it or not, and put both in the URL. */
   const navigate = useCallback(
-    (next: BuildRef | null, nextShelf: Shelf | null) => {
+    (next: BuildRef | null, library: boolean) => {
       if (!same(next, opened.current)) show(next);
-      setShelf(nextShelf);
+      setLibraryOpen(library);
       const url = new URL(window.location.href);
-      for (const param of [...Object.values(PARAMS), SHELF]) url.searchParams.delete(param);
+      for (const param of [...Object.values(PARAMS), LIBRARY]) url.searchParams.delete(param);
       if (next) url.searchParams.set(PARAMS[next.source], next.id);
-      if (nextShelf) url.searchParams.set(SHELF, nextShelf);
+      if (library) url.search += `${url.search ? "&" : "?"}${LIBRARY}`;
       if (url.href !== window.location.href) window.history.pushState(null, "", url);
     },
     [show],
   );
-  const open = (next: BuildRef | null) => navigate(next, null);
+  const open = (next: BuildRef | null) => navigate(next, false);
 
   useEffect(() => {
     const sync = () => {
       const next = urlBuild();
       if (!same(next, opened.current)) show(next);
-      setShelf(urlShelf());
+      setLibraryOpen(urlLibrary());
     };
     window.addEventListener("popstate", sync);
     return () => window.removeEventListener("popstate", sync);
@@ -232,9 +229,9 @@ export default function App({ account }: { account: Account }) {
           Brickyard
         </button>
         <button
-          className={shelf ? "library-toggle active" : "library-toggle"}
-          aria-pressed={!!shelf}
-          onClick={() => navigate(ref, shelf ? null : "mine")}
+          className={libraryOpen ? "library-toggle active" : "library-toggle"}
+          aria-pressed={libraryOpen}
+          onClick={() => navigate(ref, !libraryOpen)}
         >
           <SquaresFourIcon size={16} /> Library
         </button>
@@ -406,13 +403,11 @@ export default function App({ account }: { account: Account }) {
             onReplay={exportReplay}
           />
         )}
-        {shelf && (
+        {libraryOpen && (
           <LibraryPage
             builds={builds}
             failed={buildsFailed}
-            shelf={shelf}
             active={ref}
-            onShelf={(next) => navigate(ref, next)}
             onRetry={refreshBuilds}
             onOpen={(b) => open({ id: b.id, source: b.source })}
           />

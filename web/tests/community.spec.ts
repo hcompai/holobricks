@@ -70,16 +70,17 @@ async function library(page: Page, published: ReturnType<typeof entry>[], builds
   return calls;
 }
 
-test("a colleague's public build opens from the Public shelf, under its author's name", async ({ page }) => {
+test("a colleague's public build opens from the library's Public section, under its author's name", async ({
+  page,
+}) => {
   const tower = { ...fixture(), id: "tower", name: "Ada's tower" };
   await site(page);
   await library(page, [entry(tower, "Ada Lovelace", "u-ada")], [tower]);
   await page.goto("/");
 
   await page.getByRole("button", { name: "Library" }).click();
-  await expect(page).toHaveURL(/\?library=mine$/);
-  await page.getByRole("tab", { name: /^Public/ }).click();
-  const tile = page.locator(".library-page .tile");
+  await expect(page).toHaveURL(/\?library$/);
+  const tile = page.getByRole("region", { name: "Public" }).locator(".tile");
   await expect(tile).toContainText("by Ada Lovelace");
   await tile.click();
   await expect(page).toHaveURL(/\?public=tower$/);
@@ -112,11 +113,11 @@ test("the author publishes a build with its render and the signed-in key, lands 
   expect(post.body).toEqual({ id: "mine", thumbnail: expect.stringMatching(/^data:image\/webp;base64,/), edits: null });
 
   const shelf = page.getByRole("button", { name: "Library" });
-  const tiles = page.locator(".library-page .tile");
+  const mine = page.getByRole("region", { name: "Mine" }).locator(".tile");
+  const everyone = page.getByRole("region", { name: "Public" }).locator(".tile");
   await shelf.click();
-  await expect(tiles).toContainText("public");
-  await page.getByRole("tab", { name: /^Public/ }).click();
-  await expect(tiles).toContainText(`by ${ACCOUNT.user.name}`);
+  await expect(mine).toContainText("public");
+  await expect(everyone).toContainText(`by ${ACCOUNT.user.name}`);
   await shelf.click();
 
   const confirm = page.getByRole("dialog", { name: "Make private" });
@@ -133,8 +134,8 @@ test("the author publishes a build with its render and the signed-in key, lands 
     headers: { authorization: `Bearer ${ACCOUNT.pass}`, "x-agents-key": ACCOUNT.key },
   });
   await shelf.click();
-  await page.getByRole("tab", { name: /^Public/ }).click();
-  await expect(tiles).toHaveCount(0);
+  await expect(everyone).toHaveCount(0);
+  await expect(mine).not.toContainText("public");
 });
 
 test("signed out, only the sign-in page shows; Google brings the user back signed in where they left", async ({
