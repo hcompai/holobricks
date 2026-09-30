@@ -1,5 +1,6 @@
 import react from "@vitejs/plugin-react";
 import { defineConfig, loadEnv, type Plugin } from "vite";
+import { platformOf } from "./src/hosts";
 
 /** Serves api/<name>.ts at /api/<name> in development, as the Vercel functions do once deployed. */
 function api(): Plugin {
@@ -37,8 +38,18 @@ function api(): Plugin {
   };
 }
 
+/** Link previews need absolute URLs: `%SITE%` in index.html becomes the platform's site. */
+function site(): Plugin {
+  let url = "";
+  return {
+    name: "brickyard-site",
+    configResolved: (config) => void (url = platformOf(config.env.VITE_PLATFORM).site),
+    transformIndexHtml: (html) => html.replaceAll("%SITE%", url),
+  };
+}
+
 export default defineConfig({
-  plugins: [react(), api()],
+  plugins: [react(), api(), site()],
   server: {
     port: 5173,
     fs: { allow: [".."] },
