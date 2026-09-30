@@ -7,9 +7,12 @@ import { loadEnv } from "vite";
 const out = process.argv[2];
 if (!out) throw new Error("usage: node scripts/build-api.mjs <output directory>");
 const MAX_DURATION_S = { builds: 300 };
+/** Paris: beside the Blob store, the Agents API and most users. */
+const REGIONS = ["cdg1"];
 const { VITE_PLATFORM = "" } = loadEnv("production", process.cwd(), "VITE_");
-/** A link to a public build or a showcase gets the app's page with that build's link preview. */
+/** Build assets are named by their content, so browsers keep them; a link to a public build or a showcase gets the app's page with that build's link preview. */
 const ROUTES = [
+  { src: "^/assets/.+$", headers: { "cache-control": "public, max-age=31536000, immutable" }, continue: true },
   ...["public", "showcase"].map((key) => ({ src: "^/$", has: [{ type: "query", key }], dest: "/api/preview" })),
   { handle: "filesystem" },
 ];
@@ -41,6 +44,7 @@ for (const file of (await readdir("api")).filter((f) => f.endsWith(".ts"))) {
       launcherType: "Nodejs",
       shouldAddHelpers: true,
       maxDuration: MAX_DURATION_S[name] ?? 30,
+      regions: REGIONS,
     }),
   );
   console.log(`api/${name}`);

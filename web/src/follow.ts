@@ -1,6 +1,6 @@
 import { isTerminalSessionStatus, type HaiAgents } from "hai-agents";
 import { answer, client, download, fail } from "./agent";
-import { card, remember } from "./library";
+import { card, remember, thumbnail } from "./library";
 import { caption, dataUrl, view } from "./look";
 import { EMPTY_MODEL, type Build, type Message, type Model } from "./model";
 import { BrickScene, provideParts } from "./scene";
@@ -38,13 +38,13 @@ const status = (e: unknown) => (e instanceof Error && "statusCode" in e ? e.stat
 let eye: BrickScene | null = null;
 let rendering: Promise<unknown> = Promise.resolve();
 
-/** Holo's views of `model`, drawn off screen one at a time, whatever the user is looking at. */
-function render(model: Model, look: Exclude<ReturnType<typeof view>, string>): Promise<Blob | null> {
+/** `model` drawn off screen by `draw`, one render at a time, whatever the user is looking at. */
+function render(model: Model, draw: (scene: BrickScene) => Promise<Blob | null>): Promise<Blob | null> {
   const next = rendering.then(async () => {
     try {
       eye ??= new BrickScene(document.createElement("div"), { interactive: false });
       if (!(await eye.setPieces(model.pieces))) return null;
-      return await eye.renderBuild(model.pieces, model.revision, look.camera, look.box);
+      return await draw(eye);
     } catch (e) {
       eye?.dispose();
       eye = null;
@@ -68,6 +68,8 @@ function follow(id: string, signal: AbortSignal, notify: Listener, displayed: ()
   let failure: string | null = null;
   let model = EMPTY_MODEL;
   let loaded = 0;
+  /** Whether the model changed since this follower last saw the session settle. */
+  let changed = false;
   const seen = new Set<string>();
   const pictures = new Map<string, string | null>();
 
@@ -104,7 +106,9 @@ function follow(id: string, signal: AbortSignal, notify: Listener, displayed: ()
     const shot = model;
     for (let tries = 1; ; tries++) {
       try {
-        const png = await render(shot, wanted);
+        const png = await render(shot, (scene) =>
+          scene.renderBuild(shot.pieces, shot.revision, wanted.camera, wanted.box),
+        );
         if (!png) throw new Error("the render came back empty");
         const request = { request: call.id!, ...wanted, revision: shot.revision };
         return await answer(id, call, [caption(shot, request), await dataUrl(png)]);
@@ -120,7 +124,20 @@ function follow(id: string, signal: AbortSignal, notify: Listener, displayed: ()
     }
   };
 
+  /** The library tile of a build that finished off screen; the viewer makes the one of a build on screen. */
+  const keepThumbnail = () => {
+    const shot = model;
+    if (!shot.pieces.length || card(id)?.revision === shot.revision) return;
+    render(shot, (scene) => scene.renderThumbnail(shot.pieces))
+      .then(async (png) => png && remember(id, { thumbnail: await thumbnail(png), revision: shot.revision }))
+      .catch((e) => console.error("Could not make the thumbnail", e));
+  };
+
   const publish = () => {
+    if (changed && buildStatus(session) === "done") {
+      changed = false;
+      if (!displayed()) keepThumbnail();
+    }
     const end = ending(session, failure ?? transcript.error);
     set({
       build: {
@@ -150,6 +167,7 @@ function follow(id: string, signal: AbortSignal, notify: Listener, displayed: ()
     const next = await unpack<Model>(await download(latest.url, signal));
     provideParts(next.parts);
     if (next.revision === model.revision) next.pieces = model.pieces;
+    else changed = true;
     model = next;
     loaded = latest.shared;
     remember(id, { pieces: model.pieces.length, ...(named(model) && { name: model.name }) });

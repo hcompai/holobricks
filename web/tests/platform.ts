@@ -163,13 +163,13 @@ export async function platform(page: Page): Promise<Platform> {
     if (action === "changes") {
       if (agp.offline) return reply(503, { detail: "Unavailable" });
       const from = Number(url.searchParams.get("from_index") ?? 0);
+      if (from >= session.events.length) await new Promise((resolve) => setTimeout(resolve, 200));
       if (from < session.events.length)
         return reply(200, {
           status: session.status,
           error: session.error ?? null,
           new_events: session.events.slice(from),
         });
-      await new Promise((resolve) => setTimeout(resolve, 200));
       return reply(204);
     }
     return reply(404, { detail: "Not mocked" });

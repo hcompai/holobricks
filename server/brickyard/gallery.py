@@ -1,4 +1,7 @@
-"""Export builds as a static, read-only gallery: `brickyard-gallery SITE_DIR BUILD_ID...`."""
+"""Export builds as a static, read-only gallery: `brickyard-gallery SITE_DIR BUILD_ID...`.
+
+web/scripts/thumbnails.mjs then draws their library tiles from their models.
+"""
 
 from __future__ import annotations
 
@@ -15,10 +18,10 @@ URL = "/gallery"
 
 
 def export(store: Store, ids: list[str], site: Path) -> Path:
-    """Write every file the viewer reads for these builds under `site/gallery`; returns that folder."""
+    """Write every file the viewer reads for these builds under `site/gallery` but their tiles; returns that folder."""
     out = site / URL.strip("/")
     shutil.rmtree(out, ignore_errors=True)
-    for folder in ("builds", "images/small", "thumbnails"):
+    for folder in ("builds", "images/small"):
         (out / folder).mkdir(parents=True, exist_ok=True)
     summaries = []
     for build in (_load(store, i) for i in ids):
@@ -26,10 +29,7 @@ def export(store: Store, ids: list[str], site: Path) -> Path:
             message.images = [_image(store, url, out) for url in message.images]
         shown = bundle(build) | build.model_dump(include={"status", "messages"})
         (out / "builds" / f"{build.id}.json").write_text(json.dumps(shown, separators=(",", ":")))
-        thumbnail = store.thumbnail(build.id)
-        if thumbnail.exists():
-            shutil.copy(thumbnail, out / "thumbnails" / f"{build.id}.png")
-        summaries.append(build.summary() | {"thumbnail": store.thumbnail_version(build.id)})
+        summaries.append(build.summary())
     (out / "builds.json").write_text(json.dumps(summaries))
     return out
 

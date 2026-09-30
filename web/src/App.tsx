@@ -1,5 +1,5 @@
 import { PlusIcon, ShoppingBagIcon, SquaresFourIcon } from "@phosphor-icons/react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import type { Account } from "./account";
 import { AccountMenu } from "./AccountMenu";
 import { RecoveryPanel } from "./RecoveryPanel";
@@ -17,15 +17,16 @@ import { LibraryPage } from "./LibraryPage";
 import { countParts, PartsPanel } from "./PartsPanel";
 import { DeleteButton } from "./DeleteButton";
 import { PublishButton } from "./PublishButton";
-import { ShopDialog } from "./ShopDialog";
 import { Timeline } from "./Timeline";
-import { FilmExport } from "./FilmExport";
-import { InstructionsExport } from "./InstructionsExport";
-import { card, library, publish, remember, setPrivate, type Shelf, thumbnail, unpublish } from "./library";
+import { card, library, onRemember, publish, remember, setPrivate, type Shelf, thumbnail, unpublish } from "./library";
 import { type BuildRef, useBuild } from "./useBuild";
 import { useKeeper } from "./useSession";
 import { ThemeToggle } from "./ThemeToggle";
 import { type Framing, type Mode, ViewControls, Viewer, type ViewerHandle } from "./Viewer";
+
+const FilmExport = lazy(() => import("./FilmExport").then((m) => ({ default: m.FilmExport })));
+const InstructionsExport = lazy(() => import("./InstructionsExport").then((m) => ({ default: m.InstructionsExport })));
+const ShopDialog = lazy(() => import("./ShopDialog").then((m) => ({ default: m.ShopDialog })));
 
 const STEP_MS = 700;
 const TITLE = document.title;
@@ -223,11 +224,23 @@ export default function App({ account }: { account: Account }) {
     }
   };
 
-  const saveThumbnail = async (png: Blob) => {
-    if (ref?.source !== "session") return;
-    remember(ref.id, { thumbnail: await thumbnail(png) });
-    refreshBuilds();
+  const saveThumbnail = async (png: Blob, revision: string) => {
+    if (ref?.source === "session") remember(ref.id, { thumbnail: await thumbnail(png), revision });
   };
+
+  useEffect(
+    () =>
+      onRemember((id) => {
+        const shown = card(id)?.thumbnail;
+        if (!shown) return;
+        setBuilds((previous) =>
+          previous?.some((b) => b.id === id && b.source === "session" && b.thumbnail !== shown)
+            ? previous.map((b) => (b.id === id && b.source === "session" ? { ...b, thumbnail: shown } : b))
+            : previous,
+        );
+      }),
+    [],
+  );
 
   const publishBuild = async () => {
     if (!live) return;
@@ -454,7 +467,8 @@ export default function App({ account }: { account: Account }) {
               syncError={syncError}
               framing={framing}
               spin={spin}
-              onThumbnail={saveThumbnail}
+              onThumbnail={ref?.source === "session" ? saveThumbnail : undefined}
+              thumbnailed={ref?.source === "session" ? card(ref.id)?.revision : undefined}
               empty="Describe a model in the chat to start building."
               mode={mode}
               edits={edits}
@@ -516,15 +530,19 @@ export default function App({ account }: { account: Account }) {
           />
         )}
       </main>
-      {exportBuild && <FilmExport build={exportBuild} onClose={() => setExportBuild(null)} />}
-      {instructionsBuild && (
-        <InstructionsExport
-          build={instructionsBuild}
-          describe={describer(live, palette)}
-          onClose={() => setInstructionsBuild(null)}
-        />
-      )}
-      {shopping && <ShopDialog build={shopping.build} preview={shopping.preview} onClose={() => setShopping(null)} />}
+      <Suspense>{exportBuild && <FilmExport build={exportBuild} onClose={() => setExportBuild(null)} />}</Suspense>
+      <Suspense>
+        {instructionsBuild && (
+          <InstructionsExport
+            build={instructionsBuild}
+            describe={describer(live, palette)}
+            onClose={() => setInstructionsBuild(null)}
+          />
+        )}
+      </Suspense>
+      <Suspense>
+        {shopping && <ShopDialog build={shopping.build} preview={shopping.preview} onClose={() => setShopping(null)} />}
+      </Suspense>
     </div>
   );
 }

@@ -18,28 +18,45 @@ interface Card {
   thumbnail?: string;
   recoveredFrom?: string;
   recoveryAttempt?: string;
+  /** The revision the thumbnail shows. */
+  revision?: string;
 }
 
+let parsed: { raw: string | null; all: Record<string, Card> } = { raw: null, all: {} };
+
+/** Parsed again only when the store changes: thumbnails make it large. */
 const cards = (): Record<string, Card> => {
+  const raw = localStorage.getItem(STORE);
+  if (raw === parsed.raw) return parsed.all;
   try {
-    return JSON.parse(localStorage.getItem(STORE) ?? "{}");
+    parsed = { raw, all: JSON.parse(raw ?? "{}") };
   } catch {
-    return {};
+    parsed = { raw, all: {} };
   }
+  return parsed.all;
 };
 
 const NEW_CARD: Card = { name: "Untitled build", prompt: "", pieces: 0 };
 
 export const card = (id: string): Card | undefined => cards()[id];
 
+const listeners = new Set<(id: string) => void>();
+
+/** Call `listener` with each build id this browser remembers something new about; returns the unsubscribe. */
+export function onRemember(listener: (id: string) => void): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
 export function remember(id: string, card: Partial<Card>) {
   const all = cards();
-  all[id] = { ...NEW_CARD, ...all[id], ...card };
   try {
-    localStorage.setItem(STORE, JSON.stringify(all));
+    localStorage.setItem(STORE, JSON.stringify({ ...all, [id]: { ...NEW_CARD, ...all[id], ...card } }));
   } catch (e) {
     console.error("Could not remember the build", e);
+    return;
   }
+  for (const listener of listeners) listener(id);
 }
 
 interface ShowcaseSummary {
@@ -49,7 +66,8 @@ interface ShowcaseSummary {
   status: Status;
   created: number;
   pieces: number;
-  thumbnail: number | null;
+  /** When scripts/thumbnails.mjs drew its tile, in milliseconds. */
+  thumbnail?: number;
 }
 
 /** A build in the public library, as the API lists it. */
@@ -71,7 +89,7 @@ async function showcases(): Promise<BuildSummary[]> {
   const summaries: ShowcaseSummary[] = await response.json();
   return summaries.map((s) => ({
     ...s,
-    thumbnail: s.thumbnail == null ? null : `${GALLERY}/thumbnails/${s.id}.png?v=${s.thumbnail}`,
+    thumbnail: s.thumbnail == null ? null : `${GALLERY}/thumbnails/${s.id}.webp?v=${s.thumbnail}`,
     source: "showcase",
     author: null,
     owner: null,
@@ -98,9 +116,17 @@ function read(params: Record<string, string> = {}): string {
   return query.size ? `${API}?${query}` : API;
 }
 
+/** What this browser published: the library's Blob reads can lag a publication by a minute. */
+const fresh = new Map<string, Published>();
+
+const newest = (p: Published) => {
+  const mine = fresh.get(p.id);
+  return mine && mine.published > p.published ? mine : p;
+};
+
 /** Everyone's public builds, newest first. */
 async function community(): Promise<BuildSummary[]> {
-  return (await api<Published[]>(read())).map(summary);
+  return (await api<Published[]>(read())).map(newest).map(summary);
 }
 
 /** The signed-in user's private library builds, newest first. */
@@ -126,7 +152,7 @@ const summary = (p: Published): BuildSummary => ({
 
 export async function publicBuild(id: string): Promise<Build> {
   // Signed in, the owner can open their private builds too.
-  const published = await api<Published>(read({ id }), current() ? { headers: signed() } : {});
+  const published = newest(await api<Published>(read({ id }), current() ? { headers: signed() } : {}));
   const response = await fetch(published.build);
   if (!response.ok) throw new Error(`No public build ${id}`);
   return { ...(await unpack<Build>(await response.blob())), id, open: false };
@@ -136,11 +162,13 @@ const signed = () => ({ Authorization: `Bearer ${current()?.pass}`, "X-Agents-Ke
 
 /** Publish a build of the signed-in user as it is now, with this browser's hand edits and a thumbnail. */
 export async function publish(id: string, thumbnail: string | null, edits: { revision: string; edits: Edit[] } | null) {
-  return api<Published>(API, {
+  const published = await api<Published>(API, {
     method: "POST",
     headers: { ...signed(), "Content-Type": "application/json" },
     body: JSON.stringify({ id, thumbnail, edits }),
   });
+  fresh.set(id, published);
+  return published;
 }
 
 /** A Brickyard model file as the browser reads it, before the library checks it. */
@@ -196,6 +224,7 @@ export async function setPrivate(id: string, value: boolean) {
 /** Take a build out of the library and delete its files; for an imported build, that deletes it. */
 export async function unpublish(id: string) {
   await api(`${API}?id=${encodeURIComponent(id)}`, { method: "DELETE", headers: signed() });
+  fresh.delete(id);
 }
 
 /** A part of the library that loads on its own. */

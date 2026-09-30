@@ -32,14 +32,6 @@ class Store:
             raise ValueError(f"bad file name {name!r}")
         return Path(path)
 
-    def thumbnail(self, build_id: str) -> Path:
-        return self._file(self.root.parent / "thumbnails", f"{build_id}.png")
-
-    def thumbnail_version(self, build_id: str) -> int | None:
-        """When the thumbnail was saved, in milliseconds; None when there is none."""
-        path = self.thumbnail(build_id)
-        return path.stat().st_mtime_ns // 1_000_000 if path.exists() else None
-
     def image(self, name: str) -> Path:
         return self._file(self.root.parent / "images", name)
 

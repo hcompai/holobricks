@@ -94,7 +94,7 @@ export function ViewControls({
 export interface ViewerHandle {
   /** The current view as a PNG. */
   image: () => Promise<Blob | null>;
-  /** The model as a library tile: a square 3/4 view on a light background. */
+  /** The model as a library tile: a square 3/4 view on a transparent background. */
   thumbnail: () => Promise<Blob | null>;
 }
 
@@ -107,8 +107,10 @@ interface Props {
   syncError?: string | null;
   framing: Framing;
   spin: boolean;
-  /** Called with a thumbnail once a finished revision is drawn. */
-  onThumbnail: (png: Blob) => void;
+  /** Called with a thumbnail once a finished revision is drawn; without it, the build keeps no thumbnail. */
+  onThumbnail?: (png: Blob, revision: string) => void;
+  /** The revision the build's saved thumbnail shows, which needs no new one. */
+  thumbnailed?: string;
   /** What shows before any build is open. */
   empty: string;
   mode: Mode;
@@ -122,12 +124,11 @@ interface Props {
 }
 
 export function Viewer(props: Props) {
-  const { ref, build, opening, step, framing, spin, onThumbnail, syncError, empty } = props;
+  const { ref, build, opening, step, framing, spin, onThumbnail, thumbnailed, syncError, empty } = props;
   const { mode, edits, describe, palette, onMode } = props;
   const container = useRef<HTMLDivElement>(null);
   const scene = useRef<BrickScene | null>(null);
   const framedBuild = useRef<string | null>(null);
-  const thumbnailed = useRef(new Set<string>());
   const [drawn, setDrawn] = useState<{ id: string; key: string; pieces: Build["pieces"] } | null>(null);
   const [renderError, setRenderError] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
@@ -214,17 +215,15 @@ export function Viewer(props: Props) {
 
   useEffect(() => {
     const s = scene.current;
-    if (!s || !ready || !build?.pieces.length || build.status !== "done" || thumbnailed.current.has(version!)) return;
+    if (!s || !ready || !onThumbnail || !build?.pieces.length || build.status !== "done") return;
+    if (build.revision === thumbnailed) return;
     let current = true;
+    const { pieces, revision } = build;
     const timer = setTimeout(
       () =>
         s
-          .renderThumbnail(build.pieces)
-          .then((png) => {
-            if (!current || !png) return;
-            thumbnailed.current.add(version!);
-            onThumbnail(png);
-          })
+          .renderThumbnail(pieces)
+          .then((png) => current && png && onThumbnail(png, revision))
           .catch((error) => console.error("Could not make the thumbnail", error)),
       THUMBNAIL_IDLE_MS,
     );
@@ -232,7 +231,7 @@ export function Viewer(props: Props) {
       current = false;
       clearTimeout(timer);
     };
-  }, [ready, build?.status, version]);
+  }, [ready, build?.status, version, thumbnailed, !onThumbnail]);
 
   useEffect(() => scene.current?.setVisibleStep(step), [step, retry]);
 

@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { fixture, revised, site } from "./fixtures";
 import { platform } from "./platform";
 
@@ -195,6 +195,59 @@ test("the library shows my builds by the names Holo gave them; showcases under P
   await expect(page.locator(".library-page")).toHaveCount(0);
   await shown(page, showcase.revision);
   await expect(page.getByText("A showcase from the gallery: remix it to make your own.")).toBeVisible();
+});
+
+/** A tile's transparent pixels and red ones. */
+const tilePixels = (tile: Locator) =>
+  tile.evaluate(async (img: HTMLImageElement) => {
+    await img.decode();
+    const canvas = Object.assign(document.createElement("canvas"), {
+      width: img.naturalWidth,
+      height: img.naturalHeight,
+    });
+    const ctx = canvas.getContext("2d")!;
+    ctx.drawImage(img, 0, 0);
+    const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    let clear = 0;
+    let red = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i + 3] === 0) clear++;
+      else if (data[i] > 140 && data[i + 1] < 90 && data[i + 2] < 90) red++;
+    }
+    return { clear, red };
+  });
+
+test("a build's library tile shows its latest revision on a transparent background, even when it finished off screen", async ({
+  page,
+}) => {
+  const showcase = { ...fixture(), id: "paris", name: "Paris" };
+  await site(page, [showcase]);
+  const agp = await platform(page);
+  const model = fixture();
+  agp.session("live");
+  agp.share("live", model);
+  agp.answer("live", "A tower.");
+  await page.goto("/?build=live");
+  await shown(page, model.revision);
+  await page.getByRole("button", { name: "Library" }).click();
+  const tile = page.getByRole("region", { name: "Mine" }).locator("img.tile-thumb");
+  await expect(tile).toHaveAttribute("src", /^data:image\/webp;base64,/);
+  const first = await tile.getAttribute("src");
+  const before = await tilePixels(tile);
+  expect(before.clear).toBeGreaterThan(0);
+  expect(before.red).toBeGreaterThan(0);
+
+  agp.state("live", "running");
+  await expect(page.getByRole("region", { name: "Mine" }).locator(".tile")).toContainText("building…");
+  await page.getByRole("region", { name: "Public" }).locator(".tile").click();
+  await expect(page).toHaveURL(/\?showcase=paris$/);
+  agp.share("live", revised({ ...model, pieces: model.pieces.map((p) => ({ ...p, color: 1 })) }));
+  agp.answer("live", "A blue tower.");
+  await page.getByRole("button", { name: "Library" }).click();
+  await expect(tile).not.toHaveAttribute("src", first!);
+  const after = await tilePixels(tile);
+  expect(after.clear).toBeGreaterThan(0);
+  expect(after.red).toBe(0);
 });
 
 test("missing geometry fails closed; a lost WebGL context never leaves a trusted stale canvas", async ({ page }) => {
