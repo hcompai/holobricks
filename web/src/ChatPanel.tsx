@@ -230,9 +230,10 @@ export function ChatPanel({ build, loading, activity, closed, onCreate, onSay, o
     }
   };
 
+  const unsendable = (!text.trim() && !attachments.length) || sending || (changing && (busy || !build));
   const send = async () => {
+    if (unsendable) return;
     const prompt = text.trim();
-    if ((!prompt && !attachments.length) || sending || (changing && (busy || !build))) return;
     setSending(true);
     setError("");
     try {
@@ -393,13 +394,7 @@ export function ChatPanel({ build, loading, activity, closed, onCreate, onSay, o
               <StopIcon size={12} weight="fill" />
             </button>
           ) : (
-            <button
-              className="round send"
-              title="Send"
-              aria-label="Send"
-              disabled={(!text.trim() && !attachments.length) || sending}
-              onClick={send}
-            >
+            <button className="round send" title="Send" aria-label="Send" disabled={unsendable} onClick={send}>
               <ArrowUpIcon size={14} weight="bold" />
             </button>
           )}
