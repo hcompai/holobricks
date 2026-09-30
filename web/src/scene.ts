@@ -53,6 +53,10 @@ interface Light {
 
 /** The user's view: a sun from the upper left, so the default camera sees the shadows it casts. */
 const FLOOR_SHADOW = 0.18;
+const GLIDE_MS = 450;
+const SETTLE_MS = 400;
+/** Pieces past which a moving view drops to one pixel per point. */
+const LARGE_MODEL = 5000;
 const VIEW_LIGHT: Light = {
   sun: new THREE.Vector3(-0.5, 1, 0.6).normalize(),
   intensity: 2.6,
@@ -415,6 +419,10 @@ export class BrickScene {
   private ground = 0;
   /** Catches the model's shadow in the user's view. */
   private floor: THREE.Mesh<THREE.PlaneGeometry, THREE.ShadowMaterial> | null = null;
+  /** The camera easing from one framing to the next: [position, target] at each end. */
+  private glide: { from: THREE.Vector3[]; to: THREE.Vector3[]; start: number } | null = null;
+  private dragging = false;
+  private settling: ReturnType<typeof setTimeout> | undefined;
 
   constructor(
     private container: HTMLElement,
@@ -446,7 +454,19 @@ export class BrickScene {
 
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
-    this.controls.addEventListener("start", () => (this.userMoved = true));
+    this.controls.addEventListener("start", () => {
+      this.userMoved = true;
+      this.glide = null;
+      clearTimeout(this.settling);
+      this.dragging = true;
+      this.sharpen();
+    });
+    this.controls.addEventListener("end", () => {
+      this.settling = setTimeout(() => {
+        this.dragging = false;
+        this.sharpen();
+      }, SETTLE_MS);
+    });
     this.controls.addEventListener("change", () => {
       this.dirty = true;
       if (this.walking) return;
@@ -476,7 +496,10 @@ export class BrickScene {
       this.frame = requestAnimationFrame(tick);
       const seconds = Math.min(this.timer.update(time).getDelta(), 0.1);
       if (this.walking) this.walk(seconds);
-      else this.controls.update();
+      else {
+        this.ease();
+        this.controls.update();
+      }
       if (this.dirty && this.container.checkVisibility({ visibilityProperty: true })) this.draw();
     };
     tick();
@@ -569,6 +592,7 @@ export class BrickScene {
     this.lifetime.abort();
     this.renderer.domElement.removeEventListener("webglcontextlost", this.contextLost);
     cancelAnimationFrame(this.frame);
+    clearTimeout(this.settling);
     this.resizeObserver.disconnect();
     this.stopListening();
     this.walker?.unlock();
@@ -777,6 +801,16 @@ export class BrickScene {
 
   setSpin(spin: boolean) {
     this.controls.autoRotate = spin;
+    this.sharpen();
+  }
+
+  /** Big models move at one pixel per point, and sharpen again once still. */
+  private sharpen() {
+    const moving = this.dragging || this.controls.autoRotate;
+    const ratio = moving && (this.shown?.length ?? 0) > LARGE_MODEL ? 1 : Math.min(window.devicePixelRatio, 2);
+    if (ratio === this.renderer.getPixelRatio()) return;
+    this.renderer.setPixelRatio(ratio);
+    this.resize();
   }
 
   /** The piece drawn under the client point (`x`, `y`), among the pieces shown up to the visible step. */
@@ -824,6 +858,7 @@ export class BrickScene {
   setWalk(walk: boolean) {
     if (walk === this.walking) return;
     this.walking = walk;
+    this.glide = null;
     this.keys.clear();
     if (walk) {
       this.walker ??= this.makeWalker();
@@ -936,9 +971,27 @@ export class BrickScene {
     this.dirty = true;
   }
 
-  frameView(view: View, width: number, depth: number) {
+  /** Frame the model from `view`; `smooth` eases the camera there instead of cutting. */
+  frameView(view: View, width: number, depth: number, smooth = false) {
     this.framing = { view, width, depth };
-    if (!this.walking) this.aim(VIEW_DIRECTIONS[view], width, depth);
+    if (this.walking) return;
+    const from = [this.camera.position.clone(), this.controls.target.clone()];
+    this.aim(VIEW_DIRECTIONS[view], width, depth);
+    this.glide = null;
+    if (!smooth) return;
+    this.glide = { from, to: [this.camera.position.clone(), this.controls.target.clone()], start: performance.now() };
+    this.ease();
+  }
+
+  private ease() {
+    if (!this.glide) return;
+    const { from, to, start } = this.glide;
+    const t = Math.min(1, (performance.now() - start) / GLIDE_MS);
+    const eased = 1 - (1 - t) ** 3;
+    this.camera.position.lerpVectors(from[0], to[0], eased);
+    this.controls.target.lerpVectors(from[1], to[1], eased);
+    if (t === 1) this.glide = null;
+    this.dirty = true;
   }
 
   /** Point the camera along `direction` so the whole model (or the empty baseplate, or `focus`) fills the frame, then close in `zoom` times on `at`. */

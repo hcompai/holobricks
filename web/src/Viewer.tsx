@@ -190,9 +190,10 @@ export function Viewer(props: Props) {
         }
         if (!current) return;
         if (build.pieces.length && (framedBuild.current !== build.id || !s.userMoved)) {
-          if (framedBuild.current !== build.id) s.userMoved = false;
+          const same = framedBuild.current === build.id;
+          if (!same) s.userMoved = false;
           framedBuild.current = build.id;
-          s.frameView(framing.view, width, depth);
+          s.frameView(framing.view, width, depth, same);
         }
         s.drawCurrent();
         setDrawn({ id: build.id, key: version!, pieces: build.pieces });
