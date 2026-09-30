@@ -136,3 +136,15 @@ exact part accounting and reconstruction. This is not a physical test build or c
 clutch force, structural strength, hand clearance, moving joints or flexible parts. Cavities may
 cause conservative false rejections. Unsupported connections must gain a validated rule before the
 checker accepts them; they cannot be waived by a visual review. Keep models supported during assembly.
+
+### Recovery checkpoints
+
+New toolkit runs include a versioned recovery checkpoint in the authenticated `model.json.gz`
+attachment: the shared geometry and the last script that produced it. A failed script edit preserves
+that source. Sharing the model stores the checkpoint with the Agents API; unshared edits and other
+Workstation files are not covered. No private reasoning is included. Publishing and gallery exports
+omit the recovery source.
+
+After installing the toolkit in a fresh Workstation, `bricks restore files/recovery-model.json.gz`
+restores the model and `build.py` without executing it. It rejects mismatched revisions and an existing
+workspace. Restore is not assembly verification. Models from older toolkits may lack a checkpoint.

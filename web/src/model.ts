@@ -70,6 +70,8 @@ export type Verified<T> = T | { error: string };
 
 /** One revision of the model, as `bricks run` writes it to model.json.gz. */
 export interface Model {
+  /** Only in authenticated session attachments; stripped from published builds. */
+  recovery?: { version: 1; revision: string; script: string };
   name: string;
   /** Who made it: "holo" for Holo's builds. */
   builder: string;
