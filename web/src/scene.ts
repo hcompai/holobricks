@@ -261,6 +261,21 @@ class Batch {
     this.invalidateBounds();
   }
 
+  /** Grow `target` by the pieces with these `ids`, in the root's local space: LDraw units. */
+  expandIds(target: THREE.Box3, ids: Set<number>) {
+    const matrix = new THREE.Matrix4();
+    const box = new THREE.Box3();
+    for (const p of this.pieces)
+      if (ids.has(p.id)) target.union(box.copy(this.bounds).applyMatrix4(pieceMatrix(p, matrix)));
+  }
+
+  /** The pieces shown up to the visible step, each with the middle of its bounds in the root's local space. */
+  *shown(): Generator<[Piece, THREE.Vector3]> {
+    const matrix = new THREE.Matrix4();
+    const middle = this.bounds.getCenter(new THREE.Vector3());
+    for (const p of this.pieces.slice(0, this.visible)) yield [p, middle.clone().applyMatrix4(pieceMatrix(p, matrix))];
+  }
+
   /** Grow `target` by every piece, in the root's local space. */
   expand(target: THREE.Box3) {
     const matrix = new THREE.Matrix4();
@@ -832,6 +847,52 @@ export class BrickScene {
       }
     }
     return null;
+  }
+
+  /** The bounds of the pieces with these ids, in LDraw units: x right, y down, z away from the front. */
+  piecesBox(ids: number[]): THREE.Box3 {
+    const box = new THREE.Box3();
+    const wanted = new Set(ids);
+    for (const batch of this.batches.values()) batch.expandIds(box, wanted);
+    return box;
+  }
+
+  /** The ids of the pieces shown whose middle falls inside the client rectangle, hidden ones included. */
+  piecesIn(x0: number, y0: number, x1: number, y1: number): number[] {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const [left, right] = [Math.min(x0, x1), Math.max(x0, x1)];
+    const [top, bottom] = [Math.min(y0, y1), Math.max(y0, y1)];
+    this.root.updateMatrixWorld(true);
+    this.camera.updateMatrixWorld();
+    const ids: number[] = [];
+    for (const batch of this.batches.values())
+      for (const [piece, middle] of batch.shown()) {
+        const ndc = middle.applyMatrix4(this.root.matrixWorld).project(this.camera);
+        if (ndc.z > 1) continue;
+        const x = rect.left + ((ndc.x + 1) / 2) * rect.width;
+        const y = rect.top + ((1 - ndc.y) / 2) * rect.height;
+        if (x >= left && x <= right && y >= top && y <= bottom) ids.push(piece.id);
+      }
+    return ids;
+  }
+
+  /** The ids of the pieces seen inside the client rectangle: rays cast on a grid across it, at most about `rays`. */
+  piecesSeenIn(x0: number, y0: number, x1: number, y1: number, rays = 600): number[] {
+    const [left, right] = [Math.min(x0, x1), Math.max(x0, x1)];
+    const [top, bottom] = [Math.min(y0, y1), Math.max(y0, y1)];
+    const spacing = Math.max(3, Math.sqrt(((right - left) * (bottom - top)) / rays));
+    const ids = new Set<number>();
+    for (let y = top + spacing / 2; y < bottom; y += spacing)
+      for (let x = left + spacing / 2; x < right; x += spacing) {
+        const piece = this.pick(x, y);
+        if (piece) ids.add(piece.id);
+      }
+    return [...ids];
+  }
+
+  /** Let the mouse orbit the camera, or not while it draws a selection box. */
+  setOrbit(orbit: boolean) {
+    if (!this.walking) this.controls.enabled = orbit;
   }
 
   /** Tint the piece under the pointer and the selected pieces, by id. */

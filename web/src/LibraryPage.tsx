@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { type ReactNode, useEffect, useRef } from "react";
 import { Brick } from "./BrickLoader";
 import type { Shelf } from "./library";
 import type { BuildSummary } from "./model";
@@ -15,12 +15,17 @@ interface Props {
   onRetry: () => void;
   onOpen: (build: BuildSummary) => void;
   onClose: () => void;
+  /** The signed-in user's id: the public builds they own count as theirs too, such as imported ones. */
+  me: string | null;
+  /** What sits beside the Mine heading, such as the import button. */
+  mineActions?: ReactNode;
 }
 
 function meta(b: BuildSummary, published: Set<string>): string {
   return [
     b.source === "showcase" ? "Showcase" : b.author ? `by ${b.author}` : null,
     b.source === "session" && published.has(b.id) ? "public" : null,
+    b.id.startsWith("import-") ? "imported" : null,
     b.pieces === null ? null : `${b.pieces.toLocaleString()} pieces`,
     b.status === "building" ? "building…" : b.status === "error" ? "stopped" : null,
   ]
@@ -29,7 +34,7 @@ function meta(b: BuildSummary, published: Set<string>): string {
 }
 
 /** The library over the viewer: the user's own builds, then everyone's public builds with the showcases. */
-export function LibraryPage({ builds, failed, active, onRetry, onOpen, onClose }: Props) {
+export function LibraryPage({ builds, failed, active, onRetry, onOpen, onClose, me, mineActions }: Props) {
   const page = useRef<HTMLDivElement>(null);
   useEffect(() => page.current?.focus(), []);
   useEffect(() => {
@@ -39,15 +44,20 @@ export function LibraryPage({ builds, failed, active, onRetry, onOpen, onClose }
     window.addEventListener("keydown", close);
     return () => window.removeEventListener("keydown", close);
   }, [onClose]);
-  const mine = builds?.filter((b) => b.source === "session") ?? [];
+  const sessions = builds?.filter((b) => b.source === "session") ?? [];
   const everyone = builds?.filter((b) => b.source !== "session") ?? [];
+  const ids = new Set(sessions.map((b) => b.id));
+  // Builds with no session of theirs, like imported ones, are the user's through the library only.
+  const owned = everyone.filter((b) => b.source === "public" && me && b.owner === me && !ids.has(b.id));
+  const mine = [...sessions, ...owned].sort((a, b) => b.created - a.created);
   const published = new Set(everyone.filter((b) => b.source === "public").map((b) => b.id));
 
-  const section = (title: string, shelf: Shelf, shown: BuildSummary[], empty: string) => (
+  const section = (title: string, shelf: Shelf, shown: BuildSummary[], empty: string, actions?: ReactNode) => (
     <section className="library-section" aria-label={title}>
       <h2>
         {title}
         {builds && <span className="count">{shown.length}</span>}
+        {actions}
       </h2>
       {failed.includes(shelf) && (
         <div className="load-failed" role="alert">
@@ -102,7 +112,7 @@ export function LibraryPage({ builds, failed, active, onRetry, onOpen, onClose }
 
   return (
     <div className="library-page" role="region" aria-label="Library" ref={page} tabIndex={-1}>
-      {section("Mine", "mine", mine, "No builds yet. Describe one in the chat.")}
+      {section("Mine", "mine", mine, "No builds yet. Describe one in the chat, or import one.", mineActions)}
       {section("Public", "public", everyone, "Nothing public yet. Publish one of your builds to share it here.")}
     </div>
   );

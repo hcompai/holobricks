@@ -1,5 +1,6 @@
 import { type Ref, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { ArrowsClockwiseIcon, PencilSimpleIcon, PersonSimpleWalkIcon } from "@phosphor-icons/react";
+import * as THREE from "three";
 import type { Build, Piece } from "./model";
 import { BrickLoader } from "./BrickLoader";
 import { buildRevision } from "./buildRevision";
@@ -7,6 +8,7 @@ import { ACTION_KEYS, type Action, EditBar, EditPanel } from "./EditPanel";
 import { type Edit, type Edits, PLATE, pivot, STUD } from "./edits";
 import type { Color } from "./palette";
 import { BrickScene, typing, type View } from "./scene";
+import { Shortcuts } from "./Shortcuts";
 
 /** Hand edits come in bursts; the library tile waits for a pause. */
 const THUMBNAIL_IDLE_MS = 1500;
@@ -83,6 +85,7 @@ export function ViewControls({
         <PersonSimpleWalkIcon size={14} weight="bold" />
         Walk
       </button>
+      <Shortcuts />
     </div>
   );
 }
@@ -128,6 +131,7 @@ export function Viewer(props: Props) {
   const [renderError, setRenderError] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
   const [hover, setHover] = useState<number | null>(null);
+  const [box, setBox] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
   const [selected, setSelected] = useState<number[]>([]);
   const [locked, setLocked] = useState(false);
   const pointer = useRef<{ x: number; y: number } | null>(null);
@@ -277,6 +281,15 @@ export function Viewer(props: Props) {
     }
     const { right, forward } = s.screenAxes();
     const scale = (v: number[], by: number) => v.map((x) => x * by) as [number, number, number];
+    if (action === "duplicate") {
+      // Beside the selection, on the screen's right: as many studs as it is wide along that axis.
+      const size = s.piecesBox(ids).getSize(new THREE.Vector3());
+      const wide = Math.abs(right[0]) ? size.x : size.z;
+      const first = Math.max(...build!.pieces.map((p) => p.id)) + 1;
+      push({ kind: "duplicate", ids, by: scale(right, STUD * Math.max(1, Math.round(wide / STUD))), first });
+      setSelected(ids.map((_, i) => first + i));
+      return;
+    }
     const by = {
       left: scale(right, -STUD),
       right: scale(right, STUD),
@@ -298,6 +311,11 @@ export function Viewer(props: Props) {
         else edits.undo();
         return;
       }
+      if ((event.metaKey || event.ctrlKey) && event.code === "KeyD" && selected.length) {
+        event.preventDefault();
+        act("duplicate");
+        return;
+      }
       if (event.metaKey || event.ctrlKey || event.altKey || !selected.length) return;
       if (event.key === "Escape") return setSelected([]);
       const action = ACTION_KEYS[event.key];
@@ -313,7 +331,27 @@ export function Viewer(props: Props) {
     pointer.current = { x: event.clientX, y: event.clientY };
   };
 
+  /** Shift-drag in edit mode draws a selection box instead of orbiting; runs before the camera sees the press. */
+  const boxStart = (event: React.PointerEvent) => {
+    if (!editing || !event.shiftKey || event.button !== 0) return;
+    scene.current?.setOrbit(false);
+    (event.target as Element).setPointerCapture(event.pointerId);
+    setBox({ x0: event.clientX, y0: event.clientY, x1: event.clientX, y1: event.clientY });
+  };
+
+  const boxEnd = (event: React.PointerEvent) => {
+    if (!box) return;
+    scene.current?.setOrbit(true);
+    setBox(null);
+    if (Math.hypot(event.clientX - box.x0, event.clientY - box.y0) <= 5) return;
+    // Option (Alt) also takes the pieces hidden behind others.
+    const within = event.altKey ? scene.current?.piecesIn : scene.current?.piecesSeenIn;
+    const inside = within?.call(scene.current, box.x0, box.y0, event.clientX, event.clientY) ?? [];
+    setSelected([...new Set([...selected, ...inside])]);
+  };
+
   const hovered = (event: React.PointerEvent) => {
+    if (box) return setBox({ ...box, x1: event.clientX, y1: event.clientY });
     if (!editing || event.buttons) return;
     const { clientX, clientY } = event;
     cancelAnimationFrame(hoverFrame.current);
@@ -353,8 +391,11 @@ export function Viewer(props: Props) {
           visibility: shown && !syncError ? "visible" : "hidden",
           cursor: (editing && hover !== null) || (mode === "walk" && !locked) ? "pointer" : undefined,
         }}
+        onPointerDownCapture={boxStart}
         onPointerDown={pointed}
         onPointerMove={hovered}
+        onPointerUp={boxEnd}
+        onPointerCancel={boxEnd}
         onPointerLeave={() => setHover(null)}
         onClick={clicked}
       />
@@ -370,6 +411,7 @@ export function Viewer(props: Props) {
           )}
         </div>
       )}
+      {box && <div className="select-box" style={boxStyle(box, container.current)} />}
       {editing && shown && <EditBar edits={edits} />}
       {editing && shown && selectedPieces.length > 0 && (
         <EditPanel
@@ -418,4 +460,15 @@ function usedColors(pieces: Piece[]): number[] {
   const counts = new Map<number, number>();
   for (const p of pieces) counts.set(p.color, (counts.get(p.color) ?? 0) + 1);
   return [...counts].sort((a, b) => b[1] - a[1]).map(([code]) => code);
+}
+
+/** The selection box in the viewer's own coordinates. */
+function boxStyle(box: { x0: number; y0: number; x1: number; y1: number }, within: HTMLElement | null) {
+  const origin = within?.getBoundingClientRect() ?? { left: 0, top: 0 };
+  return {
+    left: Math.min(box.x0, box.x1) - origin.left,
+    top: Math.min(box.y0, box.y1) - origin.top,
+    width: Math.abs(box.x1 - box.x0),
+    height: Math.abs(box.y1 - box.y0),
+  };
 }

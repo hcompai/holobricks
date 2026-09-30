@@ -1,11 +1,13 @@
 import { current, key } from "./account";
 import { sessions } from "./agent";
 import type { Edit } from "./edits";
-import type { Build, BuildSummary, Status } from "./model";
+import type { Build, BuildSummary, Model, Status } from "./model";
+import { BrickScene, provideParts } from "./scene";
 import { status, unpack } from "./session";
 
 const GALLERY = "/gallery";
 const API = "/api/builds";
+const IMPORTS = "/api/imports";
 const STORE = "brickyard.library";
 
 /** What the browser remembers of a session's model, since the platform keeps only its chat. */
@@ -127,6 +129,47 @@ export async function publish(id: string, thumbnail: string | null, edits: { rev
     headers: { ...signed(), "Content-Type": "application/json" },
     body: JSON.stringify({ id, thumbnail, edits }),
   });
+}
+
+/** A Brickyard model file as the browser reads it, before the library checks it. */
+export type ModelFile = Pick<Model, "name" | "pieces" | "parts"> & Partial<Build>;
+
+/** Read a model file (a `brickyard-gallery` export or a session's model.json, gzipped or not), or say why not. */
+export async function readModel(file: Blob): Promise<ModelFile> {
+  const model = await unpack<Partial<ModelFile>>(file).catch(() => null);
+  if (!Array.isArray(model?.pieces) || !model.pieces.length)
+    throw new Error("This file is not a Brickyard model: choose a model's .json or .json.gz.");
+  if (!model.parts || typeof model.parts !== "object")
+    throw new Error("This model has no part geometry: export it with brickyard-gallery, then import that file.");
+  return { ...model, name: model.name || "Imported build" } as ModelFile;
+}
+
+/** A thumbnail of the model, drawn offscreen, or null if its parts do not draw. */
+async function cover(model: ModelFile): Promise<string | null> {
+  provideParts(model.parts);
+  const scene = new BrickScene(document.createElement("div"), { interactive: false });
+  try {
+    if (!(await scene.setPieces(model.pieces))) return null;
+    const png = await scene.thumbnail();
+    return png ? await thumbnail(png) : null;
+  } catch (e) {
+    console.error("Could not draw the imported model", e);
+    return null;
+  } finally {
+    scene.dispose();
+  }
+}
+
+/** Import a model into the public library as the signed-in user's build; returns its new id. */
+export async function importModel(model: ModelFile): Promise<string> {
+  const json = new Blob([JSON.stringify({ model, thumbnail: await cover(model) })]);
+  const body = await new Response(json.stream().pipeThrough(new CompressionStream("gzip"))).blob();
+  const published = await api<Published>(IMPORTS, {
+    method: "POST",
+    headers: { ...signed(), "Content-Type": "application/gzip" },
+    body,
+  });
+  return published.id;
 }
 
 export async function unpublish(id: string) {

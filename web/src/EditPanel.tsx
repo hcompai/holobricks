@@ -9,6 +9,7 @@ import {
   ArrowUpIcon,
   ArrowUUpLeftIcon,
   ArrowUUpRightIcon,
+  CopyIcon,
   TrashIcon,
   XIcon,
 } from "@phosphor-icons/react";
@@ -17,7 +18,8 @@ import type { Edits } from "./edits";
 import type { Color } from "./palette";
 
 /** What the selected piece can do; moves follow the screen, snapped to the model's axes. */
-export type Action = "left" | "right" | "forward" | "back" | "up" | "down" | "turnLeft" | "turnRight" | "delete";
+export type Action =
+  "left" | "right" | "forward" | "back" | "up" | "down" | "turnLeft" | "turnRight" | "duplicate" | "delete";
 
 /** Keys for each action in edit mode, as `KeyboardEvent.key`. */
 export const ACTION_KEYS: Record<string, Action> = {
@@ -60,7 +62,9 @@ export function EditBar({ edits }: { edits: Edits }) {
   return (
     <div className="edit-bar" role="toolbar" aria-label="Edit mode">
       <span>
-        {count ? `${count} change${count === 1 ? "" : "s"}` : "Click a piece to select it, Shift-click to add more"}
+        {count
+          ? `${count} change${count === 1 ? "" : "s"}`
+          : "Click a piece to select it; Shift-click or Shift-drag a box to add more"}
       </span>
       <button className="icon-button" onClick={edits.undo} disabled={!count} title="Undo (⌘Z)" aria-label="Undo">
         <ArrowUUpLeftIcon size={16} weight="bold" />
@@ -200,8 +204,11 @@ export function EditPanel({
         <button onClick={() => onAction("turnRight")} title="Turn right (R)" aria-label="Turn right">
           <ArrowClockwiseIcon size={16} weight="bold" />
         </button>
+        <button onClick={() => onAction("duplicate")} title="Duplicate beside it (⌘D)" aria-label="Duplicate">
+          <CopyIcon size={16} weight="bold" />
+        </button>
         <button className="danger" onClick={() => onAction("delete")} title="Delete (Del)" aria-label="Delete">
-          <TrashIcon size={16} weight="bold" /> Delete
+          <TrashIcon size={16} weight="bold" />
         </button>
       </div>
     </div>

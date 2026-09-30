@@ -10,6 +10,7 @@ import { usePrices } from "./pickabrick";
 import { PriceMenu } from "./PriceMenu";
 import { ChatPanel } from "./ChatPanel";
 import { DownloadMenu } from "./DownloadMenu";
+import { ImportBuild } from "./ImportBuild";
 import { LibraryPage } from "./LibraryPage";
 import { countParts, PartsPanel } from "./PartsPanel";
 import { PublishButton } from "./PublishButton";
@@ -436,6 +437,15 @@ export default function App({ account }: { account: Account }) {
               const mine = b.source === "public" && builds?.some((s) => s.source === "session" && s.id === b.id);
               open({ id: b.id, source: mine ? "session" : b.source });
             }}
+            me={account.user.id}
+            mineActions={
+              <ImportBuild
+                onImported={(id) => {
+                  refreshBuilds();
+                  open({ id, source: "public" });
+                }}
+              />
+            }
           />
         )}
       </main>
