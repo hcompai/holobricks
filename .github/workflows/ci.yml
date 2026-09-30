@@ -4,6 +4,10 @@ on:
   push:
     branches: [master]
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   server:
@@ -63,3 +67,36 @@ jobs:
           name: browser-test-results
           path: web/test-results/
           retention-days: 7
+
+  deploy:
+    needs: [server, web]
+    if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    permissions:
+      contents: write
+    environment:
+      name: production
+      url: https://bricks.hcompany.ai
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      REBRICKABLE_API_KEY: ${{ secrets.REBRICKABLE_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache/restore@v4
+        with:
+          path: ldraw
+          key: ldraw-complete-v1
+      - run: test -d ldraw || scripts/fetch-ldraw.sh
+      - uses: astral-sh/setup-uv@v6
+      - working-directory: server
+        run: uv sync --locked
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - working-directory: web
+        run: npm ci && npm install --global vercel@60
+      - run: scripts/deploy.sh --prod

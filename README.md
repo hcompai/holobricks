@@ -84,7 +84,7 @@ server/.venv/bin/python -m brickyard.showcase paris   # or london, hogwarts: reg
 scripts/deploy.sh --preview                           # or --prod
 ```
 
-Every push to master that passes CI deploys to production (`.github/workflows/deploy.yml`, secrets `VERCEL_TOKEN` and `REBRICKABLE_API_KEY`); run it by hand from the Actions tab, or deploy from a laptop as above.
+Every push to master that passes CI deploys to production (the `deploy` job in `.github/workflows/ci.yml`, secrets `VERCEL_TOKEN` and `REBRICKABLE_API_KEY`); run CI by hand on master from the Actions tab, or deploy from a laptop as above.
 
 `deploy.sh` exports the showcases into `web/public/gallery`, rebuilds the catalog snapshot once it is 20 days old (that needs `REBRICKABLE_API_KEY`), packs the toolkit, builds the app and its functions, and deploys them to the Vercel project `brickyard`. It keeps both on the GitHub release `deploy-data`: a laptop deploy uploads them, and CI, which has no showcase data, downloads them. `bricks run` and shopping packages refuse a snapshot after 30 days, so each deploy stays valid for at least 10: redeploy within that.
 
