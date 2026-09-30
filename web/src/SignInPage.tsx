@@ -1,11 +1,16 @@
 import { GoogleLogoIcon } from "@phosphor-icons/react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { signIn, signInError } from "./account";
 import { Brick } from "./BrickLoader";
 
 /** All a signed-out visitor sees: the brick, and the way in with an H Company Google account. */
 export function SignInPage() {
   const [leaving, setLeaving] = useState(false);
+  useEffect(() => {
+    const back = (event: PageTransitionEvent) => event.persisted && setLeaving(false);
+    window.addEventListener("pageshow", back);
+    return () => window.removeEventListener("pageshow", back);
+  }, []);
   return (
     <main className="sign-in-page">
       <div className="sign-in-brick">
@@ -21,7 +26,7 @@ export function SignInPage() {
         disabled={leaving}
         onClick={() => {
           setLeaving(true);
-          signIn();
+          void signIn();
         }}
       >
         <GoogleLogoIcon size={18} weight="bold" />

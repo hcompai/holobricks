@@ -25,6 +25,18 @@ function organization(access: string): string {
   throw new Refusal(403, "Your H account has no organization to build in.");
 }
 
+/** The access token for the one-time code the portal sent a loopback page, proven with its PKCE verifier. */
+export async function exchange(code: string, verifier: string, redirect: string): Promise<string> {
+  const response = await fetch(`${H.portal}/auth/desktop/exchange`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code, code_verifier: verifier, redirect_uri: redirect }),
+  });
+  if (response.status === 401) throw new Refusal(401, "The sign-in expired: try again.");
+  if (!response.ok) throw new Error(`The portal failed to exchange the sign-in code (HTTP ${response.status})`);
+  return (await response.json()).access_token;
+}
+
 /** Who a portal access token belongs to, as the portal vouches for it. */
 export async function whoami(access: string): Promise<{ id: string; email: string }> {
   const response = await call("/auth/me", access);

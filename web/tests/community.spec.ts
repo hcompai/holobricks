@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { createHash } from "node:crypto";
 import { gzipSync } from "node:zlib";
 import type { Build } from "../src/model";
 import { cookie, HANDOFF, PENDING, setCookie } from "../src/signin";
@@ -148,10 +149,13 @@ test("signed out, only the sign-in page shows; Google brings the user back signe
   const tower = fixture();
   await site(page, [tower], null);
   let handoff: object = { error: "Brickyard is open to H Company accounts." };
-  const pending: unknown[] = [];
+  const pending: { verifier: string }[] = [];
+  const challenges: (string | null)[] = [];
   await page.route(`${PORTAL}/auth/authorize?*`, (route) => {
     const url = new URL(route.request().url());
     expect(url.searchParams.get("provider")).toBe("google");
+    expect(url.searchParams.get("code_challenge_method")).toBe("S256");
+    challenges.push(url.searchParams.get("code_challenge"));
     // Playwright routes no request that follows a redirect, so this portal navigates on instead.
     const next = JSON.stringify(url.searchParams.get("redirect_uri"));
     return route.fulfill({ contentType: "text/html", body: `<script>location.replace(${next})</script>` });
@@ -182,9 +186,11 @@ test("signed out, only the sign-in page shows; Google brings the user back signe
   await page.getByRole("menuitem", { name: "Sign out" }).click();
   await google.click();
   await expect(page.getByRole("button", { name: "Account" })).toBeVisible();
+  const verifier = expect.stringMatching(/^[\w-]{43}$/);
   expect(pending).toEqual([
-    { previous: null, back: `/?showcase=${tower.id}` },
-    { previous: null, back: `/?showcase=${tower.id}` },
-    { previous: ACCOUNT.keyId, back: `/?showcase=${tower.id}` },
+    { previous: null, back: `/?showcase=${tower.id}`, verifier },
+    { previous: null, back: `/?showcase=${tower.id}`, verifier },
+    { previous: ACCOUNT.keyId, back: `/?showcase=${tower.id}`, verifier },
   ]);
+  expect(challenges).toEqual(pending.map((p) => createHash("sha256").update(p.verifier).digest("base64url")));
 });

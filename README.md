@@ -43,7 +43,7 @@ server/.venv/bin/brickyard-prices                             # web/public/pick-
 server/.venv/bin/python scripts/pack-toolkit.py               # web/public/brickyard.tgz and LDConfig.ldr
 cd web && npm install
 vercel link --yes --scope h-company --project brickyard && vercel env pull .env.local   # the server's secrets
-npm run dev                                                                            # http://localhost:5173
+npm run dev                                                                            # http://127.0.0.1:5173
 ```
 
 Brickyard is open to H Company: everything sits behind a sign-in with an `@hcompany.ai` Google account on the H portal. Export the showcases for local use with
@@ -60,6 +60,7 @@ signed in ──GET /api/builds──▶ the public library
 ```
 
 - `web/api/` holds the Vercel functions; `web/scripts/build-api.mjs` bundles them, and `npm run dev` serves them too.
+- The portal's cookie never reaches a local dev server, so there the portal sends a one-time code instead (PKCE, RFC 8252); it only redirects to `127.0.0.1`, where `localhost` forwards.
 - Signing in again revokes the previous key. The key lives in the browser's local storage; the pass, signed with `BRICKYARD_SECRET`, names its holder to the functions.
 - Publishing copies the session's model, transcript and images, so a public build stands on its own, even if its session is deleted. Only its author can publish or unpublish a build; the emails in `BRICKYARD_ADMINS` can unpublish any.
 - Server environment: `BRICKYARD_SECRET`, `BRICKYARD_ADMINS`, and `BLOB_READ_WRITE_TOKEN` from the `brickyard-library` Blob store.

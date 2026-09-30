@@ -10,7 +10,12 @@ export interface Pending {
   previous: string | null;
   /** The page to come back to, as a path. */
   back: string;
+  /** The PKCE verifier of a loopback sign-in, which comes back with a one-time code. */
+  verifier: string | null;
 }
+
+/** The only local host the portal redirects to (RFC 8252 loopback), and only with a PKCE challenge. */
+export const LOOPBACK = "127.0.0.1";
 
 export interface User {
   id: string;
