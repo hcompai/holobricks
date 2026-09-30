@@ -114,7 +114,7 @@ test("a new build sends the toolkit and the photos; Stop makes Holo answer and t
   expect(agp.posted("/messages")[1]).toMatchObject({ message: "Add the lighthouse", files: [] });
 });
 
-test("the library lists my builds by the names Holo gave them, then the showcases", async ({ page }) => {
+test("the library shows my builds by the names Holo gave them; showcases under Public", async ({ page }) => {
   const showcase = { ...fixture(), id: "paris", name: "Paris" };
   await site(page, [showcase]);
   const agp = await platform(page);
@@ -126,14 +126,18 @@ test("the library lists my builds by the names Holo gave them, then the showcase
     ),
   );
   await page.goto("/");
-  await page.getByRole("tab", { name: "Library" }).click();
-  const cards = page.locator(".library button");
-  await expect(cards).toHaveCount(2);
-  await expect(cards.nth(0)).toContainText("Hollowbough");
-  await expect(cards.nth(0)).toContainText("42 pieces");
-  await expect(cards.nth(1)).toContainText("Showcase");
-  await cards.nth(1).click();
+  await page.getByRole("button", { name: "Library" }).click();
+  await expect(page).toHaveURL(/\?library$/);
+  const mine = page.getByRole("region", { name: "Mine" }).locator(".tile");
+  await expect(mine).toHaveCount(1);
+  await expect(mine).toContainText("Hollowbough");
+  await expect(mine).toContainText("42 pieces");
+  const everyone = page.getByRole("region", { name: "Public" }).locator(".tile");
+  await expect(everyone).toHaveCount(1);
+  await expect(everyone).toContainText("Showcase");
+  await everyone.click();
   await expect(page).toHaveURL(/\?showcase=paris$/);
+  await expect(page.locator(".library-page")).toHaveCount(0);
   await shown(page, showcase.revision);
   await expect(page.getByText("A showcase from the gallery.")).toBeVisible();
 });

@@ -1,5 +1,5 @@
 import { ArrowUpIcon, PlusIcon, StopIcon, XIcon } from "@phosphor-icons/react";
-import { useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Build } from "./model";
@@ -96,7 +96,7 @@ interface Props {
   loading: boolean;
   thinking: string;
   /** Why the builder takes no message here, or null when it does. */
-  closed: string | null;
+  closed: ReactNode;
   onCreate: (prompt: string, images: string[]) => Promise<void>;
   onSay: (text: string, images: string[]) => Promise<void>;
   onStop: () => Promise<void>;

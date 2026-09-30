@@ -86,6 +86,9 @@ export interface Build extends Model {
   open: boolean;
 }
 
+/** Where a build is read from: a session of the signed-in user, the public library, or the showcases. */
+export type Source = "session" | "public" | "showcase";
+
 export interface BuildSummary {
   id: string;
   name: string;
@@ -95,7 +98,11 @@ export interface BuildSummary {
   created: number;
   pieces: number | null;
   thumbnail: string | null;
-  showcase: boolean;
+  source: Source;
+  /** Who published it, for public builds. */
+  author: string | null;
+  /** The author's user id, for public builds. */
+  owner: string | null;
 }
 
 /** One view the builder asks for: seen from compass `angle` (0 front, 90 right), `elevation` degrees up, `zoom` times closer, centered on `at` (studs, studs, plates). */

@@ -1,6 +1,8 @@
-import { fileFromBlob, HaiAgentsClient, HaiAgentsEnvironment, type HaiAgents } from "hai-agents";
+import { fileFromBlob, HaiAgentsClient, type HaiAgents } from "hai-agents";
 import prompt from "../../agent/holo.md?raw";
-export const AGENT = "brickyard";
+import { expired, key } from "./account";
+import { H } from "./hosts";
+import { AGENT } from "./session";
 const MODEL = "holo4-27b";
 const MAX_STEPS = 300;
 const MAX_TIME_S = 3 * 3600;
@@ -9,20 +11,22 @@ const IDLE_TIMEOUT_S = 3600;
 const TOOLKIT = "/brickyard.tgz";
 const DOWNLOAD_S = 60;
 
-const API_KEY: string | undefined = import.meta.env.VITE_HAI_API_KEY;
-
-/** Why builds cannot run from this page, or null when they can. */
-export const unavailable = API_KEY ? null : "Set VITE_HAI_API_KEY to build with Holo.";
+/** A call to the Agents API; a refused key signs the user out. */
+async function call(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const response = await fetch(input, init);
+  if (response.status === 401) expired();
+  return response;
+}
 
 export const client = new HaiAgentsClient({
-  environment: HaiAgentsEnvironment.Eu,
-  apiKey: API_KEY ?? "",
+  environment: H.agents,
+  apiKey: key,
   headers: { "X-HCompany-Client-Name": AGENT },
   // Safari sends the SDK's User-Agent in CORS preflights, and the Agents API does not allow it.
   fetch: (input, init) => {
     const headers = new Headers(init?.headers);
     headers.delete("User-Agent");
-    return fetch(input, { ...init, headers });
+    return call(input, { ...init, headers });
   },
 });
 
@@ -118,8 +122,8 @@ export async function sessions(): Promise<HaiAgents.SessionSummary[]> {
 /** An attachment or image the platform serves behind the API key. */
 export async function download(url: string, signal?: AbortSignal): Promise<Blob> {
   const timeout = AbortSignal.timeout(DOWNLOAD_S * 1000);
-  const response = await fetch(url, {
-    headers: { Authorization: `Bearer ${API_KEY}` },
+  const response = await call(url, {
+    headers: { Authorization: `Bearer ${key()}` },
     signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
   });
   if (!response.ok) throw new Error(`Could not download ${url} (HTTP ${response.status})`);

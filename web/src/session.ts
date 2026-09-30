@@ -1,7 +1,16 @@
 import { isSettledSessionStatus, type HaiAgents } from "hai-agents";
 import type { Message, Status } from "./model";
 
+export const AGENT = "brickyard";
 export const MODEL_FILE = "model.json.gz";
+
+/** JSON from a file, gunzipped when it is gzipped. */
+export async function unpack<T>(blob: Blob): Promise<T> {
+  const head = new Uint8Array(await blob.slice(0, 2).arrayBuffer());
+  const gzipped = head[0] === 0x1f && head[1] === 0x8b;
+  const stream = gzipped ? blob.stream().pipeThrough(new DecompressionStream("gzip")) : blob.stream();
+  return JSON.parse(await new Response(stream).text());
+}
 /** The builder's side of a session, read from its events in order. */
 export interface Transcript {
   events: number;

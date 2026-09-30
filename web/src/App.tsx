@@ -1,35 +1,46 @@
-import { PlusIcon, ShoppingBagIcon } from "@phosphor-icons/react";
+import { PlusIcon, ShoppingBagIcon, SquaresFourIcon } from "@phosphor-icons/react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { create, say, stop, unavailable } from "./agent";
+import type { Account } from "./account";
+import { AccountMenu } from "./AccountMenu";
+import { create, say, stop } from "./agent";
 import { useEdits } from "./edits";
-import { type Build, type BuildSummary, type Piece, verified } from "./model";
+import { type Build, type BuildSummary, type Piece, type Source, verified } from "./model";
 import { type Color, usePalette } from "./palette";
 import { usePrices } from "./pickabrick";
 import { PriceMenu } from "./PriceMenu";
 import { ChatPanel } from "./ChatPanel";
 import { DownloadMenu } from "./DownloadMenu";
-import { LibraryPanel } from "./LibraryPanel";
+import { LibraryPage } from "./LibraryPage";
 import { countParts, PartsPanel } from "./PartsPanel";
+import { PublishButton } from "./PublishButton";
 import { ShopDialog } from "./ShopDialog";
 import { Timeline } from "./Timeline";
 import { FilmExport } from "./FilmExport";
 import { InstructionsExport } from "./InstructionsExport";
-import { library, remember, thumbnail } from "./library";
+import { library, publish, remember, thumbnail, unpublish } from "./library";
 import { type BuildRef, useBuild } from "./useBuild";
 import { ThemeToggle } from "./ThemeToggle";
 import { type Framing, type Mode, ViewControls, Viewer, type ViewerHandle } from "./Viewer";
 
 const STEP_MS = 700;
 const TITLE = document.title;
+/** The URL parameter naming the open build, by where it is read from. */
+const PARAMS: Record<Source, string> = { session: "build", public: "public", showcase: "showcase" };
 
 function urlBuild(): BuildRef | null {
   const params = new URLSearchParams(window.location.search);
-  const session = params.get("build");
-  const showcase = params.get("showcase");
-  return session ? { id: session, showcase: false } : showcase ? { id: showcase, showcase: true } : null;
+  for (const [source, param] of Object.entries(PARAMS) as [Source, string][]) {
+    const id = params.get(param);
+    if (id) return { id, source };
+  }
+  return null;
 }
 
-const same = (a: BuildRef | null, b: BuildRef | null) => a?.id === b?.id && a?.showcase === b?.showcase;
+const LIBRARY = "library";
+
+const urlLibrary = () => new URLSearchParams(window.location.search).has(LIBRARY);
+
+const same = (a: BuildRef | null, b: BuildRef | null) => a?.id === b?.id && a?.source === b?.source;
 
 /** Part titles from the build's verified parts list, by LDraw part. */
 const titlesOf = (build: Build | null) =>
@@ -42,8 +53,11 @@ function describer(build: Build | null, palette: Color[]): (piece: Piece) => str
   return (p) => `${titles.get(p.part) ?? p.part.replace(/\.dat$/, "")} · ${colors.get(p.color) ?? `color ${p.color}`}`;
 }
 
-export default function App() {
+export default function App({ account }: { account: Account }) {
   const [ref, setRef] = useState<BuildRef | null>(urlBuild);
+  const opened = useRef(ref);
+  opened.current = ref;
+  const [libraryOpen, setLibraryOpen] = useState(urlLibrary);
   const buildId = ref?.id ?? null;
   const { build: live, loading, thinking, renderRequest, error, syncError, answer } = useBuild(ref);
   const edits = useEdits(live);
@@ -55,7 +69,6 @@ export default function App() {
   const viewer = useRef<ViewerHandle>(null);
   const [builds, setBuilds] = useState<BuildSummary[] | null>(null);
   const [buildsFailed, setBuildsFailed] = useState(false);
-  const [left, setLeft] = useState<"chat" | "library">("chat");
   const [center, setCenter] = useState<"model" | "parts">("model");
   const [step, setStep] = useState(Infinity);
   const [following, setFollowing] = useState(true);
@@ -81,18 +94,25 @@ export default function App() {
   };
   const last = (build?.steps.length ?? 0) - 1;
 
+  const latest = useRef(0);
   const refreshBuilds = useCallback(() => {
+    const request = ++latest.current;
     setBuildsFailed(false);
-    library().then(setBuilds, (e) => {
-      console.error(e);
-      setBuildsFailed(true);
-    });
+    library().then(
+      (next) => request === latest.current && setBuilds(next),
+      (e) => {
+        if (request !== latest.current) return;
+        console.error(e);
+        setBuildsFailed(true);
+      },
+    );
   }, []);
 
-  useEffect(refreshBuilds, [refreshBuilds]);
+  useEffect(() => refreshBuilds(), [refreshBuilds, account.user.id, libraryOpen]);
 
-  const summary = builds?.find((b) => b.id === buildId);
+  const summary = builds?.find((b) => b.id === buildId && b.source === ref?.source);
   const heading = build ?? summary;
+  const listed = builds?.find((b) => b.id === buildId && b.source === "public");
 
   useEffect(() => {
     if (build && builds && summary?.status !== build.status) refreshBuilds();
@@ -110,21 +130,27 @@ export default function App() {
     setPlaying(false);
   }, []);
 
-  const open = useCallback(
-    (next: BuildRef | null) => {
-      show(next);
-      if (same(next, urlBuild())) return;
+  /** Show this build, with the library over it or not, and put both in the URL. */
+  const navigate = useCallback(
+    (next: BuildRef | null, library: boolean) => {
+      if (!same(next, opened.current)) show(next);
+      setLibraryOpen(library);
       const url = new URL(window.location.href);
-      url.searchParams.delete("build");
-      url.searchParams.delete("showcase");
-      if (next) url.searchParams.set(next.showcase ? "showcase" : "build", next.id);
-      window.history.pushState(null, "", url);
+      for (const param of [...Object.values(PARAMS), LIBRARY]) url.searchParams.delete(param);
+      if (next) url.searchParams.set(PARAMS[next.source], next.id);
+      if (library) url.search += `${url.search ? "&" : "?"}${LIBRARY}`;
+      if (url.href !== window.location.href) window.history.pushState(null, "", url);
     },
     [show],
   );
+  const open = (next: BuildRef | null) => navigate(next, false);
 
   useEffect(() => {
-    const sync = () => show(urlBuild());
+    const sync = () => {
+      const next = urlBuild();
+      if (!same(next, opened.current)) show(next);
+      setLibraryOpen(urlLibrary());
+    };
     window.addEventListener("popstate", sync);
     return () => window.removeEventListener("popstate", sync);
   }, [show]);
@@ -155,24 +181,43 @@ export default function App() {
   const start = async (prompt: string, images: string[]) => {
     const id = await create(prompt, images);
     remember(id, { name: prompt.slice(0, 60) || "Untitled build", prompt });
-    open({ id, showcase: false });
-    setLeft("chat");
+    open({ id, source: "session" });
     refreshBuilds();
   };
 
   const saveThumbnail = async (png: Blob) => {
-    if (!ref || ref.showcase) return;
+    if (ref?.source !== "session") return;
     remember(ref.id, { thumbnail: await thumbnail(png) });
     refreshBuilds();
   };
 
+  const publishBuild = async () => {
+    if (!live) return;
+    const png = await viewer.current?.image();
+    const hand = edits.edits.length ? { revision: live.revision, edits: edits.edits } : null;
+    await publish(live.id, png ? await thumbnail(png) : null, hand);
+    open({ id: live.id, source: "public" });
+    refreshBuilds();
+  };
+
+  const unpublishBuild = async () => {
+    if (!live) return;
+    await unpublish(live.id);
+    if (ref?.source === "public") open({ id: live.id, source: "session" });
+    refreshBuilds();
+  };
+
+  /** The signed-in user's build, from their session or as they published it. */
+  const owned = ref?.source === "session" || (ref?.source === "public" && summary?.owner === account.user.id);
+
   const closed =
-    unavailable ??
-    (ref?.showcase
+    ref?.source === "showcase"
       ? "A showcase from the gallery. Start a new build to make your own."
-      : build && !build.open && build.status !== "building"
-        ? "This build's session has ended. Start a new build to make another."
-        : null);
+      : ref?.source === "public"
+        ? `Shared by ${summary?.author ?? "an H builder"}. Start a new build to make your own.`
+        : build && !build.open && build.status !== "building"
+          ? "This build's session has ended. Start a new build to make another."
+          : null;
 
   const visibleStep = Math.min(step, last);
 
@@ -182,6 +227,13 @@ export default function App() {
         <button className="brand" onClick={home}>
           <img className="brand-icon" src="/brick.png" alt="" />
           Brickyard
+        </button>
+        <button
+          className={libraryOpen ? "library-toggle active" : "library-toggle"}
+          aria-pressed={libraryOpen}
+          onClick={() => navigate(ref, !libraryOpen)}
+        >
+          <SquaresFourIcon size={16} /> Library
         </button>
         {loading && summary && <span className="title">{summary.name}</span>}
         {build && (
@@ -196,10 +248,26 @@ export default function App() {
                 {build.width}×{build.depth} studs
               </span>
             )}
+            {ref?.source === "public" && summary?.author && <span className="chip">by {summary.author}</span>}
             {prices && build.pieces.length > 0 && <PriceMenu build={build} table={prices} edited={edited} />}
           </>
         )}
         <span className="spacer" />
+        {build && owned && (
+          <PublishButton
+            published={ref?.source === "public" || !!listed}
+            blocked={
+              build.status === "building"
+                ? "Publish once Holo answers"
+                : !build.pieces.length
+                  ? "Nothing is built yet"
+                  : null
+            }
+            author={account.user.name}
+            onPublish={publishBuild}
+            onUnpublish={unpublishBuild}
+          />
+        )}
         {build && (
           <button
             className="shop-trigger"
@@ -217,6 +285,7 @@ export default function App() {
           </button>
         )}
         <ThemeToggle />
+        <AccountMenu account={account} />
         {build && (
           <DownloadMenu
             build={build}
@@ -228,64 +297,28 @@ export default function App() {
       </header>
       <aside>
         <div className="aside-bar">
-          <div className="tabs" role="tablist">
-            <button
-              role="tab"
-              aria-selected={left === "chat"}
-              className={left === "chat" ? "active" : ""}
-              onClick={() => setLeft("chat")}
-            >
-              Chat
-            </button>
-            <button
-              role="tab"
-              aria-selected={left === "library"}
-              className={left === "library" ? "active" : ""}
-              onClick={() => setLeft("library")}
-            >
-              Library
-            </button>
-          </div>
+          <span className="aside-title">Chat</span>
           {ref && (
-            <button
-              className="new-build"
-              onClick={() => {
-                open(null);
-                setLeft("chat");
-              }}
-            >
+            <button className="new-build" onClick={() => open(null)}>
               <PlusIcon size={14} weight="bold" />
               New build
             </button>
           )}
         </div>
         <div className="aside-body">
-          {left === "chat" ? (
-            <ChatPanel
-              build={live}
-              loading={loading}
-              thinking={thinking}
-              closed={closed}
-              onCreate={start}
-              onSay={async (text, images) => {
-                if (build) await say(build.id, text, images);
-              }}
-              onStop={async () => {
-                if (build) await stop(build.id);
-              }}
-            />
-          ) : (
-            <LibraryPanel
-              builds={builds}
-              failed={buildsFailed}
-              onRetry={refreshBuilds}
-              activeId={buildId}
-              onOpen={(b) => {
-                open({ id: b.id, showcase: b.showcase });
-                setLeft("chat");
-              }}
-            />
-          )}
+          <ChatPanel
+            build={live}
+            loading={loading}
+            thinking={thinking}
+            closed={closed}
+            onCreate={start}
+            onSay={async (text, images) => {
+              if (build) await say(build.id, text, images);
+            }}
+            onStop={async () => {
+              if (build) await stop(build.id);
+            }}
+          />
         </div>
       </aside>
       <main>
@@ -334,7 +367,7 @@ export default function App() {
               spin={spin}
               onRender={answer}
               onThumbnail={saveThumbnail}
-              empty={unavailable ?? "Describe a model in the chat to start building."}
+              empty="Describe a model in the chat to start building."
               mode={mode}
               edits={edits}
               describe={describer(live, palette)}
@@ -368,6 +401,15 @@ export default function App() {
             }}
             onSpeed={setSpeed}
             onReplay={exportReplay}
+          />
+        )}
+        {libraryOpen && (
+          <LibraryPage
+            builds={builds}
+            failed={buildsFailed}
+            active={ref}
+            onRetry={refreshBuilds}
+            onOpen={(b) => open({ id: b.id, source: b.source })}
           />
         )}
       </main>

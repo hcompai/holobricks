@@ -21,9 +21,9 @@ server/.venv/bin/python scripts/pack-toolkit.py
 server/.venv/bin/brickyard-prices   # web/public/pick-a-brick.json: today's Pick a Brick prices for the estimate
 BRICKYARD_DATA=$data server/.venv/bin/brickyard-gallery web/public "${builds[@]}"
 [[ -f web/.vercel/project.json ]] || (cd web && vercel link --yes --scope h-company --project brickyard)
-# The bundle is public: it must never carry an API key.
-(cd web && VITE_HAI_API_KEY= npm run build)
+(cd web && npm run build)
 rm -rf web/.vercel/output && mkdir -p web/.vercel/output
 cp -R web/dist web/.vercel/output/static
+(cd web && node scripts/build-api.mjs .vercel/output)
 echo '{"version": 3}' > web/.vercel/output/config.json
 (cd web && vercel deploy --prebuilt ${target[@]+"${target[@]}"})

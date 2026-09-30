@@ -1,6 +1,6 @@
 import { BookOpenIcon, CubeIcon, DownloadSimpleIcon, FilmStripIcon, ImageIcon } from "@phosphor-icons/react";
-import { useEffect, useRef, useState } from "react";
 import type { Build } from "./model";
+import { useMenu } from "./useMenu";
 
 interface Props {
   build: Build;
@@ -11,24 +11,7 @@ interface Props {
 
 /** An icon button opening the build's downloads: the LDraw model, or the view as a PNG. */
 export function DownloadMenu({ build, image, onReplay, onInstructions }: Props) {
-  const [open, setOpen] = useState(false);
-  const root = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const outside = (e: PointerEvent) => {
-      if (!root.current?.contains(e.target as Node)) setOpen(false);
-    };
-    const escape = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("pointerdown", outside);
-    document.addEventListener("keydown", escape);
-    return () => {
-      document.removeEventListener("pointerdown", outside);
-      document.removeEventListener("keydown", escape);
-    };
-  }, [open]);
+  const { open, setOpen, root } = useMenu();
 
   const save = (blob: Blob, extension: string) => {
     const url = URL.createObjectURL(blob);

@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 import { gzipSync } from "node:zlib";
 import type { Model } from "../src/model";
+import { signedIn } from "./fixtures";
 
 const AGP = "https://agp.eu.hcompany.ai";
 const CORS = {
@@ -86,7 +87,9 @@ export class Platform {
   }
 }
 
+/** The Agents API, for the signed-in `ACCOUNT`. */
 export async function platform(page: Page): Promise<Platform> {
+  await signedIn(page);
   const agp = new Platform();
   await page.route(`${AGP}/**`, async (route) => {
     const request = route.request();

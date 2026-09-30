@@ -408,7 +408,7 @@ export function Viewer(props: Props) {
       ) : (
         opening && !ready && <BrickLoader label={build ? "Loading the latest model…" : opening} />
       )}
-      {!build && !opening && <div className="viewer-empty">{empty}</div>}
+      {!build && !opening && <BrickLoader idle label={empty} />}
     </div>
   );
 }

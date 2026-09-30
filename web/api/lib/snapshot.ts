@@ -1,0 +1,134 @@
+import { HaiAgentsClient, HaiAgentsError, type HaiAgents } from "hai-agents";
+import { buildRevision } from "../../src/buildRevision";
+import { H } from "../../src/hosts";
+import { applyEdits, type Edit, toLdraw } from "../../src/edits";
+import { type Build, EMPTY_MODEL, type Message, type Model } from "../../src/model";
+import { AGENT, EMPTY_TRANSCRIPT, read, status, type Transcript, unpack } from "../../src/session";
+import { Refusal } from "./http";
+
+/** Chat images kept with a public build; past this, the chat keeps its text only. */
+const MAX_IMAGES = 80;
+const PARALLEL = 8;
+const EDITED = "Edited by hand after Holo built it: the parts list is not verified.";
+const EDIT_KINDS = new Set(["delete", "move", "rotate", "color"]);
+
+/** Hand edits as the browser saved them: bound to the revision they were made on. */
+export interface Edited {
+  revision: string;
+  edits: Edit[];
+}
+
+/** Store one image of the chat under `name`, and return its public URL. */
+export type Keep = (name: string, image: Blob) => Promise<string>;
+
+const platform = (key: string) =>
+  new HaiAgentsClient({
+    environment: H.agents,
+    apiKey: key,
+    headers: { "X-HCompany-Client-Name": AGENT },
+  });
+
+const missing = (e: unknown) => e instanceof HaiAgentsError && (e.statusCode === 404 || e.statusCode === 403);
+
+async function mine(agp: HaiAgentsClient, id: string): Promise<HaiAgents.Session> {
+  const session = await agp.sessions.getSession({ id }).catch((e) => {
+    throw missing(e) ? new Refusal(404, "No such build.") : e;
+  });
+  const agent = session.request.agent;
+  if ((typeof agent === "string" ? agent : agent.name) !== AGENT) throw new Refusal(404, "No such build.");
+  // Sessions are readable across an organization; the listing is the caller's own sessions only.
+  const at = session.createdAt.getTime();
+  const own = await agp.sessions.listSessions({
+    createdAfter: new Date(at - 1000),
+    createdBefore: new Date(at + 1000),
+    size: 100,
+  });
+  if (!own.items.some((s) => s.id === id)) throw new Refusal(403, "Only its author can publish a build.");
+  return session;
+}
+
+async function transcript(agp: HaiAgentsClient, id: string): Promise<Transcript> {
+  let t = EMPTY_TRANSCRIPT;
+  for (;;) {
+    const changes = await agp.sessions.getSessionChanges({ id, fromIndex: t.events, includeEvents: true });
+    const events = changes?.newEvents ?? [];
+    if (!events.length) return t;
+    t = read(t, events);
+  }
+}
+
+async function download(url: string, key: string): Promise<Blob> {
+  const response = await fetch(url, { headers: { Authorization: `Bearer ${key}` } });
+  if (!response.ok) throw new Error(`Could not download ${url} (HTTP ${response.status})`);
+  return response.blob();
+}
+
+const picture = (src: string, key: string): Promise<Blob> =>
+  src.startsWith("data:") ? fetch(src).then((r) => r.blob()) : download(src, key);
+
+const extension = (image: Blob) => ({ "image/jpeg": "jpg", "image/webp": "webp" })[image.type] ?? "png";
+
+/** The chat with its images copied out of the session, as many as the cap allows. */
+async function copied(messages: Message[], key: string, keep: Keep): Promise<Message[]> {
+  const sources = [...new Set(messages.flatMap((m) => m.images))].slice(0, MAX_IMAGES);
+  const urls = new Map<string, string>();
+  for (let i = 0; i < sources.length; i += PARALLEL)
+    await Promise.all(
+      sources.slice(i, i + PARALLEL).map(async (src, j) => {
+        try {
+          const image = await picture(src, key);
+          urls.set(src, await keep(`images/${i + j + 1}.${extension(image)}`, image));
+        } catch (e) {
+          console.warn("Left an image out of the public build", e);
+        }
+      }),
+    );
+  return messages.map((m) => ({ ...m, images: m.images.flatMap((src) => urls.get(src) ?? []) }));
+}
+
+function checked(edited: unknown): Edited | null {
+  if (edited == null) return null;
+  const { revision, edits } = edited as Edited;
+  const valid =
+    typeof revision === "string" &&
+    Array.isArray(edits) &&
+    edits.every((e) => EDIT_KINDS.has(e?.kind) && Array.isArray(e.ids) && e.ids.every(Number.isInteger));
+  if (!valid) throw new Refusal(400, "The edits are malformed.");
+  return edits.length ? { revision, edits } : null;
+}
+
+async function withEdits(build: Build, edited: Edited | null): Promise<Build> {
+  if (!edited) return build;
+  if (edited.revision !== build.revision)
+    throw new Refusal(409, "Your edits are for an earlier revision of the model.");
+  const pieces = applyEdits(build.pieces, edited.edits);
+  return {
+    ...build,
+    pieces,
+    revision: await buildRevision(pieces),
+    ldr: toLdraw(build, pieces),
+    bom: { error: EDITED },
+    shopping: { error: EDITED },
+  };
+}
+
+/** The caller's finished build as the public sees it: its latest model with any hand edits, and its chat. */
+export async function snapshot(id: string, key: string, edited: unknown, keep: Keep): Promise<Build> {
+  const agp = platform(key);
+  const session = await mine(agp, id);
+  const state = status(session.status.status);
+  if (state === "building") throw new Refusal(409, "Holo is still building: publish once it answers.");
+  const t = await transcript(agp, id);
+  if (!t.model) throw new Refusal(409, "Nothing is built yet.");
+  const model = await unpack<Model>(await download(t.model.url, key));
+  const prompt = t.messages.find((m) => m.role === "user")?.text ?? "";
+  const build: Build = {
+    ...model,
+    name: model.name !== EMPTY_MODEL.name ? model.name : prompt.slice(0, 60) || model.name,
+    id,
+    status: state,
+    open: false,
+    messages: [],
+  };
+  return { ...(await withEdits(build, checked(edited))), messages: await copied(t.messages, key, keep) };
+}
