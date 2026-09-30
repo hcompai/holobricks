@@ -40,11 +40,27 @@ cd server && uv sync && cd ..
 REBRICKABLE_API_KEY=... server/.venv/bin/brickyard-catalog   # data/rebrickable.json.gz, valid 30 days
 server/.venv/bin/python scripts/pack-toolkit.py               # web/public/brickyard.tgz and LDConfig.ldr
 cd web && npm install
-VITE_HAI_API_KEY=$(grep '^HAI_API_KEY=' ~/code/hai/.env | cut -d= -f2- | tr -d '"') npm run dev   # http://localhost:5173
+vercel link --yes --scope h-company --project brickyard && vercel env pull .env.local   # the server's secrets
+npm run dev                                                                            # http://localhost:5173
 ```
 
-Without `VITE_HAI_API_KEY`, the app shows the showcases only. Export them for local use with
+Anyone can browse the showcases and the public library. Building with Holo needs a sign-in with an `@hcompany.ai` Google account on the H portal. Export the showcases for local use with
 `BRICKYARD_DATA=<data dir> server/.venv/bin/brickyard-gallery web/public hogwarts 6eb28d127e london paris`.
+
+## Accounts and the public library
+
+```
+browser ──popup──▶ portal.hcompany.ai ──access token──▶ browser
+browser ──POST /api/session──▶ portal API: who is it? mint a 30-day "Brickyard" key
+browser ──key──▶ Agents API (Holo builds, sessions listed per user)
+browser ──POST /api/builds (pass + key)──▶ snapshot of the session ──▶ Vercel Blob (public)
+anyone  ──GET /api/builds──▶ the public library
+```
+
+- `web/api/` holds the Vercel functions; `web/scripts/build-api.mjs` bundles them, and `npm run dev` serves them too.
+- Signing in again revokes the previous key. The key lives in the browser's local storage; the pass, signed with `BRICKYARD_SECRET`, names its holder to the functions.
+- Publishing copies the session's model, transcript and images, so a public build outlives its session (sessions are deleted after 30 days). Only its author can publish or unpublish a build; the emails in `BRICKYARD_ADMINS` can unpublish any.
+- Server environment: `BRICKYARD_SECRET`, `BRICKYARD_ADMINS`, and `BLOB_READ_WRITE_TOKEN` from the `brickyard-library` Blob store.
 
 | To change | Edit |
 | --- | --- |
@@ -65,7 +81,7 @@ server/.venv/bin/python -m brickyard.showcase paris   # or london, hogwarts: reg
 scripts/deploy.sh --preview                           # or --prod
 ```
 
-`deploy.sh` packs the toolkit, exports the showcases into `web/public/gallery`, builds the app and deploys it to the Vercel project `brickyard`. The bundle is public, so it is built without an API key: the site shows the showcases, and building needs sign-in, which is not wired yet. Shopping packages expire with the catalog snapshot: rebuild it and redeploy at least every 30 days.
+`deploy.sh` packs the toolkit, exports the showcases into `web/public/gallery`, builds the app and its functions, and deploys them to the Vercel project `brickyard`. Shopping packages expire with the catalog snapshot: rebuild it and redeploy at least every 30 days.
 
 ## Tests
 

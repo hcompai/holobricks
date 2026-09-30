@@ -34,9 +34,7 @@ export const GET = route(async (request) => {
 
 /** Publish the caller's build, as it is now; publishing again replaces it. */
 export const POST = route(async (request) => {
-  const user = holder(request);
-  const key = request.headers.get("x-agents-key");
-  if (!key) throw new Refusal(401, "Sign in first.");
+  const { user, key } = holder(request);
   const given = await body<{ id?: unknown; thumbnail?: unknown; edits?: unknown }>(request);
   const id = buildId(given.id);
   const cover = thumbnail(given.thumbnail);
@@ -71,7 +69,7 @@ export const POST = route(async (request) => {
 
 /** Take a build out of the library: its author, or an admin. */
 export const DELETE = route(async (request) => {
-  const user = holder(request);
+  const { user } = holder(request);
   const id = buildId(new URL(request.url).searchParams.get("id"));
   const published = await find(id);
   if (!published) throw new Refusal(404, "This build is not public.");
