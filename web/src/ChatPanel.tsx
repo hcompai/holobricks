@@ -1,8 +1,9 @@
 import { ArrowUpIcon, PlusIcon, ShuffleIcon, StopIcon, XIcon } from "@phosphor-icons/react";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { memo, type ReactNode, useEffect, useRef, useState } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import type { Build } from "./model";
+import type { Build, Message, Work } from "./model";
+import type { Activity } from "./session";
 import { Lightbox } from "./Lightbox";
 import { imageFiles, reference } from "./references";
 
@@ -34,68 +35,146 @@ const SUGGESTIONS = [
   },
 ];
 
-const WAITING = [
-  "Sorting the parts bin",
-  "Counting studs",
-  "Studying the photos",
-  "Hunting for the right slope",
-  "Checking every join",
-  "Stacking plates",
-  "Snapping bricks together",
-  "Walking around the model",
-  "Measuring twice",
-  "Rummaging for a 1x1 round",
-  "Squinting at the render",
-  "Lining up the courses",
-  "Looking for gaps",
-  "Trying another angle",
-];
-const WAITING_S = 4;
-const TYPING_FRAMES = 60;
 const MAX_ATTACHMENTS = 2;
 const WHO = "Holo";
 const PINNED_PX = 80;
+/** How long a live label stays before the next one replaces it, so quick steps never flicker. */
+const DWELL_MS = 900;
+/** How long a phase lasts before the chat shows its clock. */
+const CLOCK_MS = 5000;
 
 /** A gallery image's small WebP; other images show as they are. */
 const small = (src: string) => (src.startsWith("/gallery/") ? src.replace(/[^/]+$/, "small/$&.webp") : src);
 
-/** A waiting line that changes every few seconds while `active`, never twice in a row. */
-function useWaitingLine(active: boolean): string {
-  const [line, setLine] = useState(() => Math.floor(Math.random() * WAITING.length));
-  useEffect(() => {
-    if (!active) return;
-    const timer = setInterval(
-      () => setLine((i) => (i + 1 + Math.floor(Math.random() * (WAITING.length - 1))) % WAITING.length),
-      WAITING_S * 1000,
-    );
-    return () => clearInterval(timer);
-  }, [active]);
-  return WAITING[line];
+function duration(ms: number): string {
+  const s = Math.max(1, Math.round(ms / 1000));
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  return m < 60 ? `${m}m ${s % 60}s` : `${Math.floor(m / 60)}h ${m % 60}m`;
 }
 
-function useTyped(text: string): string {
-  const [typed, setTyped] = useState({ text, shown: 0 });
+const clock = (ms: number) => {
+  const s = Math.floor(ms / 1000);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+};
+
+/** `label`, held for at least `DWELL_MS` before it changes. */
+function useSteady(label: string): string {
+  const [shown, setShown] = useState(label);
+  const changed = useRef(0);
   useEffect(() => {
-    const step = matchMedia("(prefers-reduced-motion: reduce)").matches
-      ? text.length
-      : Math.ceil(text.length / TYPING_FRAMES);
-    let shown = 0;
-    let frame = 0;
-    const tick = () => {
-      shown = Math.min(text.length, shown + step);
-      setTyped({ text, shown });
-      if (shown < text.length) frame = requestAnimationFrame(tick);
-    };
-    frame = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frame);
-  }, [text]);
-  return typed.text === text ? text.slice(0, typed.shown) : "";
+    if (label === shown) return;
+    const timer = setTimeout(
+      () => {
+        changed.current = Date.now();
+        setShown(label);
+      },
+      Math.max(0, changed.current + DWELL_MS - Date.now()),
+    );
+    return () => clearTimeout(timer);
+  }, [label, shown]);
+  return shown;
 }
+
+function useNow(): number {
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+  return now;
+}
+
+/** The builder's steps, drawn only while open: a long build reasons for pages. */
+function WorkLog({ work, summary }: { work: Work; summary: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <details className="work" onToggle={(e) => setOpen(e.currentTarget.open)}>
+      <summary>{summary}</summary>
+      {open && (
+        <ol className="work-steps">
+          {work.steps.map((s, i) => (
+            <li key={i}>
+              {s.reasoning && <p>{s.reasoning}</p>}
+              {s.actions.map((a, j) => (
+                <span key={j} className="work-action">
+                  {a}
+                </span>
+              ))}
+            </li>
+          ))}
+        </ol>
+      )}
+    </details>
+  );
+}
+
+function Live({ activity }: { activity: Activity }) {
+  const label = useSteady(activity.label);
+  const elapsed = useNow() - activity.since;
+  const head = (
+    <span className="live-head">
+      <span key={label} className="shimmer">
+        {label}
+      </span>
+      {elapsed >= CLOCK_MS && <span className="live-clock">{clock(elapsed)}</span>}
+    </span>
+  );
+  return (
+    <div className="msg assistant live" title={`${WHO} is working`}>
+      {activity.work ? <WorkLog work={activity.work} summary={head} /> : head}
+    </div>
+  );
+}
+
+interface RowProps {
+  message: Message;
+  entering: boolean;
+  onOpen: (src: string) => void;
+}
+
+const Row = memo(
+  function Row({ message: m, entering, onOpen }: RowProps) {
+    return (
+      <div className={`msg ${m.role}${entering ? " enter" : ""}`}>
+        {m.work && <WorkLog work={m.work} summary={`Worked for ${duration(m.work.end - m.work.start)}`} />}
+        {m.role === "assistant" ? (
+          <div className="markdown">
+            <Markdown remarkPlugins={[remarkGfm]}>{m.text}</Markdown>
+          </div>
+        ) : (
+          m.text
+        )}
+        {m.images?.map((src) => (
+          <button
+            key={src}
+            className="msg-render"
+            onClick={() => onOpen(src)}
+            title={m.role === "user" ? "Open the image" : "Open the render"}
+          >
+            <img
+              src={small(src)}
+              alt={m.role === "user" ? "Your reference image" : `The render ${WHO} saw`}
+              loading="lazy"
+              decoding="async"
+            />
+          </button>
+        ))}
+      </div>
+    );
+  },
+  (a, b) =>
+    a.entering === b.entering &&
+    a.message.text === b.message.text &&
+    a.message.role === b.message.role &&
+    a.message.work?.end === b.message.work?.end &&
+    a.message.images.join() === b.message.images.join(),
+);
 
 interface Props {
   build: Build | null;
   loading: boolean;
-  thinking: string;
+  activity: Activity | null;
   /** Why the builder takes no message here, or null when it does. */
   closed: ReactNode;
   onCreate: (prompt: string, images: string[]) => Promise<void>;
@@ -105,14 +184,13 @@ interface Props {
   onRemix: (text: string, images: string[]) => Promise<void>;
 }
 
-export function ChatPanel({ build, loading, thinking, closed, onCreate, onSay, onStop, onRemix }: Props) {
+export function ChatPanel({ build, loading, activity, closed, onCreate, onSay, onStop, onRemix }: Props) {
   const [text, setText] = useState("");
   const [remixing, setRemixing] = useState(false);
   const [attachments, setAttachments] = useState<string[]>([]);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const log = useRef<HTMLDivElement>(null);
-  const thought = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
   const picker = useRef<HTMLInputElement>(null);
   const [opened, setOpened] = useState<string | null>(null);
@@ -121,9 +199,10 @@ export function ChatPanel({ build, loading, thinking, closed, onCreate, onSay, o
   /** Whether the log sits at its end, so new lines scroll it and reading earlier ones is left alone. */
   const pinned = useRef(true);
   const busy = build?.status === "building";
-  const waiting = useWaitingLine(busy);
-  const typed = useTyped(thinking);
   const changing = Boolean(build || loading);
+  /** How many messages the build had when it opened: only later ones animate in. */
+  const first = useRef<{ id: string | null; count: number }>({ id: null, count: 0 });
+  if (build && first.current.id !== build.id) first.current = { id: build.id, count: build.messages.length };
   const [stopping, setStopping] = useState(false);
   useEffect(() => {
     if (!busy) setStopping(false);
@@ -140,10 +219,6 @@ export function ChatPanel({ build, loading, thinking, closed, onCreate, onSay, o
   useEffect(() => {
     if (home) input.current?.focus();
   }, [home]);
-
-  useEffect(() => {
-    thought.current?.scrollTo({ top: thought.current.scrollHeight });
-  }, [typed]);
 
   const attach = async (files: File[]) => {
     if (!files.length) return;
@@ -182,7 +257,7 @@ export function ChatPanel({ build, loading, thinking, closed, onCreate, onSay, o
         }}
       >
         {loading ? (
-          <div className="msg assistant thinking">
+          <div className="msg assistant live">
             <span className="shimmer">Opening the chat…</span>
           </div>
         ) : !build ? (
@@ -206,46 +281,10 @@ export function ChatPanel({ build, loading, thinking, closed, onCreate, onSay, o
           </div>
         ) : (
           build.messages.map((m, i) => (
-            <div key={i} className={`msg ${m.role}`}>
-              {m.role === "assistant" ? (
-                <div className="markdown">
-                  <Markdown remarkPlugins={[remarkGfm]}>{m.text}</Markdown>
-                </div>
-              ) : (
-                m.text
-              )}
-              {m.images?.map((src) => (
-                <button
-                  key={src}
-                  className="msg-render"
-                  onClick={() => setOpened(src)}
-                  title={m.role === "user" ? "Open the image" : "Open the render"}
-                >
-                  <img
-                    src={small(src)}
-                    alt={m.role === "user" ? "Your reference image" : `The render ${WHO} saw`}
-                    loading="lazy"
-                    decoding="async"
-                  />
-                </button>
-              ))}
-            </div>
+            <Row key={i} message={m} entering={i >= first.current.count} onOpen={setOpened} />
           ))
         )}
-        {busy && (
-          <div className="msg assistant thinking">
-            <div className="thinking-head" title={`${WHO} is ${thinking ? "thinking" : "working"}`}>
-              <span key={waiting} className="shimmer">
-                {waiting}
-              </span>
-            </div>
-            {typed && (
-              <div className="thinking-text" ref={thought}>
-                {typed}
-              </div>
-            )}
-          </div>
-        )}
+        {busy && activity && <Live activity={activity} />}
       </div>
       {closed && !remixing && (
         <div className="gallery-note">

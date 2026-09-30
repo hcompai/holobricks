@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { publicBuild, showcase } from "./library";
 import type { Build, Source } from "./model";
+import type { Activity } from "./session";
 import { provideParts } from "./scene";
 import { useSession } from "./useSession";
 
@@ -12,7 +13,7 @@ export interface BuildRef {
 export interface LiveBuild {
   build: Build | null;
   loading: boolean;
-  thinking: string;
+  activity: Activity | null;
   error: string | null;
   /** A shown model can remain available, but must not be presented as confirmed live. */
   syncError: string | null;
@@ -47,7 +48,7 @@ function useFinished(ref: BuildRef | null): LiveBuild {
   return {
     build: shown,
     loading: id !== null && !shown && !error,
-    thinking: "",
+    activity: null,
     error,
     syncError: null,
   };

@@ -397,19 +397,101 @@ aside {
   width: min(88vw, 88vh);
 }
 
-.msg.thinking {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+.msg.enter {
+  animation: rise 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
-.thinking-head {
-  display: flex;
-  align-items: center;
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+.live-head {
+  display: inline-flex;
+  align-items: baseline;
   gap: 8px;
-  color: var(--text-secondary);
   font-size: 12px;
   font-weight: 600;
+  line-height: 18px;
+}
+
+.live-clock {
+  color: var(--text-tertiary);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  animation: fade-in 0.4s ease-out;
+}
+
+.work summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  line-height: 18px;
+  transition: color 0.15s;
+}
+
+.work summary::-webkit-details-marker {
+  display: none;
+}
+
+.work summary::after {
+  content: "";
+  width: 4px;
+  height: 4px;
+  margin-bottom: 2px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 0.2s;
+}
+
+.work[open] summary::after {
+  margin-bottom: 4px;
+  transform: rotate(45deg);
+}
+
+.work summary:hover {
+  color: var(--text-secondary);
+}
+
+.msg > .work {
+  margin-bottom: 2px;
+}
+
+.work-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 320px;
+  margin: 6px 0 8px;
+  padding: 0 0 0 12px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  list-style: none;
+  border-left: 1px solid var(--stroke-default);
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 18px;
+  white-space: pre-wrap;
+  animation: fade-in 0.2s ease-out;
+}
+
+.work-steps p {
+  margin: 0 0 4px;
+}
+
+.work-action {
+  display: block;
+  color: var(--text-secondary);
+  font-weight: 500;
 }
 
 .shimmer {
@@ -423,19 +505,10 @@ aside {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .shimmer {
+  .shimmer,
+  .msg.enter {
     animation: none;
   }
-}
-
-.thinking-text {
-  max-height: 150px;
-  overflow-y: auto;
-  scrollbar-width: none;
-  font-size: 12px;
-  line-height: 18px;
-  color: var(--text-tertiary);
-  mask-image: linear-gradient(to bottom, transparent, black 30px);
 }
 
 @keyframes shimmer {

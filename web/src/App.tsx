@@ -61,7 +61,7 @@ export default function App({ account }: { account: Account }) {
   opened.current = ref;
   const [libraryOpen, setLibraryOpen] = useState(urlLibrary);
   const buildId = ref?.id ?? null;
-  const { build: live, loading, thinking, error, syncError } = useBuild(ref);
+  const { build: live, loading, activity, error, syncError } = useBuild(ref);
   const edits = useEdits(live);
   /** The build as shown, with this browser's hand edits. */
   const build = edits.build;
@@ -333,7 +333,7 @@ export default function App({ account }: { account: Account }) {
             key={ref ? `${ref.source}:${ref.id}` : "new"}
             build={live}
             loading={loading}
-            thinking={thinking}
+            activity={activity}
             closed={closed}
             onCreate={start}
             onSay={async (text, images) => {

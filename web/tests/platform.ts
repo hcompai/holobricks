@@ -32,6 +32,8 @@ export class Platform {
   /** Answer the next session creations with this HTTP status. */
   refuse: number[] = [];
   offline = false;
+  /** When the next event happens, in ms since the epoch. */
+  now = Date.parse(NOW);
 
   session(id: string, status = "running") {
     this.sessions.set(id, { id, status, events: [], shared: 0 });
@@ -39,7 +41,7 @@ export class Platform {
   }
 
   private push(id: string, type: string, data: object) {
-    this.sessions.get(id)!.events.push({ timestamp: NOW, type, data });
+    this.sessions.get(id)!.events.push({ timestamp: new Date(this.now).toISOString(), type, data });
   }
 
   private agent(id: string, data: object) {
@@ -55,8 +57,12 @@ export class Platform {
     this.agent(id, { kind: "message_event", caller_id: "user", content: [text] });
   }
 
-  step(id: string, content: string, reasoning = "") {
-    this.agent(id, { kind: "policy_event", reasoning_content: reasoning, content, tool_reqs: [] });
+  step(id: string, content: string, reasoning = "", calls: { tool_name: string; args: object; id: string }[] = []) {
+    this.agent(id, { kind: "policy_event", reasoning_content: reasoning, content, tool_reqs: calls });
+  }
+
+  result(id: string, call: { tool_name: string; args: object; id: string }, result: unknown = "") {
+    this.agent(id, { kind: "tool_result", tool_req: call, result });
   }
 
   share(id: string, model: Model) {

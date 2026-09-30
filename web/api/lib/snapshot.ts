@@ -68,7 +68,7 @@ const picture = (src: string, key: string): Promise<Blob> =>
 
 const extension = (image: Blob) => ({ "image/jpeg": "jpg", "image/webp": "webp" })[image.type] ?? "png";
 
-/** The chat with its images copied out of the session, as many as the cap allows. */
+/** The chat with its images copied out of the session, as many as the cap allows, without Holo's reasoning. */
 async function copied(messages: Message[], key: string, keep: Keep): Promise<Message[]> {
   const sources = [...new Set(messages.flatMap((m) => m.images))].slice(0, MAX_IMAGES);
   const urls = new Map<string, string>();
@@ -83,7 +83,7 @@ async function copied(messages: Message[], key: string, keep: Keep): Promise<Mes
         }
       }),
     );
-  return messages.map((m) => ({ ...m, images: m.images.flatMap((src) => urls.get(src) ?? []) }));
+  return messages.map(({ work, ...m }) => ({ ...m, images: m.images.flatMap((src) => urls.get(src) ?? []) }));
 }
 
 function checked(edited: unknown): Edited | null {
