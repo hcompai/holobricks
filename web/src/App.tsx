@@ -13,6 +13,7 @@ import { countParts, PartsPanel } from "./PartsPanel";
 import { ShopDialog } from "./ShopDialog";
 import { Timeline } from "./Timeline";
 import { FilmExport } from "./FilmExport";
+import { InstructionsExport } from "./InstructionsExport";
 import { library, remember, thumbnail } from "./library";
 import { type BuildRef, useBuild } from "./useBuild";
 import { ThemeToggle } from "./ThemeToggle";
@@ -63,6 +64,7 @@ export default function App() {
   const [framing, setFraming] = useState<Framing>({ view: "iso" });
   const [spin, setSpin] = useState(false);
   const [exportBuild, setExportBuild] = useState<Build | null>(null);
+  const [instructionsBuild, setInstructionsBuild] = useState<Build | null>(null);
   const [shopping, setShopping] = useState<{ build: Build; preview: Promise<Blob | null> } | null>(null);
   const edited = edits.edits.length > 0 && build !== live;
 
@@ -220,6 +222,7 @@ export default function App() {
             build={build}
             image={() => viewer.current?.image() ?? Promise.resolve(null)}
             onReplay={exportReplay}
+            onInstructions={() => build?.pieces.length && setInstructionsBuild(structuredClone(build))}
           />
         )}
       </header>
@@ -369,6 +372,13 @@ export default function App() {
         )}
       </main>
       {exportBuild && <FilmExport build={exportBuild} onClose={() => setExportBuild(null)} />}
+      {instructionsBuild && (
+        <InstructionsExport
+          build={instructionsBuild}
+          describe={describer(live, palette)}
+          onClose={() => setInstructionsBuild(null)}
+        />
+      )}
       {shopping && <ShopDialog build={shopping.build} preview={shopping.preview} onClose={() => setShopping(null)} />}
     </div>
   );

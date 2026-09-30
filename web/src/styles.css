@@ -1632,4 +1632,6 @@ main {
 
 .price-details p {
   margin: 4px 2px 0;
+.instructions-dialog {
+  width: min(560px, calc(100vw - 32px));
 }
