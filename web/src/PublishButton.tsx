@@ -11,7 +11,7 @@ interface Props {
   onUnpublish: () => Promise<void>;
 }
 
-/** Publishes the build to the public library under the author's name; making it private again asks first. */
+/** Publishes the build to the public library under the author's name, or makes it private again, each after a confirmation. */
 export function PublishButton({ published, blocked, author, onPublish, onUnpublish }: Props) {
   const { open, setOpen, root } = useMenu();
   const [busy, setBusy] = useState(false);
@@ -28,44 +28,46 @@ export function PublishButton({ published, blocked, author, onPublish, onUnpubli
       setBusy(false);
     }
   };
-
-  if (!published)
-    return (
-      <span className="publish">
-        {error && (
-          <span className="publish-error" role="alert">
-            {error}
-          </span>
-        )}
-        <button
-          className="publish-button"
-          onClick={() => run(onPublish)}
-          disabled={busy || blocked !== null}
-          title={blocked ?? `Publish to the public library, as ${author}`}
-        >
-          <LockSimpleIcon size={16} />
-          {busy ? "Publishing…" : "Publish"}
-        </button>
-      </span>
-    );
+  const ask = published
+    ? {
+        name: "Make private",
+        question: "Make this build private?",
+        note: "It leaves the public library and its link stops working. You can publish it again.",
+        doing: "Making private…",
+        icon: <LockSimpleIcon size={16} />,
+        action: onUnpublish,
+      }
+    : {
+        name: "Publish",
+        question: "Publish this build?",
+        note: `Everyone at H Company can open it, as ${author}'s: the model, the chat, and the photos you attached.`,
+        doing: "Publishing…",
+        icon: <GlobeIcon size={16} />,
+        action: onPublish,
+      };
 
   return (
     <div className="menu publish" ref={root}>
       <button
-        className="publish-button active"
+        className={published ? "publish-button active" : "publish-button"}
         onClick={() => setOpen(!open)}
+        disabled={!published && blocked !== null}
         aria-haspopup="dialog"
         aria-expanded={open}
-        title="In the public library: anyone can open it"
+        title={
+          published
+            ? "In the public library: anyone at H Company can open it"
+            : (blocked ?? "Publish to the public library")
+        }
       >
-        <GlobeIcon size={16} />
-        Public
-        <CaretDownIcon size={12} />
+        {published ? <GlobeIcon size={16} /> : <LockSimpleIcon size={16} />}
+        {published ? "Public" : "Publish"}
+        {published && <CaretDownIcon size={12} />}
       </button>
       {open && (
-        <div className="menu-list publish-confirm" role="dialog" aria-label="Make private">
-          <b>Make this build private?</b>
-          <p className="muted">It leaves the public library and its link stops working. You can publish it again.</p>
+        <div className="menu-list publish-confirm" role="dialog" aria-label={ask.name}>
+          <b>{ask.question}</b>
+          <p className="muted">{ask.note}</p>
           {error && (
             <p className="publish-error" role="alert">
               {error}
@@ -75,9 +77,9 @@ export function PublishButton({ published, blocked, author, onPublish, onUnpubli
             <button onClick={() => setOpen(false)} disabled={busy} autoFocus>
               Cancel
             </button>
-            <button className="primary" onClick={() => run(onUnpublish)} disabled={busy}>
-              <LockSimpleIcon size={16} />
-              {busy ? "Making private…" : "Make private"}
+            <button className="primary" onClick={() => run(ask.action)} disabled={busy}>
+              {ask.icon}
+              {busy ? ask.doing : ask.name}
             </button>
           </div>
         </div>

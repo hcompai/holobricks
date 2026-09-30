@@ -17,7 +17,7 @@ import { ShopDialog } from "./ShopDialog";
 import { Timeline } from "./Timeline";
 import { FilmExport } from "./FilmExport";
 import { InstructionsExport } from "./InstructionsExport";
-import { library, publish, remember, thumbnail, unpublish } from "./library";
+import { library, publish, remember, type Shelf, thumbnail, unpublish } from "./library";
 import { type BuildRef, useBuild } from "./useBuild";
 import { useKeeper } from "./useSession";
 import { ThemeToggle } from "./ThemeToggle";
@@ -69,8 +69,9 @@ export default function App({ account }: { account: Account }) {
   const prices = usePrices();
   const viewer = useRef<ViewerHandle>(null);
   const [builds, setBuilds] = useState<BuildSummary[] | null>(null);
-  const [buildsFailed, setBuildsFailed] = useState(false);
+  const [buildsFailed, setBuildsFailed] = useState<Shelf[]>([]);
   const [center, setCenter] = useState<"model" | "parts">("model");
+  const [starting, setStarting] = useState(false);
   const [step, setStep] = useState(Infinity);
   const [following, setFollowing] = useState(true);
   const [playing, setPlaying] = useState(false);
@@ -98,18 +99,23 @@ export default function App({ account }: { account: Account }) {
   const latest = useRef(0);
   const refreshBuilds = useCallback(() => {
     const request = ++latest.current;
-    setBuildsFailed(false);
-    library().then(
-      (next) => request === latest.current && setBuilds(next),
+    return library().then(
+      ({ builds: next, failed }) => {
+        if (request !== latest.current) return;
+        const kept = (shelf: Shelf, previous: BuildSummary[] | null) =>
+          failed.includes(shelf) ? (previous ?? []).filter((b) => (b.source === "session") === (shelf === "mine")) : [];
+        setBuilds((previous) => [...kept("mine", previous), ...next, ...kept("public", previous)]);
+        setBuildsFailed(failed);
+      },
       (e) => {
         if (request !== latest.current) return;
         console.error(e);
-        setBuildsFailed(true);
+        setBuildsFailed(["mine", "public"]);
       },
     );
   }, []);
 
-  useEffect(() => refreshBuilds(), [refreshBuilds, account.user.id, libraryOpen]);
+  useEffect(() => void refreshBuilds(), [refreshBuilds, account.user.id, libraryOpen]);
   useKeeper(
     builds?.filter((b) => b.source === "session" && b.status === "building").map((b) => b.id) ?? [],
     refreshBuilds,
@@ -129,6 +135,7 @@ export default function App({ account }: { account: Account }) {
 
   const show = useCallback((next: BuildRef | null) => {
     setRef(next);
+    setCenter("model");
     setMode("view");
     setStep(Infinity);
     setFollowing(true);
@@ -184,10 +191,15 @@ export default function App({ account }: { account: Account }) {
   };
 
   const start = async (prompt: string, images: string[]) => {
-    const id = await create(prompt, images);
-    remember(id, { name: prompt.slice(0, 60) || "Untitled build", prompt });
-    open({ id, source: "session" });
-    refreshBuilds();
+    setStarting(true);
+    try {
+      const id = await create(prompt, images);
+      remember(id, { name: prompt.slice(0, 60) || "Untitled build", prompt });
+      open({ id, source: "session" });
+      refreshBuilds();
+    } finally {
+      setStarting(false);
+    }
   };
 
   const saveThumbnail = async (png: Blob) => {
@@ -201,15 +213,14 @@ export default function App({ account }: { account: Account }) {
     const png = await viewer.current?.thumbnail();
     const hand = edits.edits.length ? { revision: live.revision, edits: edits.edits } : null;
     await publish(live.id, png ? await thumbnail(png) : null, hand);
-    open({ id: live.id, source: "public" });
-    refreshBuilds();
+    await refreshBuilds();
   };
 
   const unpublishBuild = async () => {
     if (!live) return;
     await unpublish(live.id);
     if (ref?.source === "public") open({ id: live.id, source: "session" });
-    refreshBuilds();
+    await refreshBuilds();
   };
 
   /** The signed-in user's build, from their session or as they published it. */
@@ -238,7 +249,7 @@ export default function App({ account }: { account: Account }) {
           aria-pressed={libraryOpen}
           onClick={() => navigate(ref, !libraryOpen)}
         >
-          <SquaresFourIcon size={16} /> Library
+          <SquaresFourIcon size={16} /> <span>Library</span>
         </button>
         {loading && summary && <span className="title">{summary.name}</span>}
         {build && (
@@ -246,8 +257,12 @@ export default function App({ account }: { account: Account }) {
             <span className="title" title={build.name}>
               {build.name}
             </span>
-            <span className="chip">{build.pieces.length.toLocaleString()} pieces</span>
-            <span className="chip">{build.steps.length} steps</span>
+            {build.pieces.length > 0 && (
+              <>
+                <span className="chip">{build.pieces.length.toLocaleString()} pieces</span>
+                <span className="chip">{build.steps.length} steps</span>
+              </>
+            )}
             {build.width > 0 && (
               <span className="chip">
                 {build.width}×{build.depth} studs
@@ -312,6 +327,7 @@ export default function App({ account }: { account: Account }) {
         </div>
         <div className="aside-body">
           <ChatPanel
+            key={ref ? `${ref.source}:${ref.id}` : "new"}
             build={live}
             loading={loading}
             thinking={thinking}
@@ -364,7 +380,9 @@ export default function App({ account }: { account: Account }) {
             <Viewer
               ref={viewer}
               build={build}
-              opening={buildId && !error ? `Opening ${heading?.name ?? "the build"}` : null}
+              opening={
+                buildId && !error ? `Opening ${heading?.name ?? "the build"}` : starting ? "Starting Holo…" : null
+              }
               step={visibleStep}
               syncError={syncError}
               framing={framing}
@@ -404,6 +422,7 @@ export default function App({ account }: { account: Account }) {
             }}
             onSpeed={setSpeed}
             onReplay={exportReplay}
+            spaceKey={mode !== "walk"}
           />
         )}
         {libraryOpen && (
@@ -412,7 +431,11 @@ export default function App({ account }: { account: Account }) {
             failed={buildsFailed}
             active={ref}
             onRetry={refreshBuilds}
-            onOpen={(b) => open({ id: b.id, source: b.source })}
+            onClose={() => navigate(ref, false)}
+            onOpen={(b) => {
+              const mine = b.source === "public" && builds?.some((s) => s.source === "session" && s.id === b.id);
+              open({ id: b.id, source: mine ? "session" : b.source });
+            }}
           />
         )}
       </main>

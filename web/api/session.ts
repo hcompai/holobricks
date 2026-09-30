@@ -20,7 +20,7 @@ async function signIn(request: Request, previous: string | null): Promise<Handof
   const user = admit(await whoami(access));
   if (previous) await revoke(access, previous);
   const key = await mint(access, user.email);
-  const expires = Date.parse(`${key.expires}T23:59:59Z`) / 1000;
+  const expires = Date.parse(`${key.expires.slice(0, 10)}T23:59:59Z`) / 1000;
   return { user, key: key.key, keyId: key.id, expires, pass: pass(user, expires, key.key) };
 }
 

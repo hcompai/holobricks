@@ -89,7 +89,7 @@ test("a colleague's public build opens from the library's Public section, under 
   await expect(page.getByRole("button", { name: "Publish", exact: true })).toHaveCount(0);
 });
 
-test("the author publishes a build with its render and the signed-in key, lands on it, then makes it private after a confirmation", async ({
+test("the author publishes a build after a confirmation, stays on it, then makes it private after another", async ({
   page,
 }) => {
   const model = fixture();
@@ -103,9 +103,12 @@ test("the author publishes a build with its render and the signed-in key, lands 
   await page.goto("/?build=mine");
   await shown(page, model.revision);
 
+  const publishing = page.getByRole("dialog", { name: "Publish" });
   await page.getByRole("button", { name: "Publish", exact: true }).click();
-  await expect(page).toHaveURL(/\?public=mine$/);
-  await shown(page, model.revision);
+  await expect(publishing).toContainText("the chat, and the photos you attached");
+  await publishing.getByRole("button", { name: "Publish" }).click();
+  await expect(publishing).toBeHidden();
+  await expect(page).toHaveURL(/\?build=mine$/);
   const unpublish = page.getByRole("button", { name: "Public", exact: true });
   await expect(unpublish).toBeVisible();
   const post = calls.find((c) => c.method === "POST")!;

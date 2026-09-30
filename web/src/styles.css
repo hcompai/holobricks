@@ -148,6 +148,56 @@ aside {
   min-height: 0;
 }
 
+@media (max-width: 760px) {
+  .app {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: 56px minmax(0, 11fr) minmax(0, 9fr);
+    height: 100dvh;
+  }
+
+  main {
+    grid-row: 2;
+  }
+
+  aside {
+    grid-row: 3;
+    border-right: none;
+    border-top: 1px solid var(--stroke-default);
+  }
+
+  header {
+    padding: 0 12px;
+    gap: 6px;
+  }
+
+  header .brand {
+    gap: 0;
+    margin-right: 0;
+  }
+
+  header .brand,
+  header .library-toggle span,
+  header .shop-trigger span {
+    font-size: 0;
+  }
+
+  .center-bar {
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 8px;
+  }
+
+  .center-bar .tabs {
+    max-width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .stage {
+    margin: 0 8px;
+  }
+}
+
 .aside-bar {
   display: flex;
   align-items: center;
@@ -523,6 +573,10 @@ aside {
   padding: 8px 16px 32px;
   background: var(--background-page);
   animation: fade-in 0.15s ease-out;
+}
+
+.library-page:focus {
+  outline: none;
 }
 
 .library-section + .library-section {

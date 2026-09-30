@@ -143,12 +143,16 @@ test("the selection takes a new color, the model's own colors listed first", asy
   await expect(page.getByRole("row", { name: `3× test-brick ${next}` })).toBeVisible();
 });
 
-test("walk mode explains its controls and Escape leaves it", async ({ page }) => {
+test("walk mode explains its controls, keeps Space for rising, and Escape leaves it", async ({ page }) => {
   await open(page);
   const walk = page.getByRole("button", { name: "Walk", exact: true });
   await walk.click();
   await expect(walk).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator(".walk-hint")).toContainText("Click to walk");
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await page.keyboard.press("Space");
+  await page.waitForTimeout(300);
+  expect(await page.locator(".timeline .play").getAttribute("title")).toBe("Play");
   await page.keyboard.press("Escape");
   await expect(walk).toHaveAttribute("aria-pressed", "false");
   await expect(page.locator(".walk-hint")).toBeHidden();

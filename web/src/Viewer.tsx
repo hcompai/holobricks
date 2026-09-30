@@ -67,7 +67,7 @@ export function ViewControls({
         className={mode === "edit" ? "active" : ""}
         aria-pressed={mode === "edit"}
         disabled={!canEdit && mode !== "edit"}
-        title={canEdit ? "Select pieces to move, turn or delete them" : "Pieces can be edited once the builder is done"}
+        title={canEdit ? "Select pieces to move, turn or delete them" : "Pieces can be edited once Holo is done"}
         onClick={() => toggle("edit")}
       >
         <PencilSimpleIcon size={14} weight="bold" />
@@ -365,7 +365,7 @@ export function Viewer(props: Props) {
               <button onClick={edits.reset}>Discard</button>
             </>
           ) : (
-            `Your ${edits.hidden} edit${edits.hidden === 1 ? " is" : "s are"} hidden while the builder works.`
+            `Your ${edits.hidden} edit${edits.hidden === 1 ? " is" : "s are"} hidden while Holo works.`
           )}
         </div>
       )}
