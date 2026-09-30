@@ -193,7 +193,7 @@ export default function App({ account }: { account: Account }) {
 
   const publishBuild = async () => {
     if (!live) return;
-    const png = await viewer.current?.image();
+    const png = await viewer.current?.thumbnail();
     const hand = edits.edits.length ? { revision: live.revision, edits: edits.edits } : null;
     await publish(live.id, png ? await thumbnail(png) : null, hand);
     open({ id: live.id, source: "public" });

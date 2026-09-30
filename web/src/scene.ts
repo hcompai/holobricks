@@ -52,6 +52,7 @@ interface Light {
 }
 
 /** The user's view: a sun from the upper left, so the default camera sees the shadows it casts. */
+const FLOOR_SHADOW = 0.18;
 const VIEW_LIGHT: Light = {
   sun: new THREE.Vector3(-0.5, 1, 0.6).normalize(),
   intensity: 2.6,
@@ -412,6 +413,8 @@ export class BrickScene {
   private keys = new Set<string>();
   private timer = new THREE.Timer();
   private ground = 0;
+  /** Catches the model's shadow in the user's view. */
+  private floor: THREE.Mesh<THREE.PlaneGeometry, THREE.ShadowMaterial> | null = null;
 
   constructor(
     private container: HTMLElement,
@@ -444,7 +447,12 @@ export class BrickScene {
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
     this.controls.addEventListener("start", () => (this.userMoved = true));
-    this.controls.addEventListener("change", () => (this.dirty = true));
+    this.controls.addEventListener("change", () => {
+      this.dirty = true;
+      if (this.walking) return;
+      this.camera.near = Math.max(1, this.camera.position.distanceTo(this.controls.target) / 100);
+      this.camera.updateProjectionMatrix();
+    });
     this.controls.autoRotateSpeed = 1.2;
 
     this.loader.smoothNormals = true;
@@ -454,6 +462,13 @@ export class BrickScene {
     this.renderer.domElement.addEventListener("webglcontextlost", this.contextLost);
 
     if (!interactive) return;
+    this.floor = new THREE.Mesh(
+      new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2),
+      new THREE.ShadowMaterial({ opacity: FLOOR_SHADOW }),
+    );
+    this.floor.receiveShadow = true;
+    this.floor.visible = false;
+    this.scene.add(this.floor);
     this.resizeObserver.observe(container);
     this.resize();
     this.frameView("iso", 32, 32);
@@ -462,7 +477,7 @@ export class BrickScene {
       const seconds = Math.min(this.timer.update(time).getDelta(), 0.1);
       if (this.walking) this.walk(seconds);
       else this.controls.update();
-      if (this.dirty) this.draw();
+      if (this.dirty && this.container.checkVisibility({ visibilityProperty: true })) this.draw();
     };
     tick();
   }
@@ -491,8 +506,14 @@ export class BrickScene {
   /** Aim the sun's shadow camera at the whole model and redraw its shadow map on the next render. */
   private fitShadows() {
     this.shadowsStale = false;
-    const sphere = this.modelBox().getBoundingSphere(new THREE.Sphere());
+    const box = this.modelBox();
+    const sphere = box.getBoundingSphere(new THREE.Sphere());
     const r = Math.max(sphere.radius, STUD);
+    if (this.floor) {
+      this.floor.visible = !box.isEmpty();
+      this.floor.position.set(sphere.center.x, box.min.y - 0.1, sphere.center.z);
+      this.floor.scale.setScalar(4 * r);
+    }
     this.sun.target.position.copy(sphere.center);
     this.sun.target.updateMatrixWorld();
     this.sunDistance = 2 * r;
@@ -560,6 +581,8 @@ export class BrickScene {
     this.batches.clear();
     this.environment.dispose();
     this.sun.shadow.dispose();
+    this.floor?.geometry.dispose();
+    this.floor?.material.dispose();
     // Parsing may still be in flight when an export is cancelled. Release its resources too.
     void Promise.allSettled(this.templates.values()).then((results) => {
       const geometries = new Set<THREE.BufferGeometry>();
@@ -625,28 +648,31 @@ export class BrickScene {
     const key = `${part}:${color}`;
     let template = this.templates.get(key);
     if (!template) {
-      template = this.palette().then(() => {
-        this.assertAvailable();
-        const packed = PARTS.get(part);
-        // Never parse an incomplete pack or follow its external references.
-        if (!packed?.startsWith("0 FILE ") || !/\n[134] /m.test(packed))
-          throw new Error(`Invalid render asset: ${part}`);
-        return new Promise<THREE.Group>((resolve, reject) => {
-          const timer = setTimeout(() => reject(new Error(`Parsing ${part} timed out`)), 12000);
-          this.loader.parse(
-            packed.replace("\n1 16 ", `\n1 ${color} `),
-            (group) => {
-              clearTimeout(timer);
-              if (new THREE.Box3().setFromObject(group).isEmpty()) reject(new Error(`Empty render asset: ${part}`));
-              else resolve(group);
-            },
-            (error) => {
-              clearTimeout(timer);
-              reject(error);
-            },
-          );
+      template = this.palette()
+        // Each parse gets its own task so a big model keeps the page responsive while it loads.
+        .then(() => new Promise((resolve) => setTimeout(resolve)))
+        .then(() => {
+          this.assertAvailable();
+          const packed = PARTS.get(part);
+          // Never parse an incomplete pack or follow its external references.
+          if (!packed?.startsWith("0 FILE ") || !/\n[134] /m.test(packed))
+            throw new Error(`Invalid render asset: ${part}`);
+          return new Promise<THREE.Group>((resolve, reject) => {
+            const timer = setTimeout(() => reject(new Error(`Parsing ${part} timed out`)), 12000);
+            this.loader.parse(
+              packed.replace("\n1 16 ", `\n1 ${color} `),
+              (group) => {
+                clearTimeout(timer);
+                if (new THREE.Box3().setFromObject(group).isEmpty()) reject(new Error(`Empty render asset: ${part}`));
+                else resolve(group);
+              },
+              (error) => {
+                clearTimeout(timer);
+                reject(error);
+              },
+            );
+          });
         });
-      });
       this.templates.set(key, template);
       const pending = template;
       void pending.catch(() => {

@@ -14,7 +14,9 @@ const PHOTO = {
 const shown = (page: Page, revision: string) =>
   expect(page.locator(".viewer")).toHaveAttribute("data-revision", revision);
 
-test("a live build shows each shared model and answers `look` with a render of that revision", async ({ page }) => {
+test("a live build shows the loader until its first model, each shared model, and answers `look` with a render of that revision", async ({
+  page,
+}) => {
   await site(page);
   const agp = await platform(page);
   agp.session("live");
@@ -33,12 +35,15 @@ test("a live build shows each shared model and answers `look` with a render of t
   await expect(holo.locator("strong")).toHaveText("too thin");
   await expect(holo.locator("li")).toHaveCount(2);
   await expect(page.locator(".msg.user")).toHaveText("A tower of **bricks**");
+  const planning = page.getByText("Holo is planning the build…");
+  await expect(planning).toBeVisible();
 
   const model = fixture();
   agp.state("live", "running");
   agp.share("live", model);
   agp.look("live", "side", { angle: 90 });
   await shown(page, model.revision);
+  await expect(planning).toHaveCount(0);
   await expect.poll(() => agp.posted("/tool_results")).toHaveLength(2);
   const [caption, image] = agp.posted("/tool_results")[1].result;
   expect(caption).toMatch(new RegExp(`^Revision ${model.revision.slice(0, 8)}, 8 pieces\\. The view from 90 degrees`));
