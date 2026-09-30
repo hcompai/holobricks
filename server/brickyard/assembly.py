@@ -17,7 +17,18 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from brickyard.assembly_geometry import Envelope, envelopes, rigid_grid, swept_interval
-from brickyard.connectors import EPS, POLICY, ConnectorError, GeometryChangedError, Library, Port, Vec, compatible, dot
+from brickyard.connectors import (
+    EPS,
+    POLICY,
+    ConnectorError,
+    GeometryChangedError,
+    Library,
+    LibraryMissing,
+    Port,
+    Vec,
+    compatible,
+    dot,
+)
 from brickyard.model import Build
 
 PLAN_VERSION = 1
@@ -417,6 +428,13 @@ def check(build: Build, plan: Plan | None = None, library: Library | None = None
             status="unverified",
             pieces=len(build.pieces),
             issues=[Issue(code="geometry_changed", message=str(exc))],
+        )
+    except LibraryMissing as exc:
+        return Report(
+            revision=build.revision,
+            status="unverified",
+            pieces=len(build.pieces),
+            issues=[Issue(code="data_unavailable", message=str(exc))],
         )
     except (ConnectorError, KeyError, OSError, ValueError, IndexError, RecursionError) as exc:
         return Report(
