@@ -15,11 +15,24 @@ const COLOUR = /^0\s+!COLOUR\s+(\S+)\s+CODE\s+(\d+)\s+VALUE\s+(#[0-9a-f]{6})(.*)
 const PLACEHOLDERS = new Set([16, 24]);
 const NOT_BRICKS = /\b(RUBBER|MATERIAL|LUMINANCE)\b/;
 
+let source: Promise<string> | null = null;
 let colors: Promise<Color[]> | null = null;
+
+/** The LDraw palette file, read once and shared by every scene. */
+export function paletteFile(): Promise<string> {
+  if (!source) {
+    const pending = loadAsset(PALETTE);
+    source = pending;
+    void pending.catch(() => {
+      if (source === pending) source = null;
+    });
+  }
+  return source;
+}
 
 /** The palette's brick colors, in its order; read once and shared. */
 export function palette(): Promise<Color[]> {
-  colors ??= loadAsset(PALETTE, new AbortController().signal).then((text) =>
+  colors ??= paletteFile().then((text) =>
     [...text.matchAll(COLOUR)].flatMap(([, name, code, hex, rest]) => {
       if (PLACEHOLDERS.has(+code) || NOT_BRICKS.test(rest)) return [];
       const family = /\bALPHA\b/.test(rest)
