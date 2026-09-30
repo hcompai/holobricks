@@ -32,13 +32,15 @@ test("pages split each step by height, bottom up, gathering small layers within 
   ]);
 });
 
-test("the Download menu makes a PDF: cover, one page per layer, then the parts list", async ({ page }) => {
+test("the timeline makes a PDF: cover, one page per layer, then the parts list", async ({ page }) => {
   const build = fixture();
   await site(page, [build]);
   await page.goto(`/?showcase=${build.id}`);
   await expect(page.locator(".viewer")).toHaveAttribute("data-render-state", "ready");
   await page.getByRole("button", { name: "Download" }).click();
-  await page.getByRole("menuitem", { name: "Building instructions (PDF)" }).click();
+  await expect(page.getByRole("menuitem")).toHaveText(["Download .ldr", "Download image"]);
+  await page.getByRole("button", { name: "Download" }).click();
+  await page.getByRole("button", { name: "Instructions", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Building instructions" });
   await expect(dialog).toContainText("A PDF of 4 pages for 8 pieces");
   await dialog.getByRole("button", { name: "Make the PDF" }).click();
