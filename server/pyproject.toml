@@ -18,6 +18,7 @@ dev = [
 [project.scripts]
 brickyard-catalog = "brickyard.rebrickable:main"
 brickyard-gallery = "brickyard.gallery:main"
+brickyard-prices = "brickyard.pickabrick:main"
 bricks = "brickyard.client:main"
 
 [build-system]

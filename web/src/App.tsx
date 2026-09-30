@@ -4,6 +4,8 @@ import { create, say, stop, unavailable } from "./agent";
 import { useEdits } from "./edits";
 import { type Build, type BuildSummary, type Piece, verified } from "./model";
 import { type Color, usePalette } from "./palette";
+import { usePrices } from "./pickabrick";
+import { PriceMenu } from "./PriceMenu";
 import { ChatPanel } from "./ChatPanel";
 import { DownloadMenu } from "./DownloadMenu";
 import { LibraryPanel } from "./LibraryPanel";
@@ -48,6 +50,7 @@ export default function App() {
   const build = edits.build;
   const [mode, setMode] = useState<Mode>("view");
   const palette = usePalette();
+  const prices = usePrices();
   const viewer = useRef<ViewerHandle>(null);
   const [builds, setBuilds] = useState<BuildSummary[] | null>(null);
   const [buildsFailed, setBuildsFailed] = useState(false);
@@ -191,6 +194,7 @@ export default function App() {
                 {build.width}×{build.depth} studs
               </span>
             )}
+            {prices && build.pieces.length > 0 && <PriceMenu build={build} table={prices} edited={edited} />}
           </>
         )}
         <span className="spacer" />

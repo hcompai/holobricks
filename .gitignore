@@ -23,4 +23,5 @@ __pycache__/
 
 web/public/brickyard.tgz
 web/public/LDConfig.ldr
+web/public/pick-a-brick.json
 web/public/gallery/

@@ -11,6 +11,7 @@
 - **Every brick is checked**: a run places the bricks that fit and names each one that does not by its script line.
   Checks use bounding boxes and supported stud connections; they do not certify strength or stability.
 - **Replay** the steps, browse the parts list, download the `.ldr` or a PNG, export a GIF of the build.
+- **Price estimate**: beside the piece count, what the model would cost on [LEGO Pick a Brick](https://www.lego.com/fr-fr/pick-and-build/pick-a-brick), edits included. It opens the details (pieces priced, pieces Pick a Brick doesn't sell in their color, out of stock) and a CSV to upload there, one per 400 different elements. Prices come from the deploy's snapshot (`brickyard-prices`), not live; shipping is not included.
 - **Shop bricks**: copy a ready-made request into HoloTab, which imports the verified parts list on BrickLink and prepares carts for you to review and pay. See [SHOPPING.md](SHOPPING.md).
 - **Edit** by hand: choose **Edit**, click a piece (the one under the pointer is outlined) and Shift-click to add more, then move them a stud or a plate, turn them a quarter about their middle, recolor them from the LDraw palette, or delete them; undo, redo and reset. Edits are saved in this browser per build and revision, and the `.ldr` download includes them. The builder never sees them: the Parts tab counts the edited model's parts without BrickLink verification, shopping stays off while a model is edited, edits are hidden while the builder works, and a new revision leaves them to discard.
 - **Walk** through the model at a minifig's eye height: choose **Walk**, click the model, then WASD or the arrows to move, the mouse to look, Space/E and C/Q to go up and down, Shift to run, Esc to release the mouse and Esc again to leave.
@@ -37,6 +38,7 @@ scripts/fetch-ldraw.sh                        # LDraw parts library into ./ldraw
 python3 scripts/fetch-connectors.py           # pinned LDCad stud/socket data for assembly plans
 cd server && uv sync && cd ..
 REBRICKABLE_API_KEY=... server/.venv/bin/brickyard-catalog   # data/rebrickable.json.gz, valid 30 days
+server/.venv/bin/brickyard-prices                             # web/public/pick-a-brick.json (--locale en-US for another store)
 server/.venv/bin/python scripts/pack-toolkit.py               # web/public/brickyard.tgz and LDConfig.ldr
 cd web && npm install
 VITE_HAI_API_KEY=$(grep '^HAI_API_KEY=' ~/code/hai/.env | cut -d= -f2- | tr -d '"') npm run dev   # http://localhost:5173
