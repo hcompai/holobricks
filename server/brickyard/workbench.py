@@ -43,7 +43,8 @@ PARTS_SHOWN = 12
 PARTS_FOUND = 20
 FLOATING_SHOWN = 5
 LINES_CITED = 3
-SCRIPT_TIMEOUT_S = 60
+SCRIPT_TIMEOUT_S = 40
+"""Well under the agent's 60 s shell wait, so a run and the share after it see the same revision."""
 BASEPLATE = "3811.dat"
 BACKS = {"south": (2, 1), "north": (2, -1), "west": (0, 1), "east": (0, -1)}
 """For each facing, the LDU axis and direction from a mounted part to the wall behind it."""
