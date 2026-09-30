@@ -36,44 +36,61 @@ test("upload lists hold at most 400 different elements each", () => {
   expect(files[1]).toBe("elementId,quantity\r\n400,401\r\n");
 });
 
-test("the estimate sits beside the piece count and opens its details and upload list", async ({ page }) => {
+test("one sheet gets the bricks: its price in the header, BrickLink, a Pick a Brick list and the instructions", async ({
+  page,
+}) => {
   await open(page, TABLE);
-  const trigger = page.getByRole("button", { name: /^≈/ });
-  await expect(trigger).toHaveText(/≈ 4\s€/);
+  const trigger = page.getByRole("button", { name: /^Get the bricks/ });
+  await expect(trigger).toHaveText(/^Get the bricks · ≈ 4\s€$/);
   await trigger.click();
-  const details = page.getByRole("dialog", { name: "Price estimate" });
-  await expect(details).toContainText(/≈ 4,10\s€/);
-  await expect(details).toContainText("Priced 6 of 8 pieces; 2 are not sold there in their color.");
-  await expect(details).toContainText("2 of them are out of stock right now.");
-  await expect(details.getByRole("link", { name: /Open Pick a Brick/ })).toHaveAttribute(
+  const sheet = page.getByRole("dialog", { name: "Build it for real" });
+  await expect(sheet.getByRole("region", { name: "BrickLink" })).toContainText("The parts list was not checked.");
+  const store = sheet.getByRole("region", { name: "Pick a Brick" });
+  await expect(store).toContainText(
+    /≈ 4,10\s€ on LEGO Pick a Brick for 6 of 8 pieces; 2 are not sold there in their color\. 2 are out of stock\./,
+  );
+  await expect(store.getByRole("link", { name: /Open Pick a Brick/ })).toHaveAttribute(
     "href",
     "https://www.lego.com/fr-fr/pick-and-build/pick-a-brick",
   );
 
-  const download = page.waitForEvent("download");
-  await details.getByRole("button", { name: "Download list for Pick a Brick" }).click();
+  let download = page.waitForEvent("download");
+  await store.getByRole("button", { name: "Download Pick a Brick list" }).click();
   const csv = await readFile(await (await download).path(), "utf8");
   expect(csv).toBe("elementId,quantity\r\n300121,2\r\n300124,2\r\n300123,2\r\n");
+
+  const pdf = sheet.getByRole("region", { name: "Instructions" }).getByRole("link", { name: /Download instructions/ });
+  await expect(pdf).toBeVisible({ timeout: 60000 });
+  download = page.waitForEvent("download");
+  await pdf.click();
+  expect((await readFile(await (await download).path(), "latin1")).startsWith("%PDF-")).toBe(true);
   await page.keyboard.press("Escape");
-  await expect(details).toBeHidden();
+  await expect(sheet).toBeHidden();
 });
 
-test("the estimate follows edits, and stays away without a price table", async ({ page }) => {
+test("a hand-edited build prices its edits, cannot fill a BrickLink cart until reset, and no table shows no price", async ({
+  page,
+}) => {
   await open(page, TABLE);
   await page.getByRole("button", { name: "Edit", exact: true }).click();
   const box = (await page.locator(".viewer-canvas").boundingBox())!;
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
   await page.getByRole("dialog", { name: "Selection" }).getByRole("button", { name: "Delete" }).click();
   await expect(page.locator(".chip").first()).toHaveText("7 pieces");
-  await page.getByRole("button", { name: /^≈/ }).click();
-  await expect(page.getByRole("dialog", { name: "Price estimate" })).toContainText(
-    "Includes your edits in this browser.",
-  );
+  await page.getByRole("button", { name: /^Get the bricks/ }).click();
+  const sheet = page.getByRole("dialog", { name: "Build it for real" });
+  await expect(sheet.getByRole("region", { name: "Pick a Brick" })).toContainText("Includes your edits.");
+  const bricklink = sheet.getByRole("region", { name: "BrickLink" });
+  await expect(bricklink.getByRole("alert")).toContainText("Reset your edits");
+  await bricklink.getByRole("button", { name: "Reset my edits" }).click();
+  await expect(page.locator(".chip").first()).toHaveText("8 pieces");
+  await expect(bricklink.getByRole("alert")).toContainText("The parts list was not checked.");
+  await expect(sheet.getByRole("region", { name: "Pick a Brick" })).not.toContainText("Includes your edits.");
 
   await page.unrouteAll({ behavior: "ignoreErrors" });
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await open(page, null);
-  await expect(page.getByRole("button", { name: /^≈/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /^Get the bricks/ })).toHaveText("Get the bricks");
   expect(errors).toEqual([]);
 });

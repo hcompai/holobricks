@@ -1,5 +1,5 @@
 import { PlusIcon, ShoppingBagIcon, SquaresFourIcon } from "@phosphor-icons/react";
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Account } from "./account";
 import { AccountMenu } from "./AccountMenu";
 import { RecoveryPanel } from "./RecoveryPanel";
@@ -7,14 +7,11 @@ import { create, remix, say, stop } from "./agent";
 import { useEdits } from "./edits";
 import { type Build, type BuildSummary, type Piece, type Source, verified } from "./model";
 import { type Color, usePalette } from "./palette";
-import { usePrices } from "./pickabrick";
-import { PriceMenu } from "./PriceMenu";
+import { estimate, money, usePrices } from "./pickabrick";
 import { ChatPanel } from "./ChatPanel";
 import { ImportBuild } from "./ImportBuild";
 import { LibraryPage } from "./LibraryPage";
 import { countParts, PartsPanel } from "./PartsPanel";
-import { DeleteButton } from "./DeleteButton";
-import { PublishButton } from "./PublishButton";
 import { ShareMenu } from "./ShareMenu";
 import { Timeline } from "./Timeline";
 import {
@@ -104,11 +101,19 @@ export default function App({ account }: { account: Account }) {
   useEffect(() => {
     if (mode === "edit" && !edits.editable) setMode("view");
   }, [mode, edits.editable]);
+  const shoppable = !!build?.pieces.length && build.status !== "building";
   const shop = () => {
-    if (build?.status === "done" && build.pieces.length && !edited) {
+    if (build && shoppable)
       setShopping({ build: structuredClone(build), preview: viewer.current?.image() ?? Promise.resolve(null) });
-    }
   };
+  const resetForShopping = () => {
+    edits.reset();
+    if (live) setShopping((open) => open && { ...open, build: structuredClone(live) });
+  };
+  const price = useMemo(() => {
+    const found = prices && build?.pieces.length ? estimate(build.pieces, prices) : null;
+    return found?.priced ? money(found.cents, prices!, true) : null;
+  }, [build?.pieces, prices]);
   const exportReplay = () => {
     if (build?.pieces.length) setExportBuild(structuredClone(build));
   };
@@ -341,32 +346,32 @@ export default function App({ account }: { account: Account }) {
               {build.name}
             </span>
             {build.pieces.length > 0 && <span className="chip">{build.pieces.length.toLocaleString()} pieces</span>}
-            {prices && build.pieces.length > 0 && <PriceMenu build={build} table={prices} edited={edited} />}
           </>
         )}
         <span className="spacer" />
-        {build && imported && <DeleteButton name={build.name} onDelete={deleteBuild} />}
-        {build && owned && (
-          <PublishButton
-            published={imported ? !summary?.private : ref?.source === "public" || !!listed}
-            imported={imported}
-            blocked={
-              build.status === "building"
-                ? "Publish once Holo answers"
-                : !build.pieces.length
-                  ? "Nothing is built yet"
-                  : null
-            }
-            author={account.user.name}
-            onPublish={imported ? republish : publishBuild}
-            onUnpublish={unpublishBuild}
-          />
-        )}
         {build && (
           <ShareMenu
             build={build}
             link={shared && linkTo(shared)}
             loading={loading}
+            publishing={
+              owned
+                ? {
+                    published: imported ? !summary?.private : ref?.source === "public" || !!listed,
+                    imported,
+                    blocked:
+                      build.status === "building"
+                        ? "Publish once Holo answers"
+                        : !build.pieces.length
+                          ? "Nothing is built yet"
+                          : null,
+                    author: account.user.name,
+                    onPublish: imported ? republish : publishBuild,
+                    onUnpublish: unpublishBuild,
+                  }
+                : null
+            }
+            onDelete={imported ? deleteBuild : null}
             image={() => viewer.current?.image() ?? Promise.resolve(null)}
             onGif={exportReplay}
             onInstructions={exportInstructions}
@@ -376,17 +381,13 @@ export default function App({ account }: { account: Account }) {
           <button
             className="primary"
             onClick={shop}
-            disabled={build.status !== "done" || !build.pieces.length || edited}
+            disabled={!shoppable}
             title={
-              edited
-                ? "Reset your edits to shop the verified parts list"
-                : build.status === "done"
-                  ? "Shop bricks with HoloTab"
-                  : "Finish your build to shop its bricks"
+              shoppable ? undefined : build.pieces.length ? "Get the bricks once Holo finishes" : "Nothing is built yet"
             }
           >
             <ShoppingBagIcon size={16} />
-            <span className="button-label">Shop bricks</span>
+            <span className="button-label">Get the bricks{price && ` · ≈ ${price}`}</span>
           </button>
         )}
         <AccountMenu account={account} building={running.length > 0} />
@@ -558,7 +559,17 @@ export default function App({ account }: { account: Account }) {
         )}
       </Suspense>
       <Suspense>
-        {shopping && <ShopDialog build={shopping.build} preview={shopping.preview} onClose={() => setShopping(null)} />}
+        {shopping && (
+          <ShopDialog
+            build={shopping.build}
+            preview={shopping.preview}
+            table={prices}
+            edited={edited}
+            describe={describer(live, palette)}
+            onReset={resetForShopping}
+            onClose={() => setShopping(null)}
+          />
+        )}
       </Suspense>
     </div>
   );

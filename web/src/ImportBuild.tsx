@@ -31,7 +31,7 @@ export function ImportBuild({ onImported }: { onImported: (id: string) => void }
         </span>
       )}
       <div className="menu" ref={root}>
-        <button onClick={() => input.current?.click()}>
+        <button className="quiet" onClick={() => input.current?.click()}>
           <UploadSimpleIcon size={16} /> Import
         </button>
         {open && model && (
