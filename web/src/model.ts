@@ -14,11 +14,20 @@ export interface Step {
   title: string;
 }
 
+/** What the builder reasoned and did before a message, step by step. */
+export interface Work {
+  /** In ms since the epoch. */
+  start: number;
+  end: number;
+  steps: { reasoning: string; actions: string[] }[];
+}
+
 export interface Message {
   role: "user" | "assistant" | "system" | "tool";
   text: string;
   /** Image URLs; data and blob URLs show as they are, gallery paths have a small WebP beside them. */
   images: string[];
+  work?: Work;
 }
 
 export type Status = "idle" | "building" | "done" | "error";

@@ -4,7 +4,16 @@ import { card, remember } from "./library";
 import { caption, dataUrl, view } from "./look";
 import { EMPTY_MODEL, type Build, type Message, type Model } from "./model";
 import { BrickScene, provideParts } from "./scene";
-import { EMPTY_TRANSCRIPT, ending, read, status as buildStatus, type Transcript, unpack } from "./session";
+import {
+  type Activity,
+  activity,
+  EMPTY_TRANSCRIPT,
+  ending,
+  read,
+  status as buildStatus,
+  type Transcript,
+  unpack,
+} from "./session";
 
 const WAIT_S = 20;
 const RETRY_MS = 3000;
@@ -13,7 +22,8 @@ const RENDER_TRIES = 3;
 /** A session as the Agents API last told it. */
 export interface Followed {
   build: Build | null;
-  thinking: string;
+  /** What the builder is doing, while it builds. */
+  activity: Activity | null;
   error: string | null;
   /** A shown model can remain available, but must not be presented as confirmed live. */
   syncError: string | null;
@@ -47,7 +57,7 @@ function render(model: Model, look: Exclude<ReturnType<typeof view>, string>): P
 
 /** Poll session `id` until it ends or `signal` aborts, answering every `look` it waits on. */
 function follow(id: string, signal: AbortSignal, notify: Listener, displayed: () => boolean) {
-  let state: Followed = { build: null, thinking: "", error: null, syncError: null };
+  let state: Followed = { build: null, activity: null, error: null, syncError: null };
   const set = (next: Partial<Followed>) => {
     if (signal.aborted) return;
     state = { ...state, ...next };
@@ -121,7 +131,7 @@ function follow(id: string, signal: AbortSignal, notify: Listener, displayed: ()
         messages: shown(end ? [...transcript.messages, end] : transcript.messages),
         open: session === "idle",
       },
-      thinking: buildStatus(session) === "building" ? transcript.thinking : "",
+      activity: buildStatus(session) === "building" ? activity(transcript) : null,
     });
     if (transcript.state !== "awaiting_tool_results") return;
     const look = transcript.looks.find((l) => l.shared <= loaded);

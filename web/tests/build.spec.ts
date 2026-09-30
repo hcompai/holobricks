@@ -58,6 +58,36 @@ test("a live build shows the loader until its first model, each shared model, an
   expect(agp.posted("/tool_results")[2].result[0]).toMatch(`Revision ${recolored.revision.slice(0, 8)}`);
 });
 
+test("Holo's work shows as what it does now, then folds under its message; a repeated answer shows once", async ({
+  page,
+}) => {
+  await site(page);
+  const agp = await platform(page);
+  const run = { tool_name: "shell", args: { command: "bricks run" }, id: "run" };
+  agp.session("work");
+  agp.say("work", "A tower");
+  agp.now += 1000;
+  agp.step("work", "", "The walls need a first course.", [run]);
+  await page.goto("/?build=work");
+  const live = page.locator(".msg.live");
+  await expect(live).toContainText("Building the model");
+
+  agp.result("work", run);
+  await expect(live).toContainText("Thinking");
+
+  agp.now += 95_000;
+  agp.step("work", "\n\nBuilt a tower.", "It stands.");
+  agp.answer("work", "Built a tower.");
+  const holo = page.locator(".msg.assistant");
+  await expect(holo).toHaveCount(1);
+  await expect(live).toHaveCount(0);
+  await expect(holo.locator("summary")).toHaveText("Worked for 1m 36s");
+  await expect(holo.locator(".work-steps")).toHaveCount(0);
+  await holo.locator("summary").click();
+  await expect(holo.locator(".work-steps")).toContainText("The walls need a first course.");
+  await expect(holo.locator(".work-action")).toHaveText(["Building the model"]);
+});
+
 test("Holo keeps getting its renders while the user browses other builds", async ({ page }) => {
   const showcase = { ...fixture(), id: "paris", name: "Paris" };
   await site(page, [showcase]);
