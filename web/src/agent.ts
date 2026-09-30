@@ -1,4 +1,4 @@
-import { fileFromBlob, HaiAgentsClient, type HaiAgents } from "hai-agents";
+import { assertRequestUnderLimit, fileFromBlob, HaiAgentsClient, type HaiAgents } from "hai-agents";
 import prompt from "../../agent/holo.md?raw";
 import { expired, key } from "./account";
 import { H } from "./hosts";
@@ -118,6 +118,22 @@ export const remix = (build: Build, text: string, photos: string[]) =>
 
 export async function say(id: string, text: string, photos: string[]) {
   await client.session(id).sendMessage(await message(text, photos, {}, `photo-${Date.now()}`));
+}
+
+/** Submit recovery inputs with session creation, so there is no empty-session/message gap. */
+export async function createRecovery(messages: HaiAgents.UserMessageEvent[], source: string): Promise<string> {
+  const request = {
+    agent: agent(),
+    messages,
+    maxSteps: MAX_STEPS,
+    maxTimeS: MAX_TIME_S,
+    idleTimeoutS: IDLE_TIMEOUT_S,
+    deleteAfterMin: null,
+    groupId: source,
+  };
+  assertRequestUnderLimit(request);
+  // Creating a run is a side effect: never retry an ambiguous response automatically.
+  return (await client.sessions.createSession({ body: request }, { maxRetries: 0 })).id;
 }
 
 /** Holo ends its current step and answers; the session stays open for the next message. */

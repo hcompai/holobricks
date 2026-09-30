@@ -288,7 +288,7 @@ export function ChatPanel({ build, loading, activity, closed, onCreate, onSay, o
       </div>
       {closed && !remixing && (
         <div className="gallery-note">
-          <p>{closed}</p>
+          <div>{closed}</div>
           {!!build?.pieces.length && (
             <button onClick={() => setRemixing(true)} title="Start your own build from a copy of this one">
               <ShuffleIcon size={14} weight="bold" /> Remix

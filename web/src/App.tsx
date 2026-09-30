@@ -2,6 +2,7 @@ import { PlusIcon, ShoppingBagIcon, SquaresFourIcon } from "@phosphor-icons/reac
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Account } from "./account";
 import { AccountMenu } from "./AccountMenu";
+import { RecoveryPanel } from "./RecoveryPanel";
 import { create, remix, say, stop } from "./agent";
 import { useEdits } from "./edits";
 import { type Build, type BuildSummary, type Piece, type Source, verified } from "./model";
@@ -20,7 +21,7 @@ import { ShopDialog } from "./ShopDialog";
 import { Timeline } from "./Timeline";
 import { FilmExport } from "./FilmExport";
 import { InstructionsExport } from "./InstructionsExport";
-import { library, publish, remember, setPrivate, type Shelf, thumbnail, unpublish } from "./library";
+import { card, library, publish, remember, setPrivate, type Shelf, thumbnail, unpublish } from "./library";
 import { type BuildRef, useBuild } from "./useBuild";
 import { useKeeper } from "./useSession";
 import { ThemeToggle } from "./ThemeToggle";
@@ -259,13 +260,20 @@ export default function App({ account }: { account: Account }) {
   };
 
   const closed =
-    ref?.source === "showcase"
-      ? "A showcase from the gallery: remix it to make your own."
-      : ref?.source === "public"
-        ? `Shared by ${summary?.author ?? "an H builder"}: remix it to make your own.`
-        : build && !build.open && build.status !== "building"
-          ? "This build's session has ended: remix it to keep building."
-          : null;
+    ref?.source === "showcase" ? (
+      "A showcase from the gallery: remix it to make your own."
+    ) : ref?.source === "public" ? (
+      `Shared by ${summary?.author ?? "an H builder"}: remix it to make your own.`
+    ) : build && !build.open && build.status !== "building" ? (
+      <RecoveryPanel
+        key={build.id}
+        build={live!}
+        onOpen={(id) => {
+          open({ id, source: "session" });
+          refreshBuilds();
+        }}
+      />
+    ) : null;
 
   const visibleStep = Math.min(step, last);
 
@@ -354,6 +362,20 @@ export default function App({ account }: { account: Account }) {
           )}
         </div>
         <div className="aside-body">
+          {ref?.source === "session" && card(ref.id)?.recoveredFrom && (
+            <p className="recovery-origin">
+              Recovery attempt ·{" "}
+              <a
+                href={`/?build=${encodeURIComponent(card(ref.id)!.recoveredFrom!)}`}
+                onClick={(event) => {
+                  event.preventDefault();
+                  open({ id: card(ref.id)!.recoveredFrom!, source: "session" });
+                }}
+              >
+                Open original build
+              </a>
+            </p>
+          )}
           <ChatPanel
             key={ref ? `${ref.source}:${ref.id}` : "new"}
             build={live}

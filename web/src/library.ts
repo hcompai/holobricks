@@ -16,6 +16,8 @@ interface Card {
   prompt: string;
   pieces: number;
   thumbnail?: string;
+  recoveredFrom?: string;
+  recoveryAttempt?: string;
 }
 
 const cards = (): Record<string, Card> => {
