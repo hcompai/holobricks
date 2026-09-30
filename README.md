@@ -45,22 +45,22 @@ vercel link --yes --scope h-company --project brickyard && vercel env pull .env.
 npm run dev                                                                            # http://localhost:5173
 ```
 
-Anyone can browse the showcases and the public library. Building with Holo needs a sign-in with an `@hcompany.ai` Google account on the H portal. Export the showcases for local use with
+Brickyard is open to H Company: everything sits behind a sign-in with an `@hcompany.ai` Google account on the H portal. Export the showcases for local use with
 `BRICKYARD_DATA=<data dir> server/.venv/bin/brickyard-gallery web/public hogwarts 6eb28d127e london paris`.
 
 ## Accounts and the public library
 
 ```
-browser ──popup──▶ portal.hcompany.ai ──access token──▶ browser
-browser ──POST /api/session──▶ portal API: who is it? mint a 30-day "Brickyard" key
+browser ──same tab──▶ portal ──Google──▶ portal sets its access token cookie
+portal ──redirect──▶ GET /api/session: who is it? mint a 30-day "Brickyard <email> <time>" key ──▶ back where the user was
 browser ──key──▶ Agents API (Holo builds, sessions listed per user)
 browser ──POST /api/builds (pass + key)──▶ snapshot of the session ──▶ Vercel Blob (public)
-anyone  ──GET /api/builds──▶ the public library
+signed in ──GET /api/builds──▶ the public library
 ```
 
 - `web/api/` holds the Vercel functions; `web/scripts/build-api.mjs` bundles them, and `npm run dev` serves them too.
 - Signing in again revokes the previous key. The key lives in the browser's local storage; the pass, signed with `BRICKYARD_SECRET`, names its holder to the functions.
-- Publishing copies the session's model, transcript and images, so a public build outlives its session (sessions are deleted after 30 days). Only its author can publish or unpublish a build; the emails in `BRICKYARD_ADMINS` can unpublish any.
+- Publishing copies the session's model, transcript and images, so a public build stands on its own, even if its session is deleted. Only its author can publish or unpublish a build; the emails in `BRICKYARD_ADMINS` can unpublish any.
 - Server environment: `BRICKYARD_SECRET`, `BRICKYARD_ADMINS`, and `BLOB_READ_WRITE_TOKEN` from the `brickyard-library` Blob store.
 
 | To change | Edit |
