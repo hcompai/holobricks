@@ -9,6 +9,7 @@ import { type Edit, type Edits, PLATE, pivot, STUD } from "./edits";
 import type { Color } from "./palette";
 import { BrickScene, typing, type View } from "./scene";
 import { Shortcuts } from "./Shortcuts";
+import { WalkHud } from "./WalkHud";
 
 /** Hand edits come in bursts; the library tile waits for a pause. */
 const THUMBNAIL_IDLE_MS = 1500;
@@ -134,6 +135,7 @@ export function Viewer(props: Props) {
   const [box, setBox] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
   const [selected, setSelected] = useState<number[]>([]);
   const [locked, setLocked] = useState(false);
+  const [flying, setFlying] = useState(false);
   const pointer = useRef<{ x: number; y: number } | null>(null);
   const hoverFrame = useRef(0);
   const editing = mode === "edit";
@@ -156,7 +158,7 @@ export function Viewer(props: Props) {
     setDrawn(null);
     setRenderError(null);
     try {
-      const s = new BrickScene(container.current!, { onError: failed, onWalkLock: setLocked });
+      const s = new BrickScene(container.current!, { onError: failed, onWalkLock: setLocked, onFly: setFlying });
       scene.current = s;
       return () => {
         scene.current = null;
@@ -236,7 +238,10 @@ export function Viewer(props: Props) {
 
   useEffect(() => {
     scene.current?.setWalk(mode === "walk");
-    if (mode !== "walk") setLocked(false);
+    if (mode !== "walk") {
+      setLocked(false);
+      setFlying(false);
+    }
     if (!editing) {
       setHover(null);
       setSelected([]);
@@ -427,13 +432,7 @@ export function Viewer(props: Props) {
           }}
         />
       )}
-      {mode === "walk" && shown && !locked && (
-        <div className="walk-hint">
-          <b>Click to walk</b>
-          <span>WASD or arrows to move · mouse to look · Space/E up · C/Q down · Shift to run</span>
-          <span>Esc releases the mouse; Esc again leaves walk mode</span>
-        </div>
-      )}
+      {mode === "walk" && shown && <WalkHud locked={locked} flying={flying} />}
       {syncError || renderError ? (
         <div className="viewer-empty" role="alert">
           <div>{syncError ?? `The latest model could not be displayed. ${renderError}`}</div>

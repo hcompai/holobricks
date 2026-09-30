@@ -15,7 +15,7 @@ interface Props {
   onSpeed: (speed: number) => void;
   onReplay: () => void;
   onInstructions: () => void;
-  /** Whether Space plays and pauses; walking takes Space to rise. */
+  /** Whether Space plays and pauses; walking takes Space to jump and fly. */
   spaceKey: boolean;
 }
 
