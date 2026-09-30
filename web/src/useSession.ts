@@ -5,18 +5,11 @@ import { card, remember } from "./library";
 import { caption, dataUrl, view } from "./look";
 import { EMPTY_MODEL, type Build, type Message, type Model, type RenderRequest } from "./model";
 import { provideParts } from "./scene";
-import { EMPTY_TRANSCRIPT, ending, read, status as buildStatus, type Transcript } from "./session";
+import { EMPTY_TRANSCRIPT, ending, read, status as buildStatus, type Transcript, unpack } from "./session";
 import type { LiveBuild } from "./useBuild";
 
 const WAIT_S = 20;
 const RETRY_MS = 3000;
-
-async function unpack(blob: Blob): Promise<Model> {
-  const head = new Uint8Array(await blob.slice(0, 2).arrayBuffer());
-  const gzipped = head[0] === 0x1f && head[1] === 0x8b;
-  const stream = gzipped ? blob.stream().pipeThrough(new DecompressionStream("gzip")) : blob.stream();
-  return JSON.parse(await new Response(stream).text());
-}
 
 const named = (model: Model) => model.name !== EMPTY_MODEL.name;
 
@@ -103,7 +96,7 @@ export function useSession(id: string | null): LiveBuild {
     const loadModel = async () => {
       const latest = transcript.model;
       if (!latest || latest.shared === loaded) return;
-      const next = await unpack(await download(latest.url, signal));
+      const next = await unpack<Model>(await download(latest.url, signal));
       provideParts(next.parts);
       if (next.revision === model.revision) next.pieces = model.pieces;
       model = next;
