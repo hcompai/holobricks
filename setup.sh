@@ -25,10 +25,12 @@ printf '#!/bin/sh\nkill -0 "$(cat "%s/pid" 2>/dev/null)" 2>/dev/null && { echo "
 $sudo chmod +x /usr/local/bin/bricks
 echo "Installing Brickyard: downloading the LDraw parts library (145 MB), then indexing it; this takes a few minutes."
 [ -f ldraw/LDConfig.ldr ] || sh scripts/fetch-ldraw.sh >/dev/null &
-[ -d shadow ] || python3 scripts/fetch-connectors.py >/dev/null &
+[ -d shadow ] || python3 scripts/fetch-connectors.py >/dev/null 2>&1 &
 (cd server && uv sync --frozen --no-dev -q)
 wait
-test -f ldraw/LDConfig.ldr && test -f shadow/LICENSE.md && test -f data/rebrickable.json.gz
+test -f ldraw/LDConfig.ldr
+test -f data/rebrickable.json.gz
 server/.venv/bin/python -c 'from brickyard import ldraw; ldraw.exists("3001.dat"); ldraw.catalog()'
+[ -f shadow/LICENSE.md ] || echo "The connector data did not download: every bricks command works except bricks assembly."
 ln -sfn "$(pwd)/agent/showcase" "$build/showcase"
 echo "Brickyard is ready: bricks works on the build in the directory it runs in."
