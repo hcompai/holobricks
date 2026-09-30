@@ -12,7 +12,9 @@ import {
   TrashIcon,
   XIcon,
 } from "@phosphor-icons/react";
+import { useState } from "react";
 import type { Edits } from "./edits";
+import type { Color } from "./palette";
 
 /** What the selected piece can do; moves follow the screen, snapped to the model's axes. */
 export type Action = "left" | "right" | "forward" | "back" | "up" | "down" | "turnLeft" | "turnRight" | "delete";
@@ -79,16 +81,96 @@ export function EditBar({ edits }: { edits: Edits }) {
   );
 }
 
-/** The selection's controls: move a stud or a plate, turn a quarter about its middle, or delete it. */
+const FAMILIES: { family: Color["family"]; label: string }[] = [
+  { family: "solid", label: "Solid" },
+  { family: "transparent", label: "Transparent" },
+  { family: "metallic", label: "Metallic" },
+];
+
+function Swatch({ color, onPick }: { color: Color; onPick: (code: number) => void }) {
+  return (
+    <button
+      role="option"
+      aria-selected={false}
+      className={`color-swatch ${color.family}`}
+      style={{ background: color.hex }}
+      title={color.name}
+      aria-label={color.name}
+      onClick={() => onPick(color.code)}
+    />
+  );
+}
+
+/** The selection's colors, and a picker listing the model's own colors before the whole palette. */
+function ColorPicker({ palette, used, current, onColor }: ColorProps) {
+  const [open, setOpen] = useState(false);
+  const byCode = new Map(palette.map((c) => [c.code, c]));
+  const shown = current.map((code) => byCode.get(code));
+  const name = current.length === 1 ? (shown[0]?.name ?? `Color ${current[0]}`) : "Mixed colors";
+  const pick = (code: number) => {
+    onColor(code);
+    setOpen(false);
+  };
+  const inModel = used.flatMap((code) => byCode.get(code) ?? []);
+  return (
+    <div className="edit-color">
+      <button
+        className="edit-color-current"
+        aria-expanded={open}
+        aria-label={`Change color: ${name}`}
+        title={`${name}: change color`}
+        disabled={!palette.length}
+        onClick={() => setOpen(!open)}
+      >
+        {shown.slice(0, 4).map((c, i) => (
+          <span key={i} className="swatch-dot" style={{ background: c?.hex ?? "transparent" }} />
+        ))}
+        <span className="edit-color-name">{name}</span>
+      </button>
+      {open && (
+        <div className="color-picker" role="listbox" aria-label="Colors">
+          {[
+            { label: "In this model", colors: inModel },
+            ...FAMILIES.map((f) => ({ label: f.label, colors: palette.filter((c) => c.family === f.family) })),
+          ]
+            .filter((section) => section.colors.length)
+            .map((section) => (
+              <section key={section.label}>
+                <small>{section.label}</small>
+                <div className="color-swatches">
+                  {section.colors.map((c) => (
+                    <Swatch key={c.code} color={c} onPick={pick} />
+                  ))}
+                </div>
+              </section>
+            ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface ColorProps {
+  /** Every color a piece can take. */
+  palette: Color[];
+  /** The model's colors, most used first. */
+  used: number[];
+  /** The selected pieces' colors. */
+  current: number[];
+  onColor: (code: number) => void;
+}
+
+/** The selection's controls: move a stud or a plate, turn a quarter about its middle, recolor or delete it. */
 export function EditPanel({
   label,
   onAction,
   onClose,
+  ...color
 }: {
   label: string;
   onAction: (a: Action) => void;
   onClose: () => void;
-}) {
+} & ColorProps) {
   return (
     <div className="edit-panel" role="dialog" aria-label="Selection">
       <div className="edit-panel-head">
@@ -110,6 +192,7 @@ export function EditPanel({
           </button>
         ))}
       </div>
+      <ColorPicker {...color} />
       <div className="edit-actions">
         <button onClick={() => onAction("turnLeft")} title="Turn left (⇧R)" aria-label="Turn left">
           <ArrowCounterClockwiseIcon size={16} weight="bold" />

@@ -9,7 +9,8 @@ import type { Build, Matrix, Piece } from "./model";
 export type Edit =
   | { kind: "delete"; ids: number[] }
   | { kind: "move"; ids: number[]; by: [number, number, number] }
-  | { kind: "rotate"; ids: number[]; turns: 1 | -1; about: [number, number] };
+  | { kind: "rotate"; ids: number[]; turns: 1 | -1; about: [number, number] }
+  | { kind: "color"; ids: number[]; color: number };
 
 export const STUD = 20;
 export const PLATE = 8;
@@ -79,6 +80,7 @@ export function applyEdits(pieces: Piece[], edits: Edit[]): Piece[] {
       if (edit.kind === "delete") byId.delete(id);
       else if (edit.kind === "move")
         byId.set(id, { ...piece, pos: [0, 1, 2].map((k) => piece.pos[k] + edit.by[k]) as Piece["pos"] });
+      else if (edit.kind === "color") byId.set(id, { ...piece, color: edit.color });
       else byId.set(id, turn(piece, edit.turns, edit.about));
     }
   return pieces.filter((p) => byId.has(p.id)).map((p) => byId.get(p.id)!);

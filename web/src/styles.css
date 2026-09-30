@@ -1325,6 +1325,11 @@ main {
   margin-bottom: 12px;
 }
 
+.parts-note {
+  margin: 0 0 12px;
+  color: var(--text-secondary);
+}
+
 .parts table {
   width: 100%;
   border-collapse: collapse;
@@ -1500,4 +1505,76 @@ main {
     right: 12px;
     width: auto;
   }
+}
+
+.edit-color {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.edit-color-current {
+  gap: 6px;
+  height: 34px;
+}
+
+.edit-color-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.swatch-dot {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin-right: -10px;
+  border-radius: 50%;
+  border: 1px solid var(--stroke-strong);
+}
+
+.swatch-dot:last-of-type {
+  margin-right: 0;
+}
+
+.color-picker {
+  max-height: 220px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-right: 2px;
+}
+
+.color-picker small {
+  color: var(--text-tertiary);
+}
+
+.color-swatches {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(22px, 1fr));
+  gap: 4px;
+}
+
+.color-swatch {
+  aspect-ratio: 1;
+  padding: 0;
+  border-radius: var(--radius-small);
+  border: 1px solid var(--stroke-strong);
+}
+
+.color-swatch:hover {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.color-swatch.transparent {
+  opacity: 0.6;
+}
+
+.color-swatch.metallic {
+  background-image: linear-gradient(135deg, rgba(255, 255, 255, 0.5), transparent 60%) !important;
 }

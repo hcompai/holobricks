@@ -5,6 +5,7 @@ import { BrickLoader } from "./BrickLoader";
 import { buildRevision } from "./buildRevision";
 import { ACTION_KEYS, type Action, EditBar, EditPanel } from "./EditPanel";
 import { type Edit, type Edits, PLATE, pivot, STUD } from "./edits";
+import type { Color } from "./palette";
 import { BrickScene, typing, type View } from "./scene";
 
 const VIEWS: { id: View; label: string }[] = [
@@ -109,12 +110,14 @@ interface Props {
   edits: Edits;
   /** A piece's name, such as "Brick 2 x 4 · Red". */
   describe: (piece: Piece) => string;
+  /** Every color a piece can take. */
+  palette: Color[];
   onMode: (mode: Mode) => void;
 }
 
 export function Viewer(props: Props) {
   const { ref, build, opening, step, renderRequest, framing, spin, onRender, onThumbnail, syncError, empty } = props;
-  const { mode, edits, describe, onMode } = props;
+  const { mode, edits, describe, palette, onMode } = props;
   const container = useRef<HTMLDivElement>(null);
   const scene = useRef<BrickScene | null>(null);
   const framedBuild = useRef<string | null>(null);
@@ -130,6 +133,7 @@ export function Viewer(props: Props) {
   const hoverFrame = useRef(0);
   const editing = mode === "edit";
   const selectedPieces = build?.pieces.filter((p) => selected.includes(p.id)) ?? [];
+  const selectedColors = [...new Set(selectedPieces.map((p) => p.color))];
   const version = build ? `${build.id}:${build.revision}` : null;
   const ready = !!build && drawn?.key === version && drawn.pieces === build.pieces && !renderError;
   const failed = (error: unknown) => {
@@ -380,6 +384,13 @@ export function Viewer(props: Props) {
           label={selectedPieces.length === 1 ? describe(selectedPieces[0]) : `${selectedPieces.length} pieces`}
           onAction={act}
           onClose={() => setSelected([])}
+          palette={palette}
+          used={usedColors(build!.pieces)}
+          current={selectedColors}
+          onColor={(color) => {
+            const ids = selectedPieces.filter((p) => p.color !== color).map((p) => p.id);
+            if (ids.length && edits.editable) edits.push({ kind: "color", ids, color });
+          }}
         />
       )}
       {mode === "walk" && ready && !locked && (
@@ -400,4 +411,11 @@ export function Viewer(props: Props) {
       {!build && !opening && <div className="viewer-empty">{empty}</div>}
     </div>
   );
+}
+
+/** The model's colors, most used first. */
+function usedColors(pieces: Piece[]): number[] {
+  const counts = new Map<number, number>();
+  for (const p of pieces) counts.set(p.color, (counts.get(p.color) ?? 0) + 1);
+  return [...counts].sort((a, b) => b[1] - a[1]).map(([code]) => code);
 }

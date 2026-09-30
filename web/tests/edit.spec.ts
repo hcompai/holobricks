@@ -58,7 +58,7 @@ test("edit mode selects the piece under the pointer and saves its edits in this 
   await expect(page.locator(".viewer-canvas")).toHaveCSS("cursor", "pointer");
   await page.mouse.click(center.x, center.y);
   const panel = page.getByRole("dialog", { name: "Selection" });
-  await expect(panel).toContainText(/test-brick · color \d+/);
+  await expect(panel).toContainText(/test-brick · (Red|Yellow|Blue|Green)/);
 
   await page.keyboard.press("ArrowRight");
   await panel.getByRole("button", { name: "Turn right" }).click();
@@ -96,7 +96,7 @@ test("Shift-click selects several pieces, and one edit changes them all", async 
   const center = await canvasCenter(page);
   const panel = page.getByRole("dialog", { name: "Selection" });
   await page.mouse.click(center.x, center.y);
-  await expect(panel).toContainText(/test-brick · color \d+/);
+  await expect(panel).toContainText(/test-brick · (Red|Yellow|Blue|Green)/);
   await page.keyboard.down("Shift");
   await page.mouse.click(center.x - 150, center.y + 150);
   await page.keyboard.up("Shift");
@@ -110,9 +110,37 @@ test("Shift-click selects several pieces, and one edit changes them all", async 
   await expect(pieces).toHaveText("8 pieces");
 
   await page.mouse.click(center.x, center.y);
-  await expect(panel).toContainText(/test-brick · color \d+/);
+  await expect(panel).toContainText(/test-brick · (Red|Yellow|Blue|Green)/);
   await page.keyboard.press("Escape");
   await expect(panel).toBeHidden();
+});
+
+test("the selection takes a new color, the model's own colors listed first", async ({ page }) => {
+  await open(page);
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  const center = await canvasCenter(page);
+  await page.mouse.click(center.x, center.y);
+  const panel = page.getByRole("dialog", { name: "Selection" });
+  const label = await panel.locator("b").textContent();
+  const next = label!.endsWith("Green") ? "Red" : "Green";
+  await panel.getByRole("button", { name: /Change color/ }).click();
+  const colors = panel.getByRole("listbox", { name: "Colors" });
+  await expect(colors.locator("section").first()).toContainText("In this model");
+  await colors.getByRole("option", { name: next }).first().click();
+  await expect(colors).toBeHidden();
+  await expect(panel.locator("b")).toHaveText(`test-brick · ${next}`);
+  await expect(page.getByRole("toolbar", { name: "Edit mode" })).toContainText("1 change");
+
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download" }).click();
+  await page.getByRole("menuitem", { name: "Download .ldr" }).click();
+  const ldr = await readFile(await (await download).path(), "utf8");
+  const code = { Red: "4", Green: "2" }[next];
+  expect(ldr.split("\n").filter((line) => line.startsWith(`1 ${code} `))).toHaveLength(3);
+
+  await page.getByRole("button", { name: "Parts", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText("not checked against BrickLink");
+  await expect(page.getByRole("row", { name: `3× test-brick ${next}` })).toBeVisible();
 });
 
 test("walk mode explains its controls and Escape leaves it", async ({ page }) => {

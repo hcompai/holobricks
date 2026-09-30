@@ -3,10 +3,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { create, say, stop, unavailable } from "./agent";
 import { useEdits } from "./edits";
 import { type Build, type BuildSummary, type Piece, verified } from "./model";
+import { type Color, usePalette } from "./palette";
 import { ChatPanel } from "./ChatPanel";
 import { DownloadMenu } from "./DownloadMenu";
 import { LibraryPanel } from "./LibraryPanel";
-import { PartsPanel } from "./PartsPanel";
+import { countParts, PartsPanel } from "./PartsPanel";
 import { ShopDialog } from "./ShopDialog";
 import { Timeline } from "./Timeline";
 import { FilmExport } from "./FilmExport";
@@ -27,11 +28,15 @@ function urlBuild(): BuildRef | null {
 
 const same = (a: BuildRef | null, b: BuildRef | null) => a?.id === b?.id && a?.showcase === b?.showcase;
 
-/** Names each piece by its verified parts-list line, or by its LDraw part and color code. */
-function describer(build: Build | null): (piece: Piece) => string {
-  const bom = build && verified(build.bom);
-  const lines = new Map(bom?.lines.map((l) => [`${l.part}:${l.color}`, `${l.title} · ${l.colorName}`]) ?? []);
-  return (p) => lines.get(`${p.part}:${p.color}`) ?? `${p.part.replace(/\.dat$/, "")} · color ${p.color}`;
+/** Part titles from the build's verified parts list, by LDraw part. */
+const titlesOf = (build: Build | null) =>
+  new Map((build && verified(build.bom))?.lines.map((l) => [l.part, l.title]) ?? []);
+
+/** Names each piece by its verified parts-list title, else its LDraw part, and its palette color. */
+function describer(build: Build | null, palette: Color[]): (piece: Piece) => string {
+  const titles = titlesOf(build);
+  const colors = new Map(palette.map((c) => [c.code, c.name]));
+  return (p) => `${titles.get(p.part) ?? p.part.replace(/\.dat$/, "")} · ${colors.get(p.color) ?? `color ${p.color}`}`;
 }
 
 export default function App() {
@@ -42,6 +47,7 @@ export default function App() {
   /** The build as shown, with this browser's hand edits. */
   const build = edits.build;
   const [mode, setMode] = useState<Mode>("view");
+  const palette = usePalette();
   const viewer = useRef<ViewerHandle>(null);
   const [builds, setBuilds] = useState<BuildSummary[] | null>(null);
   const [buildsFailed, setBuildsFailed] = useState(false);
@@ -324,13 +330,14 @@ export default function App() {
               empty={unavailable ?? "Describe a model in the chat to start building."}
               mode={mode}
               edits={edits}
-              describe={describer(live)}
+              describe={describer(live, palette)}
+              palette={palette}
               onMode={setMode}
             />
           </div>
           {center === "parts" && build && (
             <div className="pane">
-              <PartsPanel build={build} />
+              <PartsPanel build={build} counted={edited ? countParts(build.pieces, titlesOf(live), palette) : null} />
             </div>
           )}
           {error && (
