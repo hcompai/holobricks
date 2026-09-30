@@ -25,6 +25,7 @@ export interface Followed {
   build: Build | null;
   /** What the builder is doing, while it builds. */
   activity: Activity | null;
+  /** Why the build cannot be read at all; its follower has stopped. */
   error: string | null;
   /** A shown model can remain available, but must not be presented as confirmed live. */
   syncError: string | null;
@@ -222,8 +223,7 @@ function follow(id: string, signal: AbortSignal, notify: Listener, displayed: ()
         console.error(e);
         const code = status(e);
         if (code === 403 || code === 404) return set({ error: "Couldn't load this build" });
-        if (!transcript.events) set({ error: "Couldn't load this build" });
-        else set({ syncError: "Connection lost: the latest model cannot be confirmed. Reconnecting…" });
+        set({ syncError: "Connection lost: the latest model cannot be confirmed. Reconnecting…" });
         await sleep(RETRY_MS);
       }
     }

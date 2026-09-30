@@ -108,6 +108,21 @@ test("Holo keeps getting its renders while the user browses other builds", async
   expect(image).toMatch(/^data:image\/jpeg;base64,/);
 });
 
+test("a build running in the background outlives a failed first poll: Holo still gets its render", async ({ page }) => {
+  await site(page);
+  const agp = await platform(page);
+  const model = fixture();
+  agp.session("away");
+  agp.share("away", model);
+  agp.look("away", "while-away");
+  agp.offline = true;
+  await page.goto("/");
+  await expect.poll(() => agp.requests.some((r) => r.path.endsWith("/away/changes"))).toBe(true);
+  agp.offline = false;
+  await expect.poll(() => agp.posted("/tool_results")).toHaveLength(1);
+  expect(agp.posted("/tool_results")[0].result[0]).toMatch(`Revision ${model.revision.slice(0, 8)}`);
+});
+
 test("a model that fails to load leaves the chat readable, and Holo hears why", async ({ page }) => {
   await site(page);
   const agp = await platform(page);
