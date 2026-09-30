@@ -18,7 +18,20 @@ import { countParts, PartsPanel } from "./PartsPanel";
 import { DeleteButton } from "./DeleteButton";
 import { PublishButton } from "./PublishButton";
 import { Timeline } from "./Timeline";
-import { card, library, onRemember, publish, remember, setPrivate, type Shelf, thumbnail, unpublish } from "./library";
+import {
+  card,
+  library,
+  listing,
+  LISTINGS,
+  onRemember,
+  publish,
+  remember,
+  SHELF,
+  setPrivate,
+  type Shelf,
+  thumbnail,
+  unpublish,
+} from "./library";
 import { type BuildRef, useBuild } from "./useBuild";
 import { useKeeper } from "./useSession";
 import { ThemeToggle } from "./ThemeToggle";
@@ -112,10 +125,12 @@ export default function App({ account }: { account: Account }) {
     return library().then(
       ({ builds: next, failed }) => {
         if (request !== latest.current) return;
-        const kept = (shelf: Shelf, previous: BuildSummary[] | null) =>
-          failed.includes(shelf) ? (previous ?? []).filter((b) => (b.source === "session") === (shelf === "mine")) : [];
-        setBuilds((previous) => [...kept("mine", previous), ...next, ...kept("public", previous)]);
-        setBuildsFailed(failed);
+        setBuilds((previous) =>
+          LISTINGS.flatMap((from) =>
+            (failed.includes(from) ? (previous ?? []) : next).filter((b) => listing(b) === from),
+          ),
+        );
+        setBuildsFailed(failed.map((from) => SHELF[from]));
       },
       (e) => {
         if (request !== latest.current) return;

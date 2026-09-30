@@ -225,28 +225,36 @@ export async function unpublish(id: string) {
   fresh.delete(id);
 }
 
-/** A part of the library that loads on its own. */
+/** A section of the library page. */
 export type Shelf = "mine" | "public";
 
-/** The signed-in user's builds, newest first, then everyone's public builds, then the showcases; with the shelves that failed to load. */
-export async function library(): Promise<{ builds: BuildSummary[]; failed: Shelf[] }> {
+/** Where the library lists a build from, in the order it lists them; each loads, or fails, on its own. */
+export const LISTINGS = ["session", "public", "private", "showcase"] as const;
+export type Listing = (typeof LISTINGS)[number];
+
+export const listing = (b: BuildSummary): Listing => (b.private ? "private" : b.source);
+
+export const SHELF: Record<Listing, Shelf> = { session: "mine", private: "mine", public: "public", showcase: "public" };
+
+/** The signed-in user's builds, newest first, then everyone's public builds, then the showcases; with the listings that failed to load. */
+export async function library(): Promise<{ builds: BuildSummary[]; failed: Listing[] }> {
   const [sessionsLoaded, sharedLoaded, hiddenLoaded, shownLoaded] = await Promise.allSettled([
     sessions(),
     community(),
     hidden(),
     showcases(),
   ]);
-  const failed: Shelf[] = [];
-  const value = <T>(result: PromiseSettledResult<T[]>, shelf: Shelf): T[] => {
+  const failed: Listing[] = [];
+  const value = <T>(result: PromiseSettledResult<T[]>, from: Listing): T[] => {
     if (result.status === "fulfilled") return result.value;
     console.error(result.reason);
-    if (!failed.includes(shelf)) failed.push(shelf);
+    failed.push(from);
     return [];
   };
-  const mine = value(sessionsLoaded, "mine");
+  const mine = value(sessionsLoaded, "session");
   const shared = value(sharedLoaded, "public");
-  const own = value(hiddenLoaded, "mine");
-  const shown = value(shownLoaded, "public");
+  const own = value(hiddenLoaded, "private");
+  const shown = value(shownLoaded, "showcase");
   const known = cards();
   const listed = new Map(shared.map((p) => [p.id, p]));
   const builds = mine.map((s): BuildSummary => {
