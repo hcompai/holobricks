@@ -1,7 +1,8 @@
 import { PlusIcon, ShoppingBagIcon } from "@phosphor-icons/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { create, say, stop, unavailable } from "./agent";
-import type { Build, BuildSummary } from "./model";
+import { useEdits } from "./edits";
+import { type Build, type BuildSummary, type Piece, verified } from "./model";
 import { ChatPanel } from "./ChatPanel";
 import { DownloadMenu } from "./DownloadMenu";
 import { LibraryPanel } from "./LibraryPanel";
@@ -12,7 +13,7 @@ import { FilmExport } from "./FilmExport";
 import { library, remember, thumbnail } from "./library";
 import { type BuildRef, useBuild } from "./useBuild";
 import { ThemeToggle } from "./ThemeToggle";
-import { type Framing, ViewControls, Viewer, type ViewerHandle } from "./Viewer";
+import { type Framing, type Mode, ViewControls, Viewer, type ViewerHandle } from "./Viewer";
 
 const STEP_MS = 700;
 const TITLE = document.title;
@@ -26,10 +27,21 @@ function urlBuild(): BuildRef | null {
 
 const same = (a: BuildRef | null, b: BuildRef | null) => a?.id === b?.id && a?.showcase === b?.showcase;
 
+/** Names each piece by its verified parts-list line, or by its LDraw part and color code. */
+function describer(build: Build | null): (piece: Piece) => string {
+  const bom = build && verified(build.bom);
+  const lines = new Map(bom?.lines.map((l) => [`${l.part}:${l.color}`, `${l.title} · ${l.colorName}`]) ?? []);
+  return (p) => lines.get(`${p.part}:${p.color}`) ?? `${p.part.replace(/\.dat$/, "")} · color ${p.color}`;
+}
+
 export default function App() {
   const [ref, setRef] = useState<BuildRef | null>(urlBuild);
   const buildId = ref?.id ?? null;
-  const { build, loading, thinking, renderRequest, error, syncError, answer } = useBuild(ref);
+  const { build: live, loading, thinking, renderRequest, error, syncError, answer } = useBuild(ref);
+  const edits = useEdits(live);
+  /** The build as shown, with this browser's hand edits. */
+  const build = edits.build;
+  const [mode, setMode] = useState<Mode>("view");
   const viewer = useRef<ViewerHandle>(null);
   const [builds, setBuilds] = useState<BuildSummary[] | null>(null);
   const [buildsFailed, setBuildsFailed] = useState(false);
@@ -43,8 +55,13 @@ export default function App() {
   const [spin, setSpin] = useState(false);
   const [exportBuild, setExportBuild] = useState<Build | null>(null);
   const [shopping, setShopping] = useState<{ build: Build; preview: Promise<Blob | null> } | null>(null);
+  const edited = edits.edits.length > 0 && build !== live;
+
+  useEffect(() => {
+    if (mode === "edit" && !edits.editable) setMode("view");
+  }, [mode, edits.editable]);
   const shop = () => {
-    if (build?.status === "done" && build.pieces.length) {
+    if (build?.status === "done" && build.pieces.length && !edited) {
       setShopping({ build: structuredClone(build), preview: viewer.current?.image() ?? Promise.resolve(null) });
     }
   };
@@ -76,6 +93,7 @@ export default function App() {
 
   const show = useCallback((next: BuildRef | null) => {
     setRef(next);
+    setMode("view");
     setStep(Infinity);
     setFollowing(true);
     setPlaying(false);
@@ -174,8 +192,14 @@ export default function App() {
           <button
             className="shop-trigger"
             onClick={shop}
-            disabled={build.status !== "done" || !build.pieces.length}
-            title={build.status === "done" ? "Shop bricks with HoloTab" : "Finish your build to shop its bricks"}
+            disabled={build.status !== "done" || !build.pieces.length || edited}
+            title={
+              edited
+                ? "Reset your edits to shop the verified parts list"
+                : build.status === "done"
+                  ? "Shop bricks with HoloTab"
+                  : "Finish your build to shop its bricks"
+            }
           >
             <ShoppingBagIcon size={16} /> <span>Shop bricks</span>
           </button>
@@ -225,7 +249,7 @@ export default function App() {
         <div className="aside-body">
           {left === "chat" ? (
             <ChatPanel
-              build={build}
+              build={live}
               loading={loading}
               thinking={thinking}
               closed={closed}
@@ -257,12 +281,31 @@ export default function App() {
             <button className={center === "model" ? "active" : ""} onClick={() => setCenter("model")}>
               Model
             </button>
-            <button className={center === "parts" ? "active" : ""} disabled={!build} onClick={() => setCenter("parts")}>
+            <button
+              className={center === "parts" ? "active" : ""}
+              disabled={!build}
+              onClick={() => {
+                setCenter("parts");
+                setMode("view");
+              }}
+            >
               Parts
             </button>
           </div>
           {center === "model" && !error && (
-            <ViewControls framing={framing} spin={spin} onFrame={setFraming} onSpin={setSpin} />
+            <ViewControls
+              framing={framing}
+              spin={spin}
+              mode={mode}
+              canEdit={edits.editable && !!build?.pieces.length}
+              canWalk={!!build?.pieces.length}
+              onFrame={(next) => {
+                if (mode === "walk") setMode("view");
+                setFraming(next);
+              }}
+              onSpin={setSpin}
+              onMode={setMode}
+            />
           )}
         </div>
         <div className="stage">
@@ -279,6 +322,10 @@ export default function App() {
               onRender={answer}
               onThumbnail={saveThumbnail}
               empty={unavailable ?? "Describe a model in the chat to start building."}
+              mode={mode}
+              edits={edits}
+              describe={describer(live)}
+              onMode={setMode}
             />
           </div>
           {center === "parts" && build && (

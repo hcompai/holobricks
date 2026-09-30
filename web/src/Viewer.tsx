@@ -1,9 +1,11 @@
 import { type Ref, useEffect, useImperativeHandle, useRef, useState } from "react";
-import { ArrowsClockwiseIcon } from "@phosphor-icons/react";
-import type { Build, RenderRequest } from "./model";
+import { ArrowsClockwiseIcon, PencilSimpleIcon, PersonSimpleWalkIcon } from "@phosphor-icons/react";
+import type { Build, Piece, RenderRequest } from "./model";
 import { BrickLoader } from "./BrickLoader";
 import { buildRevision } from "./buildRevision";
-import { BrickScene, type View } from "./scene";
+import { ACTION_KEYS, type Action, EditBar, EditPanel } from "./EditPanel";
+import { type Edit, type Edits, PLATE, STUD } from "./edits";
+import { BrickScene, typing, type View } from "./scene";
 
 const VIEWS: { id: View; label: string }[] = [
   { id: "iso", label: "3/4" },
@@ -16,17 +18,29 @@ export interface Framing {
   view: View;
 }
 
+/** Orbit and look, select and change pieces, or walk through the model. */
+export type Mode = "view" | "edit" | "walk";
+
 export function ViewControls({
   framing,
   spin,
+  mode,
+  canEdit,
+  canWalk,
   onFrame,
   onSpin,
+  onMode,
 }: {
   framing: Framing;
   spin: boolean;
+  mode: Mode;
+  canEdit: boolean;
+  canWalk: boolean;
   onFrame: (framing: Framing) => void;
   onSpin: (spin: boolean) => void;
+  onMode: (mode: Mode) => void;
 }) {
+  const toggle = (next: Mode) => onMode(mode === next ? "view" : next);
   return (
     <div className="tabs">
       {VIEWS.map((v) => (
@@ -43,6 +57,27 @@ export function ViewControls({
       <button className={spin ? "active" : ""} aria-pressed={spin} onClick={() => onSpin(!spin)}>
         <ArrowsClockwiseIcon size={14} weight="bold" />
         Spin
+      </button>
+      <span className="tabs-sep" />
+      <button
+        className={mode === "edit" ? "active" : ""}
+        aria-pressed={mode === "edit"}
+        disabled={!canEdit && mode !== "edit"}
+        title={canEdit ? "Select pieces to move, turn or delete them" : "Pieces can be edited once the builder is done"}
+        onClick={() => toggle("edit")}
+      >
+        <PencilSimpleIcon size={14} weight="bold" />
+        Edit
+      </button>
+      <button
+        className={mode === "walk" ? "active" : ""}
+        aria-pressed={mode === "walk"}
+        disabled={!canWalk && mode !== "walk"}
+        title="Walk through the model: WASD and the mouse"
+        onClick={() => toggle("walk")}
+      >
+        <PersonSimpleWalkIcon size={14} weight="bold" />
+        Walk
       </button>
     </div>
   );
@@ -69,10 +104,17 @@ interface Props {
   onThumbnail: (png: Blob) => void;
   /** What shows before any build is open. */
   empty: string;
+  mode: Mode;
+  /** The open build's hand edits; `build` already shows them. */
+  edits: Edits;
+  /** The selected piece's name, such as "Brick 2 x 4 · Red". */
+  describe: (piece: Piece) => string;
+  onMode: (mode: Mode) => void;
 }
 
 export function Viewer(props: Props) {
   const { ref, build, opening, step, renderRequest, framing, spin, onRender, onThumbnail, syncError, empty } = props;
+  const { mode, edits, describe, onMode } = props;
   const container = useRef<HTMLDivElement>(null);
   const scene = useRef<BrickScene | null>(null);
   const framedBuild = useRef<string | null>(null);
@@ -81,6 +123,13 @@ export function Viewer(props: Props) {
   const [drawn, setDrawn] = useState<{ key: string; pieces: Build["pieces"] } | null>(null);
   const [renderError, setRenderError] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
+  const [hover, setHover] = useState<number | null>(null);
+  const [selected, setSelected] = useState<number | null>(null);
+  const [locked, setLocked] = useState(false);
+  const pointer = useRef<{ x: number; y: number } | null>(null);
+  const hoverFrame = useRef(0);
+  const editing = mode === "edit";
+  const selectedPiece = selected === null ? null : (build?.pieces.find((p) => p.id === selected) ?? null);
   const version = build ? `${build.id}:${build.revision}` : null;
   const ready = !!build && drawn?.key === version && drawn.pieces === build.pieces && !renderError;
   const failed = (error: unknown) => {
@@ -94,7 +143,7 @@ export function Viewer(props: Props) {
     setDrawn(null);
     setRenderError(null);
     try {
-      const s = new BrickScene(container.current!, { onError: failed });
+      const s = new BrickScene(container.current!, { onError: failed, onWalkLock: setLocked });
       scene.current = s;
       return () => {
         scene.current = null;
@@ -184,6 +233,102 @@ export function Viewer(props: Props) {
   }, [renderRequest, build?.id, build?.pieces, ready, syncError]);
 
   useEffect(() => scene.current?.setVisibleStep(step), [step, retry]);
+
+  useEffect(() => {
+    scene.current?.setWalk(mode === "walk");
+    if (mode !== "walk") setLocked(false);
+    if (!editing) {
+      setHover(null);
+      setSelected(null);
+    }
+  }, [mode, retry]);
+
+  useEffect(() => setSelected(null), [build?.id]);
+
+  useEffect(() => {
+    if (selected !== null && !selectedPiece) setSelected(null);
+  }, [selectedPiece]);
+
+  useEffect(
+    () => scene.current?.setHighlight(editing ? hover : null, editing ? selected : null),
+    [editing, hover, selected, drawn, retry],
+  );
+
+  useEffect(() => {
+    if (mode !== "walk" || locked) return;
+    const leave = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !typing(event)) onMode("view");
+    };
+    window.addEventListener("keydown", leave);
+    return () => window.removeEventListener("keydown", leave);
+  }, [mode, locked]);
+
+  /** Apply `action` to the selected piece; moves follow the view, snapped to the model's axes. */
+  const act = (action: Action) => {
+    const s = scene.current;
+    if (!s || selected === null || !edits.editable) return;
+    const push = (edit: Edit) => edits.push(edit);
+    if (action === "delete") {
+      push({ kind: "delete", id: selected });
+      setSelected(null);
+      return;
+    }
+    if (action === "turnLeft" || action === "turnRight") {
+      push({ kind: "rotate", id: selected, turns: action === "turnRight" ? 1 : -1 });
+      return;
+    }
+    const { right, forward } = s.screenAxes();
+    const scale = (v: number[], by: number) => v.map((x) => x * by) as [number, number, number];
+    const by = {
+      left: scale(right, -STUD),
+      right: scale(right, STUD),
+      forward: scale(forward, STUD),
+      back: scale(forward, -STUD),
+      up: [0, -PLATE, 0] as [number, number, number],
+      down: [0, PLATE, 0] as [number, number, number],
+    }[action];
+    push({ kind: "move", id: selected, by });
+  };
+
+  useEffect(() => {
+    if (!editing) return;
+    const key = (event: KeyboardEvent) => {
+      if (typing(event)) return;
+      if ((event.metaKey || event.ctrlKey) && (event.code === "KeyZ" || event.code === "KeyY")) {
+        event.preventDefault();
+        if (event.code === "KeyY" || event.shiftKey) edits.redo();
+        else edits.undo();
+        return;
+      }
+      if (event.metaKey || event.ctrlKey || event.altKey || selected === null) return;
+      if (event.key === "Escape") return setSelected(null);
+      const action = ACTION_KEYS[event.key];
+      if (!action) return;
+      event.preventDefault();
+      act(action);
+    };
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  });
+
+  const pointed = (event: React.PointerEvent) => {
+    pointer.current = { x: event.clientX, y: event.clientY };
+  };
+
+  const hovered = (event: React.PointerEvent) => {
+    if (!editing || event.buttons) return;
+    const { clientX, clientY } = event;
+    cancelAnimationFrame(hoverFrame.current);
+    hoverFrame.current = requestAnimationFrame(() => setHover(scene.current?.pick(clientX, clientY)?.id ?? null));
+  };
+
+  const clicked = (event: React.MouseEvent) => {
+    if (mode === "walk") return scene.current?.lockPointer();
+    const start = pointer.current;
+    pointer.current = null;
+    if (!editing || !start || Math.hypot(event.clientX - start.x, event.clientY - start.y) > 5) return;
+    setSelected(scene.current?.pick(event.clientX, event.clientY)?.id ?? null);
+  };
   useEffect(() => scene.current?.setSpin(spin), [spin, retry]);
 
   useEffect(() => {
@@ -202,8 +347,38 @@ export function Viewer(props: Props) {
       <div
         className="viewer-canvas"
         ref={container}
-        style={{ visibility: ready && !syncError ? "visible" : "hidden" }}
+        style={{
+          visibility: ready && !syncError ? "visible" : "hidden",
+          cursor: (editing && hover !== null) || (mode === "walk" && !locked) ? "pointer" : undefined,
+        }}
+        onPointerDown={pointed}
+        onPointerMove={hovered}
+        onPointerLeave={() => setHover(null)}
+        onClick={clicked}
       />
+      {ready && (edits.stale > 0 || edits.hidden > 0) && (
+        <div className="edit-notice" role="status">
+          {edits.stale > 0 ? (
+            <>
+              {edits.stale} edit{edits.stale === 1 ? " was" : "s were"} made on an earlier revision of this model.
+              <button onClick={edits.reset}>Discard</button>
+            </>
+          ) : (
+            `Your ${edits.hidden} edit${edits.hidden === 1 ? " is" : "s are"} hidden while the builder works.`
+          )}
+        </div>
+      )}
+      {editing && ready && <EditBar edits={edits} />}
+      {editing && ready && selectedPiece && (
+        <EditPanel label={describe(selectedPiece)} onAction={act} onClose={() => setSelected(null)} />
+      )}
+      {mode === "walk" && ready && !locked && (
+        <div className="walk-hint">
+          <b>Click to walk</b>
+          <span>WASD or arrows to move · mouse to look · Space/E up · C/Q down · Shift to run</span>
+          <span>Esc releases the mouse; Esc again leaves walk mode</span>
+        </div>
+      )}
       {syncError || renderError ? (
         <div className="viewer-empty" role="alert">
           <div>{syncError ?? `The latest model could not be displayed. ${renderError}`}</div>

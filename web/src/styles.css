@@ -1365,3 +1365,139 @@ main {
   vertical-align: -1px;
   border: 1px solid var(--stroke-strong);
 }
+
+/* Edit and walk modes, drawn over the viewer. */
+.edit-bar,
+.edit-panel,
+.edit-notice,
+.walk-hint {
+  position: absolute;
+  z-index: 2;
+  background: var(--background-card);
+  border: 1px solid var(--stroke-default);
+  border-radius: var(--radius-large);
+  box-shadow:
+    0 8px 24px rgba(0, 0, 0, 0.12),
+    var(--elevation-1);
+}
+
+.edit-bar {
+  top: 12px;
+  left: 12px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 4px 4px 12px;
+  color: var(--text-secondary);
+}
+
+.edit-bar .icon-button {
+  width: 32px;
+  height: 32px;
+  border: none;
+}
+
+.edit-panel {
+  right: 12px;
+  bottom: 12px;
+  width: 196px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.edit-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.edit-panel-head b {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.edit-panel-head .icon-button {
+  width: 28px;
+  height: 28px;
+  border: none;
+}
+
+.edit-moves {
+  display: grid;
+  grid-template-areas:
+    ". forward up"
+    "left back right"
+    ". . down";
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.edit-moves button,
+.edit-actions button {
+  justify-content: center;
+  height: 34px;
+}
+
+.edit-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr 2fr;
+  gap: 6px;
+}
+
+.edit-actions .danger {
+  color: var(--text-error);
+}
+
+.edit-notice {
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 6px 6px 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.edit-bar ~ .edit-notice,
+.edit-notice:has(~ .edit-bar) {
+  top: 60px;
+}
+
+.walk-hint {
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  max-width: calc(100% - 32px);
+  padding: 14px 18px;
+  text-align: center;
+  color: var(--text-secondary);
+  pointer-events: none;
+}
+
+.walk-hint b {
+  color: var(--text-default);
+}
+
+@media (max-width: 760px) {
+  .edit-notice {
+    white-space: normal;
+    width: calc(100% - 24px);
+  }
+
+  .edit-panel {
+    left: 12px;
+    right: 12px;
+    width: auto;
+  }
+}
