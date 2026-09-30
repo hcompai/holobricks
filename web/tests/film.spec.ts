@@ -27,8 +27,15 @@ async function mock(page: Page, build: Build = fixture()) {
   page.on("request", (r) => r.method() !== "GET" && requests.push(`${r.method()} ${r.url()}`));
   await site(page, [build]);
   await page.goto(`/?showcase=${build.id}`);
-  await expect(page.getByRole("button", { name: "Share a GIF", exact: true })).toBeEnabled();
+  await page.getByRole("button", { name: "Share", exact: true }).click();
+  await expect(page.getByRole("menuitem", { name: "Share a GIF…" })).toBeEnabled();
+  await page.keyboard.press("Escape");
   return { requests };
+}
+
+async function openFilm(page: Page) {
+  await page.getByRole("button", { name: "Share", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Share a GIF…" }).click();
 }
 
 /** Hashes of the whole preview and of its model area, between the corner title and the lower third. */
@@ -83,9 +90,9 @@ test("the browser makes a looping GIF and leaves the viewer untouched", async ({
   const { requests } = await mock(page);
   await expect(page.locator(".brick-loader")).toHaveCount(0);
   await page.getByRole("slider", { name: "Step", exact: true }).fill("1");
-  await page.getByRole("button", { name: "Share a GIF", exact: true }).click();
+  await openFilm(page);
   const dialog = page.getByRole("dialog");
-  await expect(dialog.getByRole("button", { name: "Generate GIF", exact: true })).toBeEnabled({ timeout: 60000 });
+  await expect(dialog.getByRole("button", { name: "Make the GIF", exact: true })).toBeEnabled({ timeout: 60000 });
   const branding = dialog.getByRole("checkbox", { name: "H Company logo" });
   const branded = await preview(page);
   await branding.uncheck();
@@ -99,7 +106,7 @@ test("the browser makes a looping GIF and leaves the viewer untouched", async ({
     page.locator(".viewer-canvas canvas").evaluate((canvas: HTMLCanvasElement) => canvas.toDataURL());
   const before = await viewer();
 
-  await dialog.getByRole("button", { name: "Generate GIF", exact: true }).click();
+  await dialog.getByRole("button", { name: "Make the GIF", exact: true }).click();
   const link = dialog.getByRole("link", { name: "Download GIF" });
   await expect(link).toBeVisible({ timeout: 240000 });
   const pending = page.waitForEvent("download");
@@ -148,10 +155,10 @@ test("missing parts block exporting a misleading partial model; other builders c
   page,
 }) => {
   await mock(page, { ...fixture(), builder: "claude", parts: {} });
-  await page.getByRole("button", { name: "Share a GIF", exact: true }).click();
+  await openFilm(page);
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByRole("alert")).toContainText("Invalid render asset: test-brick");
-  await expect(dialog.getByRole("button", { name: "Generate GIF", exact: true })).toBeDisabled();
+  await expect(dialog.getByRole("button", { name: "Make the GIF", exact: true })).toBeDisabled();
   await expect(dialog.getByLabel("Suggested caption")).not.toContainText("HOLO4");
   await expect(dialog.getByRole("checkbox")).toHaveCount(0);
   await page.setViewportSize({ width: 390, height: 844 });

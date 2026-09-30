@@ -400,7 +400,7 @@ export function ChatPanel({ build, loading, activity, closed, onCreate, onSay, o
           )}
         </div>
       )}
-      {error && <p className="composer-error">{error}</p>}
+      {error && <p className="error-text composer-error">{error}</p>}
       <Lightbox src={opened} onClose={() => setOpened(null)} />
     </div>
   );

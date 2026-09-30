@@ -39,9 +39,9 @@ export function PublishButton({ published, blocked, author, imported = false, on
       };
 
   return (
-    <div className="menu publish" ref={root}>
+    <div className="menu" ref={root}>
       <button
-        className={published ? "publish-button active" : "publish-button"}
+        className={published ? "published" : undefined}
         onClick={() => setOpen(!open)}
         disabled={!published && blocked !== null}
         aria-haspopup="dialog"
@@ -53,7 +53,7 @@ export function PublishButton({ published, blocked, author, imported = false, on
         }
       >
         {published ? <GlobeIcon size={16} /> : <LockSimpleIcon size={16} />}
-        <span>{published ? "Public" : "Publish"}</span>
+        <span className="button-label">{published ? "Public" : "Publish"}</span>
         {published && <CaretDownIcon size={12} />}
       </button>
       {open && <Confirm {...ask} onClose={() => setOpen(false)} />}

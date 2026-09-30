@@ -125,8 +125,9 @@ test("a public build's link copies to the clipboard", async ({ page, context }) 
   await page.goto("/?public=tower");
   await shown(page, tower.revision);
 
-  await page.getByRole("button", { name: "Copy link" }).click();
-  await expect(page.getByRole("button", { name: "Link copied" })).toBeVisible();
+  await page.getByRole("button", { name: "Share", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Copy link" }).click();
+  await expect(page.getByRole("menuitem", { name: "Link copied" })).toBeVisible();
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(`${new URL(page.url()).origin}/?public=tower`);
 });
 
@@ -143,8 +144,12 @@ test("the author publishes a build after a confirmation, stays on it, then makes
   const calls = await library(page, [], [{ ...model, id: "mine" }]);
   await page.goto("/?build=mine");
   await shown(page, model.revision);
-  const copyLink = page.getByRole("button", { name: "Copy link" });
+  const share = page.getByRole("button", { name: "Share", exact: true });
+  const copyLink = page.getByRole("menuitem", { name: "Copy link" });
+  await share.click();
+  await expect(page.getByRole("menuitem", { name: "Download image" })).toBeVisible();
   await expect(copyLink).toHaveCount(0);
+  await share.click();
 
   const publishing = page.getByRole("dialog", { name: "Publish" });
   await page.getByRole("button", { name: "Publish", exact: true }).click();
@@ -154,7 +159,9 @@ test("the author publishes a build after a confirmation, stays on it, then makes
   await expect(page).toHaveURL(/\?build=mine$/);
   const unpublish = page.getByRole("button", { name: "Public", exact: true });
   await expect(unpublish).toBeVisible();
+  await share.click();
   await expect(copyLink).toBeVisible();
+  await share.click();
   const post = calls.find((c) => c.method === "POST")!;
   expect(post.headers).toMatchObject({ authorization: `Bearer ${ACCOUNT.pass}`, "x-agents-key": ACCOUNT.key });
   expect(post.body).toEqual({ id: "mine", thumbnail: expect.stringMatching(/^data:image\/webp;base64,/), edits: null });

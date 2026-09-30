@@ -66,11 +66,11 @@ export function EditBar({ edits }: { edits: Edits }) {
           ? `${count} change${count === 1 ? "" : "s"}`
           : "Click a piece to select it; Shift-click or Shift-drag a box to add more"}
       </span>
-      <button className="icon-button" onClick={edits.undo} disabled={!count} title="Undo (⌘Z)" aria-label="Undo">
+      <button className="quiet icon-button" onClick={edits.undo} disabled={!count} title="Undo (⌘Z)" aria-label="Undo">
         <ArrowUUpLeftIcon size={16} weight="bold" />
       </button>
       <button
-        className="icon-button"
+        className="quiet icon-button"
         onClick={edits.redo}
         disabled={!edits.canRedo}
         title="Redo (⇧⌘Z)"
@@ -179,7 +179,7 @@ export function EditPanel({
     <div className="edit-panel" role="dialog" aria-label="Selection">
       <div className="edit-panel-head">
         <b title={label}>{label}</b>
-        <button className="icon-button" onClick={onClose} title="Deselect (Esc)" aria-label="Deselect">
+        <button className="quiet icon-button" onClick={onClose} title="Deselect (Esc)" aria-label="Deselect">
           <XIcon size={14} weight="bold" />
         </button>
       </div>

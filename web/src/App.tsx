@@ -10,13 +10,12 @@ import { type Color, usePalette } from "./palette";
 import { usePrices } from "./pickabrick";
 import { PriceMenu } from "./PriceMenu";
 import { ChatPanel } from "./ChatPanel";
-import { CopyLink } from "./CopyLink";
-import { DownloadMenu } from "./DownloadMenu";
 import { ImportBuild } from "./ImportBuild";
 import { LibraryPage } from "./LibraryPage";
 import { countParts, PartsPanel } from "./PartsPanel";
 import { DeleteButton } from "./DeleteButton";
 import { PublishButton } from "./PublishButton";
+import { ShareMenu } from "./ShareMenu";
 import { Timeline } from "./Timeline";
 import {
   card,
@@ -34,7 +33,6 @@ import {
 } from "./library";
 import { type BuildRef, useBuild } from "./useBuild";
 import { useKeeper } from "./useSession";
-import { ThemeToggle } from "./ThemeToggle";
 import { type Framing, type Mode, ViewControls, Viewer, type ViewerHandle } from "./Viewer";
 
 const FilmExport = lazy(() => import("./FilmExport").then((m) => ({ default: m.FilmExport })));
@@ -322,18 +320,19 @@ export default function App({ account }: { account: Account }) {
   const visibleStep = Math.min(step, last);
 
   return (
-    <div className={running.length ? "app has-running" : "app"}>
+    <div className={`app${ref ? "" : " home"}${running.length ? " has-running" : ""}`}>
       <header>
         <button className="brand" onClick={home}>
           <img className="brand-icon" src="/brick.png" alt="" />
-          Brickyard
+          <span className="button-label">Brickyard</span>
         </button>
         <button
-          className={libraryOpen ? "library-toggle active" : "library-toggle"}
+          className={libraryOpen ? "quiet active" : "quiet"}
           aria-pressed={libraryOpen}
           onClick={() => navigate(ref, !libraryOpen)}
         >
-          <SquaresFourIcon size={16} /> <span>Library</span>
+          <SquaresFourIcon size={16} />
+          <span className="button-label">Library</span>
         </button>
         {loading && summary && <span className="title">{summary.name}</span>}
         {build && (
@@ -341,22 +340,12 @@ export default function App({ account }: { account: Account }) {
             <span className="title" title={build.name}>
               {build.name}
             </span>
-            {build.pieces.length > 0 && (
-              <>
-                <span className="chip">{build.pieces.length.toLocaleString()} pieces</span>
-                <span className="chip">{build.steps.length} steps</span>
-              </>
-            )}
-            {build.width > 0 && (
-              <span className="chip">
-                {build.width}×{build.depth} studs
-              </span>
-            )}
-            {ref?.source === "public" && summary?.author && <span className="chip">by {summary.author}</span>}
+            {build.pieces.length > 0 && <span className="chip">{build.pieces.length.toLocaleString()} pieces</span>}
             {prices && build.pieces.length > 0 && <PriceMenu build={build} table={prices} edited={edited} />}
           </>
         )}
         <span className="spacer" />
+        {build && imported && <DeleteButton name={build.name} onDelete={deleteBuild} />}
         {build && owned && (
           <PublishButton
             published={imported ? !summary?.private : ref?.source === "public" || !!listed}
@@ -373,11 +362,19 @@ export default function App({ account }: { account: Account }) {
             onUnpublish={unpublishBuild}
           />
         )}
-        {build && shared && <CopyLink url={linkTo(shared)} />}
-        {build && imported && <DeleteButton name={build.name} onDelete={deleteBuild} />}
+        {build && (
+          <ShareMenu
+            build={build}
+            link={shared && linkTo(shared)}
+            loading={loading}
+            image={() => viewer.current?.image() ?? Promise.resolve(null)}
+            onGif={exportReplay}
+            onInstructions={exportInstructions}
+          />
+        )}
         {build && (
           <button
-            className="shop-trigger"
+            className="primary"
             onClick={shop}
             disabled={build.status !== "done" || !build.pieces.length || edited}
             title={
@@ -388,12 +385,11 @@ export default function App({ account }: { account: Account }) {
                   : "Finish your build to shop its bricks"
             }
           >
-            <ShoppingBagIcon size={16} /> <span>Shop bricks</span>
+            <ShoppingBagIcon size={16} />
+            <span className="button-label">Shop bricks</span>
           </button>
         )}
-        <ThemeToggle />
         <AccountMenu account={account} building={running.length > 0} />
-        {build && <DownloadMenu build={build} image={() => viewer.current?.image() ?? Promise.resolve(null)} />}
       </header>
       {running.length > 0 && (
         <div className="build-notice" role="note" aria-label="Keep Brickyard open">
@@ -405,8 +401,8 @@ export default function App({ account }: { account: Account }) {
         <div className="aside-bar">
           <span className="aside-title">Chat</span>
           {ref && (
-            <button className="new-build" onClick={() => open(null)}>
-              <PlusIcon size={14} weight="bold" />
+            <button className="quiet" onClick={() => open(null)}>
+              <PlusIcon size={16} />
               New build
             </button>
           )}
@@ -525,8 +521,6 @@ export default function App({ account }: { account: Account }) {
               setPlaying(p);
             }}
             onSpeed={setSpeed}
-            onReplay={exportReplay}
-            onInstructions={exportInstructions}
             spaceKey={mode !== "walk"}
           />
         )}

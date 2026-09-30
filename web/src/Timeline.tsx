@@ -1,4 +1,4 @@
-import { BookOpenIcon, FilmStripIcon, PauseIcon, PlayIcon, SkipBackIcon, SkipForwardIcon } from "@phosphor-icons/react";
+import { PauseIcon, PlayIcon, SkipBackIcon, SkipForwardIcon } from "@phosphor-icons/react";
 import { type CSSProperties, useEffect } from "react";
 import type { Build } from "./model";
 
@@ -13,19 +13,18 @@ interface Props {
   onStep: (step: number) => void;
   onPlay: (playing: boolean) => void;
   onSpeed: (speed: number) => void;
-  onReplay: () => void;
-  onInstructions: () => void;
   /** Whether Space plays and pauses; walking takes Space to jump and fly. */
   spaceKey: boolean;
 }
 
 export function Timeline(props: Props) {
-  const { build, loading, step, playing, speed, onStep, onPlay, onSpeed, onReplay, onInstructions, spaceKey } = props;
+  const { build, loading, step, playing, speed, onStep, onPlay, onSpeed, spaceKey } = props;
   const steps = build?.steps ?? [];
   const last = steps.length - 1;
   const current = Math.min(step, last);
+  const building = build?.status === "building";
   const failed = build?.status === "error" && current === last;
-  const finished = !!build && build.status !== "building" && steps.length > 0 && current === last;
+  const finished = !!build && !building && steps.length > 0 && current === last;
   const visiblePieces = build?.pieces.filter((p) => p.step <= current).length ?? 0;
   const label = loading
     ? "Loading…"
@@ -34,7 +33,7 @@ export function Timeline(props: Props) {
       : failed
         ? "Stopped with an error"
         : finished
-          ? "Finished model"
+          ? "Finished"
           : `Step ${current + 1} of ${steps.length}: ${steps[current]?.title ?? ""}`;
 
   const toggle = () => {
@@ -57,22 +56,27 @@ export function Timeline(props: Props) {
 
   return (
     <div className="timeline">
-      <button className="icon" disabled={!steps.length} onClick={() => onStep(0)} title="First step">
+      <button
+        className="quiet icon-button skip"
+        disabled={!steps.length}
+        onClick={() => onStep(0)}
+        title="First step"
+        aria-label="First step"
+      >
         <SkipBackIcon size={16} weight="fill" />
       </button>
       <button className="play" disabled={steps.length < 2} onClick={toggle} title={playing ? "Pause" : "Play"}>
-        {playing ? <PauseIcon size={14} weight="fill" /> : <PlayIcon size={14} weight="fill" />}
+        {playing ? <PauseIcon size={16} weight="fill" /> : <PlayIcon size={16} weight="fill" />}
       </button>
-      <button className="icon" disabled={current >= last} onClick={() => onStep(last)} title="Last step">
+      <button
+        className="quiet icon-button skip"
+        disabled={current >= last}
+        onClick={() => onStep(last)}
+        title="Last step"
+        aria-label="Last step"
+      >
         <SkipForwardIcon size={16} weight="fill" />
       </button>
-      <div className="speeds">
-        {SPEEDS.map((s) => (
-          <button key={s} className={s === speed ? "active" : ""} aria-pressed={s === speed} onClick={() => onSpeed(s)}>
-            {s}×
-          </button>
-        ))}
-      </div>
       <div className="scrub">
         <div className="scrub-label">
           <b>{label}</b>
@@ -93,14 +97,16 @@ export function Timeline(props: Props) {
           style={{ "--fill": `${last > 0 ? (current / last) * 100 : 0}%` } as CSSProperties}
         />
       </div>
-      <span className={`status ${build?.status ?? "idle"}`} aria-live="polite">
-        {build?.status === "building" ? "Building…" : failed ? "Failed" : finished ? "Finished" : ""}
+      <span className="status" aria-live="polite">
+        {building ? "Building…" : ""}
       </span>
-      <button className="timeline-export" onClick={onInstructions} disabled={loading || !build?.pieces.length}>
-        <BookOpenIcon size={16} /> Instructions
-      </button>
-      <button className="timeline-export" onClick={onReplay} disabled={loading || !build?.pieces.length}>
-        <FilmStripIcon size={16} /> Share a GIF
+      <button
+        className="quiet speed"
+        onClick={() => onSpeed(SPEEDS[(SPEEDS.indexOf(speed) + 1) % SPEEDS.length])}
+        title="Playback speed"
+        aria-label={`Playback speed: ${speed}×`}
+      >
+        {speed}×
       </button>
     </div>
   );

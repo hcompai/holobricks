@@ -40,7 +40,7 @@ export function PriceMenu({ build, table, edited }: Props) {
         onClick={() => setOpen(!open)}
         aria-haspopup="dialog"
         aria-expanded={open}
-        title="Estimated price on LEGO Pick a Brick"
+        title="Estimated price on Pick a Brick"
       >
         ≈ {money(found.cents, table, true)}
       </button>
@@ -48,7 +48,7 @@ export function PriceMenu({ build, table, edited }: Props) {
         <div className="menu-list price-details" role="dialog" aria-label="Price estimate">
           <div className="price-total">
             <b>≈ {money(found.cents, table)}</b>
-            <span className="muted">on LEGO Pick a Brick</span>
+            <span className="muted">on Pick a Brick</span>
           </div>
           <ul>
             <li>

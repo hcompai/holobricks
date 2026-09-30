@@ -32,15 +32,20 @@ test("pages split each step by height, bottom up, gathering small layers within 
   ]);
 });
 
-test("the timeline makes a PDF: cover, one page per layer, then the parts list", async ({ page }) => {
+test("the share menu makes a PDF: cover, one page per layer, then the parts list", async ({ page }) => {
   const build = fixture();
   await site(page, [build]);
   await page.goto(`/?showcase=${build.id}`);
   await expect(page.locator(".viewer")).toHaveAttribute("data-render-state", "ready");
-  await page.getByRole("button", { name: "Download" }).click();
-  await expect(page.getByRole("menuitem")).toHaveText(["Download .ldr", "Download image"]);
-  await page.getByRole("button", { name: "Download" }).click();
-  await page.getByRole("button", { name: "Instructions", exact: true }).click();
+  await page.getByRole("button", { name: "Share", exact: true }).click();
+  await expect(page.getByRole("menuitem")).toHaveText([
+    "Copy link",
+    "Share a GIF…",
+    "Instructions (PDF)…",
+    "Download model (.ldr)",
+    "Download image",
+  ]);
+  await page.getByRole("menuitem", { name: "Instructions (PDF)…" }).click();
   const dialog = page.getByRole("dialog", { name: "Building instructions" });
   await expect(dialog).toContainText("A PDF of 4 pages for 8 pieces");
   await dialog.getByRole("button", { name: "Make the PDF" }).click();
@@ -54,6 +59,6 @@ test("the timeline makes a PDF: cover, one page per layer, then the parts list",
   expect(pdf.match(/\/Type \/Page\b/g)).toHaveLength(1 + 4 + 1);
   expect(pdf).toContain("A little LEGO tower: building instructions");
 
-  await dialog.getByRole("button", { name: "Close instructions" }).click();
+  await dialog.getByRole("button", { name: "Close" }).click();
   await expect(dialog).toBeHidden();
 });
