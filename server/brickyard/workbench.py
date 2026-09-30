@@ -102,6 +102,16 @@ def _where(p: Placement | Piece) -> str:
     return f"{p.part.removesuffix('.dat')} at x={x} y={y} z={z}{turn}"
 
 
+def _studs(boxes: list[tuple]) -> tuple[str, str]:
+    """The first and last studs the boxes cover along x and along y."""
+
+    def span(k: int) -> str:
+        lo, hi = min(b[0][k] for b in boxes), max(b[1][k] for b in boxes)
+        return f"{math.floor((lo + EPS) / ldraw.STUD)}-{math.ceil((hi - EPS) / ldraw.STUD) - 1}"
+
+    return span(0), span(2)
+
+
 def _invalid(error: ValidationError) -> str:
     return "; ".join(f"{'.'.join(map(str, e['loc']))} {e['input']!r:.40}: {e['msg']}" for e in error.errors())
 
@@ -451,13 +461,12 @@ class Workbench:
         pieces = [p for p in self.pieces if p.part != BASEPLATE]
         if not pieces:
             return "Nothing is built yet."
-        boxes = [grid(p) for p in pieces]
         indexed = self._index()
-        highest = max(top(indexed[p.id][1]) for p in pieces)
-        xs, ys = [b[0] for b in boxes], [b[1] for b in boxes]
+        boxes = [indexed[p.id][1] for p in pieces]
+        x, y = _studs(boxes)
         return (
-            f"{len(pieces)} pieces in {len(self.workspace.build.steps)} steps, spanning x {min(xs)}-{max(xs)}, "
-            f"y {min(ys)}-{max(ys)}, up to plate height {highest}."
+            f"{len(pieces)} pieces in {len(self.workspace.build.steps)} steps, spanning x {x}, "
+            f"y {y}, up to plate height {max(map(top, boxes))}."
         )
 
     def describe(self) -> str:
@@ -466,17 +475,12 @@ class Workbench:
         boxes: dict[int, list[tuple]] = {}
         for p in self.pieces:
             boxes.setdefault(p.step, []).append(indexed[p.id][1])
-        s, lines = ldraw.STUD, []
-
-        def studs(lo: float, hi: float) -> str:
-            return f"{math.floor((lo + EPS) / s)}-{math.ceil((hi - EPS) / s) - 1}"
-
+        lines = []
         for step in self.workspace.build.steps:
             if step.index not in boxes:
                 continue
-            los, his = [b[0] for b in boxes[step.index]], [b[1] for b in boxes[step.index]]
-            x = studs(min(v[0] for v in los), max(v[0] for v in his))
-            y = studs(min(v[2] for v in los), max(v[2] for v in his))
+            x, y = _studs(boxes[step.index])
+            his = [b[1] for b in boxes[step.index]]
             z = f"{max(0, round(min(-v[1] for v in his) / ldraw.PLATE))}-{max(map(top, boxes[step.index]))}"
             n = len(boxes[step.index])
             lines.append(f"{step.index + 1} {step.title}: {n} piece{'s' * (n != 1)}, x {x}, y {y}, z {z}")
