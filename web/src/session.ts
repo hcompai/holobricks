@@ -171,6 +171,15 @@ export function status(session: HaiAgents.TrajectoryStatus): Status {
 export function ending(session: HaiAgents.TrajectoryStatus, error: string | null): Message | null {
   if (session === "interrupted") return { role: "system", text: "Stopped.", images: [] };
   if (status(session) === "error")
-    return { role: "system", text: `The build stopped: ${error ?? session.replace("_", " ")}.`, images: [] };
+    return {
+      role: "system",
+      text:
+        session === "timed_out"
+          ? "This attempt reached its time limit. You can try continuing below."
+          : error?.includes("CodeSandboxGoneError") || error?.includes("CodeSandboxRestartedError")
+            ? "The building service stopped unexpectedly. You can try continuing below."
+            : "Building was interrupted. You can try again below.",
+      images: [],
+    };
   return null;
 }

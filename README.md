@@ -155,4 +155,18 @@ submits its inputs with creation, and preserves the original session. It copies 
 private reasoning. The new session's `groupId` points to the source, so an accepted attempt can be
 found after a lost response. Recovery is user-triggered and creation is not automatically retried.
 The current toolkit is used; temporary files, arbitrary dependencies and unshared edits are not
-restored. A legacy retry starts over and may produce a different model.
+restored. A legacy retry starts over and may produce a different model. If a remix or recovery failed
+before its first share, its original starting-model attachment is carried into the retry; a missing
+starting model blocks creation rather than silently dropping that input.
+
+### Keeping the browser available
+
+The running-build notice remains visible while browsing the Library or another model. Brickyard
+keeps answering `look` for running sessions inside the app, warns before leaving, and asks before
+signing out. Keep the tab open and the device awake: a suspended or closed browser cannot render.
+The browser's leave warning is best-effort and cannot prevent a crash or suspension. This is not a
+background rendering service and does not automatically pause the session clock.
+
+Interrupted builds show a plain-language message with technical details collapsed under the recovery
+action. Activity labels follow the session's working/render-request state rather than rotating claims
+about construction progress.

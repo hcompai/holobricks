@@ -122,10 +122,17 @@ export default function App({ account }: { account: Account }) {
   }, []);
 
   useEffect(() => void refreshBuilds(), [refreshBuilds, account.user.id, libraryOpen]);
-  useKeeper(
-    builds?.filter((b) => b.source === "session" && b.status === "building").map((b) => b.id) ?? [],
-    refreshBuilds,
-  );
+  const running = [
+    ...new Set([
+      ...(builds ?? [])
+        .filter(
+          (b) => b.source === "session" && b.status === "building" && (b.id !== live?.id || live.status === "building"),
+        )
+        .map((b) => b.id),
+      ...(live?.status === "building" ? [live.id] : []),
+    ]),
+  ];
+  useKeeper(running, refreshBuilds);
 
   const summary = builds?.find((b) => b.id === buildId && b.source === ref?.source);
   const heading = build ?? summary;
@@ -262,8 +269,9 @@ export default function App({ account }: { account: Account }) {
       <RecoveryPanel
         key={build.id}
         build={live!}
+        edited={edited}
         onOpen={(id) => {
-          open({ id, source: "session" });
+          if (opened.current?.source === "session" && opened.current.id === build.id) open({ id, source: "session" });
           refreshBuilds();
         }}
       />
@@ -272,7 +280,7 @@ export default function App({ account }: { account: Account }) {
   const visibleStep = Math.min(step, last);
 
   return (
-    <div className="app">
+    <div className={running.length ? "app has-running" : "app"}>
       <header>
         <button className="brand" onClick={home}>
           <img className="brand-icon" src="/brick.png" alt="" />
@@ -341,9 +349,15 @@ export default function App({ account }: { account: Account }) {
           </button>
         )}
         <ThemeToggle />
-        <AccountMenu account={account} />
+        <AccountMenu account={account} building={running.length > 0} />
         {build && <DownloadMenu build={build} image={() => viewer.current?.image() ?? Promise.resolve(null)} />}
       </header>
+      {running.length > 0 && (
+        <div className="build-notice" role="note" aria-label="Keep Brickyard open">
+          <strong>Keep this tab open while Holo builds.</strong> Your browser renders the model for Holo. You can browse
+          within Brickyard; closing this tab, leaving the site or sleeping your device can interrupt the build.
+        </div>
+      )}
       <aside>
         <div className="aside-bar">
           <span className="aside-title">Chat</span>

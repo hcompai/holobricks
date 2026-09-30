@@ -3,7 +3,7 @@ import { type Account, signOut } from "./account";
 import { useMenu } from "./useMenu";
 
 /** The signed-in user, with a menu to sign out. */
-export function AccountMenu({ account }: { account: Account }) {
+export function AccountMenu({ account, building = false }: { account: Account; building?: boolean }) {
   const { open, setOpen, root } = useMenu();
   const { name, email } = account.user;
   return (
@@ -27,6 +27,13 @@ export function AccountMenu({ account }: { account: Account }) {
           <button
             role="menuitem"
             onClick={() => {
+              if (
+                building &&
+                !window.confirm(
+                  "Holo still needs this tab to render your build. Signing out can interrupt it. Sign out anyway?",
+                )
+              )
+                return;
               setOpen(false);
               signOut();
             }}

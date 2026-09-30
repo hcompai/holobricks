@@ -1,9 +1,17 @@
 import { useState } from "react";
 import { card } from "./library";
 import type { Build } from "./model";
-import { canRestore, recover } from "./recovery";
+import { canRestore, recover, RecoveryProblem } from "./recovery";
 
-export function RecoveryPanel({ build, onOpen }: { build: Build; onOpen: (id: string) => void }) {
+export function RecoveryPanel({
+  build,
+  edited = false,
+  onOpen,
+}: {
+  build: Build;
+  edited?: boolean;
+  onOpen: (id: string) => void;
+}) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const restore = canRestore(build);
@@ -14,9 +22,11 @@ export function RecoveryPanel({ build, onOpen }: { build: Build; onOpen: (id: st
     setError(null);
     try {
       onOpen(await recover(build));
-    } catch {
+    } catch (e) {
       setError(
-        "We couldn't open a recovery attempt. Your original build is unchanged. Check Library for a new attempt before trying again.",
+        e instanceof RecoveryProblem
+          ? e.message
+          : "We couldn't open a recovery attempt. Your original build is unchanged. Check Library for a new attempt before trying again.",
       );
     } finally {
       setBusy(false);
@@ -28,9 +38,10 @@ export function RecoveryPanel({ build, onOpen }: { build: Build; onOpen: (id: st
       <p>
         {restore
           ? "Continue from the last shared version in a new attempt. Your original model stays here; later unshared changes may be lost."
-          : "Try again with your original requests and photos. No restorable version was shared, so the new model will start over."}
+          : "Try again with your original requests and photos. This attempt will restart from its original inputs, rather than its last shared version."}
       </p>
       {build.pieces.length > 0 && <p>You can also keep this version and download the model or an image.</p>}
+      {restore && edited && <p>Manual edits stay with the original; recovery uses Holo’s shared version.</p>}
       <button disabled={busy} onClick={start}>
         {busy
           ? "Preparing your build…"
@@ -41,6 +52,12 @@ export function RecoveryPanel({ build, onOpen }: { build: Build; onOpen: (id: st
               : "Try again with same request"}
       </button>
       {error && <p role="alert">{error}</p>}
+      {build.failure && (
+        <details>
+          <summary>Technical details</summary>
+          <p className="failure-detail">{build.failure}</p>
+        </details>
+      )}
     </section>
   );
 }
