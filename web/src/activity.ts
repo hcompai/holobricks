@@ -1,5 +1,23 @@
 import type { HaiAgents } from "hai-agents";
 
+/** The few phases of a build, as the chat's live line names them. */
+export const PHASES = {
+  idea: "Reading your idea",
+  setup: "Getting its bricks ready",
+  photos: "Finding photos",
+  naming: "Naming it",
+  bricks: "Placing bricks",
+  checking: "Checking every side",
+} as const;
+
+type Phase = (typeof PHASES)[keyof typeof PHASES];
+
+/** A tool call as the builder's work log says it, and its phase; a null phase carries on the one before. */
+interface Doing {
+  label: string;
+  phase: Phase | null;
+}
+
 const file = (path: string) => path.split("/").pop() || "a file";
 
 function host(url: unknown): string {
@@ -10,47 +28,52 @@ function host(url: unknown): string {
   }
 }
 
-function command(line: string): string {
-  if (line.includes("setup.sh")) return "Installing the toolkit";
-  if (/\bbricks run\b/.test(line)) return "Building the model";
-  if (/\bbricks (parts|colors|check)\b/.test(line)) return "Checking parts";
-  if (/\bbricks name\b/.test(line)) return "Naming the build";
-  if (/\bbricks assembly\b/.test(line)) return "Checking how it holds together";
-  if (/\bcurl\b/.test(line)) return "Downloading photos";
-  return "Running a command";
+function command(line: string): Doing {
+  if (line.includes("setup.sh")) return { label: "Getting its bricks ready", phase: PHASES.setup };
+  if (/\bbricks run\b/.test(line)) return { label: "Building the model", phase: PHASES.bricks };
+  if (/\bbricks (parts|colors|check)\b/.test(line)) return { label: "Checking parts", phase: null };
+  if (/\bbricks name\b/.test(line)) return { label: "Naming the build", phase: PHASES.naming };
+  if (/\bbricks assembly\b/.test(line)) return { label: "Checking how it holds together", phase: PHASES.checking };
+  if (/\bcurl\b/.test(line)) return { label: "Downloading photos", phase: PHASES.photos };
+  return { label: "Working on it", phase: null };
 }
 
-/** What the builder does with a tool call, as the chat says it. */
-export function doing({ toolName, args = {} }: HaiAgents.ToolRequest): string {
+/** What the builder does with a tool call. */
+export function doing({ toolName, args = {} }: HaiAgents.ToolRequest): Doing {
   const path = String(args.path ?? args.file_path ?? args.source ?? "");
   const notes = path.endsWith("notes.md");
   const script = path.endsWith("build.py");
   const showcase = path.includes("showcase/");
+  const quiet = (label: string): Doing => ({ label, phase: null });
   switch (toolName) {
     case "shell":
       return command(String(args.command ?? ""));
     case "poll_execution":
-      return "Waiting for a command";
+      return quiet("Still working");
     case "read_file":
-      if (notes) return "Reading its notes";
-      if (script) return "Reading the build script";
-      return showcase ? "Studying a showcase" : `Reading ${file(path)}`;
+      if (notes) return quiet("Reading its notes");
+      if (script) return quiet("Reading the build script");
+      return quiet(showcase ? "Studying a showcase" : `Reading ${file(path)}`);
     case "write_file":
     case "search_replace":
-      if (notes) return "Updating its notes";
-      if (script) return toolName === "write_file" ? "Writing the build script" : "Editing the build script";
-      return `Writing ${file(path)}`;
+      if (notes) return quiet("Updating its notes");
+      if (script)
+        return {
+          label: toolName === "write_file" ? "Writing the build script" : "Editing the build script",
+          phase: PHASES.bricks,
+        };
+      return quiet(`Writing ${file(path)}`);
     case "view_image":
-      return showcase ? "Studying a showcase" : "Studying a photo";
+      return quiet(showcase ? "Studying a showcase" : "Studying a photo");
     case "share_files":
-      return "Sharing a new revision";
+      return { label: "Showing you the model", phase: PHASES.bricks };
     case "look":
-      return "Looking at the model";
+      return { label: "Looking at the model", phase: PHASES.checking };
     case "web_search":
-      return args.query ? `Searching “${args.query}”` : "Searching the web";
+      return { label: args.query ? `Searching “${args.query}”` : "Searching the web", phase: PHASES.photos };
     case "web_fetch":
-      return `Reading ${host(args.url)}`;
+      return { label: `Reading ${host(args.url)}`, phase: PHASES.photos };
     default:
-      return toolName.replaceAll("_", " ");
+      return quiet(toolName.replaceAll("_", " "));
   }
 }

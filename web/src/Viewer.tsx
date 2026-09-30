@@ -111,8 +111,6 @@ interface Props {
   onThumbnail?: (png: Blob, revision: string) => void;
   /** The revision the build's saved thumbnail shows, which needs no new one. */
   thumbnailed?: string;
-  /** What shows before any build is open. */
-  empty: string;
   mode: Mode;
   /** The open build's hand edits; `build` already shows them. */
   edits: Edits;
@@ -124,7 +122,7 @@ interface Props {
 }
 
 export function Viewer(props: Props) {
-  const { ref, build, opening, step, framing, spin, onThumbnail, thumbnailed, syncError, empty } = props;
+  const { ref, build, opening, step, framing, spin, onThumbnail, thumbnailed, syncError } = props;
   const { mode, edits, describe, palette, onMode } = props;
   const container = useRef<HTMLDivElement>(null);
   const scene = useRef<BrickScene | null>(null);
@@ -442,13 +440,12 @@ export function Viewer(props: Props) {
           {opening && !shown && <BrickLoader label={build ? "Loading the model…" : opening} />}
           {waiting &&
             (build.status === "building" ? (
-              <BrickLoader label="Holo is planning the build…" />
+              <BrickLoader label="Holo is getting its bricks ready. First bricks in a few minutes." />
             ) : (
               <BrickLoader idle label="Nothing built yet. Ask Holo in the chat." />
             ))}
         </>
       )}
-      {!build && !opening && <BrickLoader idle label={empty} />}
     </div>
   );
 }

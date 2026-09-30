@@ -6,6 +6,7 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { site } from "./fixtures";
 
 const TOWER = {
   id: "tower",
@@ -19,6 +20,10 @@ const TOWER = {
   thumbnail: "https://blob.test/builds/tower/thumbnail.webp?v=1",
   build: "https://blob.test/builds/tower/build.json.gz",
 };
+const PIXEL = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC",
+  "base64",
+);
 const SHOWCASE = { id: "hogwarts", name: "Hogwarts", prompt: "A private prompt", pieces: 26987, thumbnail: 179 };
 
 /** Vercel Blob's API holding the public library entry of TOWER, and the site's gallery holding SHOWCASE. */
@@ -53,14 +58,18 @@ async function host() {
   };
 }
 
+/** The preview function as it deploys, bundled with the webServer's build of dist/index.html. */
+async function bundled(): Promise<(request: Request) => Promise<Response>> {
+  const out = mkdtempSync(join(tmpdir(), "brickyard-api-"));
+  execFileSync("node", ["scripts/build-api.mjs", out]);
+  return (await import(pathToFileURL(join(out, "functions/api/preview.func/index.mjs")).href)).GET;
+}
+
 const meta = (html: string, key: string) =>
   html.match(new RegExp(`<meta (?:property|name)="${key}" content="([^"]*)"`))?.[1];
 
 test("a link to a public build or a showcase previews its name, pieces, author and cover; any other gets the app as is", async () => {
-  // The webServer's build writes dist/index.html, which the function bundles.
-  const out = mkdtempSync(join(tmpdir(), "brickyard-api-"));
-  execFileSync("node", ["scripts/build-api.mjs", out]);
-  const { GET } = await import(pathToFileURL(join(out, "functions/api/preview.func/index.mjs")).href);
+  const GET = await bundled();
   const index = readFileSync("dist/index.html", "utf8");
   const { origin, close } = await host();
   const page = async (search: string) => {
@@ -87,6 +96,24 @@ test("a link to a public build or a showcase previews its name, pieces, author a
 
     for (const search of ["?public=gone", "?public=broken", "?public=../tower", "?showcase=gone", "?build=tower"])
       expect(await page(search), search).toBe(index);
+  } finally {
+    close();
+  }
+});
+
+test("signed out, a shared link shows the build's cover and who shared it above the sign-in", async ({ page }) => {
+  const GET = await bundled();
+  const { origin, close } = await host();
+  try {
+    const html = await (await GET(new Request(`${origin}/?public=tower`))).text();
+    await site(page, [], null);
+    await page.route(/\/\?public=tower$/, (route) => route.fulfill({ contentType: "text/html", body: html }));
+    await page.route(TOWER.thumbnail, (route) => route.fulfill({ contentType: "image/png", body: PIXEL }));
+    await page.goto("/?public=tower");
+    await expect(page.getByText("Ada Lovelace shared with you")).toBeVisible();
+    await expect(page.getByRole("heading", { name: TOWER.name })).toBeVisible();
+    await expect(page.getByRole("img", { name: TOWER.name })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Continue with Google" })).toBeVisible();
   } finally {
     close();
   }

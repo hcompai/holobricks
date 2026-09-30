@@ -200,10 +200,32 @@ hr {
   background: var(--background-card);
 }
 
-/* Nothing to play or turn before a build opens. */
-.app.home .center-bar,
-.app.home .timeline {
+/* Home is one column: the composer and the shelves, or the library over it. */
+.app.home {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.app.home main,
+.app.home.library aside,
+.app.home .aside-bar {
   display: none;
+}
+
+.app.home.library main {
+  display: flex;
+}
+
+.app.home aside {
+  border-right: none;
+  overflow-y: auto;
+}
+
+.app.home .aside-body {
+  flex: none;
+  gap: var(--space-5);
+  width: min(760px, 100%);
+  margin: 0 auto;
+  padding: 12vh var(--space-4) var(--space-5);
 }
 
 header {
@@ -322,17 +344,52 @@ aside {
   gap: 8px;
 }
 
-.chat-intro h2 {
+.home-intro {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.home-intro h1 {
+  margin: 0;
   font-size: var(--font-display);
   line-height: 34px;
   font-weight: 700;
   letter-spacing: -0.02em;
-  margin: var(--space-2) 0 var(--space-2);
 }
 
-.chat-intro p {
+.home-intro > p {
+  margin: 0 0 var(--space-2);
   color: var(--text-secondary);
-  margin: 0;
+  font-size: var(--font-title);
+}
+
+.home-intro .composer textarea {
+  min-height: 120px;
+  font-size: var(--font-title);
+  line-height: 24px;
+  padding: 14px 16px 48px;
+}
+
+.home-shelf h2 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 0 var(--space-2);
+  font-size: var(--font-title);
+  font-weight: 600;
+}
+
+/* Tiles lift on hover: the padding keeps the lift and its shadow inside the scroller. */
+.home-row {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 172px;
+  gap: var(--space-3);
+  overflow-x: auto;
+  scrollbar-width: none;
+  margin: -6px calc(-1 * var(--space-4)) -20px;
+  padding: 6px var(--space-4) 20px;
 }
 
 .chips {
@@ -835,6 +892,22 @@ aside {
   height: 12px;
   margin: 26px 0 0;
   animation: float-shadow 3.2s ease-in-out infinite;
+}
+
+.sign-in-cover {
+  width: min(320px, 80vw);
+  aspect-ratio: 1;
+  object-fit: contain;
+  margin-bottom: var(--space-4);
+  border-radius: var(--radius-dialog);
+  background: var(--background-viewer);
+  border: 1px solid var(--stroke-default);
+}
+
+.sign-in-kicker {
+  margin: 0;
+  color: var(--text-secondary);
+  font-weight: 600;
 }
 
 .sign-in-page h1 {
@@ -2179,7 +2252,16 @@ main {
   }
 
   .app.home {
-    grid-template-rows: 56px minmax(0, 2fr) minmax(0, 3fr);
+    grid-template-rows: 56px minmax(0, 1fr);
+  }
+
+  .app.home aside {
+    grid-row: 2;
+    border-top: none;
+  }
+
+  .app.home .aside-body {
+    padding-top: var(--space-5);
   }
 
   main {
@@ -2331,11 +2413,6 @@ main {
 .build-notice strong {
   color: var(--text-default);
 }
-.tab-hint {
-  font-size: 12px;
-  color: var(--text-secondary);
-  margin: 8px 0;
-}
 .failure-detail {
   overflow-wrap: anywhere;
   font-family: monospace;
@@ -2367,6 +2444,12 @@ main {
   }
   .app.has-running aside {
     grid-row: 4;
+  }
+  .app.home.has-running {
+    grid-template-rows: 56px auto minmax(0, 1fr);
+  }
+  .app.home.has-running aside {
+    grid-row: 3;
   }
   .build-notice {
     padding: 8px 12px;
