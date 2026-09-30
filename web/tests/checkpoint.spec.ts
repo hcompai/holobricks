@@ -4,12 +4,8 @@ import { snapshot } from "../api/lib/snapshot";
 import { imported } from "../api/lib/imported";
 import { fixture } from "./fixtures";
 
-test("publishing or importing a checkpoint never publishes its recovery source", async () => {
-  const model = {
-    ...fixture(),
-    recovery: { version: 1 as const, revision: fixture().revision, script: "PRIVATE_SOURCE" },
-  };
-  expect(await imported(model, "imported")).not.toHaveProperty("recovery");
+/** Publish the finished session "mine", whose shared model is `model`, with `edits`, against a mocked Agents API. */
+async function published(model: object, edits: unknown) {
   const original = globalThis.fetch;
   globalThis.fetch = async (input) => {
     const url = new URL(String(input));
@@ -48,11 +44,36 @@ test("publishing or importing a checkpoint never publishes its recovery source",
     });
   };
   try {
-    const published = await snapshot("mine", "test-key", null, async () => "unused");
-    expect(published.revision).toBe(model.revision);
-    expect(published).not.toHaveProperty("recovery");
-    expect(JSON.stringify(published)).not.toContain("PRIVATE_SOURCE");
+    return await snapshot("mine", "test-key", edits, async () => "unused");
   } finally {
     globalThis.fetch = original;
   }
+}
+
+test("publishing or importing a checkpoint never publishes its recovery source", async () => {
+  const model = {
+    ...fixture(),
+    recovery: { version: 1 as const, revision: fixture().revision, script: "PRIVATE_SOURCE" },
+  };
+  expect(await imported(model, "imported")).not.toHaveProperty("recovery");
+  const build = await published(model, null);
+  expect(build.revision).toBe(model.revision);
+  expect(build).not.toHaveProperty("recovery");
+  expect(JSON.stringify(build)).not.toContain("PRIVATE_SOURCE");
+});
+
+test("publishing applies every kind of hand edit the viewer makes, and refuses malformed ones", async () => {
+  const model = fixture();
+  const edits = [
+    { kind: "duplicate", ids: [0, 1], by: [80, 0, 0], first: 8 },
+    { kind: "move", ids: [8], by: [0, -8, 0] },
+    { kind: "rotate", ids: [2], turns: 1, about: [20, 0] },
+    { kind: "color", ids: [3], color: 1 },
+    { kind: "delete", ids: [7] },
+  ];
+  const build = await published(model, { revision: model.revision, edits });
+  expect(build.pieces.map((p) => p.id)).toEqual([0, 1, 2, 3, 4, 5, 6, 8, 9]);
+  expect(build.revision).not.toBe(model.revision);
+  const malformed = { revision: model.revision, edits: [{ kind: "duplicate", ids: [0], by: [80, 0, 0] }] };
+  await expect(published(model, malformed)).rejects.toThrow("The edits are malformed.");
 });
