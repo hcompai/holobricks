@@ -18,6 +18,7 @@ import {
 const WAIT_S = 20;
 const RETRY_MS = 3000;
 const RENDER_TRIES = 3;
+const LOAD_TRIES = 3;
 
 /** A session as the Agents API last told it. */
 export interface Followed {
@@ -68,6 +69,8 @@ function follow(id: string, signal: AbortSignal, notify: Listener, displayed: ()
   let failure: string | null = null;
   let model = EMPTY_MODEL;
   let loaded = 0;
+  /** The latest shared model while it fails to load: how many times, and why. */
+  let unloaded: { shared: number; tries: number; reason: string } | null = null;
   /** Whether the model changed since this follower last saw the session settle. */
   let changed = false;
   const seen = new Set<string>();
@@ -152,11 +155,16 @@ function follow(id: string, signal: AbortSignal, notify: Listener, displayed: ()
       activity: buildStatus(session) === "building" ? activity(transcript) : null,
     });
     if (transcript.state !== "awaiting_tool_results") return;
-    const look = transcript.looks.find((l) => l.shared <= loaded);
+    const lost = unloaded && unloaded.tries >= LOAD_TRIES ? unloaded : null;
+    const look = transcript.looks.find((l) => l.shared <= loaded || lost);
     const call = look?.call;
     if (!look || !call?.id || seen.has(call.id)) return;
     seen.add(call.id);
-    see(call, look.shared).catch((e) => {
+    const answered =
+      look.shared <= loaded
+        ? see(call, look.shared)
+        : fail(id, call, `The model you shared could not be loaded (${lost!.reason}). Share it again, then look.`);
+    answered.catch((e) => {
       if (status(e) !== 409) seen.delete(call.id!);
     });
   };
@@ -164,13 +172,21 @@ function follow(id: string, signal: AbortSignal, notify: Listener, displayed: ()
   const loadModel = async () => {
     const latest = transcript.model;
     if (!latest || latest.shared === loaded) return;
-    const next = await unpack<Model>(await download(latest.url, signal));
-    provideParts(next.parts);
-    if (next.revision === model.revision) next.pieces = model.pieces;
-    else changed = true;
-    model = next;
-    loaded = latest.shared;
-    remember(id, { pieces: model.pieces.length, ...(named(model) && { name: model.name }) });
+    try {
+      const next = await unpack<Model>(await download(latest.url, signal));
+      provideParts(next.parts);
+      if (next.revision === model.revision) next.pieces = model.pieces;
+      else changed = true;
+      model = next;
+      loaded = latest.shared;
+      unloaded = null;
+      remember(id, { pieces: model.pieces.length, ...(named(model) && { name: model.name }) });
+    } catch (e) {
+      if (signal.aborted) throw e;
+      console.error("Could not load the latest model", e);
+      const tries = unloaded?.shared === latest.shared ? unloaded.tries + 1 : 1;
+      unloaded = { shared: latest.shared, tries, reason: e instanceof Error ? e.message : String(e) };
+    }
   };
 
   const poll = async () => {
@@ -199,7 +215,7 @@ function follow(id: string, signal: AbortSignal, notify: Listener, displayed: ()
         await loadModel();
         fetchPictures();
         publish();
-        set({ error: null, syncError: null });
+        set({ error: null, syncError: unloaded && "Couldn't load the latest model." });
         if (!changes && isTerminalSessionStatus(session)) return;
       } catch (e) {
         if (signal.aborted) return;

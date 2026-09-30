@@ -108,6 +108,25 @@ test("Holo keeps getting its renders while the user browses other builds", async
   expect(image).toMatch(/^data:image\/jpeg;base64,/);
 });
 
+test("a model that fails to load leaves the chat readable, and Holo hears why", async ({ page }) => {
+  await site(page);
+  const agp = await platform(page);
+  agp.session("live");
+  agp.say("live", "A tower");
+  agp.share("live", fixture());
+  agp.files.clear();
+  agp.look("live", "lost");
+  await page.goto("/?build=live");
+  await expect(page.locator(".msg.user")).toHaveText("A tower");
+  await expect(page.getByRole("alert")).toContainText("Couldn't load the latest model.");
+  await expect.poll(() => agp.posted("/tool_results")).toHaveLength(1);
+  expect(agp.posted("/tool_results")[0]).toMatchObject({
+    kind: "error_event",
+    tool_req: { id: "lost" },
+    error: expect.stringContaining("could not be loaded"),
+  });
+});
+
 test("a lost connection hides the model until the platform answers again", async ({ page }) => {
   await site(page);
   const agp = await platform(page);
