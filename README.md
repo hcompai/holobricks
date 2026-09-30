@@ -38,6 +38,7 @@ scripts/fetch-ldraw.sh                        # LDraw parts library into ./ldraw
 python3 scripts/fetch-connectors.py           # pinned LDCad stud/socket data for assembly plans
 cd server && uv sync && cd ..
 REBRICKABLE_API_KEY=... server/.venv/bin/brickyard-catalog   # data/rebrickable.json.gz, valid 30 days
+server/.venv/bin/brickyard-prices                             # web/public/pick-a-brick.json (--locale en-US for another store)
 server/.venv/bin/python scripts/pack-toolkit.py               # web/public/brickyard.tgz and LDConfig.ldr
 cd web && npm install
 vercel link --yes --scope h-company --project brickyard && vercel env pull .env.local   # the server's secrets

@@ -1477,7 +1477,8 @@ main {
 }
 
 @media (max-width: 760px) {
-  header .chip {
+  header .chip,
+  header .price {
     display: none;
   }
   .shop-dialog {
@@ -1838,6 +1839,60 @@ main {
 
 .color-swatch.metallic {
   background-image: linear-gradient(135deg, rgba(255, 255, 255, 0.5), transparent 60%) !important;
+}
+
+/* The price estimate: a chip like the piece count, which opens its details. */
+.price-trigger {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-secondary);
+  background: var(--background-muted);
+  border: none;
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.price-trigger:hover,
+.price-trigger[aria-expanded="true"] {
+  color: var(--text-default);
+  box-shadow: inset 0 0 0 1px var(--stroke-strong);
+}
+
+.menu-list.price-details {
+  left: 0;
+  right: auto;
+  white-space: normal;
+  width: 320px;
+  max-width: calc(100vw - 32px);
+  gap: 4px;
+  padding: 12px;
+}
+
+.price-total {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 0 2px;
+}
+
+.price-total b {
+  font-size: 18px;
+  line-height: 24px;
+}
+
+.price-details ul {
+  margin: 4px 0 8px;
+  padding-left: 18px;
+  color: var(--text-secondary);
+}
+
+.price-details ul li + li {
+  margin-top: 2px;
+}
+
+.price-details p {
+  margin: 4px 2px 0;
 }
 
 .instructions-dialog {
