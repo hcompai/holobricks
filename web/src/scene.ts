@@ -408,7 +408,7 @@ export class BrickScene {
   private walker: PointerLockControls | null = null;
   private walking = false;
   private keys = new Set<string>();
-  private clock = new THREE.Clock();
+  private timer = new THREE.Timer();
   private ground = 0;
 
   constructor(
@@ -455,9 +455,9 @@ export class BrickScene {
     this.resizeObserver.observe(container);
     this.resize();
     this.frameView("iso", 32, 32);
-    const tick = () => {
+    const tick = (time?: number) => {
       this.frame = requestAnimationFrame(tick);
-      const seconds = Math.min(this.clock.getDelta(), 0.1);
+      const seconds = Math.min(this.timer.update(time).getDelta(), 0.1);
       if (this.walking) this.walk(seconds);
       else this.controls.update();
       if (this.dirty) this.draw();
