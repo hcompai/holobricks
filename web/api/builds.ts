@@ -2,7 +2,7 @@ import { gzipSync } from "node:zlib";
 import { holder, isAdmin } from "./lib/account";
 import { body, Refusal, route } from "./lib/http";
 import { snapshot } from "./lib/snapshot";
-import { enter, files, find, library, type Published, save, unlist } from "./lib/store";
+import { enter, files, find, findOwn, library, privateOf, type Published, save, setPrivate, unlist } from "./lib/store";
 
 const ID = /^[\w-]{1,100}$/;
 const THUMBNAIL = /^data:image\/(webp|png|jpeg);base64,([A-Za-z0-9+/=]+)$/;
@@ -27,13 +27,33 @@ function thumbnail(value: unknown): { data: Buffer; type: string } | null {
   return { data, type: `image/${match[1]}` };
 }
 
-/** The public library, or one public build with `?id=`. */
+const OWN = { "Cache-Control": "private, no-store" };
+
+/**
+ * The public library, or one public build with `?id=`. Signed in, `?mine=1` lists the caller's private builds, and
+ * `?id=` also finds one of them.
+ */
 export const GET = route(async (request) => {
-  const id = new URL(request.url).searchParams.get("id");
+  const params = new URL(request.url).searchParams;
+  if (params.has("mine")) return Response.json(await privateOf(holder(request).user.id), { headers: OWN });
+  const id = params.get("id");
   if (!id) return Response.json(await library(), { headers: SHARED });
-  const published = await find(buildId(id));
-  if (!published) throw new Refusal(404, "This build is not public.");
-  return Response.json(published, { headers: SHARED });
+  const shared = await find(buildId(id));
+  if (shared) return Response.json(shared, { headers: SHARED });
+  const own = request.headers.has("authorization") ? await findOwn(holder(request).user.id, buildId(id)) : null;
+  if (!own) throw new Refusal(404, "This build is not public.");
+  return Response.json(own, { headers: OWN });
+});
+
+/** Make one of the caller's builds private or public again: `{ id, private }`. Its files and link stay the same. */
+export const PATCH = route(async (request) => {
+  const { user } = holder(request);
+  const given = await body<{ id?: unknown; private?: unknown }>(request);
+  if (typeof given.private !== "boolean") throw new Refusal(400, "Say whether the build is private.");
+  const published = await findOwn(user.id, buildId(given.id));
+  if (!published || published.owner !== user.id) throw new Refusal(404, "No such build of yours.");
+  if (!!published.private === given.private) return Response.json(published);
+  return Response.json(await setPrivate(published, given.private));
 });
 
 /** Publish the caller's build, as it is now; publishing again replaces it. */
@@ -72,13 +92,13 @@ export const POST = route(async (request) => {
   return Response.json(published, { status: 201 });
 });
 
-/** Take a build out of the library: its author, or an admin. */
+/** Take a build out of the library and delete its files: its author, or an admin for a public one. */
 export const DELETE = route(async (request) => {
   const { user } = holder(request);
   const id = buildId(new URL(request.url).searchParams.get("id"));
-  const published = await find(id);
-  if (!published) throw new Refusal(404, "This build is not public.");
+  const published = (await find(id)) ?? (await findOwn(user.id, id));
+  if (!published) throw new Refusal(404, "No such build in the library.");
   if (published.owner !== user.id && !isAdmin(user)) throw new Refusal(403, "Only its author can unpublish a build.");
-  await unlist(id);
+  await unlist(id, published.owner);
   return new Response(null, { status: 204 });
 });

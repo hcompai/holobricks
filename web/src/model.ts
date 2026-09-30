@@ -103,6 +103,8 @@ export interface BuildSummary {
   author: string | null;
   /** The author's user id, for public builds. */
   owner: string | null;
+  /** Listed to its owner only: a library build they made private. */
+  private?: boolean;
 }
 
 /** One view the builder asks for: seen from compass `angle` (0 front, 90 right), `elevation` degrees up, `zoom` times closer, centered on `at` (studs, studs, plates). */

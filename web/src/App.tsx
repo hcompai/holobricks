@@ -13,12 +13,13 @@ import { DownloadMenu } from "./DownloadMenu";
 import { ImportBuild } from "./ImportBuild";
 import { LibraryPage } from "./LibraryPage";
 import { countParts, PartsPanel } from "./PartsPanel";
+import { DeleteButton } from "./DeleteButton";
 import { PublishButton } from "./PublishButton";
 import { ShopDialog } from "./ShopDialog";
 import { Timeline } from "./Timeline";
 import { FilmExport } from "./FilmExport";
 import { InstructionsExport } from "./InstructionsExport";
-import { library, publish, remember, type Shelf, thumbnail, unpublish } from "./library";
+import { library, publish, remember, setPrivate, type Shelf, thumbnail, unpublish } from "./library";
 import { type BuildRef, useBuild } from "./useBuild";
 import { useKeeper } from "./useSession";
 import { ThemeToggle } from "./ThemeToggle";
@@ -217,15 +218,34 @@ export default function App({ account }: { account: Account }) {
     await refreshBuilds();
   };
 
+  /** The signed-in user's build, from their session or as they published it. */
+  const owned = ref?.source === "session" || (ref?.source === "public" && summary?.owner === account.user.id);
+  /** An imported build of theirs: it lives only in the library, with no session to fall back to. */
+  const imported = owned && ref?.source === "public" && ref.id.startsWith("import-");
+
   const unpublishBuild = async () => {
     if (!live) return;
-    await unpublish(live.id);
-    if (ref?.source === "public") open({ id: live.id, source: "session" });
+    // Unpublishing would delete an imported build; making it private keeps it under Mine.
+    if (imported) await setPrivate(live.id, true);
+    else {
+      await unpublish(live.id);
+      if (ref?.source === "public") open({ id: live.id, source: "session" });
+    }
     await refreshBuilds();
   };
 
-  /** The signed-in user's build, from their session or as they published it. */
-  const owned = ref?.source === "session" || (ref?.source === "public" && summary?.owner === account.user.id);
+  const republish = async () => {
+    if (!live) return;
+    await setPrivate(live.id, false);
+    await refreshBuilds();
+  };
+
+  const deleteBuild = async () => {
+    if (!live) return;
+    await unpublish(live.id);
+    navigate(null, true);
+    await refreshBuilds();
+  };
 
   const closed =
     ref?.source === "showcase"
@@ -276,7 +296,8 @@ export default function App({ account }: { account: Account }) {
         <span className="spacer" />
         {build && owned && (
           <PublishButton
-            published={ref?.source === "public" || !!listed}
+            published={imported ? !summary?.private : ref?.source === "public" || !!listed}
+            imported={imported}
             blocked={
               build.status === "building"
                 ? "Publish once Holo answers"
@@ -285,10 +306,11 @@ export default function App({ account }: { account: Account }) {
                   : null
             }
             author={account.user.name}
-            onPublish={publishBuild}
+            onPublish={imported ? republish : publishBuild}
             onUnpublish={unpublishBuild}
           />
         )}
+        {build && imported && <DeleteButton name={build.name} onDelete={deleteBuild} />}
         {build && (
           <button
             className="shop-trigger"

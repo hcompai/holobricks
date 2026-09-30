@@ -7,12 +7,14 @@ interface Props {
   /** Why the build cannot be published yet, or null when it can. */
   blocked: string | null;
   author: string;
+  /** An imported build: making it private keeps it under Mine, since it has no session to fall back to. */
+  imported?: boolean;
   onPublish: () => Promise<void>;
   onUnpublish: () => Promise<void>;
 }
 
 /** Publishes the build to the public library under the author's name, or makes it private again, each after a confirmation. */
-export function PublishButton({ published, blocked, author, onPublish, onUnpublish }: Props) {
+export function PublishButton({ published, blocked, author, imported = false, onPublish, onUnpublish }: Props) {
   const { open, setOpen, root } = useMenu();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -32,7 +34,9 @@ export function PublishButton({ published, blocked, author, onPublish, onUnpubli
     ? {
         name: "Make private",
         question: "Make this build private?",
-        note: "It leaves the public library and its link stops working. You can publish it again.",
+        note: imported
+          ? "It leaves the public library and stays under Mine for you alone. Its link still opens it for anyone who has it. You can publish it again."
+          : "It leaves the public library and its link stops working. You can publish it again.",
         doing: "Making private…",
         icon: <LockSimpleIcon size={16} />,
         action: onUnpublish,
@@ -40,7 +44,9 @@ export function PublishButton({ published, blocked, author, onPublish, onUnpubli
     : {
         name: "Publish",
         question: "Publish this build?",
-        note: `Everyone at H Company can open it, as ${author}'s: the model, the chat, and the photos you attached.`,
+        note: imported
+          ? `Everyone at H Company can open it from the library, as ${author}'s.`
+          : `Everyone at H Company can open it, as ${author}'s: the model, the chat, and the photos you attached.`,
         doing: "Publishing…",
         icon: <GlobeIcon size={16} />,
         action: onPublish,
