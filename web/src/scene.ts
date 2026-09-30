@@ -324,6 +324,8 @@ export interface SceneOptions {
   material?: (material: THREE.Material) => THREE.Material;
   /** Called when walking takes or releases the mouse pointer. */
   onWalkLock?: (locked: boolean) => void;
+  /** How highlighted pieces show: tinted and outlined (the default), or only outlined, as instructions draw new pieces. */
+  marks?: "tint" | "outline";
 }
 
 const WALK_KEYS = new Set([
@@ -902,8 +904,9 @@ export class BrickScene {
         }
       });
     };
-    if (hover !== null && !selected.includes(hover)) add(hover, [this.marks.hover], this.outlines.hover);
-    for (const id of selected) add(id, [this.marks.selected, this.marks.through], this.outlines.selected);
+    const tint = this.options.marks !== "outline";
+    if (hover !== null && !selected.includes(hover)) add(hover, tint ? [this.marks.hover] : [], this.outlines.hover);
+    for (const id of selected) add(id, tint ? [this.marks.selected, this.marks.through] : [], this.outlines.selected);
     this.dirty = true;
   }
 
@@ -951,13 +954,31 @@ export class BrickScene {
     this.dirty = true;
   }
 
-  /** Square renders of the whole model, or only of what lies in `box`, into a 2D canvas, leaving the user's camera and timeline untouched. */
-  private offscreen(
+  /** Square renders of the whole model, or only of what lies in `box`, as a PNG, leaving the user's camera and timeline untouched. */
+  private offscreen(...args: Parameters<BrickScene["paint"]>): Promise<Blob | null> {
+    const canvas = this.paint(...args);
+    return new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
+  }
+
+  /**
+   * Square renders into a 2D canvas, leaving the user's camera and timeline untouched: the whole model, or only what
+   * lies in `box`; with `page`, only the steps shown and their highlights, as an instructions page.
+   */
+  private paint(
     size: number,
-    tiles: { direction: THREE.Vector3; zoom?: number; at?: THREE.Vector3; x: number; y: number; label?: string }[],
+    tiles: {
+      direction: THREE.Vector3;
+      zoom?: number;
+      at?: THREE.Vector3;
+      focus?: THREE.Box3;
+      x: number;
+      y: number;
+      label?: string;
+    }[],
     columns = 1,
     box: Box | null = null,
-  ) {
+    page = false,
+  ): HTMLCanvasElement {
     const focus = box ? worldBox(box) : undefined;
     const { position, near, far } = this.camera;
     const saved = {
@@ -975,15 +996,17 @@ export class BrickScene {
     const ctx = canvas.getContext("2d")!;
 
     try {
-      this.overlay.visible = false;
-      this.setVisibleStep(Infinity);
+      if (!page) {
+        this.overlay.visible = false;
+        this.setVisibleStep(Infinity);
+      }
       this.renderer.clippingPlanes = focus ? clippingPlanes(focus) : [];
       this.renderer.setPixelRatio(1);
       this.renderer.setSize(size * 2, size * 2, false);
       this.light(SHEET_LIGHT);
       this.camera.aspect = 1;
       for (const tile of tiles) {
-        this.aim(tile.direction, 32, 32, tile.zoom, tile.at, focus);
+        this.aim(tile.direction, 32, 32, tile.zoom, tile.at, tile.focus ?? focus);
         this.adaptEdges(size);
         this.renderer.render(this.scene, this.camera);
         ctx.fillStyle = BACKDROP;
@@ -1011,7 +1034,12 @@ export class BrickScene {
       this.overlay.visible = true;
       this.draw();
     }
-    return new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
+    return canvas;
+  }
+
+  /** An instructions page: the steps shown with their highlights, from the 3/4 front, framing `focus` (world space). */
+  page(size: number, focus: THREE.Box3): HTMLCanvasElement {
+    return this.paint(size, [{ direction: VIEW_DIRECTIONS.iso, focus, x: 0, y: 0 }], 1, null, true);
   }
 
   /** The user's view as they see it, on the viewer's backdrop. */

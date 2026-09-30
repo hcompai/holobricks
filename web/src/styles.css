@@ -1578,3 +1578,7 @@ main {
 .color-swatch.metallic {
   background-image: linear-gradient(135deg, rgba(255, 255, 255, 0.5), transparent 60%) !important;
 }
+
+.instructions-dialog {
+  width: min(560px, calc(100vw - 32px));
+}
