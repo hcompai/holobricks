@@ -150,20 +150,21 @@ button.active {
 
 /* A button that fills with its own progress while it cannot be pressed yet. */
 .progress-button {
-  --fill: var(--background-muted);
   justify-content: center;
-  background-image: linear-gradient(to right, var(--fill) var(--progress, 0%), transparent var(--progress, 0%));
+  color: var(--text-default);
+  border-color: var(--stroke-default);
+  background: linear-gradient(
+      to right,
+      color-mix(in srgb, var(--accent) 22%, var(--background-card)) var(--progress, 0%),
+      transparent var(--progress, 0%)
+    )
+    var(--background-card);
   font-variant-numeric: tabular-nums;
 }
 
 .progress-button:disabled {
   opacity: 1;
   cursor: progress;
-}
-
-.primary.progress-button {
-  --fill: var(--background-primary);
-  background-color: color-mix(in srgb, var(--background-primary) 45%, var(--background-card));
 }
 
 .button-note {
