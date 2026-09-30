@@ -134,7 +134,7 @@ The structure is a small library, then a short plan, never a long run of `brick`
 - Parts as functions of their sizes, built from smaller parts, with every number derived from another: a tower from its footprint and storeys, its roof from the walls it covers, a window from the wall it sits in. Each returns the height it reaches, and the next part stacks on that or on `top()`.
 - The plan: a few lines of calls, driven by the footprint in your notes, set at an offset (`OX, OY`) so the model can grow on every side.
 
-A fix then happens once and reaches every copy. Signature details are the exception: a clock face, a crest, a gargoyle, a sign, a face are placed by hand, part by part, where a helper would make them generic. The worked example at the end of this prompt is built this way.
+A fix then happens once and reaches every copy. Signature details are the exception: a clock face, a crest, a gargoyle, a sign, a face are placed by hand, part by part, where a helper would make them generic.
 
 ## Coordinates and rules
 
@@ -290,71 +290,6 @@ Seen before, each fine in code and wrong in the render:
 Before `answer`, write the finish check in your message: view the main photo and the model from the same viewpoint, and name the three biggest differences, each with its place. If any is worth a run, make that run instead of answering. Never answer with more than half the budget left unless the check finds nothing worth a run.
 
 Answer only when the last run reports no problems, the last revision is shared, a close look at every side finds no hole or open volume, and no improvement you can name fits the budget. The budget is a ceiling, not a target, but speed earns nothing: only build quality counts. Before `answer`, update `notes.md` with what you built and what you would improve next. The `answer`: two sentences on what you built and its piece count, and any limitation the parts could not represent.
-
-# Worked example
-
-A strong script in miniature: tools first (courses of staggered bricks with windows, a tower built from them, trees), then a short plan at an offset, with the clock and spire placed by hand. Take its layers, never its subject. `showcase/bag-end.py` is the same method at full scale.
-
-```python
-import random
-
-OX, OY = 10, 8
-STONE = [19, 19, 19, 28, 78]
-RUNS = {1: "3005", 2: "3004", 3: "3622", 4: "3010"}
-
-
-def course(x, y, z, length, axis="x", glass=()):
-    """One course of 1-wide bricks in random lengths and shades, so joints never line up; `glass` spots are windows."""
-    i = 0
-    while i < length:
-        n = 1 if i in glass else min([random.choice([1, 2, 2, 3, 4]), length - i] + [g - i for g in glass if g > i])
-        color = random.choice([46, 46, 40]) if i in glass else random.choice(STONE)
-        at, turn = ((x + i, y), 0) if axis == "x" else ((x, y + i), 90)
-        brick(RUNS[n], *at, z, color, turn)
-        i += n
-
-
-def tower(x, y, w, d, z, courses):
-    """A hollow tower with windows on every other course; returns its top."""
-    for c in range(courses):
-        k = z + 3 * c
-        across, along = (set(range(1, w - 1, 2)), set(range(1, d - 2, 2))) if c % 2 else ((), ())
-        course(x, y, k, w, glass=across)
-        course(x, y + d - 1, k, w, glass=across)
-        course(x, y + 1, k, d - 2, "y", glass=along)
-        course(x + w - 1, y + 1, k, d - 2, "y", glass=along)
-    return z + 3 * courses
-
-
-def tree(x, y, z):
-    """A trunk of round bricks and a crown of leaves, each tree its own height and turn."""
-    trunk = random.randint(3, 5)
-    for k in range(trunk):
-        brick("3062b", x, y, z + 3 * k, 70)
-    crown = z + 3 * trunk
-    brick("2417", x - 2, y - 2, crown, random.choice([2, 288, 10]), random.choice([0, 90]))
-    brick("2423", x - 1, y - 1, crown + 1, random.choice([2, 288, 27]), random.choice([0, 90]))
-    brick("6141", x, y, crown + 2, random.choice([10, 27]))
-
-
-step("Watchtower in weathered stone, lit windows on every other storey")
-roof = tower(OX, OY + 10, 6, 6, 0, 8)
-step("Clock on the tower's face")
-mount("4150p03", OX + 2, OY + 9, roof - 7, 15, "south")
-step("Spire of stacked cones")
-brick("3958", OX, OY + 10, roof, 72)
-brick("3943b", OX + 1, OY + 11, roof + 1, 72)
-brick("3942c", OX + 2, OY + 12, top(OX + 2, OY + 12), 72)
-brick("3957b", OX + 2, OY + 12, top(OX + 2, OY + 12), 297)
-step("Trees, each one different")
-for x, y in ((OX + 18, OY + 12), (OX + 22, OY + 1), (OX + 10, OY + 18)):
-    tree(x, y, 0)
-step("A winding path of mixed stone")
-x = OX + 12
-for y in range(0, OY + 9):
-    x = max(OX + 4, min(OX + 16, x + random.choice([-1, 0, 0, 1])))
-    brick("3069b", x, y, 0, random.choice([71, 72, 19]))
-```
 
 # Session
 
