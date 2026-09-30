@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { PointerLockControls } from "three/examples/jsm/controls/PointerLockControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { LDrawLoader } from "three/examples/jsm/loaders/LDrawLoader.js";
 import { LDrawConditionalLineMaterial } from "three/examples/jsm/materials/LDrawConditionalLineMaterial.js";
@@ -37,6 +38,10 @@ const PLATE = 8;
 const SHADOW_MAP = 2048;
 /** Edge opacity by how many pixels a stud covers: none where a stud's lines would pile into a dark film, crisp up close. */
 const EDGE_FADE = { opacity: 0.6, fromPixels: 3, toPixels: 30 };
+/** Walking at a minifig's eye height, in LDraw units per second. */
+const WALK = { eye: 80, speed: 6 * STUD, run: 3, lookDistance: 20 * STUD };
+const HOVER = { color: 0x4f8cff, opacity: 0.25 };
+const SELECTED = { color: 0xf76808, opacity: 0.35, through: 0.12 };
 
 interface Light {
   sun: THREE.Vector3;
@@ -160,13 +165,14 @@ class Batch {
   private objects: Instanced[] = [];
   private capacity = 0;
   private visible = 0;
-  private bounds: THREE.Box3;
+  /** The part's own bounds, before any piece's transform. */
+  readonly bounds: THREE.Box3;
   private size: number;
   /** The pieces drawn away from their slots, as a range of indices. */
   private moved = [0, 0];
 
   constructor(
-    private template: THREE.Group,
+    readonly template: THREE.Group,
     private root: THREE.Group,
     private materials: { mesh: (m: THREE.Material) => THREE.Material; line: (m: THREE.Material) => THREE.Material },
   ) {
@@ -207,6 +213,25 @@ class Batch {
       o.matrices.addUpdateRange(start * 16, (end - start) * 16);
       o.matrices.needsUpdate = true;
     }
+    this.invalidateBounds();
+  }
+
+  /** The piece drawn as instance `index` of `object`, if this batch draws it. */
+  pieceAt(object: THREE.Object3D, index: number): Piece | null {
+    return this.objects.some((o) => o.object === object) ? (this.pieces[index] ?? null) : null;
+  }
+
+  /** The meshes that can be picked: only their visible instances are hit. */
+  meshes(): THREE.InstancedMesh[] {
+    return this.objects.flatMap(({ object }) =>
+      object instanceof THREE.InstancedMesh && object.count ? [object] : [],
+    );
+  }
+
+  /** Raycasts cache instanced bounds, which moving or revealing pieces makes stale. */
+  private invalidateBounds() {
+    for (const { object } of this.objects)
+      if (object instanceof THREE.InstancedMesh) object.boundingSphere = object.boundingBox = null;
   }
 
   /** The index of the first piece of a step after `step`. */
@@ -227,6 +252,7 @@ class Batch {
       if (object instanceof THREE.InstancedMesh) object.count = this.visible;
       else (object.geometry as THREE.InstancedBufferGeometry).instanceCount = this.visible;
     }
+    this.invalidateBounds();
   }
 
   /** Grow `target` by every piece, in the root's local space. */
@@ -296,7 +322,42 @@ export interface SceneOptions {
   onError?: (error: Error) => void;
   /** The material meshes draw with, given their LDraw one. */
   material?: (material: THREE.Material) => THREE.Material;
+  /** Called when walking takes or releases the mouse pointer. */
+  onWalkLock?: (locked: boolean) => void;
 }
+
+const WALK_KEYS = new Set([
+  "KeyW",
+  "KeyA",
+  "KeyS",
+  "KeyD",
+  "KeyE",
+  "KeyQ",
+  "KeyC",
+  "Space",
+  "ShiftLeft",
+  "ShiftRight",
+  "ArrowUp",
+  "ArrowDown",
+  "ArrowLeft",
+  "ArrowRight",
+]);
+
+function mark(color: number, opacity: number, through = false): THREE.MeshBasicMaterial {
+  return new THREE.MeshBasicMaterial({
+    color,
+    opacity,
+    transparent: true,
+    depthWrite: false,
+    depthTest: !through,
+    polygonOffset: true,
+    polygonOffsetFactor: -1,
+    polygonOffsetUnits: -4,
+  });
+}
+
+export const typing = (event: KeyboardEvent) =>
+  event.target instanceof HTMLElement && !!event.target.closest("input, textarea, select, [contenteditable]");
 
 /** Three.js scene holding LDraw pieces; each part+color is fetched and parsed once, then drawn instanced. */
 export class BrickScene {
@@ -329,6 +390,26 @@ export class BrickScene {
   private framing: { view: View; width: number; depth: number } = { view: "iso", width: 32, depth: 32 };
   private edges = new Edges();
   private materialsFor: ConstructorParameters<typeof Batch>[2];
+  private raycaster = new THREE.Raycaster();
+  /** Tints drawn over the hovered and the selected piece; never picked or rendered for the builder. */
+  private overlay = new THREE.Group();
+  private highlighted: { hover: number | null; selected: number[] } = { hover: null, selected: [] };
+  private marks = {
+    hover: mark(HOVER.color, HOVER.opacity),
+    selected: mark(SELECTED.color, SELECTED.opacity),
+    through: mark(SELECTED.color, SELECTED.through, true),
+  };
+  /** Outlines of the highlighted pieces' bounds, seen through anything in front of them. */
+  private outlines = {
+    hover: new THREE.LineBasicMaterial({ color: HOVER.color, depthTest: false, transparent: true }),
+    selected: new THREE.LineBasicMaterial({ color: SELECTED.color, depthTest: false, transparent: true }),
+  };
+  private outlineBox = new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1));
+  private walker: PointerLockControls | null = null;
+  private walking = false;
+  private keys = new Set<string>();
+  private timer = new THREE.Timer();
+  private ground = 0;
 
   constructor(
     private container: HTMLElement,
@@ -355,6 +436,7 @@ export class BrickScene {
     this.scene.add(this.sky, this.sun, this.sun.target);
 
     this.root.rotation.x = Math.PI;
+    this.root.add(this.overlay);
     this.scene.add(this.root);
 
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
@@ -373,9 +455,11 @@ export class BrickScene {
     this.resizeObserver.observe(container);
     this.resize();
     this.frameView("iso", 32, 32);
-    const tick = () => {
+    const tick = (time?: number) => {
       this.frame = requestAnimationFrame(tick);
-      this.controls.update();
+      const seconds = Math.min(this.timer.update(time).getDelta(), 0.1);
+      if (this.walking) this.walk(seconds);
+      else this.controls.update();
       if (this.dirty) this.draw();
     };
     tick();
@@ -391,7 +475,8 @@ export class BrickScene {
   }
 
   private adaptEdges(height: number) {
-    this.fadeEdges(this.camera.position.distanceTo(this.controls.target), height);
+    const distance = this.walking ? WALK.lookDistance : this.camera.position.distanceTo(this.controls.target);
+    this.fadeEdges(distance, height);
   }
 
   /** Fade edges by how many pixels a stud covers `distance` away in a `height`-pixel frame. */
@@ -462,7 +547,13 @@ export class BrickScene {
     this.renderer.domElement.removeEventListener("webglcontextlost", this.contextLost);
     cancelAnimationFrame(this.frame);
     this.resizeObserver.disconnect();
+    this.stopListening();
+    this.walker?.unlock();
+    this.walker?.dispose();
     this.controls.dispose();
+    this.overlay.clear();
+    for (const material of [...Object.values(this.marks), ...Object.values(this.outlines)]) material.dispose();
+    this.outlineBox.dispose();
     for (const batch of this.batches.values()) batch.dispose();
     this.batches.clear();
     this.environment.dispose();
@@ -639,6 +730,7 @@ export class BrickScene {
     });
     this.shown = pieces;
     this.dirty = this.shadowsStale = true;
+    this.drawHighlights();
     return true;
   }
 
@@ -652,15 +744,172 @@ export class BrickScene {
     this.visibleStep = step;
     for (const batch of this.batches.values()) batch.show(step);
     this.dirty = this.shadowsStale = true;
+    this.drawHighlights();
   }
 
   setSpin(spin: boolean) {
     this.controls.autoRotate = spin;
   }
 
+  /** The piece drawn under the client point (`x`, `y`), among the pieces shown up to the visible step. */
+  pick(x: number, y: number): Piece | null {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    if (!rect.width || !rect.height) return null;
+    const point = new THREE.Vector2(((x - rect.left) / rect.width) * 2 - 1, -((y - rect.top) / rect.height) * 2 + 1);
+    this.raycaster.setFromCamera(point, this.camera);
+    const batches = [...this.batches.values()];
+    for (const hit of this.raycaster.intersectObjects(
+      batches.flatMap((b) => b.meshes()),
+      false,
+    )) {
+      if (hit.instanceId === undefined) continue;
+      for (const batch of batches) {
+        const piece = batch.pieceAt(hit.object, hit.instanceId);
+        if (piece) return piece;
+      }
+    }
+    return null;
+  }
+
+  /** Tint the piece under the pointer and the selected pieces, by id. */
+  setHighlight(hover: number | null, selected: number[]) {
+    const same = (a: number[], b: number[]) => a.length === b.length && a.every((id, i) => id === b[i]);
+    if (this.highlighted.hover === hover && same(this.highlighted.selected, selected)) return;
+    this.highlighted = { hover, selected };
+    this.drawHighlights();
+  }
+
+  /** The model's horizontal axes nearest the screen's right and the view's forward, in LDraw units. */
+  screenAxes(): { right: [number, number, number]; forward: [number, number, number] } {
+    const d = this.camera.getWorldDirection(new THREE.Vector3());
+    const forward =
+      Math.abs(d.x) > Math.abs(d.z)
+        ? new THREE.Vector3(Math.sign(d.x), 0, 0)
+        : new THREE.Vector3(0, 0, Math.sign(d.z) || -1);
+    const right = new THREE.Vector3(-forward.z, 0, forward.x);
+    // The root turns the world half a turn about x, so LDraw's axes are the world's x, -y and -z.
+    const ldraw = (v: THREE.Vector3): [number, number, number] => [v.x || 0, -v.y || 0, -v.z || 0];
+    return { right: ldraw(right), forward: ldraw(forward) };
+  }
+
+  /** Walk through the model at a minifig's eye height, or go back to orbiting it. */
+  setWalk(walk: boolean) {
+    if (walk === this.walking) return;
+    this.walking = walk;
+    this.keys.clear();
+    if (walk) {
+      this.walker ??= this.makeWalker();
+      this.controls.enabled = false;
+      this.controls.autoRotate = false;
+      this.userMoved = true;
+      this.standAtFront();
+      window.addEventListener("keydown", this.keyDown);
+      window.addEventListener("keyup", this.keyUp);
+      window.addEventListener("blur", this.releaseKeys);
+    } else {
+      this.stopListening();
+      this.walker?.unlock();
+      this.controls.enabled = true;
+      this.userMoved = false;
+      this.frameView(this.framing.view, this.framing.width, this.framing.depth);
+    }
+    this.dirty = true;
+  }
+
+  /** Take the mouse pointer to look around, while walking; the browser needs a click for it. */
+  lockPointer() {
+    if (this.walking) this.walker?.lock();
+  }
+
+  private makeWalker(): PointerLockControls {
+    const walker = new PointerLockControls(this.camera, this.renderer.domElement);
+    walker.addEventListener("change", () => (this.dirty = true));
+    walker.addEventListener("lock", () => this.options.onWalkLock?.(true));
+    walker.addEventListener("unlock", () => this.options.onWalkLock?.(false));
+    return walker;
+  }
+
+  /** Stand in front of the model, on its ground, looking at its middle. */
+  private standAtFront() {
+    const box = this.modelBox();
+    if (box.isEmpty())
+      box.set(new THREE.Vector3(0, 0, -this.framing.depth * STUD), new THREE.Vector3(this.framing.width * STUD, 0, 0));
+    const center = box.getCenter(new THREE.Vector3());
+    this.ground = box.min.y;
+    const eye = this.ground + WALK.eye;
+    this.camera.position.set(center.x, eye, box.max.z + 8 * STUD);
+    this.camera.near = 1;
+    this.camera.far = Math.max(100000, box.getSize(new THREE.Vector3()).length() * 10);
+    this.camera.updateProjectionMatrix();
+    this.camera.lookAt(center.x, eye, center.z);
+  }
+
+  private walk(seconds: number) {
+    const held = (...codes: string[]) => (codes.some((c) => this.keys.has(c)) ? 1 : 0);
+    const forward = held("KeyW", "ArrowUp") - held("KeyS", "ArrowDown");
+    const right = held("KeyD", "ArrowRight") - held("KeyA", "ArrowLeft");
+    const up = held("Space", "KeyE") - held("KeyC", "KeyQ");
+    if (!this.walker || (!forward && !right && !up)) return;
+    const distance = WALK.speed * (held("ShiftLeft", "ShiftRight") ? WALK.run : 1) * seconds;
+    this.walker.moveForward(forward * distance);
+    this.walker.moveRight(right * distance);
+    this.camera.position.y = Math.max(this.ground + PLATE, this.camera.position.y + up * distance);
+    this.dirty = true;
+  }
+
+  private keyDown = (event: KeyboardEvent) => {
+    if (typing(event) || !WALK_KEYS.has(event.code)) return;
+    event.preventDefault();
+    this.keys.add(event.code);
+  };
+
+  private keyUp = (event: KeyboardEvent) => this.keys.delete(event.code);
+
+  private releaseKeys = () => this.keys.clear();
+
+  private stopListening() {
+    window.removeEventListener("keydown", this.keyDown);
+    window.removeEventListener("keyup", this.keyUp);
+    window.removeEventListener("blur", this.releaseKeys);
+    this.keys.clear();
+  }
+
+  private drawHighlights() {
+    this.overlay.clear();
+    const { hover, selected } = this.highlighted;
+    const wanted = new Set([...selected, ...(hover === null ? [] : [hover])]);
+    const pieces = new Map((this.shown ?? []).filter((p) => wanted.has(p.id)).map((p) => [p.id, p]));
+    const add = (id: number, materials: THREE.Material[], outline: THREE.LineBasicMaterial) => {
+      const piece = pieces.get(id);
+      const batch = piece && this.batches.get(`${piece.part}:${piece.color}`);
+      if (!piece || !batch || piece.step > this.visibleStep) return;
+      const matrix = pieceMatrix(piece, new THREE.Matrix4());
+      const box = new THREE.LineSegments(this.outlineBox, outline);
+      const center = batch.bounds.getCenter(new THREE.Vector3());
+      const size = batch.bounds.getSize(new THREE.Vector3()).addScalar(2);
+      box.matrixAutoUpdate = false;
+      box.matrix.multiplyMatrices(matrix, new THREE.Matrix4().compose(center, new THREE.Quaternion(), size));
+      box.renderOrder = 2;
+      this.overlay.add(box);
+      batch.template.traverse((source) => {
+        if (!(source instanceof THREE.Mesh)) return;
+        for (const material of materials) {
+          const tint = new THREE.Mesh(source.geometry, material);
+          tint.matrixAutoUpdate = false;
+          tint.matrix.multiplyMatrices(matrix, source.matrixWorld);
+          tint.renderOrder = 1;
+          this.overlay.add(tint);
+        }
+      });
+    };
+    if (hover !== null && !selected.includes(hover)) add(hover, [this.marks.hover], this.outlines.hover);
+    for (const id of selected) add(id, [this.marks.selected, this.marks.through], this.outlines.selected);
+    this.dirty = true;
+  }
+
   frameView(view: View, width: number, depth: number) {
     this.framing = { view, width, depth };
-    this.aim(VIEW_DIRECTIONS[view], width, depth);
+    if (!this.walking) this.aim(VIEW_DIRECTIONS[view], width, depth);
   }
 
   /** Point the camera along `direction` so the whole model (or the empty baseplate, or `focus`) fills the frame, then close in `zoom` times on `at`. */
@@ -711,7 +960,13 @@ export class BrickScene {
   ) {
     const focus = box ? worldBox(box) : undefined;
     const { position, near, far } = this.camera;
-    const saved = { position: position.clone(), target: this.controls.target.clone(), near, far };
+    const saved = {
+      position: position.clone(),
+      quaternion: this.camera.quaternion.clone(),
+      target: this.controls.target.clone(),
+      near,
+      far,
+    };
     const pixelRatio = this.renderer.getPixelRatio();
     const visibleStep = this.visibleStep;
     const canvas = document.createElement("canvas");
@@ -720,6 +975,7 @@ export class BrickScene {
     const ctx = canvas.getContext("2d")!;
 
     try {
+      this.overlay.visible = false;
       this.setVisibleStep(Infinity);
       this.renderer.clippingPlanes = focus ? clippingPlanes(focus) : [];
       this.renderer.setPixelRatio(1);
@@ -751,6 +1007,8 @@ export class BrickScene {
       this.camera.updateProjectionMatrix();
       this.controls.target.copy(saved.target);
       this.controls.update();
+      if (this.walking) this.camera.quaternion.copy(saved.quaternion);
+      this.overlay.visible = true;
       this.draw();
     }
     return new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
@@ -758,7 +1016,10 @@ export class BrickScene {
 
   /** The user's view as they see it, on the viewer's backdrop. */
   image(): Promise<Blob | null> {
+    this.overlay.visible = false;
     this.draw();
+    this.overlay.visible = true;
+    this.dirty = true;
     const source = this.renderer.domElement;
     const canvas = document.createElement("canvas");
     canvas.width = source.width;
