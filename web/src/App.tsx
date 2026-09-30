@@ -1,33 +1,41 @@
 import { PlusIcon, ShoppingBagIcon } from "@phosphor-icons/react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { create, say, stop, unavailable } from "./agent";
+import { useAccount } from "./account";
+import { AccountMenu, SignInButton } from "./AccountMenu";
+import { create, say, stop } from "./agent";
 import { useEdits } from "./edits";
-import { type Build, type BuildSummary, type Piece, verified } from "./model";
+import { type Build, type BuildSummary, type Piece, type Source, verified } from "./model";
 import { type Color, usePalette } from "./palette";
 import { ChatPanel } from "./ChatPanel";
 import { DownloadMenu } from "./DownloadMenu";
 import { LibraryPanel } from "./LibraryPanel";
 import { countParts, PartsPanel } from "./PartsPanel";
+import { PublishButton } from "./PublishButton";
 import { ShopDialog } from "./ShopDialog";
 import { Timeline } from "./Timeline";
 import { FilmExport } from "./FilmExport";
 import { InstructionsExport } from "./InstructionsExport";
-import { library, remember, thumbnail } from "./library";
+import { library, publish, remember, thumbnail, unpublish } from "./library";
 import { type BuildRef, useBuild } from "./useBuild";
 import { ThemeToggle } from "./ThemeToggle";
 import { type Framing, type Mode, ViewControls, Viewer, type ViewerHandle } from "./Viewer";
 
 const STEP_MS = 700;
 const TITLE = document.title;
+const SIGN_IN = "Sign in with your H account to build with Holo.";
+/** The URL parameter naming the open build, by where it is read from. */
+const PARAMS: Record<Source, string> = { session: "build", public: "public", showcase: "showcase" };
 
 function urlBuild(): BuildRef | null {
   const params = new URLSearchParams(window.location.search);
-  const session = params.get("build");
-  const showcase = params.get("showcase");
-  return session ? { id: session, showcase: false } : showcase ? { id: showcase, showcase: true } : null;
+  for (const [source, param] of Object.entries(PARAMS) as [Source, string][]) {
+    const id = params.get(param);
+    if (id) return { id, source };
+  }
+  return null;
 }
 
-const same = (a: BuildRef | null, b: BuildRef | null) => a?.id === b?.id && a?.showcase === b?.showcase;
+const same = (a: BuildRef | null, b: BuildRef | null) => a?.id === b?.id && a?.source === b?.source;
 
 /** Part titles from the build's verified parts list, by LDraw part. */
 const titlesOf = (build: Build | null) =>
@@ -41,6 +49,7 @@ function describer(build: Build | null, palette: Color[]): (piece: Piece) => str
 }
 
 export default function App() {
+  const account = useAccount();
   const [ref, setRef] = useState<BuildRef | null>(urlBuild);
   const buildId = ref?.id ?? null;
   const { build: live, loading, thinking, renderRequest, error, syncError, answer } = useBuild(ref);
@@ -78,18 +87,19 @@ export default function App() {
   };
   const last = (build?.steps.length ?? 0) - 1;
 
-  const refreshBuilds = useCallback(() => {
+  const refreshBuilds = useCallback((fresh = false) => {
     setBuildsFailed(false);
-    library().then(setBuilds, (e) => {
+    library(fresh).then(setBuilds, (e) => {
       console.error(e);
       setBuildsFailed(true);
     });
   }, []);
 
-  useEffect(refreshBuilds, [refreshBuilds]);
+  useEffect(() => refreshBuilds(), [refreshBuilds, account?.user.id]);
 
-  const summary = builds?.find((b) => b.id === buildId);
+  const summary = builds?.find((b) => b.id === buildId && b.source === ref?.source);
   const heading = build ?? summary;
+  const listed = builds?.find((b) => b.id === buildId && b.source === "public");
 
   useEffect(() => {
     if (build && builds && summary?.status !== build.status) refreshBuilds();
@@ -112,9 +122,8 @@ export default function App() {
       show(next);
       if (same(next, urlBuild())) return;
       const url = new URL(window.location.href);
-      url.searchParams.delete("build");
-      url.searchParams.delete("showcase");
-      if (next) url.searchParams.set(next.showcase ? "showcase" : "build", next.id);
+      for (const param of Object.values(PARAMS)) url.searchParams.delete(param);
+      if (next) url.searchParams.set(PARAMS[next.source], next.id);
       window.history.pushState(null, "", url);
     },
     [show],
@@ -152,24 +161,44 @@ export default function App() {
   const start = async (prompt: string, images: string[]) => {
     const id = await create(prompt, images);
     remember(id, { name: prompt.slice(0, 60) || "Untitled build", prompt });
-    open({ id, showcase: false });
+    open({ id, source: "session" });
     setLeft("chat");
     refreshBuilds();
   };
 
   const saveThumbnail = async (png: Blob) => {
-    if (!ref || ref.showcase) return;
+    if (ref?.source !== "session") return;
     remember(ref.id, { thumbnail: await thumbnail(png) });
     refreshBuilds();
   };
 
+  const publishBuild = async () => {
+    if (!live) return;
+    const png = await viewer.current?.image();
+    const hand = edits.edits.length ? { revision: live.revision, edits: edits.edits } : null;
+    await publish(live.id, png ? await thumbnail(png) : null, hand);
+    refreshBuilds(true);
+  };
+
+  const unpublishBuild = async () => {
+    if (!live) return;
+    await unpublish(live.id);
+    refreshBuilds(true);
+  };
+
+  const unavailable = account ? null : SIGN_IN;
   const closed =
-    unavailable ??
-    (ref?.showcase
-      ? "A showcase from the gallery. Start a new build to make your own."
-      : build && !build.open && build.status !== "building"
-        ? "This build's session has ended. Start a new build to make another."
-        : null);
+    ref?.source === "showcase" ? (
+      "A showcase from the gallery. Start a new build to make your own."
+    ) : ref?.source === "public" ? (
+      `Shared by ${summary?.author ?? "an H builder"}. Start a new build to make your own.`
+    ) : unavailable ? (
+      <>
+        {unavailable} <SignInButton />
+      </>
+    ) : build && !build.open && build.status !== "building" ? (
+      "This build's session has ended. Start a new build to make another."
+    ) : null;
 
   const visibleStep = Math.min(step, last);
 
@@ -193,9 +222,25 @@ export default function App() {
                 {build.width}×{build.depth} studs
               </span>
             )}
+            {ref?.source === "public" && summary?.author && <span className="chip">by {summary.author}</span>}
           </>
         )}
         <span className="spacer" />
+        {build && account && ref?.source === "session" && (
+          <PublishButton
+            published={!!listed}
+            blocked={
+              build.status === "building"
+                ? "Publish once Holo answers"
+                : !build.pieces.length
+                  ? "Nothing is built yet"
+                  : null
+            }
+            author={account.user.name}
+            onPublish={publishBuild}
+            onUnpublish={unpublishBuild}
+          />
+        )}
         {build && (
           <button
             className="shop-trigger"
@@ -213,6 +258,7 @@ export default function App() {
           </button>
         )}
         <ThemeToggle />
+        <AccountMenu />
         {build && (
           <DownloadMenu
             build={build}
@@ -274,10 +320,11 @@ export default function App() {
             <LibraryPanel
               builds={builds}
               failed={buildsFailed}
-              onRetry={refreshBuilds}
-              activeId={buildId}
+              onRetry={() => refreshBuilds()}
+              active={ref}
+              signedIn={!!account}
               onOpen={(b) => {
-                open({ id: b.id, showcase: b.showcase });
+                open({ id: b.id, source: b.source });
                 setLeft("chat");
               }}
             />
