@@ -1618,4 +1618,6 @@ main {
 .shortcuts dd {
   margin: 0;
   color: var(--text-secondary);
+.instructions-dialog {
+  width: min(560px, calc(100vw - 32px));
 }
