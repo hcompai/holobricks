@@ -831,6 +831,10 @@ aside {
   font-weight: 600;
 }
 
+.publish-actions .primary.danger {
+  background: var(--text-error);
+}
+
 .avatar {
   border-radius: 999px;
   font-weight: 700;

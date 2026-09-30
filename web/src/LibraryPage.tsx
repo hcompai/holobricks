@@ -26,6 +26,7 @@ function meta(b: BuildSummary, published: Set<string>): string {
     b.source === "showcase" ? "Showcase" : b.author ? `by ${b.author}` : null,
     b.source === "session" && published.has(b.id) ? "public" : null,
     b.id.startsWith("import-") ? "imported" : null,
+    b.private ? "private" : null,
     b.pieces === null ? null : `${b.pieces.toLocaleString()} pieces`,
     b.status === "building" ? "building…" : b.status === "error" ? "stopped" : null,
   ]
@@ -45,10 +46,14 @@ export function LibraryPage({ builds, failed, active, onRetry, onOpen, onClose, 
     return () => window.removeEventListener("keydown", close);
   }, [onClose]);
   const sessions = builds?.filter((b) => b.source === "session") ?? [];
-  const everyone = builds?.filter((b) => b.source !== "session") ?? [];
+  // Private builds are their owner's alone: under Mine, never under Public.
+  const everyone = builds?.filter((b) => b.source !== "session" && !b.private) ?? [];
+  const privately = builds?.filter((b) => b.private) ?? [];
   const ids = new Set(sessions.map((b) => b.id));
   // Builds with no session of theirs, like imported ones, are the user's through the library only.
-  const owned = everyone.filter((b) => b.source === "public" && me && b.owner === me && !ids.has(b.id));
+  const owned = [...everyone, ...privately].filter(
+    (b) => b.source === "public" && me && b.owner === me && !ids.has(b.id),
+  );
   const mine = [...sessions, ...owned].sort((a, b) => b.created - a.created);
   const published = new Set(everyone.filter((b) => b.source === "public").map((b) => b.id));
 

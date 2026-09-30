@@ -98,23 +98,33 @@ function read(params: Record<string, string> = {}): string {
 
 /** Everyone's public builds, newest first. */
 async function community(): Promise<BuildSummary[]> {
-  const published = await api<Published[]>(read());
-  return published.map((p) => ({
-    id: p.id,
-    name: p.name,
-    prompt: p.prompt,
-    status: "done",
-    created: p.published,
-    pieces: p.pieces,
-    thumbnail: p.thumbnail,
-    source: "public",
-    author: p.author,
-    owner: p.owner,
+  return (await api<Published[]>(read())).map(summary);
+}
+
+/** The signed-in user's private library builds, newest first. */
+async function hidden(): Promise<BuildSummary[]> {
+  return (await api<Published[]>(read({ mine: "1" }), { headers: signed() })).map((p) => ({
+    ...summary(p),
+    private: true,
   }));
 }
 
+const summary = (p: Published): BuildSummary => ({
+  id: p.id,
+  name: p.name,
+  prompt: p.prompt,
+  status: "done",
+  created: p.published,
+  pieces: p.pieces,
+  thumbnail: p.thumbnail,
+  source: "public",
+  author: p.author,
+  owner: p.owner,
+});
+
 export async function publicBuild(id: string): Promise<Build> {
-  const published = await api<Published>(read({ id }));
+  // Signed in, the owner can open their private builds too.
+  const published = await api<Published>(read({ id }), current() ? { headers: signed() } : {});
   const response = await fetch(published.build);
   if (!response.ok) throw new Error(`No public build ${id}`);
   return { ...(await unpack<Build>(await response.blob())), id, open: false };
@@ -172,6 +182,16 @@ export async function importModel(model: ModelFile): Promise<string> {
   return published.id;
 }
 
+/** Make one of the user's library builds private, or public again; it keeps its link. */
+export async function setPrivate(id: string, value: boolean) {
+  await api(API, {
+    method: "PATCH",
+    headers: { ...signed(), "Content-Type": "application/json" },
+    body: JSON.stringify({ id, private: value }),
+  });
+}
+
+/** Take a build out of the library and delete its files; for an imported build, that deletes it. */
 export async function unpublish(id: string) {
   await api(`${API}?id=${encodeURIComponent(id)}`, { method: "DELETE", headers: signed() });
 }
@@ -181,9 +201,10 @@ export type Shelf = "mine" | "public";
 
 /** The signed-in user's builds, newest first, then everyone's public builds, then the showcases; with the shelves that failed to load. */
 export async function library(): Promise<{ builds: BuildSummary[]; failed: Shelf[] }> {
-  const [sessionsLoaded, sharedLoaded, shownLoaded] = await Promise.allSettled([
+  const [sessionsLoaded, sharedLoaded, hiddenLoaded, shownLoaded] = await Promise.allSettled([
     current() ? sessions() : Promise.resolve([]),
     community(),
+    current() ? hidden() : Promise.resolve([]),
     showcases(),
   ]);
   const failed: Shelf[] = [];
@@ -195,6 +216,7 @@ export async function library(): Promise<{ builds: BuildSummary[]; failed: Shelf
   };
   const mine = value(sessionsLoaded, "mine");
   const shared = value(sharedLoaded, "public");
+  const own = value(hiddenLoaded, "mine");
   const shown = value(shownLoaded, "public");
   const known = cards();
   const listed = new Map(shared.map((p) => [p.id, p]));
@@ -215,7 +237,9 @@ export async function library(): Promise<{ builds: BuildSummary[]; failed: Shelf
       owner: null,
     };
   });
-  return { builds: [...builds.sort((a, b) => b.created - a.created), ...shared, ...shown], failed };
+  // A build is public or private, never both: the public listing wins if a stale private entry lingers.
+  const privately = own.filter((p) => !listed.has(p.id));
+  return { builds: [...builds.sort((a, b) => b.created - a.created), ...shared, ...privately, ...shown], failed };
 }
 
 const THUMBNAIL_SIDE = 320;

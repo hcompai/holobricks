@@ -19,6 +19,8 @@ export interface Published {
 const PUBLIC = { access: "public", addRandomSuffix: false, allowOverwrite: true, cacheControlMaxAge: 60 } as const;
 const PARALLEL = 16;
 const entry = (id: string) => `library/${id}.json`;
+/** Private entries sit apart, per owner, so listing the public library can never include them. */
+const hidden = (owner: string, id: string) => `private/${encodeURIComponent(owner)}/${id}.json`;
 const folder = (id: string) => `builds/${id}/`;
 
 async function listed(prefix: string) {
@@ -51,14 +53,36 @@ const fetched = async (url: string, uploaded: Date): Promise<Published | null> =
   return response.ok ? response.json() : null;
 };
 
-export async function find(id: string): Promise<Published | null> {
+async function read(path: string): Promise<Published | null> {
   try {
-    const blob = await head(entry(id));
+    const blob = await head(path);
     return await fetched(blob.url, blob.uploadedAt);
   } catch (e) {
     if (e instanceof BlobNotFoundError) return null;
     throw e;
   }
+}
+
+/** A public build. */
+export const find = (id: string) => read(entry(id));
+
+/** A build of `owner`'s, public or private. */
+export const findOwn = async (owner: string, id: string) => (await read(hidden(owner, id))) ?? (await find(id));
+
+/** The private builds of `owner`, newest first. */
+export async function privateOf(owner: string): Promise<Published[]> {
+  const blobs = await listed(`private/${encodeURIComponent(owner)}/`);
+  const found = await Promise.all(blobs.map((b) => fetched(b.url, b.uploadedAt)));
+  return found.filter((p): p is Published => p !== null).sort((a, b) => b.published - a.published);
+}
+
+/** Move a build between the public library and its owner's private shelf; its files stay, and a retry finishes a half-done move. */
+export async function setPrivate(published: Published, value: boolean) {
+  const [to, from] = value
+    ? [hidden(published.owner, published.id), entry(published.id)]
+    : [entry(published.id), hidden(published.owner, published.id)];
+  await put(to, JSON.stringify(published), { ...PUBLIC, contentType: "application/json" });
+  await del(from);
 }
 
 /** Every public build, newest first. */
@@ -70,9 +94,9 @@ export async function library(): Promise<Published[]> {
   return found.filter((p): p is Published => p !== null).sort((a, b) => b.published - a.published);
 }
 
-/** Take a build out of the library, then delete its files. */
-export async function unlist(id: string) {
-  await del(entry(id));
+/** Take a build out of the library, public or private, then delete its files. */
+export async function unlist(id: string, owner?: string) {
+  await del(owner ? [entry(id), hidden(owner, id)] : entry(id));
   const urls = await files(id);
   if (urls.length) await del(urls);
 }
