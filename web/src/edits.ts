@@ -96,7 +96,7 @@ export function applyEdits(pieces: Piece[], edits: Edit[]): Piece[] {
 
 /** The model as an LDraw file, one STEP per build step, like the toolkit writes it. */
 export function toLdraw(build: Build, pieces: Piece[]): string {
-  const lines = [`0 ${build.name}`, `0 Name: ${build.id}.ldr`, "0 Author: Brickyard, edited in the browser", ""];
+  const lines = [`0 ${build.name}`, `0 Name: ${build.id}.ldr`, "0 Author: HoloBricks, edited in the browser", ""];
   for (const step of build.steps) {
     for (const p of pieces.filter((p) => p.step === step.index))
       lines.push(`1 ${p.color} ${p.pos.map(String).join(" ")} ${p.rot.map(String).join(" ")} ${p.part}`);

@@ -20,10 +20,10 @@ if [ -n "${BRICKYARD_MINUTES:-}" ] && [ ! -f "$build/.brickyard-clock" ]; then
   printf '{"started": %s, "minutes": %s}\n' "$(date +%s)" "$BRICKYARD_MINUTES" > "$build/.brickyard-clock"
 fi
 sudo=$([ -w /usr/local/bin ] || echo sudo)
-printf '#!/bin/sh\nkill -0 "$(cat "%s/pid" 2>/dev/null)" 2>/dev/null && { echo "Brickyard is still installing: poll its setup until it prints Brickyard is ready." >&2; exit 1; }\nexec "%s" "$@"\n' \
+printf '#!/bin/sh\nkill -0 "$(cat "%s/pid" 2>/dev/null)" 2>/dev/null && { echo "HoloBricks is still installing: poll its setup until it prints HoloBricks is ready." >&2; exit 1; }\nexec "%s" "$@"\n' \
   "$lock" "$(pwd)/server/.venv/bin/bricks" | $sudo tee /usr/local/bin/bricks >/dev/null
 $sudo chmod +x /usr/local/bin/bricks
-echo "Installing Brickyard: downloading the LDraw parts library (145 MB), then indexing it; this takes a few minutes."
+echo "Installing HoloBricks: downloading the LDraw parts library (145 MB), then indexing it; this takes a few minutes."
 [ -f ldraw/LDConfig.ldr ] || sh scripts/fetch-ldraw.sh >/dev/null &
 [ -d shadow ] || python3 scripts/fetch-connectors.py >/dev/null 2>&1 &
 (cd server && uv sync --frozen --no-dev -q)
@@ -33,4 +33,4 @@ test -f data/rebrickable.json.gz
 server/.venv/bin/python -c 'from brickyard import ldraw; ldraw.exists("3001.dat"); ldraw.catalog()'
 [ -f shadow/LICENSE.md ] || echo "The connector data did not download: every bricks command works except bricks assembly."
 ln -sfn "$(pwd)/agent/showcase" "$build/showcase"
-echo "Brickyard is ready: bricks works on the build in the directory it runs in."
+echo "HoloBricks is ready: bricks works on the build in the directory it runs in."

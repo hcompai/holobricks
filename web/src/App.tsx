@@ -1,20 +1,19 @@
 import { PlusIcon, ShoppingBagIcon, SquaresFourIcon } from "@phosphor-icons/react";
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { Account } from "./account";
 import { AccountMenu } from "./AccountMenu";
 import { RecoveryPanel } from "./RecoveryPanel";
 import { create, remix, say, stop } from "./agent";
+import { PHASES } from "./activity";
 import { useEdits } from "./edits";
-import { type Build, type BuildSummary, type Piece, type Source, verified } from "./model";
+import { type Build, type BuildSummary, EMPTY_MODEL, type Piece, type Source, verified } from "./model";
 import { type Color, usePalette } from "./palette";
-import { usePrices } from "./pickabrick";
-import { PriceMenu } from "./PriceMenu";
+import { estimate, money, usePrices } from "./pickabrick";
 import { ChatPanel } from "./ChatPanel";
+import { HomeShelves } from "./HomeShelves";
 import { ImportBuild } from "./ImportBuild";
 import { LibraryPage } from "./LibraryPage";
 import { countParts, PartsPanel } from "./PartsPanel";
-import { DeleteButton } from "./DeleteButton";
-import { PublishButton } from "./PublishButton";
 import { ShareMenu } from "./ShareMenu";
 import { Timeline } from "./Timeline";
 import {
@@ -31,6 +30,7 @@ import {
   thumbnail,
   unpublish,
 } from "./library";
+import { label } from "./suggestions";
 import { type BuildRef, useBuild } from "./useBuild";
 import { useKeeper } from "./useSession";
 import { type Framing, type Mode, ViewControls, Viewer, type ViewerHandle } from "./Viewer";
@@ -41,6 +41,13 @@ const ShopDialog = lazy(() => import("./ShopDialog").then((m) => ({ default: m.S
 
 const STEP_MS = 700;
 const TITLE = document.title;
+const NEW_BUILD = "New build";
+/** The phone breakpoint of styles.css. */
+const PHONE = window.matchMedia("(max-width: 760px)");
+const onPhoneChange = (change: () => void) => {
+  PHONE.addEventListener("change", change);
+  return () => PHONE.removeEventListener("change", change);
+};
 /** The URL parameter naming the open build, by where it is read from. */
 const PARAMS: Record<Source, string> = { session: "build", public: "public", showcase: "showcase" };
 
@@ -78,7 +85,14 @@ export default function App({ account }: { account: Account }) {
   opened.current = ref;
   const [libraryOpen, setLibraryOpen] = useState(urlLibrary);
   const buildId = ref?.id ?? null;
-  const { build: live, loading, activity, error, syncError } = useBuild(ref);
+  const read = useBuild(ref);
+  /** What the user just asked for, shown as a starting build where they asked it, until its session answers. */
+  const [draft, setDraft] = useState<{ at: BuildRef | null; build: Build; since: number } | null>(null);
+  const drafted = draft && same(draft.at, ref) && read.build?.id !== draft.build.id ? draft.build : null;
+  const live = drafted ?? read.build;
+  const loading = read.loading && !drafted;
+  const activity = drafted ? { label: PHASES.idea, since: draft!.since, work: null } : read.activity;
+  const { error, syncError } = read;
   const edits = useEdits(live);
   /** The build as shown, with this browser's hand edits. */
   const build = edits.build;
@@ -89,7 +103,6 @@ export default function App({ account }: { account: Account }) {
   const [builds, setBuilds] = useState<BuildSummary[] | null>(null);
   const [buildsFailed, setBuildsFailed] = useState<Shelf[]>([]);
   const [center, setCenter] = useState<"model" | "parts">("model");
-  const [starting, setStarting] = useState(false);
   const [step, setStep] = useState(Infinity);
   const [following, setFollowing] = useState(true);
   const [playing, setPlaying] = useState(false);
@@ -100,15 +113,25 @@ export default function App({ account }: { account: Account }) {
   const [instructionsBuild, setInstructionsBuild] = useState<Build | null>(null);
   const [shopping, setShopping] = useState<{ build: Build; preview: Promise<Blob | null> } | null>(null);
   const edited = edits.edits.length > 0 && build !== live;
+  const phone = useSyncExternalStore(onPhoneChange, () => PHONE.matches);
+  const built = !!build?.pieces.length;
 
   useEffect(() => {
-    if (mode === "edit" && !edits.editable) setMode("view");
-  }, [mode, edits.editable]);
+    if ((mode === "edit" && !edits.editable) || (mode !== "view" && !built)) setMode("view");
+  }, [mode, edits.editable, built]);
+  const shoppable = !!build?.pieces.length && build.status !== "building";
   const shop = () => {
-    if (build?.status === "done" && build.pieces.length && !edited) {
+    if (build && shoppable)
       setShopping({ build: structuredClone(build), preview: viewer.current?.image() ?? Promise.resolve(null) });
-    }
   };
+  const resetForShopping = () => {
+    edits.reset();
+    if (live) setShopping((open) => open && { ...open, build: structuredClone(live) });
+  };
+  const price = useMemo(() => {
+    const found = prices && build?.pieces.length ? estimate(build.pieces, prices) : null;
+    return found?.priced ? money(found.cents, prices!, true) : null;
+  }, [build?.pieces, prices]);
   const exportReplay = () => {
     if (build?.pieces.length) setExportBuild(structuredClone(build));
   };
@@ -166,11 +189,12 @@ export default function App({ account }: { account: Account }) {
   }, [build?.id, build?.status, summary?.status]);
 
   useEffect(() => {
-    document.title = buildId && heading ? `${heading.name} · ${TITLE}` : TITLE;
-  }, [buildId, heading?.name]);
+    document.title = heading ? `${heading.name} · ${TITLE}` : TITLE;
+  }, [heading?.name]);
 
   const show = useCallback((next: BuildRef | null) => {
     setRef(next);
+    setDraft(null);
     setCenter("model");
     setMode("view");
     setStep(Infinity);
@@ -203,8 +227,6 @@ export default function App({ account }: { account: Account }) {
     return () => window.removeEventListener("popstate", sync);
   }, [show]);
 
-  const home = () => open(null);
-
   useEffect(() => {
     if (following) setStep(last);
   }, [following, last]);
@@ -226,19 +248,39 @@ export default function App({ account }: { account: Account }) {
     setFollowing(s >= last);
   };
 
-  /** Start a build and open it: a new one, or a remix of `from`. */
+  /** Start a build and show it at once: a new one, or a copy of `from` that Holo changes as asked, under the same name if it is the user's. */
   const start = async (prompt: string, images: string[], from?: Build) => {
-    setStarting(true);
+    const name = from ? (owned ? from.name : `${from.name} remix`) : (label(prompt) ?? NEW_BUILD);
+    const at = opened.current;
+    const since = Date.now();
+    const build: Build = {
+      ...EMPTY_MODEL,
+      id: "",
+      name,
+      status: "building",
+      open: false,
+      messages: [{ role: "user", text: prompt, images }],
+    };
+    setDraft({ at, build, since });
     try {
       const id = await (from ? remix(from, prompt, images) : create(prompt, images));
       started.current.add(id);
-      const name = from ? `${from.name} remix` : prompt || "Untitled build";
       remember(id, { name: name.slice(0, 60), prompt });
-      open({ id, source: "session" });
       refreshBuilds();
-    } finally {
-      setStarting(false);
+      if (!same(opened.current, at)) return;
+      const next: BuildRef = { id, source: "session" };
+      open(next);
+      setDraft({ at: next, build: { ...build, id }, since });
+    } catch (e) {
+      setDraft((current) => (current?.build === build ? null : current));
+      throw e;
     }
+  };
+
+  /** Open a listed build: the user's public builds as their session, when they have one. */
+  const openListed = (b: BuildSummary) => {
+    const session = b.source === "public" && builds?.some((s) => s.source === "session" && s.id === b.id);
+    open({ id: b.id, source: session ? "session" : b.source });
   };
 
   const saveThumbnail = async (png: Blob, revision: string) => {
@@ -304,7 +346,7 @@ export default function App({ account }: { account: Account }) {
       `Shared by ${summary?.author ?? "an H builder"}: remix it to make your own.`
     ) : ref?.source === "session" && builds && !buildsFailed.includes("mine") && !owned ? (
       "A teammate's build: remix it to make your own."
-    ) : build && !build.open && build.status !== "building" ? (
+    ) : build?.status === "error" ? (
       <RecoveryPanel
         key={build.id}
         build={live!}
@@ -318,13 +360,58 @@ export default function App({ account }: { account: Account }) {
     ) : null;
 
   const visibleStep = Math.min(step, last);
+  const home = !ref && !drafted;
+  /** The open build, once it is more than a request on its way. */
+  const actionable = drafted ? null : build;
+
+  const actions = actionable && (
+    <>
+      <ShareMenu
+        build={actionable}
+        link={shared && linkTo(shared)}
+        loading={loading}
+        publishing={
+          owned
+            ? {
+                published: imported ? !summary?.private : ref?.source === "public" || !!listed,
+                imported,
+                blocked:
+                  actionable.status === "building"
+                    ? "Publish once Holo answers"
+                    : !actionable.pieces.length
+                      ? "Nothing is built yet"
+                      : null,
+                author: account.user.name,
+                onPublish: imported ? republish : publishBuild,
+                onUnpublish: unpublishBuild,
+              }
+            : null
+        }
+        onDelete={imported ? deleteBuild : null}
+        image={() => viewer.current?.image() ?? Promise.resolve(null)}
+        onGif={exportReplay}
+        onInstructions={exportInstructions}
+      />
+      {actionable.pieces.length > 0 && (
+        <button
+          className="primary"
+          onClick={shop}
+          disabled={!shoppable}
+          title={shoppable ? undefined : "Get the bricks once Holo finishes"}
+        >
+          <ShoppingBagIcon size={16} />
+          <span className="button-label">Get the bricks{price && ` · ≈ ${price}`}</span>
+        </button>
+      )}
+    </>
+  );
 
   return (
-    <div className={`app${ref ? "" : " home"}${running.length ? " has-running" : ""}`}>
+    <div className={`app${home ? " home" : ""}${libraryOpen ? " library" : ""}`}>
       <header>
-        <button className="brand" onClick={home}>
+        <button className="brand" onClick={() => open(null)}>
           <img className="brand-icon" src="/brick.png" alt="" />
-          <span className="button-label">Brickyard</span>
+          <span className="button-label">HoloBricks</span>
         </button>
         <button
           className={libraryOpen ? "quiet active" : "quiet"}
@@ -334,72 +421,20 @@ export default function App({ account }: { account: Account }) {
           <SquaresFourIcon size={16} />
           <span className="button-label">Library</span>
         </button>
-        {loading && summary && <span className="title">{summary.name}</span>}
-        {build && (
-          <>
-            <span className="title" title={build.name}>
-              {build.name}
-            </span>
-            {build.pieces.length > 0 && <span className="chip">{build.pieces.length.toLocaleString()} pieces</span>}
-            {prices && build.pieces.length > 0 && <PriceMenu build={build} table={prices} edited={edited} />}
-          </>
+        {phone && heading && (
+          <span className="title" title={heading.name}>
+            {heading.name}
+          </span>
         )}
         <span className="spacer" />
-        {build && imported && <DeleteButton name={build.name} onDelete={deleteBuild} />}
-        {build && owned && (
-          <PublishButton
-            published={imported ? !summary?.private : ref?.source === "public" || !!listed}
-            imported={imported}
-            blocked={
-              build.status === "building"
-                ? "Publish once Holo answers"
-                : !build.pieces.length
-                  ? "Nothing is built yet"
-                  : null
-            }
-            author={account.user.name}
-            onPublish={imported ? republish : publishBuild}
-            onUnpublish={unpublishBuild}
-          />
-        )}
-        {build && (
-          <ShareMenu
-            build={build}
-            link={shared && linkTo(shared)}
-            loading={loading}
-            image={() => viewer.current?.image() ?? Promise.resolve(null)}
-            onGif={exportReplay}
-            onInstructions={exportInstructions}
-          />
-        )}
-        {build && (
-          <button
-            className="primary"
-            onClick={shop}
-            disabled={build.status !== "done" || !build.pieces.length || edited}
-            title={
-              edited
-                ? "Reset your edits to shop the verified parts list"
-                : build.status === "done"
-                  ? "Shop bricks with HoloTab"
-                  : "Finish your build to shop its bricks"
-            }
-          >
-            <ShoppingBagIcon size={16} />
-            <span className="button-label">Shop bricks</span>
-          </button>
-        )}
+        {!phone && actions}
         <AccountMenu account={account} building={running.length > 0} />
       </header>
-      {running.length > 0 && (
-        <div className="build-notice" role="note" aria-label="Keep Brickyard open">
-          <strong>Keep this tab open while Holo builds.</strong> Your browser renders the model for Holo. You can browse
-          within Brickyard; closing this tab, leaving the site or sleeping your device can interrupt the build.
-        </div>
-      )}
       <aside>
         <div className="aside-bar">
-          <span className="aside-title">Chat</span>
+          <span className="aside-title" title={phone ? undefined : heading?.name}>
+            {(!phone && heading?.name) || "Chat"}
+          </span>
           {ref && (
             <button className="quiet" onClick={() => open(null)}>
               <PlusIcon size={16} />
@@ -439,6 +474,14 @@ export default function App({ account }: { account: Account }) {
               if (build) await start(text, images, build);
             }}
           />
+          {home && builds && (
+            <HomeShelves
+              builds={builds}
+              me={account.user.id}
+              onOpen={openListed}
+              onLibrary={() => navigate(null, true)}
+            />
+          )}
         </div>
       </aside>
       <main>
@@ -463,8 +506,8 @@ export default function App({ account }: { account: Account }) {
               framing={framing}
               spin={spin}
               mode={mode}
-              canEdit={edits.editable && !!build?.pieces.length}
-              canWalk={!!build?.pieces.length}
+              canEdit={edits.editable && built}
+              built={built}
               onFrame={(next) => {
                 if (mode === "walk") setMode("view");
                 setFraming(next);
@@ -479,16 +522,13 @@ export default function App({ account }: { account: Account }) {
             <Viewer
               ref={viewer}
               build={build}
-              opening={
-                buildId && !error ? `Opening ${heading?.name ?? "the build"}` : starting ? "Starting Holo…" : null
-              }
+              opening={buildId && !error ? `Opening ${heading?.name ?? "the build"}` : null}
               step={visibleStep}
               syncError={syncError}
               framing={framing}
               spin={spin}
               onThumbnail={ref?.source === "session" && owned ? saveThumbnail : undefined}
               thumbnailed={ref?.source === "session" && owned ? card(ref.id)?.revision : undefined}
-              empty="Describe a model in the chat to start building."
               mode={mode}
               edits={edits}
               describe={describer(live, palette)}
@@ -508,7 +548,7 @@ export default function App({ account }: { account: Account }) {
             </div>
           )}
         </div>
-        {!error && (
+        {!error && (!build || built) && (
           <Timeline
             build={build}
             loading={loading}
@@ -524,6 +564,7 @@ export default function App({ account }: { account: Account }) {
             spaceKey={mode !== "walk"}
           />
         )}
+        {phone && actions && <div className="build-actions">{actions}</div>}
         {libraryOpen && (
           <LibraryPage
             builds={builds}
@@ -531,10 +572,7 @@ export default function App({ account }: { account: Account }) {
             active={ref}
             onRetry={refreshBuilds}
             onClose={() => navigate(ref, false)}
-            onOpen={(b) => {
-              const mine = b.source === "public" && builds?.some((s) => s.source === "session" && s.id === b.id);
-              open({ id: b.id, source: mine ? "session" : b.source });
-            }}
+            onOpen={openListed}
             me={account.user.id}
             mineActions={
               <ImportBuild
@@ -558,7 +596,17 @@ export default function App({ account }: { account: Account }) {
         )}
       </Suspense>
       <Suspense>
-        {shopping && <ShopDialog build={shopping.build} preview={shopping.preview} onClose={() => setShopping(null)} />}
+        {shopping && (
+          <ShopDialog
+            build={shopping.build}
+            preview={shopping.preview}
+            table={prices}
+            edited={edited}
+            describe={describer(live, palette)}
+            onReset={resetForShopping}
+            onClose={() => setShopping(null)}
+          />
+        )}
       </Suspense>
     </div>
   );

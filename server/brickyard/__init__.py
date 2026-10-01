@@ -1,1 +1,1 @@
-"""Brickyard: watch an agent build Lego models from real LDraw parts."""
+"""HoloBricks: watch an agent build brick models from real LDraw parts."""

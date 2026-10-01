@@ -29,7 +29,7 @@ PROMPT = (
 STORY = [
     (
         "Hand-scripted by Claude after Stuart Craig's concept art, the film's miniature and LEGO 71043, as a showcase "
-        "of what Brickyard's parts and checks can do. The castle is sculpted as solids and meshed into bricks: only the "
+        "of what HoloBricks' parts and checks can do. The castle is sculpted as solids and meshed into bricks: only the "
         "shell is built, steady steps become slopes, and every brick rests on another. Ask for a change and Holo takes over."
     ),
 ]

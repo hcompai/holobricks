@@ -121,7 +121,7 @@ class Build(BaseModel):
         }
 
     def to_ldraw(self) -> str:
-        lines = [f"0 {self.name}", f"0 Name: {self.id}.ldr", "0 Author: Brickyard", ""]
+        lines = [f"0 {self.name}", f"0 Name: {self.id}.ldr", "0 Author: HoloBricks", ""]
         for step in self.steps:
             for p in (p for p in self.pieces if p.step == step.index):
                 rot = " ".join(f"{v:g}" for v in p.rot)

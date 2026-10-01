@@ -4,7 +4,9 @@ shadow/
 .ldraw.*/
 data/
 docs/*
-!docs/brickyard.jpg
+!docs/README.md
+!docs/holobricks.jpg
+!docs/gallery/
 !docs/brick.png
 !docs/hogwarts-build-log.md
 !docs/hogwarts/

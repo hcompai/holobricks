@@ -32,12 +32,15 @@ test("pages split each step by height, bottom up, gathering small layers within 
   ]);
 });
 
-test("the share menu makes a PDF: cover, one page per layer, then the parts list", async ({ page }) => {
+test("the PDF starts on open and downloads in one click: a cover, a page per layer, then the parts list", async ({
+  page,
+}) => {
   const build = fixture();
   await site(page, [build]);
   await page.goto(`/?showcase=${build.id}`);
   await expect(page.locator(".viewer")).toHaveAttribute("data-render-state", "ready");
-  await page.getByRole("button", { name: "Share", exact: true }).click();
+  const share = page.getByRole("button", { name: "Share", exact: true });
+  await share.click();
   await expect(page.getByRole("menuitem")).toHaveText([
     "Copy link",
     "Share a GIF…",
@@ -48,17 +51,18 @@ test("the share menu makes a PDF: cover, one page per layer, then the parts list
   await page.getByRole("menuitem", { name: "Instructions (PDF)…" }).click();
   const dialog = page.getByRole("dialog", { name: "Building instructions" });
   await expect(dialog).toContainText("A PDF of 4 pages for 8 pieces");
-  await dialog.getByRole("button", { name: "Make the PDF" }).click();
-  const link = dialog.getByRole("link", { name: "Download PDF" });
-  await expect(link).toBeVisible({ timeout: 60000 });
+  await expect(dialog.getByRole("button", { name: /Making the instructions/ })).toBeVisible();
+  await dialog.getByRole("button", { name: "Close" }).click();
+  await expect(dialog).toBeHidden();
 
+  await share.click();
+  await page.getByRole("menuitem", { name: "Instructions (PDF)…" }).click();
+  const link = dialog.getByRole("link", { name: /Download instructions/ });
+  await expect(link).toBeVisible({ timeout: 60000 });
   const download = page.waitForEvent("download");
   await link.click();
   const pdf = await readFile(await (await download).path(), "latin1");
   expect(pdf.startsWith("%PDF-")).toBe(true);
   expect(pdf.match(/\/Type \/Page\b/g)).toHaveLength(1 + 4 + 1);
   expect(pdf).toContain("A little LEGO tower: building instructions");
-
-  await dialog.getByRole("button", { name: "Close" }).click();
-  await expect(dialog).toBeHidden();
 });

@@ -88,7 +88,9 @@ test("a colleague's public build opens from the library's Public section, under 
   await expect(page).toHaveURL(/\?public=tower$/);
   await shown(page, tower.revision);
   await expect(page.locator(".gallery-note")).toHaveText(/^Shared by Ada Lovelace: remix it to make your own\./);
-  await expect(page.getByRole("button", { name: "Publish", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Share", exact: true }).click();
+  await expect(page.getByRole("menuitem", { name: /Publish/ })).toHaveCount(0);
+  await page.keyboard.press("Escape");
 });
 
 test("a remix of a public build starts a private session from a script placing each of its pieces, step by step", async ({
@@ -105,7 +107,7 @@ test("a remix of a public build starts a private session from a script placing e
   await page.getByPlaceholder("What should Holo change?").fill("Make it twice as tall");
   await page.getByRole("button", { name: "Send", exact: true }).click();
   await expect(page).toHaveURL(/\?build=new-build$/);
-  await expect(page.locator("header .title")).toHaveText("Ada's tower remix");
+  await expect(page.locator(".aside-title")).toHaveText("Ada's tower remix");
   const [first] = agp.posted("/api/v2/sessions")[0].messages;
   expect(first.message).toBe("Make it twice as tall");
   expect(first.files.map((f: { name: string }) => f.name)).toEqual(["brickyard.tgz", "remix.py"]);
@@ -145,22 +147,21 @@ test("the author publishes a build after a confirmation, stays on it, then makes
   await page.goto("/?build=mine");
   await shown(page, model.revision);
   const share = page.getByRole("button", { name: "Share", exact: true });
+  const menu = page.getByRole("menu");
   const copyLink = page.getByRole("menuitem", { name: "Copy link" });
   await share.click();
-  await expect(page.getByRole("menuitem", { name: "Download image" })).toBeVisible();
-  await expect(copyLink).toHaveCount(0);
-  await share.click();
+  await expect(menu).toContainText("Private: not in the public library");
+  await expect(copyLink).toBeDisabled();
 
   const publishing = page.getByRole("dialog", { name: "Publish" });
-  await page.getByRole("button", { name: "Publish", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Publish to the library…" }).click();
   await expect(publishing).toContainText("the chat, and the photos you attached");
   await publishing.getByRole("button", { name: "Publish" }).click();
   await expect(publishing).toBeHidden();
   await expect(page).toHaveURL(/\?build=mine$/);
-  const unpublish = page.getByRole("button", { name: "Public", exact: true });
-  await expect(unpublish).toBeVisible();
   await share.click();
-  await expect(copyLink).toBeVisible();
+  await expect(menu).toContainText("In the public library: anyone at H can open it");
+  await expect(copyLink).toBeEnabled();
   await share.click();
   const post = calls.find((c) => c.method === "POST")!;
   expect(post.headers).toMatchObject({ authorization: `Bearer ${ACCOUNT.pass}`, "x-agents-key": ACCOUNT.key });
@@ -175,15 +176,20 @@ test("the author publishes a build after a confirmation, stays on it, then makes
   await shelf.click();
 
   const confirm = page.getByRole("dialog", { name: "Make private" });
+  const unpublish = page.getByRole("menuitem", { name: "Make private…" });
+  await share.click();
   await unpublish.click();
   await confirm.getByRole("button", { name: "Cancel" }).click();
   await expect(confirm).toBeHidden();
   expect(calls.some((c) => c.method === "DELETE")).toBe(false);
+  await share.click();
   await unpublish.click();
   await confirm.getByRole("button", { name: "Make private" }).click();
   await expect(page).toHaveURL(/\?build=mine$/);
-  await expect(page.getByRole("button", { name: "Publish", exact: true })).toBeVisible();
-  await expect(copyLink).toHaveCount(0);
+  await share.click();
+  await expect(page.getByRole("menuitem", { name: "Publish to the library…" })).toBeVisible();
+  await expect(copyLink).toBeDisabled();
+  await share.click();
   expect(calls.find((c) => c.method === "DELETE")).toMatchObject({
     search: "?id=mine",
     headers: { authorization: `Bearer ${ACCOUNT.pass}`, "x-agents-key": ACCOUNT.key },
@@ -221,7 +227,9 @@ test("a teammate's build link opens read only, to remix", async ({ page }) => {
   await shown(page, model.revision);
 
   await expect(page.locator(".gallery-note")).toHaveText(/^A teammate's build: remix it to make your own\./);
-  await expect(page.getByRole("button", { name: "Publish", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Share", exact: true }).click();
+  await expect(page.getByRole("menuitem", { name: /Publish/ })).toHaveCount(0);
+  await page.keyboard.press("Escape");
   await expect(page.getByRole("textbox")).toHaveCount(0);
   await page.locator(".gallery-note").getByRole("button", { name: "Remix" }).click();
   await expect(page.getByPlaceholder("What should Holo change?")).toBeVisible();
@@ -233,7 +241,7 @@ test("signed out, only the sign-in page shows; Google brings the user back signe
 }) => {
   const tower = fixture();
   await site(page, [tower], null);
-  let handoff: object = { error: "Brickyard is open to H Company accounts." };
+  let handoff: object = { error: "HoloBricks is open to H Company accounts." };
   const pending: { verifier: string }[] = [];
   const challenges: (string | null)[] = [];
   await page.route(`${PORTAL}/auth/authorize?*`, (route) => {
@@ -256,10 +264,10 @@ test("signed out, only the sign-in page shows; Google brings the user back signe
   const google = page.getByRole("button", { name: "Continue with Google" });
 
   await page.goto(`/?showcase=${tower.id}`);
-  await expect(page.getByRole("heading", { name: "Brickyard" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "HoloBricks" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Library" })).toHaveCount(0);
   await google.click();
-  await expect(page.getByRole("alert")).toHaveText("Brickyard is open to H Company accounts.");
+  await expect(page.getByRole("alert")).toHaveText("HoloBricks is open to H Company accounts.");
 
   handoff = ACCOUNT;
   await google.click();

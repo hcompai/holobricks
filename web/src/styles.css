@@ -6,7 +6,6 @@
   --background-selected: light-dark(#ffffff, #2e2e2e);
   --background-viewer: light-dark(#f6f6f9, #0e0e0e);
   --background-primary: light-dark(#1c1c26, #ededed);
-  --background-building: light-dark(#fff6f0, #2e1c0d);
   --text-default: light-dark(#1c1c26, #ededed);
   --text-secondary: light-dark(#4a4a58, #b0b0b0);
   --text-tertiary: light-dark(#7a7a8a, #7c7c7c);
@@ -148,9 +147,28 @@ button.active {
   color: var(--text-secondary);
 }
 
-.published {
-  color: var(--accent);
-  border-color: var(--accent);
+/* A button that fills with its own progress while it cannot be pressed yet. */
+.progress-button {
+  justify-content: center;
+  color: var(--text-default);
+  border-color: var(--stroke-default);
+  background: linear-gradient(
+      to right,
+      color-mix(in srgb, var(--accent) 22%, var(--background-card)) var(--progress, 0%),
+      transparent var(--progress, 0%)
+    )
+    var(--background-card);
+  font-variant-numeric: tabular-nums;
+}
+
+.progress-button:disabled {
+  opacity: 1;
+  cursor: progress;
+}
+
+.button-note {
+  font-weight: 400;
+  opacity: 0.7;
 }
 
 .error-text {
@@ -200,10 +218,32 @@ hr {
   background: var(--background-card);
 }
 
-/* Nothing to play or turn before a build opens. */
-.app.home .center-bar,
-.app.home .timeline {
+/* Home is one column: the composer and the shelves, or the library over it. */
+.app.home {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.app.home main,
+.app.home.library aside,
+.app.home .aside-bar {
   display: none;
+}
+
+.app.home.library main {
+  display: flex;
+}
+
+.app.home aside {
+  border-right: none;
+  overflow-y: auto;
+}
+
+.app.home .aside-body {
+  flex: none;
+  gap: var(--space-5);
+  width: min(1120px, 100%);
+  margin: 0 auto;
+  padding: 9vh var(--space-4) var(--space-5);
 }
 
 header {
@@ -240,15 +280,6 @@ header {
   text-overflow: ellipsis;
 }
 
-.chip {
-  font-size: var(--font-small);
-  line-height: 16px;
-  color: var(--text-secondary);
-  background: var(--background-muted);
-  border-radius: 999px;
-  padding: 3px 10px;
-}
-
 .spacer {
   flex: 1;
 }
@@ -268,6 +299,11 @@ aside {
   min-height: 49px;
   padding: var(--space-2) var(--space-3) var(--space-2) var(--space-4);
   border-bottom: 1px solid var(--stroke-default);
+}
+
+.aside-bar > button {
+  flex: none;
+  white-space: nowrap;
 }
 
 .aside-body {
@@ -322,17 +358,73 @@ aside {
   gap: 8px;
 }
 
-.chat-intro h2 {
+.home-intro {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.app.home .home-intro {
+  align-items: center;
+  width: min(680px, 100%);
+  margin: 0 auto;
+  text-align: center;
+}
+
+.app.home .home-intro .composer {
+  align-self: stretch;
+  text-align: left;
+}
+
+.app.home .home-intro .chips {
+  justify-content: center;
+}
+
+.app.home .home-intro h1 {
+  font-size: 40px;
+  line-height: 46px;
+}
+
+.home-intro h1 {
+  margin: 0;
   font-size: var(--font-display);
   line-height: 34px;
   font-weight: 700;
   letter-spacing: -0.02em;
-  margin: var(--space-2) 0 var(--space-2);
 }
 
-.chat-intro p {
+.home-intro > p {
+  margin: 0 0 var(--space-2);
   color: var(--text-secondary);
-  margin: 0;
+  font-size: var(--font-title);
+}
+
+.home-intro .composer textarea {
+  min-height: 120px;
+  font-size: var(--font-title);
+  line-height: 24px;
+  padding: 14px 16px 48px;
+}
+
+.home-shelf h2 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 0 var(--space-2);
+  font-size: var(--font-title);
+  font-weight: 600;
+}
+
+/* Tiles lift on hover: the padding keeps the lift and its shadow inside the scroller. */
+.home-row {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 250px;
+  gap: var(--space-3);
+  overflow-x: auto;
+  scrollbar-width: none;
+  margin: -6px calc(-1 * var(--space-4)) -20px;
+  padding: 6px var(--space-4) 20px;
 }
 
 .chips {
@@ -558,8 +650,8 @@ aside {
 }
 
 .shimmer {
-  background: linear-gradient(100deg, var(--text-tertiary) 40%, var(--text-default) 50%, var(--text-tertiary) 60%) 0 0 /
-    250% 100% no-repeat;
+  background: linear-gradient(100deg, var(--text-secondary) 40%, var(--text-default) 50%, var(--text-secondary) 60%) 0
+    0 / 250% 100% no-repeat;
   background-clip: text;
   color: transparent;
   animation:
@@ -693,6 +785,10 @@ aside {
 }
 
 .aside-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-weight: 600;
 }
 
@@ -835,6 +931,22 @@ aside {
   height: 12px;
   margin: 26px 0 0;
   animation: float-shadow 3.2s ease-in-out infinite;
+}
+
+.sign-in-cover {
+  width: min(320px, 80vw);
+  aspect-ratio: 1;
+  object-fit: contain;
+  margin-bottom: var(--space-4);
+  border-radius: var(--radius-dialog);
+  background: var(--background-viewer);
+  border: 1px solid var(--stroke-default);
+}
+
+.sign-in-kicker {
+  margin: 0;
+  color: var(--text-secondary);
+  font-weight: 600;
 }
 
 .sign-in-page h1 {
@@ -1249,6 +1361,27 @@ main {
   color: var(--text-secondary);
 }
 
+.menu-list > button.danger > svg {
+  color: inherit;
+}
+
+.menu-state {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 6px 10px;
+  max-width: 260px;
+  white-space: normal;
+  font-size: var(--font-small);
+  line-height: 16px;
+  color: var(--text-secondary);
+}
+
+.menu-state > svg {
+  flex: none;
+}
+
 .menu-list > button > .menu-check {
   margin-left: auto;
   color: inherit;
@@ -1373,17 +1506,11 @@ main {
   width: min(960px, calc(100vw - 32px));
 }
 
-.dialog-progress,
 .dialog-actions {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-}
-
-.dialog-actions {
-  justify-content: flex-start;
   flex-wrap: wrap;
+  gap: var(--space-3);
 }
 
 .dialog-generation {
@@ -1393,17 +1520,9 @@ main {
   min-width: 0;
 }
 
-.dialog-generation > button.primary {
+.dialog-generation > :is(button, .button) {
   justify-content: center;
-}
-
-.dialog-generation progress {
-  width: 100%;
-  accent-color: var(--accent);
-}
-
-.film-result > p {
-  color: var(--text-secondary);
+  padding-block: 9px;
 }
 
 .film-layout {
@@ -1440,19 +1559,18 @@ main {
 }
 
 .film-controls,
-.film-controls fieldset,
 .film-controls label,
-.film-result {
+.film-options[open] {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
   min-width: 0;
 }
 
-.film-controls fieldset {
-  padding: 0;
-  margin: 0;
-  border: 0;
+.film-options summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--text-secondary);
 }
 
 .film-controls label {
@@ -1527,56 +1645,7 @@ main {
   margin: var(--space-1) 0;
 }
 
-.shop-model span {
-  font-size: var(--font-small);
-  color: var(--text-tertiary);
-}
-
-.shop-steps {
-  list-style: none;
-  padding: 0;
-  margin: 0 0 var(--space-5);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-}
-
-.shop-steps li {
-  display: flex;
-  gap: var(--space-3);
-  align-items: flex-start;
-}
-
-.shop-number {
-  width: 26px;
-  height: 26px;
-  border: 1px solid var(--stroke-strong);
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  flex-shrink: 0;
-  font-size: var(--font-small);
-  font-weight: 600;
-}
-
-.shop-number.complete {
-  color: var(--text-success);
-  border-color: currentColor;
-}
-
-.shop-number.current {
-  background: var(--background-primary);
-  color: var(--text-on-primary);
-  border-color: transparent;
-}
-
-.shop-steps p {
-  margin-top: 2px;
-  font-size: var(--font-small);
-  line-height: 18px;
-}
-
-.shop-dialog a {
+.shop-dialog a:not(.button) {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
@@ -1584,39 +1653,55 @@ main {
   text-underline-offset: 3px;
 }
 
-.shop-steps a {
-  font-size: var(--font-small);
-  margin-top: var(--space-1);
-  font-weight: 600;
+/* The ways to get the bricks, one under the other. */
+.shop-option {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4) 0;
+  border-top: 1px solid var(--stroke-default);
 }
 
-.shop-copy {
+.shop-model + .shop-option {
+  border-top: none;
+  padding-top: 0;
+}
+
+.shop-option:last-child {
+  padding-bottom: 0;
+}
+
+.shop-copy,
+.shop-wide {
   width: 100%;
   justify-content: center;
-  padding: 10px var(--space-4);
+  padding: 9px var(--space-4);
 }
 
-.shop-dialog .shop-feedback {
-  min-height: 20px;
-  margin: var(--space-2) 0;
-  font-size: var(--font-small);
-  text-align: center;
-  color: var(--text-success);
-}
-
-.shop-footer {
-  border-top: 1px solid var(--stroke-default);
-  padding-top: var(--space-3);
+.shop-dialog :is(.shop-feedback, .shop-note, .shop-links) {
   font-size: var(--font-small);
   line-height: 18px;
 }
 
-.shop-footer p {
-  margin-top: var(--space-2);
-  color: var(--text-tertiary);
+.shop-dialog .shop-feedback.done {
+  color: var(--text-success);
+}
+
+.shop-note b {
+  color: var(--text-default);
+}
+
+.shop-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
 }
 
 .shop-error {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
   border-radius: var(--radius-button);
   padding: var(--space-3);
   background: var(--background-muted);
@@ -1628,7 +1713,6 @@ main {
 }
 
 .shop-manual {
-  margin-bottom: var(--space-4);
   font-size: var(--font-small);
 }
 
@@ -1688,21 +1772,6 @@ main {
   border-radius: 50%;
   background: var(--background-card);
   border: 2px solid var(--background-primary);
-}
-
-.status {
-  flex: none;
-  font-size: var(--font-small);
-  line-height: 16px;
-  border-radius: 999px;
-  padding: 4px 10px;
-  background: var(--background-building);
-  color: var(--accent);
-  white-space: nowrap;
-}
-
-.status:empty {
-  display: none;
 }
 
 .composer-error {
@@ -2100,60 +2169,6 @@ main {
   color: var(--text-secondary);
 }
 
-/* The price estimate: a chip like the piece count, which opens its details. */
-.price-trigger {
-  font-size: var(--font-small);
-  line-height: 16px;
-  color: var(--text-secondary);
-  background: var(--background-muted);
-  border: none;
-  border-radius: 999px;
-  padding: 3px 10px;
-  font-variant-numeric: tabular-nums;
-}
-
-.price-trigger:hover,
-.price-trigger[aria-expanded="true"] {
-  color: var(--text-default);
-  box-shadow: inset 0 0 0 1px var(--stroke-strong);
-}
-
-.menu-list.price-details {
-  left: 0;
-  right: auto;
-  white-space: normal;
-  width: 320px;
-  max-width: calc(100vw - 32px);
-  gap: 4px;
-  padding: 12px;
-}
-
-.price-total {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  padding: 0 2px;
-}
-
-.price-total b {
-  font-size: var(--font-heading);
-  line-height: 28px;
-}
-
-.price-details ul {
-  margin: 4px 0 8px;
-  padding-left: 18px;
-  color: var(--text-secondary);
-}
-
-.price-details ul li + li {
-  margin-top: 2px;
-}
-
-.price-details p {
-  margin: 4px 2px 0;
-}
-
 /* Importing a model file, beside the Mine heading. */
 .import-build {
   margin-left: auto;
@@ -2179,7 +2194,16 @@ main {
   }
 
   .app.home {
-    grid-template-rows: 56px minmax(0, 2fr) minmax(0, 3fr);
+    grid-template-rows: 56px minmax(0, 1fr);
+  }
+
+  .app.home aside {
+    grid-row: 2;
+    border-top: none;
+  }
+
+  .app.home .aside-body {
+    padding-top: var(--space-5);
   }
 
   main {
@@ -2208,11 +2232,6 @@ main {
     justify-content: center;
   }
 
-  header .chip,
-  header .price {
-    display: none;
-  }
-
   header .button-label,
   .center-bar .button-label {
     position: absolute;
@@ -2225,8 +2244,7 @@ main {
   /* On a phone every popover is a sheet under the header, never off screen. */
   .menu-list,
   .menu-list.confirm,
-  .menu-list.shortcuts,
-  .menu-list.price-details {
+  .menu-list.shortcuts {
     position: fixed;
     top: 60px;
     left: var(--space-2);
@@ -2243,6 +2261,14 @@ main {
   .center-bar .tabs {
     overflow-x: auto;
     scrollbar-width: none;
+  }
+
+  .center-bar .tabs:first-child {
+    flex: none;
+  }
+
+  .center-bar .tabs button {
+    padding: 4px 10px;
   }
 
   .stage {
@@ -2316,26 +2342,6 @@ main {
   font-size: 12px;
 }
 
-.app.has-running {
-  grid-template-rows: 56px auto minmax(0, 1fr);
-}
-.build-notice {
-  grid-column: 1 / -1;
-  padding: 9px 20px;
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--text-secondary);
-  background: var(--background-building);
-  border-bottom: 1px solid var(--stroke-default);
-}
-.build-notice strong {
-  color: var(--text-default);
-}
-.tab-hint {
-  font-size: 12px;
-  color: var(--text-secondary);
-  margin: 8px 0;
-}
 .failure-detail {
   overflow-wrap: anywhere;
   font-family: monospace;
@@ -2359,16 +2365,28 @@ main {
   border: 1px solid var(--stroke-default);
 }
 @media (max-width: 760px) {
-  .app.has-running {
-    grid-template-rows: 56px auto minmax(0, 11fr) minmax(0, 9fr);
+  .app.home .home-intro h1 {
+    font-size: var(--font-display);
+    line-height: 34px;
   }
-  .app.has-running main {
-    grid-row: 3;
+  .home-row {
+    grid-auto-columns: 172px;
   }
-  .app.has-running aside {
-    grid-row: 4;
+  .build-actions {
+    display: flex;
+    gap: var(--space-2);
+    margin: 0 var(--space-3) var(--space-3);
   }
-  .build-notice {
-    padding: 8px 12px;
+  .build-actions > *,
+  .build-actions .menu > button {
+    flex: 1;
+  }
+  .build-actions .menu {
+    display: flex;
+  }
+  .build-actions > button,
+  .build-actions .menu > button {
+    height: 44px;
+    justify-content: center;
   }
 }
