@@ -22,7 +22,7 @@ Setup, architecture, deploy and the toolkit's checks. The [main README](../READM
 - **Get the bricks**: one sheet with BrickLink carts through HoloTab (it imports the verified parts list and prepares carts for you to review and pay), a Pick a Brick list with its price, and the instructions. See [SHOPPING.md](../SHOPPING.md).
 - **Edit** by hand: choose **Edit**, click a piece (the one under the pointer is outlined), Shift-click to add more or Shift-drag a box around the pieces you see (Shift-Option-drag takes hidden ones too), then move them a stud or a plate, turn them a quarter about their middle, recolor them from the LDraw palette, duplicate them beside themselves (⌘D) or delete them; undo, redo and reset. The **?** button or key lists every shortcut. Edits are saved in this browser per build and revision, and the `.ldr` download includes them. The builder never sees them: the Parts tab counts the edited model's parts without BrickLink verification, shopping stays off while a model is edited, edits are hidden while the builder works, and a new revision leaves them to discard.
 - **Walk** through the model like in Minecraft: choose **Walk**, click the model, then WASD or the arrows to move and the mouse to look. You stand on the bricks and step up one brick at a time; Space jumps, W twice sprints, Space twice flies (Space up, Shift down), and arches, doors and plants let you through. Esc releases the mouse, Esc again leaves.
-- **Import a build**: the Library's Mine section imports a model file (what `brickyard-gallery` exports, or a session's `model.json.gz`) as your public build, after a confirmation. `/api/imports` checks every piece and part, recomputes the revision and `.ldr`, keeps the chat's text without its images, and marks the parts list unverified. Imported builds show under Mine too.
+- **Import a build**: the Your builds section of the home page imports a model file (what `brickyard-gallery` exports, or a session's `model.json.gz`) as your public build, after a confirmation. `/api/imports` checks every piece and part, recomputes the revision and `.ldr`, keeps the chat's text without its images, and marks the parts list unverified. Imported builds show under Your builds too.
 
 ## How it works
 
@@ -33,7 +33,7 @@ browser: this web app                  Agents API (agp.eu.hcompany.ai)          
   answer `look` with a GPU render ──>  the image, as the tool result
 ```
 
-- The app talks to the Agents API with the `hai-agents` SDK (`web/src/agent.ts`). A build is a session of the agent `brickyard`; the Library lists them, and the browser keeps each one's name, piece count and thumbnail in localStorage.
+- The app talks to the Agents API with the `hai-agents` SDK (`web/src/agent.ts`). A build is a session of the agent `brickyard`; the home page lists them, and the browser keeps each one's name, piece count and thumbnail in localStorage.
 - The first message attaches the toolkit, `web/public/brickyard.tgz`: the `bricks` CLI, its Python package, the catalog snapshot and the showcases. Holo's first call runs `.brickyard/setup.sh`, which installs it and fetches LDraw and the connector data; a second call waits for the first. `BRICKYARD_MINUTES`, the session's time limit, starts the clock each `bricks run` reports.
 - `bricks run` rebuilds the model from `build.py` and writes `model.json.gz`: the steps and pieces, the LDraw parts they use, the `.ldr`, and the verified parts list and shopping XML (or why they could not be verified). Holo shares it with `share_files`; the browser downloads it and shows it.
 - `look` is a custom tool: the browser renders the shared revision on your GPU and returns the image. Keep the tab open while Holo builds; it waits for the render.
@@ -105,7 +105,7 @@ cd server && uv run pytest -q && uv run ruff check . && cd ..
 cd web && npm ci && npx playwright install chromium && npm test && npm run build
 ```
 
-The server tests run the toolkit offline, with explicit catalog facts. The browser tests mock the Agents API and render real geometry: a build that shares models and asks for renders, the Library, shopping and the GIF export.
+The server tests run the toolkit offline, with explicit catalog facts. The browser tests mock the Agents API and render real geometry: a build that shares models and asks for renders, the home page's builds, shopping and the GIF export.
 
 ## Assembly plans
 
@@ -170,9 +170,9 @@ starting model blocks creation rather than silently dropping that input.
 
 ## Keeping the browser available
 
-The running-build notice remains visible while browsing the Library or another model. HoloBricks
-keeps answering `look` for running sessions inside the app, warns before leaving, and asks before
-signing out. Keep the tab open and the device awake: a suspended or closed browser cannot render.
+HoloBricks keeps answering `look` for running sessions on any page of the app, warns before leaving,
+keeps the screen awake while the tab shows, and asks before signing out. Keep the tab open: a
+suspended or closed browser cannot render.
 The browser's leave warning is best-effort and cannot prevent a crash or suspension. This is not a
 background rendering service and does not automatically pause the session clock.
 

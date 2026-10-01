@@ -60,10 +60,10 @@ function page(card: Card): string {
   let html = index;
   for (const [key, value] of Object.entries(tags))
     html = html.replace(
-      new RegExp(`(<meta (?:property|name)="${key}" content=")[^"]*`),
+      new RegExp(`(<meta\\s+(?:property|name)="${key}"\\s+content=")[^"]*`),
       (_, start: string) => start + escaped(value),
     );
-  return card.image ? html.replace(/\s*<meta property="og:image:(?:width|height)"[^>]*>/g, "") : html;
+  return card.image ? html.replace(/\s*<meta\s+property="og:image:(?:width|height)"[^>]*>/g, "") : html;
 }
 
 /** The app's page for `/?public=<id>` and `/?showcase=<id>`, with a link preview of that build. */

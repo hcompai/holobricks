@@ -33,8 +33,8 @@ test("the close guard follows running builds through the library and stops when 
       return event.defaultPrevented;
     });
   await expect.poll(protectedTab).toBe(true);
-  await page.getByRole("button", { name: "Library" }).click();
-  await page.getByRole("region", { name: "Public" }).locator(".tile").click();
+  await page.getByRole("button", { name: "HoloBricks", exact: true }).click();
+  await page.getByRole("region", { name: "Public builds" }).locator(".tile").click();
   await expect(page).toHaveURL(/paris/);
   expect(await protectedTab()).toBe(true);
   expect(await awake()).toBe(1);
