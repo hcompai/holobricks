@@ -4,7 +4,7 @@ import { deleteFork, readFork } from "./lib/forks";
 import { deleteProjectName } from "./lib/names";
 import { markRemoved, removedIds } from "./lib/removed";
 import { ownedSession } from "./lib/snapshot";
-import { find, findOwn, ID, unlist } from "./lib/store";
+import { findOwn, ID, unlist } from "./lib/store";
 
 const headers = { "Cache-Control": "private, no-store" };
 const SOURCES = new Set(["session", "fork", "public"]);
@@ -40,7 +40,8 @@ export const DELETE = route(async (request) => {
     if (!own || own.owner !== user.id) throw new Refusal(404, "No such project of yours.");
   }
 
-  const published = (await find(id)) ?? (source === "public" ? await findOwn(user.id, id) : null);
+  // Public or private (a moderator may have hidden it), the caller's library copy goes with it.
+  const published = await findOwn(user.id, id);
   if (published && published.owner === user.id) await unlist(id, user.id);
   if (source === "fork") {
     const run = await deleteFork(user.id, id);
