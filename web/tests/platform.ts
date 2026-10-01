@@ -19,6 +19,8 @@ interface Session {
   group?: string;
   error?: string;
   request?: any;
+  /** Whose session it is: the signed-in user's unless a teammate's. */
+  teammate?: boolean;
 }
 
 interface Request {
@@ -39,8 +41,8 @@ export class Platform {
   now = Date.parse(NOW);
   loseCreationResponse = false;
 
-  session(id: string, status = "running") {
-    this.sessions.set(id, { id, status, events: [], shared: 0 });
+  session(id: string, status = "running", { teammate = false } = {}) {
+    this.sessions.set(id, { id, status, events: [], shared: 0, teammate });
     return this;
   }
 
@@ -132,6 +134,7 @@ export async function platform(page: Page): Promise<Platform> {
     if (url.pathname === "/api/v2/sessions" && method === "GET") {
       const items = [...agp.sessions.values()]
         .filter((s) => !url.searchParams.has("group_id") || s.group === url.searchParams.get("group_id"))
+        .filter((s) => url.searchParams.get("owner") !== "me" || !s.teammate)
         .map((s) => ({
           id: s.id,
           agent: "brickyard",
@@ -177,13 +180,13 @@ export async function platform(page: Page): Promise<Platform> {
     if (action === "changes") {
       if (agp.offline) return reply(503, { detail: "Unavailable" });
       const from = Number(url.searchParams.get("from_index") ?? 0);
+      if (from >= session.events.length) await new Promise((resolve) => setTimeout(resolve, 200));
       if (from < session.events.length)
         return reply(200, {
           status: session.status,
           error: session.error ?? null,
           new_events: session.events.slice(from),
         });
-      await new Promise((resolve) => setTimeout(resolve, 200));
       return reply(204);
     }
     return reply(404, { detail: "Not mocked" });

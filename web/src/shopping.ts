@@ -30,11 +30,11 @@ export function prepareShopping(build: Build): ShoppingPackage {
 
 /** No chat, reference photos, API credentials, or mutable build download links cross this handoff. */
 export function shoppingPrompt(pack: ShoppingPackage): string {
-  return `Help me buy the bricks for my Brickyard build. Prepare complete BrickLink carts for me to review and pay.
+  return `Help me buy the bricks for my HoloBricks build. Prepare complete BrickLink carts for me to review and pay.
 
 The complete, prebuilt BrickLink XML is included below. You have everything needed to import it directly.
 Expected inventory: ${pack.pieces} pieces, ${pack.lots} part/color combinations.
-Wanted List name: Brickyard ${pack.id.slice(0, 12)}
+Wanted List name: HoloBricks ${pack.id.slice(0, 12)}
 Catalog validation valid until: ${new Date(pack.validation.valid_until * 1000).toISOString()}.
 
 1. Open ${BRICKLINK_UPLOAD} in my signed-in BrickLink session. Select the “Upload BrickLink XML format” tab, then paste the exact XML block below into its text field, without the Markdown fences. Use this text import directly: no download, local file access, file picker or user upload is needed. If starting after the validation expiry above, ask me to refresh the shopping request first. Ask me to sign in only if needed.

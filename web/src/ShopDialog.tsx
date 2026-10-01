@@ -1,15 +1,33 @@
-import { ArrowUpRightIcon, CheckIcon, CopyIcon, CubeIcon, ShoppingBagIcon, XIcon } from "@phosphor-icons/react";
-import { useEffect, useRef, useState } from "react";
-import type { Build, ShoppingPackage } from "./model";
+import {
+  ArrowUpRightIcon,
+  CheckIcon,
+  CubeIcon,
+  DownloadSimpleIcon,
+  ShoppingCartIcon,
+  XIcon,
+} from "@phosphor-icons/react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { PdfButton } from "./InstructionsExport";
+import type { Build, Piece, ShoppingPackage } from "./model";
+import { estimate, money, type PriceTable, storeUrl, UPLOAD_LIMIT, uploadLists } from "./pickabrick";
 import { HOLOTAB_INSTALL, prepareShopping, shoppingPrompt } from "./shopping";
 
 interface Props {
   build: Build;
   preview: Promise<Blob | null>;
+  /** Pick a Brick's prices, or null without them. */
+  table: PriceTable | null;
+  /** Whether the pieces include this browser's hand edits, which BrickLink cannot be sent. */
+  edited: boolean;
+  describe: (piece: Piece) => string;
+  onReset: () => void;
   onClose: () => void;
 }
 
-export function ShopDialog({ build, preview, onClose }: Props) {
+const plural = (n: number, one: string, many: string) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
+
+/** Every way to build the model for real: a BrickLink cart through HoloTab, a Pick a Brick list, and the instructions. */
+export function ShopDialog({ build, preview, table, edited, describe, onReset, onClose }: Props) {
   const dialog = useRef<HTMLDialogElement>(null);
   const fallback = useRef<HTMLTextAreaElement>(null);
   const [pack, setPack] = useState<ShoppingPackage | null>(null);
@@ -81,17 +99,16 @@ export function ShopDialog({ build, preview, onClose }: Props) {
   };
 
   return (
-    <dialog ref={dialog} className="shop-dialog" aria-labelledby="shop-title" onCancel={onClose}>
-      <div className="shop-heading">
-        <span className="shop-eyebrow">
-          <ShoppingBagIcon size={16} /> FROM YOUR SCREEN TO YOUR HANDS
-        </span>
-        <button className="icon-button" aria-label="Close shopping" onClick={onClose}>
-          <XIcon size={18} />
+    <dialog ref={dialog} className="dialog shop-dialog" aria-labelledby="shop-title" onCancel={onClose}>
+      <div className="dialog-head">
+        <div>
+          <h2 id="shop-title">Build it for real</h2>
+          <p>Get the bricks, then follow the instructions.</p>
+        </div>
+        <button className="quiet icon-button" aria-label="Close" onClick={onClose}>
+          <XIcon size={16} />
         </button>
       </div>
-      <h2 id="shop-title">Make it real.</h2>
-      <p className="shop-intro">Let HoloTab find your bricks and get your carts ready. You choose when to pay.</p>
       <div className="shop-model">
         <div className="shop-image">
           {image ? <img src={image} alt={build.name} /> : <CubeIcon size={40} weight="duotone" />}
@@ -99,69 +116,97 @@ export function ShopDialog({ build, preview, onClose }: Props) {
         <div>
           <strong>{build.name}</strong>
           <p>
-            {build.pieces.length.toLocaleString()} pieces{pack ? ` · ${pack.lots.toLocaleString()} combinations` : ""}
+            {plural(build.pieces.length, "piece", "pieces")}
+            {pack && ` · ${plural(pack.lots, "kind of brick", "kinds of bricks")}`}
           </p>
-          <span>Saved parts list</span>
         </div>
       </div>
-      <ol className="shop-steps">
-        <li>
-          <span className="shop-number">1</span>
-          <div>
-            <b>Get HoloTab for Chrome</b>
-            <p>Already installed? You’re ready for the next step.</p>
-            <a href={HOLOTAB_INSTALL} target="_blank" rel="noopener noreferrer">
-              Install HoloTab <ArrowUpRightIcon size={14} />
-            </a>
+
+      <section className="shop-option" aria-label="BrickLink">
+        {error ? (
+          <div className="shop-error" role="alert">
+            <p className="error-text">{error}</p>
+            {edited && <button onClick={onReset}>Reset my edits</button>}
           </div>
-        </li>
-        <li>
-          <span className={`shop-number ${copied ? "complete" : ""}`}>
-            {copied ? <CheckIcon size={16} weight="bold" /> : "2"}
-          </span>
-          <div>
-            <b>Copy your shopping request</b>
-            <p>Your verified parts XML is included. No file to upload.</p>
-          </div>
-        </li>
-        <li>
-          <span className={`shop-number ${copied ? "current" : ""}`}>3</span>
-          <div>
-            <b>Paste into HoloTab and send</b>
-            <p>Open HoloTab in Chrome. It imports your list on BrickLink and helps you get to checkout.</p>
-          </div>
-        </li>
-      </ol>
-      {error ? (
-        <div className="shop-error" role="alert">
-          <p style={{ whiteSpace: "pre-line" }}>{error}</p>
-        </div>
-      ) : (
-        <button className="shop-copy" disabled={!pack || copying} onClick={copy}>
-          {copied ? <CheckIcon size={18} /> : <CopyIcon size={18} />}
-          {!pack ? "Verifying your parts and colors…" : copied ? "Copy again" : "Copy for HoloTab"}
-        </button>
-      )}
-      <p className="shop-feedback" role="status">
-        {copied ? "Copied! Open HoloTab in Chrome, paste, and send." : ""}
-      </p>
-      {manual && pack && (
-        <div className="shop-manual">
-          <label htmlFor="shop-request">Select and copy this request, then paste it into HoloTab.</label>
-          <textarea id="shop-request" ref={fallback} readOnly rows={7} value={shoppingPrompt(pack)} />
-        </div>
-      )}
-      <div className="shop-footer">
-        {pack && (
-          <a
-            href={`data:application/xml;charset=utf-8,${encodeURIComponent(pack.xml)}`}
-            download={`brickyard-${pack.id.slice(0, 12)}-parts.xml`}
-          >
-            Download parts XML <ArrowUpRightIcon size={13} />
-          </a>
+        ) : (
+          <button className="primary shop-copy" disabled={!pack || copying} onClick={copy}>
+            {copied ? <CheckIcon size={16} /> : <ShoppingCartIcon size={16} />}
+            {!pack ? "Verifying your parts and colors…" : copied ? "Copy again" : "Fill my BrickLink cart"}
+          </button>
         )}
-        <p>Prices and availability are checked on BrickLink. Printed instructions aren’t included yet.</p>
-      </div>
+        <p className={copied ? "shop-feedback done" : "shop-feedback"} role="status">
+          {copied
+            ? "Copied. Paste it into HoloTab in Chrome and send."
+            : "Copies a request for HoloTab, our Chrome extension: it fills your BrickLink carts, and you choose when to pay."}
+        </p>
+        {manual && pack && (
+          <div className="shop-manual">
+            <label htmlFor="shop-request">Select and copy this request, then paste it into HoloTab.</label>
+            <textarea id="shop-request" ref={fallback} readOnly rows={7} value={shoppingPrompt(pack)} />
+          </div>
+        )}
+        <p className="shop-links">
+          <a href={HOLOTAB_INSTALL} target="_blank" rel="noopener noreferrer">
+            Get HoloTab <ArrowUpRightIcon size={13} />
+          </a>
+          {pack && (
+            <a
+              href={`data:application/xml;charset=utf-8,${encodeURIComponent(pack.xml)}`}
+              download={`holobricks-${pack.id.slice(0, 12)}-parts.xml`}
+            >
+              Download parts XML <ArrowUpRightIcon size={13} />
+            </a>
+          )}
+        </p>
+      </section>
+
+      {table && <PickABrick build={build} table={table} edited={edited} />}
+
+      <section className="shop-option" aria-label="Instructions">
+        <PdfButton build={build} describe={describe} className="shop-wide" />
+      </section>
     </dialog>
+  );
+}
+
+/** The pieces as lists to upload to LEGO Pick a Brick, with what they would cost there. */
+function PickABrick({ build, table, edited }: { build: Build; table: PriceTable; edited: boolean }) {
+  const found = useMemo(() => estimate(build.pieces, table), [build.pieces, table]);
+  if (!found.priced) return null;
+  const files = uploadLists(found.lines);
+  const date = new Date(table.fetched_at * 1000).toLocaleDateString(table.locale, { dateStyle: "medium" });
+  const count = (n: number) => n.toLocaleString(table.locale);
+
+  const download = () => {
+    files.forEach((csv, i) => {
+      const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+      const part = files.length > 1 ? ` ${i + 1} of ${files.length}` : "";
+      Object.assign(document.createElement("a"), {
+        href: url,
+        download: `${build.name} Pick a Brick${part}.csv`,
+      }).click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    });
+  };
+
+  return (
+    <section className="shop-option" aria-label="Pick a Brick">
+      <button className="shop-wide" onClick={download}>
+        <DownloadSimpleIcon size={16} />
+        {files.length > 1 ? `Download ${files.length} Pick a Brick lists` : "Download Pick a Brick list"}
+      </button>
+      <p className="shop-note">
+        <b>≈ {money(found.cents, table)}</b> on Pick a Brick for {count(found.priced)} of {count(build.pieces.length)}{" "}
+        pieces
+        {found.missing > 0 && `; ${count(found.missing)} are not sold there in their color`}.
+        {found.outOfStock > 0 && ` ${count(found.outOfStock)} are out of stock.`}
+        {edited && " Includes your edits."}
+        {files.length > 1 && ` Each list holds up to ${UPLOAD_LIMIT} kinds of bricks: upload them one by one.`} Prices
+        from {date}, shipping not included.{" "}
+        <a href={storeUrl(table)} target="_blank" rel="noreferrer">
+          Open Pick a Brick <ArrowUpRightIcon size={13} />
+        </a>
+      </p>
+    </section>
   );
 }

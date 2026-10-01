@@ -4,7 +4,7 @@ const SIDES = ["front", "right", "back", "left"] as const;
 const STUDS = [0, 1, 2, 3];
 const STUD_LAYERS = [0, 1, 2, 3, 4];
 
-/** The Brickyard brick in CSS 3D: a white 2×2 brick with the H on two sides and the dot on the others. */
+/** The HoloBricks brick in CSS 3D: a white 2×2 brick with the H on two sides and the dot on the others. */
 export function Brick() {
   return (
     <div className="brick" aria-hidden="true">

@@ -1,6 +1,7 @@
+import { createHash } from "node:crypto";
 import { gzipSync } from "node:zlib";
 import { holder, isAdmin } from "./lib/account";
-import { body, Refusal, route, SHARED } from "./lib/http";
+import { body, Refusal, route } from "./lib/http";
 import { snapshot } from "./lib/snapshot";
 import {
   enter,
@@ -19,9 +20,12 @@ import {
 const THUMBNAIL = /^data:image\/(webp|png|jpeg);base64,([A-Za-z0-9+/=]+)$/;
 const MAX_THUMBNAIL = 512 * 1024;
 
-/** Republishing overwrites a build's files in place: its URLs carry the time, past the Blob CDN's cache. */
+/** Republishing overwrites a build's files in place: its URLs carry the time, for browsers' caches. */
 const versioned = (url: string, at: number) => `${url}?v=${at}`;
 const bare = (url: string) => url.split("?")[0];
+/** The Blob CDN ignores query strings, so a thumbnail is named by its content to show a republished one at once. */
+const coverName = ({ data, type }: { data: Buffer; type: string }) =>
+  `thumbnail-${createHash("sha256").update(data).digest("hex").slice(0, 16)}.${type.split("/")[1]}`;
 
 function buildId(value: unknown): string {
   if (typeof value !== "string" || !ID.test(value)) throw new Refusal(400, "No such build.");
@@ -37,22 +41,18 @@ function thumbnail(value: unknown): { data: Buffer; type: string } | null {
   return { data, type: `image/${match[1]}` };
 }
 
-const OWN = { "Cache-Control": "private, no-store" };
+const PRIVATE = { "Cache-Control": "private, no-store" };
 
-/**
- * The public library, or one public build with `?id=`. Signed in, `?mine=1` lists the caller's private builds, and
- * `?id=` also finds one of them.
- */
+/** For signed-in users: the public library, or one build with `?id=` (public or the caller's); `?mine=1` lists the caller's private builds. */
 export const GET = route(async (request) => {
+  const { user } = holder(request);
   const params = new URL(request.url).searchParams;
-  if (params.has("mine")) return Response.json(await privateOf(holder(request).user.id), { headers: OWN });
+  if (params.has("mine")) return Response.json(await privateOf(user.id), { headers: PRIVATE });
   const id = params.get("id");
-  if (!id) return Response.json(await library(), { headers: SHARED });
-  const shared = await find(buildId(id));
-  if (shared) return Response.json(shared, { headers: SHARED });
-  const own = request.headers.has("authorization") ? await findOwn(holder(request).user.id, buildId(id)) : null;
-  if (!own) throw new Refusal(404, "This build is not public.");
-  return Response.json(own, { headers: OWN });
+  if (!id) return Response.json(await library(), { headers: PRIVATE });
+  const found = (await find(buildId(id))) ?? (await findOwn(user.id, buildId(id)));
+  if (!found) throw new Refusal(404, "This build is not public.");
+  return Response.json(found, { headers: PRIVATE });
 });
 
 /** Make one of the caller's imported builds private or public again: `{ id, private }`. Its files and link stay the same. */
@@ -92,8 +92,9 @@ export const POST = route(async (request) => {
     (name, image) => keep(name, image, image.type || "image/png"),
     user.id,
   );
-  const coverUrl = cover ? await keep(`thumbnail.${cover.type.split("/")[1]}`, cover.data, cover.type) : null;
-  if (!cover && previous?.thumbnail) written.push(bare(previous.thumbnail));
+  const coverUrl = cover ? await keep(coverName(cover), cover.data, cover.type) : null;
+  // The Blob CDN can serve the previous entry for a minute, and with it the previous thumbnail.
+  if (previous?.thumbnail) written.push(bare(previous.thumbnail));
   const at = Math.floor(Date.now() / 1000);
   const published: Published = {
     id,
@@ -104,7 +105,7 @@ export const POST = route(async (request) => {
     author: user.name,
     owner: user.id,
     published: at,
-    thumbnail: coverUrl ? versioned(coverUrl, at) : (previous?.thumbnail ?? null),
+    thumbnail: coverUrl ?? previous?.thumbnail ?? null,
     build: versioned(await keep("build.json.gz", gzipSync(JSON.stringify(build)), "application/gzip"), at),
   };
   await enter(published, before, written);

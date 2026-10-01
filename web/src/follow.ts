@@ -1,6 +1,6 @@
 import { isTerminalSessionStatus, type HaiAgents } from "hai-agents";
 import { answer, client, download, fail } from "./agent";
-import { card, remember } from "./library";
+import { card, remember, thumbnail } from "./library";
 import { cachedSeed, readSeed, requestedSeed, type ForkSeed } from "./fork";
 import { caption, dataUrl, view } from "./look";
 import { EMPTY_MODEL, type Build, type Message, type Model } from "./model";
@@ -20,6 +20,7 @@ import {
 const WAIT_S = 20;
 const RETRY_MS = 3000;
 const RENDER_TRIES = 3;
+const LOAD_TRIES = 3;
 
 /** A session as the Agents API last told it. */
 export interface Followed {
@@ -28,6 +29,7 @@ export interface Followed {
   build: Build | null;
   /** What the builder is doing, while it builds. */
   activity: Activity | null;
+  /** Why the build cannot be read at all; its follower has stopped. */
   error: string | null;
   /** A shown model can remain available, but must not be presented as confirmed live. */
   syncError: string | null;
@@ -42,13 +44,13 @@ const status = (e: unknown) => (e instanceof Error && "statusCode" in e ? e.stat
 let eye: BrickScene | null = null;
 let rendering: Promise<unknown> = Promise.resolve();
 
-/** Holo's views of `model`, drawn off screen one at a time, whatever the user is looking at. */
-function render(model: Model, look: Exclude<ReturnType<typeof view>, string>): Promise<Blob | null> {
+/** `model` drawn off screen by `draw`, one render at a time, whatever the user is looking at. */
+function render(model: Model, draw: (scene: BrickScene) => Promise<Blob | null>): Promise<Blob | null> {
   const next = rendering.then(async () => {
     try {
       eye ??= new BrickScene(document.createElement("div"), { interactive: false });
       if (!(await eye.setPieces(model.pieces))) return null;
-      return await eye.renderBuild(model.pieces, model.revision, look.camera, look.box);
+      return await draw(eye);
     } catch (e) {
       eye?.dispose();
       eye = null;
@@ -74,6 +76,10 @@ function follow(id: string, signal: AbortSignal, notify: Listener, displayed: ()
   let checkedSeed = !!seed;
   let model = seed?.model ?? EMPTY_MODEL;
   let loaded = 0;
+  /** The latest shared model while it fails to load: how many times, and why. */
+  let unloaded: { shared: number; tries: number; reason: string } | null = null;
+  /** Whether the model changed since this follower last saw the session settle. */
+  let changed = false;
   const seen = new Set<string>();
   const pictures = new Map<string, string | null>();
 
@@ -110,7 +116,9 @@ function follow(id: string, signal: AbortSignal, notify: Listener, displayed: ()
     const shot = model;
     for (let tries = 1; ; tries++) {
       try {
-        const png = await render(shot, wanted);
+        const png = await render(shot, (scene) =>
+          scene.renderBuild(shot.pieces, shot.revision, wanted.camera, wanted.box),
+        );
         if (!png) throw new Error("the render came back empty");
         const request = { request: call.id!, ...wanted, revision: shot.revision };
         return await answer(id, call, [caption(shot, request), await dataUrl(png)]);
@@ -126,7 +134,20 @@ function follow(id: string, signal: AbortSignal, notify: Listener, displayed: ()
     }
   };
 
+  /** The library tile of a build that finished off screen; the viewer makes the one of a build on screen. */
+  const keepThumbnail = () => {
+    const shot = model;
+    if (!shot.pieces.length || card(id)?.revision === shot.revision) return;
+    render(shot, (scene) => scene.renderThumbnail(shot.pieces))
+      .then(async (png) => png && remember(id, { thumbnail: await thumbnail(png), revision: shot.revision }))
+      .catch((e) => console.error("Could not make the thumbnail", e));
+  };
+
   const publish = () => {
+    if (changed && buildStatus(session) === "done") {
+      changed = false;
+      if (!displayed()) keepThumbnail();
+    }
     const end = ending(session, failure ?? transcript.error);
     set({
       models: transcript.models,
@@ -143,11 +164,16 @@ function follow(id: string, signal: AbortSignal, notify: Listener, displayed: ()
       activity: buildStatus(session) === "building" ? activity(transcript) : null,
     });
     if (transcript.state !== "awaiting_tool_results") return;
-    const look = transcript.looks.find((l) => l.shared <= loaded);
+    const lost = unloaded && unloaded.tries >= LOAD_TRIES ? unloaded : null;
+    const look = transcript.looks.find((l) => l.shared <= loaded || lost);
     const call = look?.call;
     if (!look || !call?.id || seen.has(call.id)) return;
     seen.add(call.id);
-    see(call, look.shared).catch((e) => {
+    const answered =
+      look.shared <= loaded
+        ? see(call, look.shared)
+        : fail(id, call, `The model you shared could not be loaded (${lost!.reason}). Share it again, then look.`);
+    answered.catch((e) => {
       if (status(e) !== 409) seen.delete(call.id!);
     });
   };
@@ -170,42 +196,57 @@ function follow(id: string, signal: AbortSignal, notify: Listener, displayed: ()
     }
     const latest = transcript.model;
     if (!latest || latest.shared === loaded) return;
-    const next = await unpack<Model>(await download(latest.url, signal));
-    provideParts(next.parts);
-    if (next.revision === model.revision) next.pieces = model.pieces;
-    model = next;
-    loaded = latest.shared;
-    remember(id, { pieces: model.pieces.length, ...(named(model) && { name: seed?.model.name ?? model.name }) });
+    try {
+      const next = await unpack<Model>(await download(latest.url, signal));
+      provideParts(next.parts);
+      if (next.revision === model.revision) next.pieces = model.pieces;
+      else changed = true;
+      model = next;
+      loaded = latest.shared;
+      unloaded = null;
+      remember(id, { pieces: model.pieces.length, ...(named(model) && { name: seed?.model.name ?? model.name }) });
+    } catch (e) {
+      if (signal.aborted) throw e;
+      console.error("Could not load the latest model", e);
+      const tries = unloaded?.shared === latest.shared ? unloaded.tries + 1 : 1;
+      unloaded = { shared: latest.shared, tries, reason: e instanceof Error ? e.message : String(e) };
+    }
   };
 
   const poll = async () => {
     while (!signal.aborted) {
       try {
-        const changes = await client.sessions.getSessionChanges(
-          { id, fromIndex: transcript.events, includeEvents: true, waitForSeconds: WAIT_S },
-          { abortSignal: signal, timeoutInSeconds: WAIT_S + 20, maxRetries: 0 },
-        );
+        const changed = (waitForSeconds: number) =>
+          client.sessions.getSessionChanges(
+            { id, fromIndex: transcript.events, includeEvents: true, waitForSeconds },
+            { abortSignal: signal, timeoutInSeconds: waitForSeconds + 20, maxRetries: 0 },
+          );
+        let changes = await changed(WAIT_S);
+        if (!changes) {
+          const current = await client.sessions.getSessionStatus({ id }, { abortSignal: signal });
+          /** Events can land between the long poll and the status: fetch them so the status never outruns the transcript. */
+          if (current.status !== session) changes = await changed(0);
+          if (!changes) {
+            session = current.status;
+            failure = current.error ?? null;
+          }
+        }
         if (changes) {
           transcript = read(transcript, changes.newEvents ?? []);
           session = changes.status;
           failure = changes.error ?? null;
-        } else {
-          const current = await client.sessions.getSessionStatus({ id }, { abortSignal: signal });
-          session = current.status;
-          failure = current.error ?? null;
         }
         await loadModel();
         fetchPictures();
         publish();
-        set({ error: null, syncError: null });
+        set({ error: null, syncError: unloaded && "Couldn't load the latest model." });
         if (!changes && isTerminalSessionStatus(session)) return;
       } catch (e) {
         if (signal.aborted) return;
         console.error(e);
         const code = status(e);
         if (code === 403 || code === 404) return set({ error: "Couldn't load this build" });
-        if (!transcript.events) set({ error: "Couldn't load this build" });
-        else set({ syncError: "Connection lost: the latest model cannot be confirmed. Reconnecting…" });
+        set({ syncError: "Connection lost: the latest model cannot be confirmed. Reconnecting…" });
         await sleep(RETRY_MS);
       }
     }

@@ -36,11 +36,27 @@ class Piece(BaseModel):
     step: int
 
 
+class Brick(BaseModel):
+    part: str
+    x: int = 0
+    y: int = 0
+    z: int = 0
+    color: int
+    rotation: int = 0
+    facing: str | None = None
+    """Set for a part mounted on a wall, its top turned to face that side."""
+    pos: tuple[float, float, float] | None = None
+    """Set for an exact LDraw placement in LDU, turned by `rot`; x, y, z, rotation and facing then go unused."""
+    rot: Matrix = IDENTITY
+    label: str | None = None
+    """How problems name the brick, like the script line that made it."""
+
+
 class Step(BaseModel):
     index: int
     title: str
     key: str | None = None
-    """Digest of the script step that made it, empty if that step had problems; None when no script made it."""
+    """Digest of the script step that made it, empty if that step had problems or floating bricks; None when no script made it."""
 
 
 class Message(BaseModel):
@@ -105,7 +121,7 @@ class Build(BaseModel):
         }
 
     def to_ldraw(self) -> str:
-        lines = [f"0 {self.name}", f"0 Name: {self.id}.ldr", "0 Author: Brickyard", ""]
+        lines = [f"0 {self.name}", f"0 Name: {self.id}.ldr", "0 Author: HoloBricks", ""]
         for step in self.steps:
             for p in (p for p in self.pieces if p.step == step.index):
                 rot = " ".join(f"{v:g}" for v in p.rot)

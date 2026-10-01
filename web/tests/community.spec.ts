@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { createHash } from "node:crypto";
 import { gzipSync } from "node:zlib";
+import { GET } from "../api/builds";
 import type { Build } from "../src/model";
 import { cookie, HANDOFF, PENDING, setCookie } from "../src/signin";
 import { ACCOUNT, fixture, site } from "./fixtures";
@@ -87,7 +88,9 @@ test("a colleague's public build opens from the library's Public section, under 
   await expect(page).toHaveURL(/\?public=tower$/);
   await shown(page, tower.revision);
   await expect(page.locator(".gallery-note")).toHaveText(/^By Ada Lovelace · Fork to edit/);
-  await expect(page.getByRole("button", { name: "Publish", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Share", exact: true }).click();
+  await expect(page.getByRole("menuitem", { name: /Publish/ })).toHaveCount(0);
+  await page.keyboard.press("Escape");
 });
 
 test("a fork of a public build opens a private copy, then chat starts a session from a script placing each of its pieces, step by step", async ({
@@ -101,11 +104,11 @@ test("a fork of a public build opens a private copy, then chat starts a session 
   await shown(page, tower.revision);
 
   await page.locator(".gallery-note").getByRole("button", { name: "Fork" }).click();
-  await page.getByPlaceholder("Describe how to change it…").fill("Make it twice as tall");
+  await page.getByPlaceholder("Ask for a change").fill("Make it twice as tall");
   await page.getByRole("button", { name: "Send", exact: true }).click();
   await expect.poll(() => agp.posted("/api/v2/sessions")).toHaveLength(1);
   await expect(page).toHaveURL(/\?fork=fork-/);
-  await expect(page.locator("header .title")).toHaveText("Ada's tower · Fork");
+  await expect(page.locator(".aside-title")).toHaveText("Ada's tower · Fork");
   const first = agp.posted("/api/v2/sessions")[0].messages[0];
   expect(first.message).toBe("Make it twice as tall");
   expect(first.files.map((f: { name: string }) => f.name)).toEqual([
@@ -129,8 +132,9 @@ test("a public build's link copies to the clipboard", async ({ page, context }) 
   await page.goto("/?public=tower");
   await shown(page, tower.revision);
 
-  await page.getByRole("button", { name: "Copy link" }).click();
-  await expect(page.getByRole("button", { name: "Link copied" })).toBeVisible();
+  await page.getByRole("button", { name: "Share", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Copy link" }).click();
+  await expect(page.getByRole("menuitem", { name: "Link copied" })).toBeVisible();
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(`${new URL(page.url()).origin}/?public=tower`);
 });
 
@@ -147,18 +151,23 @@ test("the author publishes a build after a confirmation, stays on it, then makes
   const calls = await library(page, [], [{ ...model, id: "mine" }]);
   await page.goto("/?build=mine");
   await shown(page, model.revision);
-  const copyLink = page.getByRole("button", { name: "Copy link" });
-  await expect(copyLink).toHaveCount(0);
+  const share = page.getByRole("button", { name: "Share", exact: true });
+  const menu = page.getByRole("menu");
+  const copyLink = page.getByRole("menuitem", { name: "Copy link" });
+  await share.click();
+  await expect(menu).toContainText("Private: not in the public library");
+  await expect(copyLink).toBeDisabled();
 
   const publishing = page.getByRole("dialog", { name: "Publish" });
-  await page.getByRole("button", { name: "Publish", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Publish to the library…" }).click();
   await expect(publishing).toContainText("the chat, and the photos you attached");
   await publishing.getByRole("button", { name: "Publish" }).click();
   await expect(publishing).toBeHidden();
   await expect(page).toHaveURL(/\?build=mine$/);
-  const unpublish = page.getByRole("button", { name: "Public", exact: true });
-  await expect(unpublish).toBeVisible();
-  await expect(copyLink).toBeVisible();
+  await share.click();
+  await expect(menu).toContainText("In the public library: anyone at H can open it");
+  await expect(copyLink).toBeEnabled();
+  await share.click();
   const post = calls.find((c) => c.method === "POST")!;
   expect(post.headers).toMatchObject({ authorization: `Bearer ${ACCOUNT.pass}`, "x-agents-key": ACCOUNT.key });
   expect(post.body).toEqual({ id: "mine", thumbnail: expect.stringMatching(/^data:image\/webp;base64,/), edits: null });
@@ -172,15 +181,20 @@ test("the author publishes a build after a confirmation, stays on it, then makes
   await shelf.click();
 
   const confirm = page.getByRole("dialog", { name: "Make private" });
+  const unpublish = page.getByRole("menuitem", { name: "Make private…" });
+  await share.click();
   await unpublish.click();
   await confirm.getByRole("button", { name: "Cancel" }).click();
   await expect(confirm).toBeHidden();
   expect(calls.some((c) => c.method === "DELETE")).toBe(false);
+  await share.click();
   await unpublish.click();
   await confirm.getByRole("button", { name: "Make private" }).click();
   await expect(page).toHaveURL(/\?build=mine$/);
-  await expect(page.getByRole("button", { name: "Publish", exact: true })).toBeVisible();
-  await expect(copyLink).toHaveCount(0);
+  await share.click();
+  await expect(page.getByRole("menuitem", { name: "Publish to the library…" })).toBeVisible();
+  await expect(copyLink).toBeDisabled();
+  await share.click();
   expect(calls.find((c) => c.method === "DELETE")).toMatchObject({
     search: "?id=mine",
     headers: { authorization: `Bearer ${ACCOUNT.pass}`, "x-agents-key": ACCOUNT.key },
@@ -190,13 +204,49 @@ test("the author publishes a build after a confirmation, stays on it, then makes
   await expect(mine).not.toContainText("public");
 });
 
+test("the library answers only signed-in users, and the app signs every read", async ({ page }) => {
+  for (const url of ["https://bricks.test/api/builds", "https://bricks.test/api/builds?id=tower"])
+    expect((await GET(new Request(url))).status).toBe(401);
+
+  const tower = { ...fixture(), id: "tower", name: "Ada's tower" };
+  await site(page);
+  const calls = await library(page, [entry(tower, "Ada Lovelace", "u-ada")], [tower]);
+  await page.goto("/?public=tower");
+  await shown(page, tower.revision);
+  const reads = calls.filter((c) => c.method === "GET");
+  expect(reads.map((c) => c.search)).toEqual(expect.arrayContaining(["", "?mine=1", "?id=tower"]));
+  for (const read of reads)
+    expect(read.headers).toMatchObject({ authorization: `Bearer ${ACCOUNT.pass}`, "x-agents-key": ACCOUNT.key });
+});
+
+test("a teammate's build link opens read only, to remix", async ({ page }) => {
+  const model = fixture();
+  await site(page);
+  const agp = await platform(page);
+  agp.session("theirs", "idle", { teammate: true });
+  agp.say("theirs", "A little tower");
+  agp.share("theirs", model);
+  agp.answer("theirs", "Built.");
+  await library(page, []);
+  await page.goto("/?build=theirs");
+  await shown(page, model.revision);
+
+  await expect(page.locator(".gallery-note")).toHaveText(/^Teammate’s build · Fork to edit/);
+  await page.getByRole("button", { name: "Share", exact: true }).click();
+  await expect(page.getByRole("menuitem", { name: /Publish/ })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("textbox")).toHaveCount(0);
+  await page.locator(".gallery-note").getByRole("button", { name: "Fork" }).click();
+  await expect(page.getByPlaceholder("Ask for a change")).toBeVisible();
+});
+
 test("signed out, only the sign-in page shows; Google brings the user back signed in where they left", async ({
   page,
   context,
 }) => {
   const tower = fixture();
   await site(page, [tower], null);
-  let handoff: object = { error: "Brickyard is open to H Company accounts." };
+  let handoff: object = { error: "HoloBricks is open to H Company accounts." };
   const pending: { verifier: string }[] = [];
   const challenges: (string | null)[] = [];
   await page.route(`${PORTAL}/auth/authorize?*`, (route) => {
@@ -219,10 +269,10 @@ test("signed out, only the sign-in page shows; Google brings the user back signe
   const google = page.getByRole("button", { name: "Continue with Google" });
 
   await page.goto(`/?showcase=${tower.id}`);
-  await expect(page.getByRole("heading", { name: "Brickyard" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "HoloBricks" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Library" })).toHaveCount(0);
   await google.click();
-  await expect(page.getByRole("alert")).toHaveText("Brickyard is open to H Company accounts.");
+  await expect(page.getByRole("alert")).toHaveText("HoloBricks is open to H Company accounts.");
 
   handoff = ACCOUNT;
   await google.click();

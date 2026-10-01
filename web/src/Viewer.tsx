@@ -34,7 +34,7 @@ export function ViewControls({
   mode,
   canEdit,
   editHint,
-  canWalk,
+  built,
   onFrame,
   onSpin,
   onMode,
@@ -44,7 +44,8 @@ export function ViewControls({
   mode: Mode;
   canEdit: boolean;
   editHint?: string;
-  canWalk: boolean;
+  /** The model has pieces, so it can be edited or walked through. */
+  built: boolean;
   onFrame: (framing: Framing) => void;
   onSpin: (spin: boolean) => void;
   onMode: (mode: Mode) => void;
@@ -65,33 +66,36 @@ export function ViewControls({
       <span className="tabs-sep" />
       <button className={spin ? "active" : ""} aria-pressed={spin} onClick={() => onSpin(!spin)}>
         <ArrowsClockwiseIcon size={14} weight="bold" />
-        Spin
+        <span className="button-label">Spin</span>
       </button>
-      <span className="tabs-sep" />
-      <button
-        className={mode === "edit" ? "active" : ""}
-        aria-pressed={mode === "edit"}
-        disabled={!canEdit && mode !== "edit"}
-        title={
-          canEdit
-            ? "Select pieces to move, turn or delete them"
-            : (editHint ?? "Pieces can be edited once Holo is done")
-        }
-        onClick={() => toggle("edit")}
-      >
-        <PencilSimpleIcon size={14} weight="bold" />
-        Edit
-      </button>
-      <button
-        className={mode === "walk" ? "active" : ""}
-        aria-pressed={mode === "walk"}
-        disabled={!canWalk && mode !== "walk"}
-        title="Walk through the model: WASD and the mouse"
-        onClick={() => toggle("walk")}
-      >
-        <PersonSimpleWalkIcon size={14} weight="bold" />
-        Walk
-      </button>
+      {built && (
+        <>
+          <span className="tabs-sep" />
+          <button
+            className={mode === "edit" ? "active" : ""}
+            aria-pressed={mode === "edit"}
+            disabled={!canEdit && mode !== "edit"}
+            title={
+              canEdit
+                ? "Select pieces to move, turn or delete them"
+                : (editHint ?? "Pieces can be edited once Holo is done")
+            }
+            onClick={() => toggle("edit")}
+          >
+            <PencilSimpleIcon size={14} weight="bold" />
+            <span className="button-label">Edit</span>
+          </button>
+          <button
+            className={mode === "walk" ? "needs-mouse active" : "needs-mouse"}
+            aria-pressed={mode === "walk"}
+            title="Walk through the model: WASD and the mouse"
+            onClick={() => toggle("walk")}
+          >
+            <PersonSimpleWalkIcon size={14} weight="bold" />
+            <span className="button-label">Walk</span>
+          </button>
+        </>
+      )}
       <Shortcuts />
     </div>
   );
@@ -100,7 +104,7 @@ export function ViewControls({
 export interface ViewerHandle {
   /** The current view as a PNG. */
   image: () => Promise<Blob | null>;
-  /** The model as a library tile: a square 3/4 view on a light background. */
+  /** The model as a library tile: a square 3/4 view on a transparent background. */
   thumbnail: () => Promise<Blob | null>;
 }
 
@@ -113,10 +117,10 @@ interface Props {
   syncError?: string | null;
   framing: Framing;
   spin: boolean;
-  /** Called with a thumbnail once a finished revision is drawn. */
-  onThumbnail: (png: Blob) => void;
-  /** What shows before any build is open. */
-  empty: string;
+  /** Called with a thumbnail once a finished revision is drawn; without it, the build keeps no thumbnail. */
+  onThumbnail?: (png: Blob, revision: string) => void;
+  /** The revision the build's saved thumbnail shows, which needs no new one. */
+  thumbnailed?: string;
   mode: Mode;
   /** The open build's hand edits; `build` already shows them. */
   edits: Edits;
@@ -128,12 +132,11 @@ interface Props {
 }
 
 export function Viewer(props: Props) {
-  const { ref, build, opening, step, framing, spin, onThumbnail, syncError, empty } = props;
+  const { ref, build, opening, step, framing, spin, onThumbnail, thumbnailed, syncError } = props;
   const { mode, edits, describe, palette, onMode } = props;
   const container = useRef<HTMLDivElement>(null);
   const scene = useRef<BrickScene | null>(null);
   const framedBuild = useRef<string | null>(null);
-  const thumbnailed = useRef(new Set<string>());
   const [drawn, setDrawn] = useState<{ id: string; key: string; pieces: Build["pieces"] } | null>(null);
   const [renderError, setRenderError] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
@@ -152,7 +155,7 @@ export function Viewer(props: Props) {
   const ready = !!build && drawn?.key === version && drawn.pieces === build.pieces && !renderError;
   /** Some revision of this build is drawn; the scene keeps it up until the next one is ready. */
   const shown = !!build && drawn?.id === build.id && !renderError;
-  const waiting = shown && !build.pieces.length;
+  const empty = !!build && !build.pieces.length;
   const failed = (error: unknown) => {
     setDrawn(null);
     setRenderError(error instanceof Error ? error.message : "Could not draw the latest model");
@@ -220,17 +223,15 @@ export function Viewer(props: Props) {
 
   useEffect(() => {
     const s = scene.current;
-    if (!s || !ready || !build?.pieces.length || build.status !== "done" || thumbnailed.current.has(version!)) return;
+    if (!s || !ready || !onThumbnail || !build?.pieces.length || build.status !== "done") return;
+    if (build.revision === thumbnailed) return;
     let current = true;
+    const { pieces, revision } = build;
     const timer = setTimeout(
       () =>
         s
-          .renderThumbnail(build.pieces)
-          .then((png) => {
-            if (!current || !png) return;
-            thumbnailed.current.add(version!);
-            onThumbnail(png);
-          })
+          .renderThumbnail(pieces)
+          .then((png) => current && png && onThumbnail(png, revision))
           .catch((error) => console.error("Could not make the thumbnail", error)),
       THUMBNAIL_IDLE_MS,
     );
@@ -238,7 +239,7 @@ export function Viewer(props: Props) {
       current = false;
       clearTimeout(timer);
     };
-  }, [ready, build?.status, version]);
+  }, [ready, build?.status, version, thumbnailed, !onThumbnail]);
 
   useEffect(() => scene.current?.setVisibleStep(step), [step, retry]);
 
@@ -446,16 +447,15 @@ export function Viewer(props: Props) {
         </div>
       ) : (
         <>
-          {opening && !shown && <BrickLoader label={build ? "Loading the model…" : opening} />}
-          {waiting &&
+          {opening && !shown && !empty && <BrickLoader label={build ? "Loading the model…" : opening} />}
+          {empty &&
             (build.status === "building" ? (
-              <BrickLoader label="Holo is planning the build…" />
+              <BrickLoader label="Holo is getting its bricks ready. First bricks in a few minutes." />
             ) : (
               <BrickLoader idle label="Nothing built yet. Ask Holo in the chat." />
             ))}
         </>
       )}
-      {!build && !opening && <BrickLoader idle label={empty} />}
     </div>
   );
 }

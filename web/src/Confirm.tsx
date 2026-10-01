@@ -11,7 +11,7 @@ interface Props {
   onClose: () => void;
 }
 
-/** A menu's confirmation: what will happen, then Cancel or do it; a failure shows and keeps it open. */
+/** A popover confirmation under its button: what will happen, then Cancel or do it; a failure shows and keeps it open. */
 export function Confirm({ name, question, note, doing, icon, danger = false, action, onClose }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -29,15 +29,15 @@ export function Confirm({ name, question, note, doing, icon, danger = false, act
   };
 
   return (
-    <div className="menu-list publish-confirm" role="dialog" aria-label={name}>
+    <div className="menu-list confirm" role="dialog" aria-label={name}>
       <b>{question}</b>
       <p className="muted">{note}</p>
       {error && (
-        <p className="publish-error" role="alert">
+        <p className="error-text" role="alert">
           {error}
         </p>
       )}
-      <div className="publish-actions">
+      <div className="confirm-actions">
         <button onClick={onClose} disabled={busy} autoFocus>
           Cancel
         </button>

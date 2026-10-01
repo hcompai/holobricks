@@ -1,38 +1,58 @@
 import { PlusIcon, ShoppingBagIcon, SquaresFourIcon } from "@phosphor-icons/react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { Account } from "./account";
 import { AccountMenu } from "./AccountMenu";
 import { RecoveryPanel } from "./RecoveryPanel";
-import { create, say, stop } from "./agent";
+import { create, remix, say, stop } from "./agent";
 import { HistoryPanel } from "./HistoryPanel";
 import { design, useHistory, type Version } from "./history";
 import { startFork, forkSeed, type ForkSeed } from "./fork";
 import { provideParts } from "./scene";
+import { PHASES } from "./activity";
 import { useEdits } from "./edits";
-import { type Build, type BuildSummary, type Piece, type Source, verified } from "./model";
+import { type Build, type BuildSummary, EMPTY_MODEL, type Piece, type Source, verified } from "./model";
 import { type Color, usePalette } from "./palette";
-import { usePrices } from "./pickabrick";
-import { PriceMenu } from "./PriceMenu";
+import { estimate, money, usePrices } from "./pickabrick";
 import { ChatPanel } from "./ChatPanel";
-import { CopyLink } from "./CopyLink";
-import { DownloadMenu } from "./DownloadMenu";
+import { HomeShelves } from "./HomeShelves";
 import { ImportBuild } from "./ImportBuild";
 import { LibraryPage } from "./LibraryPage";
 import { countParts, PartsPanel } from "./PartsPanel";
-import { DeleteButton } from "./DeleteButton";
-import { PublishButton } from "./PublishButton";
-import { ShopDialog } from "./ShopDialog";
+import { ShareMenu } from "./ShareMenu";
 import { Timeline } from "./Timeline";
-import { FilmExport } from "./FilmExport";
-import { InstructionsExport } from "./InstructionsExport";
-import { card, copyModel, library, publish, remember, setPrivate, type Shelf, thumbnail, unpublish } from "./library";
+import {
+  card,
+  copyModel,
+  library,
+  listing,
+  LISTINGS,
+  onRemember,
+  publish,
+  remember,
+  SHELF,
+  setPrivate,
+  type Shelf,
+  thumbnail,
+  unpublish,
+} from "./library";
+import { label } from "./suggestions";
 import { type BuildRef, useBuild } from "./useBuild";
 import { useKeeper } from "./useSession";
-import { ThemeToggle } from "./ThemeToggle";
 import { type Framing, type Mode, ViewControls, Viewer, type ViewerHandle } from "./Viewer";
+
+const FilmExport = lazy(() => import("./FilmExport").then((m) => ({ default: m.FilmExport })));
+const InstructionsExport = lazy(() => import("./InstructionsExport").then((m) => ({ default: m.InstructionsExport })));
+const ShopDialog = lazy(() => import("./ShopDialog").then((m) => ({ default: m.ShopDialog })));
 
 const STEP_MS = 700;
 const TITLE = document.title;
+const NEW_BUILD = "New build";
+/** The phone breakpoint of styles.css. */
+const PHONE = window.matchMedia("(max-width: 760px)");
+const onPhoneChange = (change: () => void) => {
+  PHONE.addEventListener("change", change);
+  return () => PHONE.removeEventListener("change", change);
+};
 /** The URL parameter naming the open build, by where it is read from. */
 const PARAMS: Record<Source, string> = { session: "build", public: "public", showcase: "showcase", fork: "fork" };
 
@@ -74,7 +94,14 @@ export default function App({ account }: { account: Account }) {
   opened.current = ref;
   const [libraryOpen, setLibraryOpen] = useState(urlLibrary);
   const buildId = ref?.id ?? null;
-  const { build: live, loading, activity, error, syncError, models, seed, runId, attachSession } = useBuild(ref);
+  const read = useBuild(ref);
+  /** What the user just asked for, shown as a starting build where they asked it, until its session answers. */
+  const [draft, setDraft] = useState<{ at: BuildRef | null; build: Build; since: number } | null>(null);
+  const drafted = draft && same(draft.at, ref) && read.build?.id !== draft.build.id ? draft.build : null;
+  const live = drafted ?? read.build;
+  const loading = read.loading && !drafted;
+  const activity = drafted ? { label: PHASES.idea, since: draft!.since, work: null } : read.activity;
+  const { error, syncError, models, seed, runId, attachSession } = read;
   const edits = useEdits(live);
   const [historyOpen, setHistoryOpen] = useState(() => urlVersion() !== null);
   const [wantedVersion, setWantedVersion] = useState<number | null>(urlVersion);
@@ -112,7 +139,6 @@ export default function App({ account }: { account: Account }) {
   const [builds, setBuilds] = useState<BuildSummary[] | null>(null);
   const [buildsFailed, setBuildsFailed] = useState<Shelf[]>([]);
   const [center, setCenter] = useState<"model" | "parts">("model");
-  const [starting, setStarting] = useState(false);
   const [step, setStep] = useState(Infinity);
   const [following, setFollowing] = useState(true);
   const [playing, setPlaying] = useState(false);
@@ -123,15 +149,25 @@ export default function App({ account }: { account: Account }) {
   const [instructionsBuild, setInstructionsBuild] = useState<Build | null>(null);
   const [shopping, setShopping] = useState<{ build: Build; preview: Promise<Blob | null> } | null>(null);
   const edited = !readOnly && edits.edits.length > 0 && build !== live;
+  const phone = useSyncExternalStore(onPhoneChange, () => PHONE.matches);
+  const built = !!build?.pieces.length;
 
   useEffect(() => {
-    if (mode === "edit" && (!edits.editable || readOnly)) setMode("view");
-  }, [mode, edits.editable, readOnly]);
+    if ((mode === "edit" && (!edits.editable || readOnly)) || (mode !== "view" && !built)) setMode("view");
+  }, [mode, edits.editable, built, readOnly]);
+  const shoppable = !!build?.pieces.length && build.status !== "building";
   const shop = () => {
-    if (build?.status === "done" && build.pieces.length && !edited) {
+    if (build && shoppable)
       setShopping({ build: structuredClone(build), preview: viewer.current?.image() ?? Promise.resolve(null) });
-    }
   };
+  const resetForShopping = () => {
+    edits.reset();
+    if (live) setShopping((open) => open && { ...open, build: structuredClone(live) });
+  };
+  const price = useMemo(() => {
+    const found = prices && build?.pieces.length ? estimate(build.pieces, prices) : null;
+    return found?.priced ? money(found.cents, prices!, true) : null;
+  }, [build?.pieces, prices]);
   const exportReplay = () => {
     if (build?.pieces.length) setExportBuild(structuredClone(build));
   };
@@ -146,12 +182,12 @@ export default function App({ account }: { account: Account }) {
     return library().then(
       ({ builds: next, failed }) => {
         if (request !== latest.current) return;
-        const kept = (shelf: Shelf, previous: BuildSummary[] | null) =>
-          failed.includes(shelf)
-            ? (previous ?? []).filter((b) => (b.source === "session" || b.source === "fork") === (shelf === "mine"))
-            : [];
-        setBuilds((previous) => [...kept("mine", previous), ...next, ...kept("public", previous)]);
-        setBuildsFailed(failed);
+        setBuilds((previous) =>
+          LISTINGS.flatMap((from) =>
+            (failed.includes(from) ? (previous ?? []) : next).filter((b) => listing(b) === from),
+          ),
+        );
+        setBuildsFailed(failed.map((from) => SHELF[from]));
       },
       (e) => {
         if (request !== latest.current) return;
@@ -162,6 +198,11 @@ export default function App({ account }: { account: Account }) {
   }, []);
 
   useEffect(() => void refreshBuilds(), [refreshBuilds, account.user.id, libraryOpen]);
+  /** Sessions this tab started, before the library lists them. */
+  const started = useRef(new Set<string>());
+  const mine = (id: string) =>
+    started.current.has(id) ||
+    !!builds?.some((b) => (b.source === "session" || b.source === "fork") && (b.sessionId ?? b.id) === id);
   const running = [
     ...new Set([
       ...(builds ?? [])
@@ -172,7 +213,7 @@ export default function App({ account }: { account: Account }) {
             ((b.sessionId ?? b.id) !== runId || live?.status === "building"),
         )
         .map((b) => b.sessionId ?? b.id),
-      ...(live?.status === "building" && runId ? [runId] : []),
+      ...(live?.status === "building" && runId && mine(runId) ? [runId] : []),
     ]),
   ];
   useKeeper(running, refreshBuilds);
@@ -195,11 +236,12 @@ export default function App({ account }: { account: Account }) {
   }, [live?.id, live?.status, summary?.status]);
 
   useEffect(() => {
-    document.title = buildId && heading ? `${heading.name} · ${TITLE}` : TITLE;
-  }, [buildId, heading?.name]);
+    document.title = heading ? `${heading.name} · ${TITLE}` : TITLE;
+  }, [heading?.name]);
 
   const show = useCallback((next: BuildRef | null, version: number | null = null) => {
     setRef(next);
+    setDraft(null);
     setCenter("model");
     setMode("view");
     setStep(Infinity);
@@ -247,8 +289,6 @@ export default function App({ account }: { account: Account }) {
     return () => window.removeEventListener("popstate", sync);
   }, [show]);
 
-  const home = () => open(null);
-
   useEffect(() => {
     if (following) setStep(last);
   }, [following, last]);
@@ -270,24 +310,62 @@ export default function App({ account }: { account: Account }) {
     setFollowing(s >= last);
   };
 
-  const start = async (prompt: string, images: string[]) => {
-    setStarting(true);
+  /** Start a build and show it at once: a new one, or a copy of `from` that Holo changes as asked, under the same name if it is the user's. */
+  const start = async (prompt: string, images: string[], from?: Build) => {
+    const name = from ? (owned ? from.name : `${from.name} remix`) : (label(prompt) ?? NEW_BUILD);
+    const at = opened.current;
+    const since = Date.now();
+    const build: Build = {
+      ...EMPTY_MODEL,
+      id: "",
+      name,
+      status: "building",
+      open: false,
+      messages: [{ role: "user", text: prompt, images }],
+    };
+    setDraft({ at, build, since });
     try {
-      const id = await create(prompt, images);
-      const name = prompt || "Untitled build";
+      const id = await (from ? remix(from, prompt, images) : create(prompt, images));
+      started.current.add(id);
       remember(id, { name: name.slice(0, 60), prompt });
-      open({ id, source: "session" });
       refreshBuilds();
-    } finally {
-      setStarting(false);
+      if (!same(opened.current, at)) return;
+      const next: BuildRef = { id, source: "session" };
+      open(next);
+      setDraft({ at: next, build: { ...build, id }, since });
+    } catch (e) {
+      setDraft((current) => (current?.build === build ? null : current));
+      throw e;
     }
   };
 
-  const saveThumbnail = async (png: Blob) => {
-    if (readOnly || !ref || !["session", "fork"].includes(ref.source)) return;
-    remember(ref.id, { thumbnail: await thumbnail(png) });
-    refreshBuilds();
+  /** Open a listed build: the user's public builds as their session, when they have one. */
+  const openListed = (b: BuildSummary) => {
+    const session =
+      b.source === "public" && builds?.find((s) => (s.source === "session" || s.source === "fork") && s.id === b.id);
+    open({ id: b.id, source: session ? session.source : b.source });
   };
+
+  const saveThumbnail = async (png: Blob, revision: string) => {
+    if (!readOnly && ref && (ref.source === "session" || ref.source === "fork"))
+      remember(ref.id, { thumbnail: await thumbnail(png), revision });
+  };
+
+  useEffect(
+    () =>
+      onRemember((id) => {
+        const shown = card(id)?.thumbnail;
+        if (!shown) return;
+        setBuilds((previous) =>
+          previous?.some((b) => b.id === id && (b.source === "session" || b.source === "fork") && b.thumbnail !== shown)
+            ? previous.map((b) =>
+                b.id === id && (b.source === "session" || b.source === "fork") ? { ...b, thumbnail: shown } : b,
+              )
+            : previous,
+        );
+      }),
+    [],
+  );
 
   const publishBuild = async () => {
     if (!live || readOnly) return;
@@ -299,9 +377,11 @@ export default function App({ account }: { account: Account }) {
 
   /** The signed-in user's build, from their session or as they published it. */
   const owned =
-    ref?.source === "session" ||
-    ref?.source === "fork" ||
-    (ref?.source === "public" && summary?.owner === account.user.id);
+    ref?.source === "fork"
+      ? !!read.build
+      : ref?.source === "session"
+        ? mine(ref.id)
+        : ref?.source === "public" && summary?.owner === account.user.id;
   /** An imported build of theirs: it lives only in the library, with no session to fall back to. */
   const imported = owned && ref?.source === "public" && ref.id.startsWith("import-");
 
@@ -334,12 +414,15 @@ export default function App({ account }: { account: Account }) {
       "Showcase · Fork to edit"
     ) : ref?.source === "public" ? (
       `By ${summary?.author ?? "an H builder"} · Fork to edit`
-    ) : build && !build.open && build.status !== "building" ? (
+    ) : ref?.source === "session" && builds && !buildsFailed.includes("mine") && !owned ? (
+      "Teammate’s build · Fork to edit"
+    ) : build?.status === "error" ? (
       <RecoveryPanel
         key={build.id}
         build={runId && live ? { ...live, id: runId } : live!}
         edited={edited}
         onOpen={(id) => {
+          started.current.add(id);
           if (same(ref, opened.current)) open({ id, source: "session" });
           refreshBuilds();
         }}
@@ -411,93 +494,84 @@ export default function App({ account }: { account: Account }) {
       </div>
     </>
   );
+  const home = !ref && !drafted;
+  /** The open build, once it is more than a request on its way. */
+  const actionable = drafted ? null : build;
+
+  const actions = actionable && (
+    <>
+      <ShareMenu
+        build={actionable}
+        link={!readOnly && shared ? linkTo(shared) : null}
+        loading={loading}
+        publishing={
+          owned && !readOnly
+            ? {
+                published: imported ? !summary?.private : ref?.source === "public" || !!listed,
+                imported,
+                blocked:
+                  actionable.status === "building"
+                    ? "Publish once Holo answers"
+                    : !actionable.pieces.length
+                      ? "Nothing is built yet"
+                      : null,
+                author: account.user.name,
+                onPublish: imported ? republish : publishBuild,
+                onUnpublish: unpublishBuild,
+              }
+            : null
+        }
+        onDelete={imported && !readOnly ? deleteBuild : null}
+        image={() => viewer.current?.image() ?? Promise.resolve(null)}
+        onGif={exportReplay}
+        onInstructions={exportInstructions}
+      />
+      {actionable.pieces.length > 0 && (
+        <button
+          className="primary"
+          onClick={shop}
+          disabled={!shoppable}
+          title={shoppable ? undefined : "Get the bricks once Holo finishes"}
+        >
+          <ShoppingBagIcon size={16} />
+          <span className="button-label">Get the bricks{price && ` · ≈ ${price}`}</span>
+        </button>
+      )}
+    </>
+  );
 
   return (
-    <div className={`app${running.length ? " has-running" : ""}${historyOpen ? " has-history" : ""}`}>
+    <div className={`app${home ? " home" : ""}${libraryOpen ? " library" : ""}${historyOpen ? " has-history" : ""}`}>
       <header>
-        <button className="brand" onClick={home}>
+        <button className="brand" onClick={() => open(null)}>
           <img className="brand-icon" src="/brick.png" alt="" />
-          Brickyard
+          <span className="button-label">HoloBricks</span>
         </button>
         <button
-          className={libraryOpen ? "library-toggle active" : "library-toggle"}
+          className={libraryOpen ? "quiet active" : "quiet"}
           aria-pressed={libraryOpen}
           onClick={() => navigate(ref, !libraryOpen)}
         >
-          <SquaresFourIcon size={16} /> <span>Library</span>
+          <SquaresFourIcon size={16} />
+          <span className="button-label">Library</span>
         </button>
-        {loading && summary && <span className="title">{summary.name}</span>}
-        {build && (
-          <>
-            <span className="title" title={build.name}>
-              {build.name}
-            </span>
-            {build.pieces.length > 0 && (
-              <>
-                <span className="chip">{build.pieces.length.toLocaleString()} pieces</span>
-                <span className="chip">{build.steps.length} steps</span>
-              </>
-            )}
-            {build.width > 0 && (
-              <span className="chip">
-                {build.width}×{build.depth} studs
-              </span>
-            )}
-            {ref?.source === "public" && summary?.author && <span className="chip">by {summary.author}</span>}
-            {prices && build.pieces.length > 0 && <PriceMenu build={build} table={prices} edited={edited} />}
-          </>
+        {phone && heading && (
+          <span className="title" title={heading.name}>
+            {heading.name}
+          </span>
         )}
         <span className="spacer" />
-        {build && owned && !readOnly && (
-          <PublishButton
-            published={imported ? !summary?.private : ref?.source === "public" || !!listed}
-            imported={imported}
-            blocked={
-              build.status === "building"
-                ? "Publish once Holo answers"
-                : !build.pieces.length
-                  ? "Nothing is built yet"
-                  : null
-            }
-            author={account.user.name}
-            onPublish={imported ? republish : publishBuild}
-            onUnpublish={unpublishBuild}
-          />
-        )}
-        {build && shared && !readOnly && <CopyLink url={linkTo(shared)} />}
-        {build && imported && !readOnly && <DeleteButton name={build.name} onDelete={deleteBuild} />}
-        {build && (
-          <button
-            className="shop-trigger"
-            onClick={shop}
-            disabled={build.status !== "done" || !build.pieces.length || edited}
-            title={
-              edited
-                ? "Reset your edits to shop the verified parts list"
-                : build.status === "done"
-                  ? "Shop bricks with HoloTab"
-                  : "Finish your build to shop its bricks"
-            }
-          >
-            <ShoppingBagIcon size={16} /> <span>Shop bricks</span>
-          </button>
-        )}
-        <ThemeToggle />
+        {!phone && actions}
         <AccountMenu account={account} building={running.length > 0} />
-        {build && <DownloadMenu build={build} image={() => viewer.current?.image() ?? Promise.resolve(null)} />}
       </header>
-      {running.length > 0 && (
-        <div className="build-notice" role="note" aria-label="Keep Brickyard open">
-          <strong>Keep this tab open while Holo builds.</strong> Your browser renders the model for Holo. You can browse
-          within Brickyard; closing this tab, leaving the site or sleeping your device can interrupt the build.
-        </div>
-      )}
       <aside>
         <div className="aside-bar">
-          <span className="aside-title">{previewing ? "Latest chat" : "Chat"}</span>
+          <span className="aside-title" title={phone ? undefined : heading?.name}>
+            {previewing ? "Latest chat" : (!phone && heading?.name) || "Chat"}
+          </span>
           {ref && (
-            <button className="new-build" onClick={() => open(null)}>
-              <PlusIcon size={14} weight="bold" />
+            <button className="quiet" onClick={() => open(null)}>
+              <PlusIcon size={16} />
               New build
             </button>
           )}
@@ -549,17 +623,33 @@ export default function App({ account }: { account: Account }) {
             onSay={async (text, images) => {
               if (!live?.open || readOnly) return;
               if (runId) await say(runId, text, images);
-              else if (ref?.source === "fork" && seed) attachSession(await startFork(ref.id, seed, text, images));
+              else if (ref?.source === "fork" && seed) {
+                const id = await startFork(ref.id, seed, text, images);
+                started.current.add(id);
+                attachSession(id);
+                refreshBuilds();
+              }
             }}
             onStop={async () => {
               if (runId && !readOnly) await stop(runId);
             }}
             onFork={beginFork}
+            onRemix={async (text, images) => {
+              if (build && !readOnly && owned) await start(text, images, build);
+            }}
           />
           {forkError && (
             <p className="composer-error" role="alert">
               {forkError}
             </p>
+          )}
+          {home && builds && (
+            <HomeShelves
+              builds={builds}
+              me={account.user.id}
+              onOpen={openListed}
+              onLibrary={() => navigate(null, true)}
+            />
           )}
         </div>
       </aside>
@@ -598,9 +688,9 @@ export default function App({ account }: { account: Account }) {
               framing={framing}
               spin={spin}
               mode={mode}
-              canEdit={!readOnly && edits.editable && !!build?.pieces.length}
+              canEdit={!readOnly && edits.editable && built}
               editHint={previewing ? "Edit Latest or Fork" : undefined}
-              canWalk={!!build?.pieces.length}
+              built={built}
               onFrame={(next) => {
                 if (mode === "walk") setMode("view");
                 setFraming(next);
@@ -626,15 +716,13 @@ export default function App({ account }: { account: Account }) {
             <Viewer
               ref={viewer}
               build={build}
-              opening={
-                buildId && !error ? `Opening ${heading?.name ?? "the build"}` : starting ? "Starting Holo…" : null
-              }
+              opening={buildId && !error ? `Opening ${heading?.name ?? "the build"}` : null}
               step={visibleStep}
               syncError={selected ? null : syncError}
               framing={framing}
               spin={spin}
-              onThumbnail={saveThumbnail}
-              empty="Describe a model in the chat to start building."
+              onThumbnail={!readOnly && owned ? saveThumbnail : undefined}
+              thumbnailed={!readOnly && owned && ref ? card(ref.id)?.revision : undefined}
               mode={mode}
               edits={readOnly ? { ...edits, editable: false, stale: 0, hidden: 0 } : edits}
               describe={describer(build, palette)}
@@ -656,7 +744,7 @@ export default function App({ account }: { account: Account }) {
             </div>
           )}
         </div>
-        {!error && (
+        {!error && (!build || built) && (
           <Timeline
             build={build}
             loading={loading}
@@ -669,11 +757,10 @@ export default function App({ account }: { account: Account }) {
               setPlaying(p);
             }}
             onSpeed={setSpeed}
-            onReplay={exportReplay}
-            onInstructions={exportInstructions}
             spaceKey={mode !== "walk"}
           />
         )}
+        {phone && actions && <div className="build-actions">{actions}</div>}
         {libraryOpen && (
           <LibraryPage
             builds={builds}
@@ -681,12 +768,7 @@ export default function App({ account }: { account: Account }) {
             active={ref}
             onRetry={refreshBuilds}
             onClose={() => navigate(ref, false)}
-            onOpen={(b) => {
-              const mine =
-                b.source === "public" &&
-                builds?.find((s) => (s.source === "session" || s.source === "fork") && s.id === b.id);
-              open({ id: b.id, source: mine ? mine.source : b.source });
-            }}
+            onOpen={openListed}
             me={account.user.id}
             mineActions={
               <ImportBuild
@@ -699,15 +781,29 @@ export default function App({ account }: { account: Account }) {
           />
         )}
       </main>
-      {exportBuild && <FilmExport build={exportBuild} onClose={() => setExportBuild(null)} />}
-      {instructionsBuild && (
-        <InstructionsExport
-          build={instructionsBuild}
-          describe={describer(build, palette)}
-          onClose={() => setInstructionsBuild(null)}
-        />
-      )}
-      {shopping && <ShopDialog build={shopping.build} preview={shopping.preview} onClose={() => setShopping(null)} />}
+      <Suspense>{exportBuild && <FilmExport build={exportBuild} onClose={() => setExportBuild(null)} />}</Suspense>
+      <Suspense>
+        {instructionsBuild && (
+          <InstructionsExport
+            build={instructionsBuild}
+            describe={describer(build, palette)}
+            onClose={() => setInstructionsBuild(null)}
+          />
+        )}
+      </Suspense>
+      <Suspense>
+        {shopping && (
+          <ShopDialog
+            build={shopping.build}
+            preview={shopping.preview}
+            table={prices}
+            edited={edited}
+            describe={describer(build, palette)}
+            onReset={resetForShopping}
+            onClose={() => setShopping(null)}
+          />
+        )}
+      </Suspense>
     </div>
   );
 }

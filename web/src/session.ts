@@ -1,5 +1,5 @@
 import { isSettledSessionStatus, type HaiAgents } from "hai-agents";
-import { doing } from "./activity";
+import { doing, PHASES } from "./activity";
 import type { Message, Status, Work } from "./model";
 
 export const AGENT = "brickyard";
@@ -24,9 +24,9 @@ export interface Transcript {
   messages: Message[];
   /** The builder's work since its last message. */
   work: Work | null;
-  /** Tool calls of the latest step still waiting for their results. */
-  running: HaiAgents.ToolRequest[];
-  /** When `running` last changed, or the builder last heard from the user, in ms since the epoch. */
+  /** The phase of the build the builder is in, as the chat names it. */
+  phase: string;
+  /** When `phase` began, in ms since the epoch. */
   since: number;
   state: "running" | "idle" | "awaiting_tool_results";
   /** URL of the model the builder shared last, and how many models it shared up to it. */
@@ -42,7 +42,7 @@ export const EMPTY_TRANSCRIPT: Transcript = {
   events: 0,
   messages: [],
   work: null,
-  running: [],
+  phase: PHASES.idea,
   since: 0,
   state: "running",
   model: null,
@@ -77,7 +77,7 @@ function step(t: Transcript, event: HaiAgents.SessionEvent): Transcript {
       const pending = (pendingToolCalls ?? []).filter((c) => c.toolName === "look");
       const shared = t.model?.shared ?? 0;
       const looks = pending.map((call) => t.looks.find((l) => l.call.id === call.id) ?? { call, shared });
-      return { ...t, state, looks, running: state === "idle" ? [] : t.running };
+      return { ...t, state, looks };
     }
     case "AttachmentEvent": {
       const { origin, name, url } = (event as HaiAgents.SessionEventZero.AttachmentEvent).data;
@@ -109,30 +109,30 @@ function step(t: Transcript, event: HaiAgents.SessionEvent): Transcript {
     ],
     work: fresh,
   });
-  const settle = (call: HaiAgents.ToolRequest) => {
-    const i = t.running.findIndex((c) => (call.id ? c.id === call.id : c.toolName === call.toolName));
-    return i < 0 ? t : { ...t, running: t.running.filter((_, j) => j !== i), since: at };
-  };
   switch (data.kind) {
     case "message_event": {
       if (data.callerId !== "user") return t;
       const said = say({ role: "user", text: text(data.content ?? []), images: images(data.content ?? []) });
-      return { ...said, since: at, work: t.work?.steps.length ? t.work : fresh };
+      return { ...said, since: at, phase: PHASES.idea, work: t.work?.steps.length ? t.work : fresh };
     }
     case "policy_event": {
       const calls = (data.toolReqs ?? []).filter((c) => c.toolName !== "answer");
+      const done = calls.map(doing);
       const reasoning = data.reasoningContent?.trim() ?? "";
       const previous = t.work ?? fresh;
       const steps =
-        reasoning || calls.length ? [...previous.steps, { reasoning, actions: calls.map(doing) }] : previous.steps;
-      const next = { ...t, running: calls, since: at, work: { ...previous, end: at, steps } };
+        reasoning || calls.length
+          ? [...previous.steps, { reasoning, actions: done.map((d) => d.label) }]
+          : previous.steps;
+      const phase = done.find((d) => d.phase)?.phase ?? t.phase;
+      const since = phase === t.phase ? t.since : at;
+      const next = { ...t, phase, since, work: { ...previous, end: at, steps } };
       const content = data.content?.trim();
       return content ? speak(next, content) : next;
     }
     case "tool_result": {
-      const settled = settle(data.toolReq);
       const looked = data.toolReq.toolName === "look" ? render(data.result) : null;
-      return looked ? { ...settled, messages: [...settled.messages, looked] } : settled;
+      return looked ? say(looked) : t;
     }
     case "answer_event": {
       const answer = (typeof data.answer === "string" ? data.answer : JSON.stringify(data.answer)).trim();
@@ -148,11 +148,8 @@ function step(t: Transcript, event: HaiAgents.SessionEvent): Transcript {
       };
       return { ...t, messages: [...t.messages.slice(0, -1), { ...last, work }], work: fresh };
     }
-    case "error_event": {
-      const settled = data.toolReq ? settle(data.toolReq) : t;
-      if (data.toolReq?.toolName !== "look") return settled;
-      return { ...settled, messages: [...settled.messages, { role: "system", text: data.error, images: [] }] };
-    }
+    case "error_event":
+      return data.toolReq?.toolName === "look" ? say({ role: "system", text: data.error, images: [] }) : t;
     default:
       return t;
   }
@@ -168,7 +165,7 @@ export interface Activity {
 }
 
 export const activity = (t: Transcript): Activity => ({
-  label: t.running.length ? doing(t.running[0]) : "Thinking",
+  label: t.phase,
   since: t.since,
   work: t.work?.steps.length ? t.work : null,
 });

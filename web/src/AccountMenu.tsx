@@ -1,8 +1,9 @@
 import { SignOutIcon } from "@phosphor-icons/react";
 import { type Account, signOut } from "./account";
+import { ThemeToggle } from "./ThemeToggle";
 import { useMenu } from "./useMenu";
 
-/** The signed-in user, with a menu to sign out. */
+/** The signed-in user, with a menu for the theme and to sign out. */
 export function AccountMenu({ account, building = false }: { account: Account; building?: boolean }) {
   const { open, setOpen, root } = useMenu();
   const { name, email } = account.user;
@@ -24,6 +25,8 @@ export function AccountMenu({ account, building = false }: { account: Account; b
             <b>{name}</b>
             <span className="muted small">{email}</span>
           </div>
+          <ThemeToggle />
+          <hr />
           <button
             role="menuitem"
             onClick={() => {

@@ -1,4 +1,4 @@
-"""Render the Brickyard icon, a white 2x2 brick printed with the H Company logo: blender -b -P scripts/brick-icon.py -- OUT.png"""
+"""Render the HoloBricks icon, a white 2x2 brick printed with the H Company logo: blender -b -P scripts/brick-icon.py -- OUT.png"""
 
 import math
 import sys

@@ -66,13 +66,13 @@ async function open(page: Page, build: Build) {
 test("one copy hands HoloTab the verified XML and nothing private", async ({ page, context }, info) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await open(page, duck());
-  await page.getByRole("button", { name: "Shop bricks", exact: true }).click();
-  const dialog = page.getByRole("dialog", { name: "Make it real." });
-  await expect(dialog.getByRole("link", { name: "Install HoloTab" })).toHaveAttribute(
+  await page.getByRole("button", { name: /^Get the bricks/ }).click();
+  const dialog = page.getByRole("dialog", { name: "Build it for real" });
+  await expect(dialog.getByRole("link", { name: "Get HoloTab" })).toHaveAttribute(
     "href",
     "https://chromewebstore.google.com/detail/holotab/hlaoiikljjgcjdhkakedfngifaopbcop",
   );
-  await dialog.getByRole("button", { name: "Copy for HoloTab" }).click();
+  await dialog.getByRole("button", { name: "Fill my BrickLink cart" }).click();
   const prompt = await page.evaluate(() => navigator.clipboard.readText());
   expect(prompt.match(/```xml\n([\s\S]*?)```/)?.[1]).toBe(VERIFIED_XML);
   expect(prompt).toContain("Upload BrickLink XML format");
@@ -80,7 +80,7 @@ test("one copy hands HoloTab the verified XML and nothing private", async ({ pag
   expect(prompt).toContain("Do not rewrite the XML");
   expect(prompt).toContain("do not place orders or submit payment");
   expect(prompt).not.toContain("PRIVATE REQUEST");
-  await expect(dialog.getByRole("status")).toContainText("Copied!");
+  await expect(dialog.getByRole("status")).toContainText("Copied.");
   const xml = await dialog.getByRole("link", { name: "Download parts XML" }).getAttribute("href");
   expect(decodeURIComponent(xml!.replace(/^data:application\/xml;charset=utf-8,/, ""))).toBe(VERIFIED_XML);
   await page.setViewportSize({ width: 390, height: 844 });
@@ -98,13 +98,13 @@ test("clipboard denial gives selectable text without claiming success", async ({
     }),
   );
   await open(page, duck());
-  await page.getByRole("button", { name: "Shop bricks", exact: true }).click();
+  await page.getByRole("button", { name: /^Get the bricks/ }).click();
   const dialog = page.getByRole("dialog");
-  await dialog.getByRole("button", { name: "Copy for HoloTab" }).click();
+  await dialog.getByRole("button", { name: "Fill my BrickLink cart" }).click();
   const text = dialog.getByRole("textbox");
   await expect(text).toBeFocused();
   expect(await text.evaluate((el: HTMLTextAreaElement) => el.selectionEnd - el.selectionStart)).toBeGreaterThan(500);
-  await expect(dialog.getByRole("status")).not.toContainText("Copied!");
+  await expect(dialog.getByRole("status")).not.toContainText("Copied.");
   expect(await text.inputValue()).toContain(VERIFIED_XML);
 });
 
@@ -131,10 +131,10 @@ const broken: Record<string, [string, (b: ReturnType<typeof duck>) => Build]> = 
 for (const [name, [message, damage]] of Object.entries(broken)) {
   test(`no handoff: ${name} shopping package`, async ({ page }) => {
     await open(page, damage(duck()));
-    await page.getByRole("button", { name: "Shop bricks", exact: true }).click();
+    await page.getByRole("button", { name: /^Get the bricks/ }).click();
     const dialog = page.getByRole("dialog");
-    await expect(dialog.getByRole("alert")).toContainText(message);
-    await expect(dialog.getByRole("button", { name: "Copy for HoloTab" })).toHaveCount(0);
+    await expect(dialog.getByRole("region", { name: "BrickLink" }).getByRole("alert")).toContainText(message);
+    await expect(dialog.getByRole("button", { name: "Fill my BrickLink cart" })).toHaveCount(0);
     await expect(dialog.getByRole("link", { name: "Download parts XML" })).toHaveCount(0);
   });
 }
@@ -142,13 +142,15 @@ for (const [name, [message, damage]] of Object.entries(broken)) {
 test("an open dialog cannot copy XML after its validation expires", async ({ page }) => {
   const build = duck();
   await open(page, build);
-  await page.getByRole("button", { name: "Shop bricks", exact: true }).click();
+  await page.getByRole("button", { name: /^Get the bricks/ }).click();
   const dialog = page.getByRole("dialog");
-  const copy = dialog.getByRole("button", { name: "Copy for HoloTab" });
+  const copy = dialog.getByRole("button", { name: "Fill my BrickLink cart" });
   await expect(copy).toBeEnabled();
   await page.evaluate((now) => (Date.now = () => now), (build.shopping.validation.valid_until + 1) * 1000);
   await copy.click();
-  await expect(dialog.getByRole("alert")).toContainText("fresh catalog check");
+  await expect(dialog.getByRole("region", { name: "BrickLink" }).getByRole("alert")).toContainText(
+    "fresh catalog check",
+  );
   await expect(copy).toHaveCount(0);
 });
 

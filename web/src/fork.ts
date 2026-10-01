@@ -49,7 +49,7 @@ export function forkOperation(group = `fork-${crypto.randomUUID()}`) {
       if (sent || card(group)?.forkStarting) {
         const id = await find().catch(() => null);
         if (id) return finish(id);
-        throw new Error("Start unconfirmed. Check again before creating another fork.");
+        throw new Error("Start unconfirmed. Send again to check.");
       }
       const existing = await find();
       if (existing) return finish(existing);
@@ -74,7 +74,7 @@ export function forkOperation(group = `fork-${crypto.randomUUID()}`) {
         if (sent) {
           const id = await find().catch(() => null);
           if (id) return finish(id);
-          throw new Error("Start unconfirmed. Check again before creating another fork.");
+          throw new Error("Start unconfirmed. Send again to check.");
         }
         throw new Error("Couldn't start the fork. Try again.");
       }

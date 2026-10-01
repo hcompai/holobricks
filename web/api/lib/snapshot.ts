@@ -11,7 +11,28 @@ import { Refusal } from "./http";
 const MAX_IMAGES = 80;
 const PARALLEL = 8;
 const EDITED = "Edited by hand after Holo built it: the parts list is not verified.";
-const EDIT_KINDS = new Set(["delete", "move", "rotate", "color"]);
+
+const numbers = (value: unknown, n: number) =>
+  Array.isArray(value) && value.length === n && value.every(Number.isFinite);
+
+/** Whether `e` is an edit as the browser makes it, by kind. */
+function wellFormed(e: any): e is Edit {
+  if (!Array.isArray(e?.ids) || !e.ids.every(Number.isInteger)) return false;
+  switch (e.kind) {
+    case "delete":
+      return true;
+    case "move":
+      return numbers(e.by, 3);
+    case "rotate":
+      return (e.turns === 1 || e.turns === -1) && numbers(e.about, 2);
+    case "color":
+      return Number.isInteger(e.color);
+    case "duplicate":
+      return numbers(e.by, 3) && Number.isInteger(e.first);
+    default:
+      return false;
+  }
+}
 
 /** Hand edits as the browser saved them: bound to the revision they were made on. */
 export interface Edited {
@@ -92,10 +113,7 @@ async function copied(messages: Message[], key: string, keep: Keep): Promise<Mes
 function checked(edited: unknown): Edited | null {
   if (edited == null) return null;
   const { revision, edits } = edited as Edited;
-  const valid =
-    typeof revision === "string" &&
-    Array.isArray(edits) &&
-    edits.every((e) => EDIT_KINDS.has(e?.kind) && Array.isArray(e.ids) && e.ids.every(Number.isInteger));
+  const valid = typeof revision === "string" && Array.isArray(edits) && edits.every(wellFormed);
   if (!valid) throw new Refusal(400, "The edits are malformed.");
   return edits.length ? { revision, edits } : null;
 }

@@ -24,6 +24,7 @@ Vec = tuple[float, float, float]
 Mat = tuple[float, ...]
 OPTIONS = re.compile(r"\[([^=\]]+)=([^\]]*)\]")
 EPS = 0.05
+ROOT = Path(__file__).resolve().parents[2]
 
 
 class ConnectorError(ValueError):
@@ -31,6 +32,10 @@ class ConnectorError(ValueError):
 
 
 class GeometryChangedError(ConnectorError):
+    pass
+
+
+class LibraryMissing(ConnectorError):
     pass
 
 
@@ -114,7 +119,7 @@ class Library:
     """LDraw inheritance followed by shadow CLEAR/INCL/CYL metadata, in file order."""
 
     def __init__(self, folder: Path | None = None):
-        self.folder = folder or Path(os.environ.get("BRICKYARD_SHADOW", Path(__file__).resolve().parents[2] / "shadow"))
+        self.folder = folder or Path(os.environ.get("BRICKYARD_SHADOW", ROOT / "shadow"))
         self._profiles: dict[tuple[str, bool], Profile] = {}
         self._geometry: dict[str, tuple[str, ...]] = {}
 
@@ -143,7 +148,10 @@ class Library:
 
     def profile(self, part: str, *, only_shadow: bool = False, ancestors: tuple[str, ...] = ()) -> Profile:
         if not (self.folder / "LICENSE.md").exists():
-            raise ConnectorError("Connector library unavailable; run scripts/fetch-connectors.py")
+            raise LibraryMissing(
+                f"The connector data is missing from {self.folder}, so assembly cannot be checked. "
+                f"Install it with python3 {ROOT / 'scripts' / 'fetch-connectors.py'}, then check again."
+            )
         name = ldraw.normalize(part)
         if name in ancestors or len(ancestors) > 64:
             raise ConnectorError("Recursive connector library reference")

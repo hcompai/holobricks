@@ -2,6 +2,8 @@ import { assertRequestUnderLimit, fileFromBlob, HaiAgentsClient, type HaiAgents 
 import prompt from "../../agent/holo.md?raw";
 import { expired, key } from "./account";
 import { H } from "./hosts";
+import type { Build } from "./model";
+import { script } from "./remix";
 import { AGENT } from "./session";
 const MODEL = "holo4-27b";
 const MAX_STEPS = 300;
@@ -71,7 +73,7 @@ function agent(): HaiAgents.Agent {
     .replaceAll("{{max_minutes}}", String(MAX_TIME_S / 60));
   return {
     name: AGENT,
-    description: "Designs brick models from real LDraw parts, step by step, in Brickyard.",
+    description: "Designs brick models from real LDraw parts, step by step, in HoloBricks.",
     model: MODEL,
     instructions,
     environments: [{ kind: "workstation", id: AGENT }],
@@ -94,25 +96,29 @@ async function message(
   return { type: "user_message", message: text, images: photos, files };
 }
 
-/** Start a build; the session starts empty, then takes the first message with the toolkit, `attached` and the photos. */
+/** Start a build with its first message: the toolkit, `attached` and the photos. */
 export async function create(text: string, photos: string[], attached: Record<string, Blob> = {}): Promise<string> {
   const first = await initialMessage(text, photos, attached);
   const session = await client.startSession({
     agent: agent(),
+    messages: [first],
     maxSteps: MAX_STEPS,
     maxTimeS: MAX_TIME_S,
     idleTimeoutS: IDLE_TIMEOUT_S,
     deleteAfterMin: null,
   });
-  await session.sendMessage(first);
   return session.id;
 }
 
 export async function initialMessage(text: string, photos: string[], attached: Record<string, Blob>) {
   const toolkit = await fetch(TOOLKIT);
-  if (!toolkit.ok) throw new Error("The Brickyard toolkit is missing from this site.");
+  if (!toolkit.ok) throw new Error("The HoloBricks toolkit is missing from this site.");
   return message(text, photos, { "brickyard.tgz": await toolkit.blob(), ...attached });
 }
+
+/** Continue an ended model with the existing ordinary chat flow. */
+export const remix = (build: Build, text: string, photos: string[]) =>
+  create(text, photos, { "remix.py": new Blob([script(build)], { type: "text/x-python" }) });
 
 export async function say(id: string, text: string, photos: string[]) {
   await client.session(id).sendMessage(await message(text, photos, {}, `photo-${Date.now()}`));
@@ -142,10 +148,18 @@ export function preparedSession(messages: HaiAgents.UserMessageEvent[], source: 
 /** Holo ends its current step and answers; the session stays open for the next message. */
 export const stop = (id: string) => client.session(id).forceAnswer();
 
+/** The caller's own HoloBricks sessions, newest first. */
 export async function sessions(): Promise<HaiAgents.SessionSummary[]> {
-  // hai-agents 1.0.12 sends the `agent` list as a JSON string, which matches no session.
-  const page = await client.sessions.listSessions({ size: 100 }, { queryParams: { agent: AGENT } });
-  return page.items;
+  const all: HaiAgents.SessionSummary[] = [];
+  for (let page = 1; ; page++) {
+    // hai-agents 1.0.12 sends the `agent` list as a JSON string, which matches no session.
+    const { items, total } = await client.sessions.listSessions(
+      { owner: "me", page, size: 100 },
+      { queryParams: { agent: AGENT } },
+    );
+    all.push(...items);
+    if (!items.length || all.length >= total) return all;
+  }
 }
 
 /** An attachment or image the platform serves behind the API key. */

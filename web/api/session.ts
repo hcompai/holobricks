@@ -21,7 +21,7 @@ async function portalToken(request: Request, verifier: string | null): Promise<s
   const code = url.searchParams.get("code");
   if (code && verifier) return exchange(code, verifier, `${url.origin}${url.pathname}`);
   const access = cookie(request.headers.get("cookie"), H.token);
-  if (!access) throw new Refusal(401, "The H sign-in did not reach Brickyard: try again.");
+  if (!access) throw new Refusal(401, "The H sign-in did not reach HoloBricks: try again.");
   return access;
 }
 
@@ -37,7 +37,7 @@ async function signIn(request: Request, { previous, verifier }: Pending): Promis
 
 /**
  * Where the portal's Google sign-in comes back to, with its access token in a cookie on the parent domain: mint
- * a Brickyard key for the Agents API and a pass for this API, both good for a month, revoke the browser's previous
+ * a HoloBricks key for the Agents API and a pass for this API, both good for a month, revoke the browser's previous
  * key, and hand them to the page the user left from.
  */
 export async function GET(request: Request): Promise<Response> {

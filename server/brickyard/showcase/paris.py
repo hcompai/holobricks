@@ -378,7 +378,7 @@ BARGE = (2, 4, 16, 3)
 PROMPT = "The Seine at Saint-Germain-des-Prés, Paris: a 32x32 microscale diorama"
 STORY = [
     (
-        "Hand-scripted by Claude, as a showcase of what Brickyard's parts and checks can do. Every step went through "
+        "Hand-scripted by Claude, as a showcase of what HoloBricks' parts and checks can do. Every step went through "
         "the same validation Holo uses; ask for a change and Holo takes over."
     ),
     (

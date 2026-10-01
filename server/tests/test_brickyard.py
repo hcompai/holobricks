@@ -59,6 +59,5 @@ def test_build_ids_cannot_leave_the_data_folder(tmp_path):
     (tmp_path / "secret.json").write_text("{}")
     store = Store(tmp_path / "data")
     assert store.load("../../secret") is None
-    for reach in (lambda: store.thumbnail("../../secret"), lambda: store.image("../../secret.json")):
-        with pytest.raises(ValueError):
-            reach()
+    with pytest.raises(ValueError):
+        store.image("../../secret.json")
