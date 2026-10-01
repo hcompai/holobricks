@@ -2521,3 +2521,60 @@ main {
     display: none;
   }
 }
+
+/* The owner's menu on their cards: rename, publish or make private, delete. */
+.tile-owned {
+  position: relative;
+  display: grid;
+}
+
+.project-menu {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+}
+
+.project-menu > .icon-button {
+  width: 30px;
+  height: 30px;
+  background: var(--background-card);
+  box-shadow: var(--elevation-1);
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+
+.tile-owned:hover .project-menu > .icon-button,
+.tile-owned:focus-within .project-menu > .icon-button,
+.project-menu > .icon-button[aria-expanded="true"] {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .project-menu > .icon-button {
+    opacity: 1;
+  }
+}
+
+.project-menu .menu-list {
+  min-width: 220px;
+}
+
+.project-menu .confirm {
+  width: 300px;
+  max-width: calc(100vw - 32px);
+}
+
+.project-rename {
+  gap: 8px;
+  padding: 10px;
+  width: 260px;
+}
+
+.project-rename input {
+  font: inherit;
+  padding: 6px 8px;
+  border: 1px solid var(--stroke-strong);
+  border-radius: var(--radius-medium);
+  background: var(--background-card);
+  color: var(--text-default);
+}

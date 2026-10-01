@@ -134,6 +134,9 @@ export async function site(page: Page, showcases: Build[] = [], account: typeof 
       ? route.fulfill({ status: 404, json: { error: "This build is not public." } })
       : route.fulfill({ json: [] }),
   );
+  await page.route("**/api/projects*", (route) =>
+    route.request().method() === "DELETE" ? route.fulfill({ status: 204 }) : route.fulfill({ json: [] }),
+  );
   await page.route("**/LDConfig.ldr", (route) => route.fulfill({ body: colors }));
   await page.route("**/brickyard.tgz", (route) => route.fulfill({ body: Buffer.from("toolkit") }));
   await page.route("**/gallery/builds.json", (route) =>

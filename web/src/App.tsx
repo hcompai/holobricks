@@ -4,6 +4,7 @@ import type { Account } from "./account";
 import { AccountMenu } from "./AccountMenu";
 import { RecoveryPanel } from "./RecoveryPanel";
 import { create, remix, say, stop } from "./agent";
+import type { ProjectActions } from "./ProjectMenu";
 import { ProjectTitle } from "./ProjectTitle";
 import { useProjectNames } from "./useProjectNames";
 import { HistoryPanel } from "./HistoryPanel";
@@ -19,11 +20,12 @@ import { ChatPanel } from "./ChatPanel";
 import { HomeShelves } from "./HomeShelves";
 import { ImportBuild } from "./ImportBuild";
 import { countParts, PartsPanel } from "./PartsPanel";
-import { ShareMenu } from "./ShareMenu";
+import { SESSION_DELETE_NOTE, ShareMenu } from "./ShareMenu";
 import { Timeline } from "./Timeline";
 import {
   card,
   copyModel,
+  deleteProject,
   library,
   LibraryError,
   listing,
@@ -31,8 +33,8 @@ import {
   onRemember,
   publish,
   remember,
-  SHELF,
   setPrivate,
+  SHELF,
   type Shelf,
   thumbnail,
   unpublish,
@@ -394,9 +396,44 @@ export default function App({ account }: { account: Account }) {
     await refreshBuilds();
   };
 
+  /** A card's actions for one of the user's own builds: sessions, forks and imported builds. */
+  const manage = (b: BuildSummary, published: boolean): ProjectActions | null => {
+    const kind: Source | null = b.source === "public" ? (b.owner === account.user.id ? "public" : null) : b.source;
+    if (kind !== "session" && kind !== "fork" && kind !== "public") return null;
+    const target: BuildRef = { id: b.id, source: kind };
+    const imported = kind === "public";
+    const after = async () => {
+      await refreshBuilds();
+    };
+    return {
+      name: b.name,
+      published,
+      imported,
+      onRename: (name) => rename(target, name),
+      onVisibility: async (makePublic) => {
+        if (imported) await setPrivate(b.id, !makePublic);
+        else if (makePublic) await publish(b.id, b.thumbnail?.startsWith("data:image/") ? b.thumbnail : null, null);
+        else await unpublish(b.id);
+        await after();
+      },
+      onDelete: async () => {
+        await deleteProject(target);
+        if (ref?.id === b.id) open(null);
+        await after();
+      },
+      deleteNote: kind === "session" ? SESSION_DELETE_NOTE : undefined,
+    };
+  };
+
+  /** The project behind the open build: a published session or fork is still that session or fork. */
+  const project =
+    ref?.source === "public"
+      ? (builds?.find((b) => b.id === ref.id && (b.source === "session" || b.source === "fork")) ?? ref)
+      : ref;
+
   const deleteBuild = async () => {
-    if (!live) return;
-    await unpublish(live.id);
+    if (!project) return;
+    await deleteProject({ id: project.id, source: project.source });
     open(null);
     await refreshBuilds();
   };
@@ -512,7 +549,8 @@ export default function App({ account }: { account: Account }) {
               }
             : null
         }
-        onDelete={imported && !readOnly ? deleteBuild : null}
+        onDelete={owned && !readOnly && ref?.source !== "showcase" ? deleteBuild : null}
+        deleteNote={project?.source === "session" ? SESSION_DELETE_NOTE : undefined}
         image={() => viewer.current?.image() ?? Promise.resolve(null)}
         onGif={exportReplay}
         onInstructions={exportInstructions}
@@ -639,6 +677,7 @@ export default function App({ account }: { account: Account }) {
               me={account.user.id}
               onRetry={refreshBuilds}
               onOpen={openListed}
+              manage={manage}
               mineActions={
                 <ImportBuild
                   onImported={(id) => {
