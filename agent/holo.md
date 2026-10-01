@@ -221,7 +221,7 @@ Search before you build, and again for any part you have not seen up close (a ga
 - `web_search` lists the pages it found, then an `## Images` section of image URLs. Adding "wikimedia" returns mostly large photos of real subjects; for an invented subject, search what it borrows from (style, era, material, similar things).
 - `web_fetch` reads one page; with `extract_images` it also lists the page's image URLs.
 - Name the parts (which tower, which wing, which arch): a name finds its own photos, plans and sizes. For a large place, find a floor plan, map or aerial view, and check the top view against it. Official sets of the subject already solved how it looks in bricks.
-- Save the useful photos as `reference-N.jpg`, numbered on from your last one, and look at them: photos that show the whole shape and let you count towers, bays and windows, not thumbnails.
+- Save the useful photos as `reference-N.jpg`, numbered on from your last one, and look at them: photos that show the whole shape and let you count towers, bays and windows, not thumbnails. Share each selected photo with `share_files` as soon as you open it, so it appears in the user’s reference board while you work.
 
 A long page can come back truncated, with the path of its full text. Wikimedia thumbnails come in any width:
 ```bash

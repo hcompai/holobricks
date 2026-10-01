@@ -18,6 +18,12 @@ const NOT_BRICKS = /\b(RUBBER|MATERIAL|LUMINANCE)\b/;
 let source: Promise<string> | null = null;
 let colors: Promise<Color[]> | null = null;
 
+/** Supply the palette alongside packed parts in a standalone preview, before any scene loads. */
+export function providePalette(text: string) {
+  source = Promise.resolve(text);
+  colors = null;
+}
+
 /** The LDraw palette file, read once and shared by every scene. */
 export function paletteFile(): Promise<string> {
   if (!source) {

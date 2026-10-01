@@ -35,9 +35,7 @@ test("a live build shows the loader until its first model, each shared model, an
   await expect(holo.locator("strong")).toHaveText("too thin");
   await expect(holo.locator("li")).toHaveCount(2);
   await expect(page.locator(".msg.user")).toHaveText("A tower of **bricks**");
-  const planning = page.getByText(
-    "Holo is sorting through its bricks, and the first ones should appear in a few minutes.",
-  );
+  const planning = page.locator(".thinking");
   await expect(planning).toBeVisible();
   const walk = page.getByRole("button", { name: "Walk", exact: true });
   await expect(page.locator(".timeline")).toHaveCount(0);

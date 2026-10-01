@@ -2582,3 +2582,480 @@ main {
   background: var(--background-card);
   color: var(--text-default);
 }
+
+/* Illustrations follow session activity while the first shared model is on its way. */
+.thinking {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: auto;
+  padding: 24px;
+  background: radial-gradient(
+    ellipse at center,
+    color-mix(in srgb, var(--accent) 7%, var(--background-card)),
+    transparent 70%
+  );
+}
+
+.thinking-card {
+  width: 480px;
+  max-width: 100%;
+  margin: auto;
+  padding: 20px 28px 24px;
+  border: 1px solid var(--stroke-strong);
+  border-radius: 20px;
+  background: color-mix(in srgb, var(--background-card) 88%, transparent);
+  box-shadow: 0 12px 48px rgb(0 0 0 / 4%);
+  text-align: center;
+}
+
+.thinking-heading,
+.thinking-heading > span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.thinking-heading {
+  justify-content: space-between;
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.thinking-icon {
+  display: inline-flex;
+  flex: none;
+  align-self: center;
+  color: var(--accent);
+}
+
+.thinking-pause {
+  width: 28px;
+  height: 28px;
+  justify-content: center;
+  padding: 0;
+  color: var(--text-tertiary);
+  border: none;
+  background: transparent;
+}
+
+.thinking-pause:hover {
+  background: var(--background-muted);
+  color: var(--text-default);
+}
+
+.thinking-pause:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.thinking-art {
+  display: block;
+  width: 280px;
+  max-width: 100%;
+  margin: 8px auto 16px;
+  color: var(--accent);
+  overflow: visible;
+}
+
+.thinking-references {
+  margin: 18px 0 22px;
+}
+
+.thinking-reference {
+  margin: 0;
+  animation: thinking-arrive 0.45s ease-out both;
+}
+
+.thinking-reference-image {
+  position: relative;
+  overflow: hidden;
+  height: 220px;
+  padding: 8px;
+  border: 1px solid var(--stroke-strong);
+  border-radius: 12px;
+  background: var(--background-muted);
+}
+
+.thinking-reference-image img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: 6px;
+}
+
+.thinking-photo-corners {
+  position: absolute;
+  inset: 13px;
+  border: 1px solid rgb(255 255 255 / 35%);
+  border-radius: 4px;
+  pointer-events: none;
+  animation: thinking-focus 5s ease-in-out infinite;
+}
+
+.thinking-reference figcaption {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 2px;
+  color: var(--text-tertiary);
+  font-size: 10px;
+  text-align: left;
+}
+
+.thinking-reference figcaption strong {
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.thinking-contact-sheet {
+  display: flex;
+  gap: 7px;
+  overflow-x: auto;
+  padding: 4px 2px 8px;
+}
+
+.thinking-reference-thumb {
+  position: relative;
+  flex: 0 0 62px;
+  height: 48px;
+  padding: 3px;
+  overflow: hidden;
+  border: 1px solid var(--stroke-strong);
+  border-radius: 7px;
+  background: var(--background-card);
+  animation: thinking-arrive 0.4s ease-out both;
+  animation-delay: calc(var(--order) * 0.06s);
+}
+
+.thinking-reference-thumb[aria-pressed="true"] {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.thinking-reference-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 3px;
+}
+
+.thinking-reference-thumb span {
+  position: absolute;
+  bottom: 3px;
+  right: 3px;
+  padding: 1px 3px;
+  border-radius: 3px;
+  background: rgb(0 0 0 / 55%);
+  color: white;
+  font-size: 9px;
+}
+
+.thinking-references-compact {
+  margin-top: -10px;
+}
+
+.thinking-references-compact .thinking-reference-image {
+  height: 140px;
+}
+
+.thinking-search-study {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  min-height: 200px;
+  margin: 10px 0 18px;
+  color: var(--accent);
+}
+
+.thinking-search-study p {
+  max-width: 100%;
+  margin: 24px 0 7px;
+  color: var(--text-default);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.thinking-search-study > span {
+  color: var(--text-tertiary);
+  font-size: 11px;
+}
+
+.thinking-search-orbit {
+  display: flex;
+  gap: 5px;
+  margin-top: 12px;
+}
+
+.thinking-search-orbit span {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: thinking-focus 1.4s ease-in-out infinite;
+}
+
+.thinking-search-orbit span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.thinking-search-orbit span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+.thinking-material-study {
+  margin: 22px 0;
+}
+
+.thinking-materials {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 12px 0;
+}
+
+.thinking-material {
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  justify-content: center;
+  gap: 10px;
+  min-width: 0;
+  height: 108px;
+  padding: 12px 8px;
+  border: 1px solid var(--stroke-default);
+  border-radius: 10px;
+  background: var(--background-page);
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 15px;
+  text-transform: capitalize;
+  animation: thinking-arrive 0.4s ease-out both;
+  animation-delay: calc(var(--order) * 0.07s);
+}
+
+.thinking-material[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 7%, var(--background-card));
+}
+
+.thinking-name-study {
+  display: flex;
+  justify-content: center;
+  flex-direction: column;
+  min-height: 190px;
+  margin: 16px 0 22px;
+}
+
+.thinking-name-title {
+  margin: 18px 0 8px;
+  color: var(--text-default);
+  font-size: 30px;
+  line-height: 42px;
+  font-weight: 600;
+  letter-spacing: -0.035em;
+  overflow-wrap: anywhere;
+}
+
+.thinking-name-title > span {
+  white-space: pre-wrap;
+  animation: thinking-letter 0.25s ease-out both;
+  animation-delay: calc(var(--order) * 0.025s);
+}
+
+.thinking-name-title .thinking-name-pending {
+  color: var(--text-tertiary);
+  font-size: 23px;
+  animation: thinking-focus 4s ease-in-out infinite;
+}
+
+.thinking-name-study svg {
+  width: 240px;
+  max-width: 100%;
+  margin: 0 auto;
+}
+
+.thinking-name-line {
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-dasharray: 430;
+  animation: thinking-sketch 6s ease-in-out infinite;
+}
+
+@keyframes thinking-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes thinking-letter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes thinking-focus {
+  50% {
+    opacity: 0.4;
+  }
+}
+
+.placement-hud {
+  position: absolute;
+  bottom: 16px;
+  left: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100% - 32px);
+  padding: 6px 8px 6px 12px;
+  border: 1px solid var(--stroke-default);
+  border-radius: var(--radius-button);
+  background: color-mix(in srgb, var(--background-card) 94%, transparent);
+  box-shadow: var(--elevation-1);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.placement-hud button {
+  padding: 3px 6px;
+  border: none;
+  background: var(--background-muted);
+  font-size: 11px;
+}
+
+.viewer > .placement-sound {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+}
+
+.thinking-paper {
+  fill: var(--background-page);
+  stroke: var(--stroke-strong);
+  stroke-width: 1.5;
+}
+
+.thinking-grid {
+  stroke: currentColor;
+  stroke-width: 1;
+  opacity: 0.12;
+}
+
+.thinking-outline,
+.thinking-measure {
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.thinking-outline {
+  stroke-dasharray: 560;
+  animation: thinking-sketch 6s ease-in-out infinite;
+}
+
+.thinking-measure {
+  opacity: 0.4;
+}
+
+.thinking-spark {
+  animation: thinking-float 4s ease-in-out infinite;
+}
+
+@keyframes thinking-float {
+  50% {
+    transform: translateY(-7px);
+  }
+}
+
+@keyframes thinking-sketch {
+  0%,
+  10% {
+    stroke-dashoffset: 560;
+    opacity: 0.3;
+  }
+  55%,
+  85% {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+  100% {
+    stroke-dashoffset: 0;
+    opacity: 0.3;
+  }
+}
+
+.thinking-paused * {
+  animation-play-state: paused !important;
+}
+
+.thinking-paused .thinking-reference,
+.thinking-paused .thinking-reference-thumb,
+.thinking-paused .thinking-material,
+.thinking-paused .thinking-name-title > span {
+  animation: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .thinking * {
+    animation: none !important;
+  }
+
+  .thinking-pause {
+    display: none;
+  }
+}
+
+@media (max-height: 640px), (max-width: 900px) {
+  .thinking {
+    padding: 16px;
+  }
+
+  .thinking-card {
+    padding: 16px 20px 20px;
+  }
+
+  .thinking-art {
+    width: 220px;
+    margin: 4px auto 12px;
+  }
+}
+
+.thinking-part {
+  display: block;
+  width: 80px;
+  height: 66px;
+}
+.thinking-part svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.thinking-part-turn {
+  transform-origin: 48px 40px;
+  animation: thinking-float 4s ease-in-out infinite;
+}
+.thinking-material[aria-pressed="true"] .thinking-part {
+  transform: scale(1.08);
+}

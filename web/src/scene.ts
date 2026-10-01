@@ -6,6 +6,8 @@ import { LDrawLoader } from "three/examples/jsm/loaders/LDrawLoader.js";
 import { LDrawConditionalLineMaterial } from "three/examples/jsm/materials/LDrawConditionalLineMaterial.js";
 import type { Box, Camera, Piece } from "./model";
 import { buildRevision } from "./buildRevision";
+import { placementPop } from "./brickAudio";
+import { placedCount, planPlacement, SETTLE_SECONDS, type PlacementPlan } from "./placement";
 import { paletteFile } from "./palette";
 import { Solids, WALK, Walker } from "./walker";
 
@@ -358,7 +360,16 @@ class Batch {
   }
 }
 
+export interface PlacementProgress {
+  active: boolean;
+  paused: boolean;
+  placed: number;
+  total: number;
+  layer: number;
+}
+
 export interface SceneOptions {
+  onPlacement?: (progress: PlacementProgress) => void;
   signal?: AbortSignal;
   /** False when the caller sizes and draws every frame: no render loop or container tracking. */
   interactive?: boolean;
@@ -408,6 +419,15 @@ export class BrickScene {
   private materials: Promise<void> | null = null;
   private lifetime = new AbortController();
   private visibleStep = Infinity;
+  private placement: {
+    plan: PlacementPlan;
+    seconds: number;
+    paused: boolean;
+    reported: number;
+    sounded: number;
+  } | null = null;
+  private placementSpeed = 1;
+  private placementEnabled = true;
   private loading: Promise<void> = Promise.resolve();
   private wanted: Piece[] | null = null;
   private shown: Piece[] | null = null;
@@ -522,6 +542,7 @@ export class BrickScene {
     const tick = (time?: number) => {
       this.frame = requestAnimationFrame(tick);
       const seconds = Math.min(this.timer.update(time).getDelta(), 0.1);
+      this.advancePlacement(seconds);
       if (this.walking) this.walk(seconds);
       else {
         this.ease();
@@ -533,10 +554,10 @@ export class BrickScene {
   }
 
   /** The user's view: sunlit with shadows, edges faded by how many pixels a stud covers. */
-  private draw() {
+  private draw(completed = false) {
     this.dirty = false;
     if (this.shadowsStale) this.fitShadows();
-    this.light(VIEW_LIGHT);
+    this.light(this.placement && !completed ? { ...VIEW_LIGHT, shadow: 0 } : VIEW_LIGHT);
     this.adaptEdges(this.renderer.getDrawingBufferSize(new THREE.Vector2()).y);
     this.renderer.render(this.scene, this.camera);
   }
@@ -737,13 +758,17 @@ export class BrickScene {
   }
 
   /** True only after these exact pieces were drawn. Superseded calls cannot acknowledge success. */
-  setPieces(pieces: Piece[]): Promise<boolean> {
+  setPieces(pieces: Piece[], { animate = false, fresh = false } = {}): Promise<boolean> {
     this.wanted = pieces;
     const update = this.loading
       .catch(() => undefined)
       .then(async () => {
         if (this.wanted !== pieces) return false;
+        const previous = fresh ? [] : (this.shown ?? []).filter((p) => p.step <= this.visibleStep);
         if (this.shown !== pieces && !(await this.apply(pieces, () => this.wanted === pieces))) return false;
+        this.finishPlacement();
+        this.showStep(this.visibleStep);
+        if (animate) this.startPlacement(previous);
         this.assertAvailable();
         this.draw();
         return this.wanted === pieces;
@@ -824,12 +849,110 @@ export class BrickScene {
     this.draw();
   }
 
-  setVisibleStep(step: number) {
+  setVisibleStep(step: number, animate = false) {
+    if (step === this.visibleStep) return;
+    const previous = (this.shown ?? []).filter((p) => p.step <= this.visibleStep);
+    const forward = step > this.visibleStep;
+    this.finishPlacement();
+    this.showStep(step);
+    if (animate && forward) this.startPlacement(previous);
+  }
+
+  private showStep(step: number) {
     this.visibleStep = step;
     for (const batch of this.batches.values()) batch.show(step);
     this.solids = null;
     this.dirty = this.shadowsStale = true;
     this.drawHighlights();
+  }
+
+  private startPlacement(previous: Piece[]) {
+    if (!this.placementEnabled || this.walking || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const plan = planPlacement(
+      (this.shown ?? []).filter((p) => p.step <= this.visibleStep),
+      previous,
+    );
+    if (!plan.pieces.length) return;
+    this.placement = { plan, seconds: 0, paused: false, reported: -Infinity, sounded: 0 };
+    this.posePlacement();
+    this.reportPlacement();
+  }
+
+  setPlacementSpeed(speed: number) {
+    this.placementSpeed = Math.max(0.1, Math.min(8, speed));
+  }
+
+  setPlacementEnabled(enabled: boolean) {
+    this.placementEnabled = enabled;
+    if (!enabled) this.finishPlacement();
+  }
+
+  pausePlacement(paused: boolean) {
+    if (!this.placement) return;
+    this.placement.paused = paused;
+    this.reportPlacement();
+  }
+
+  finishPlacement() {
+    const current = this.placement;
+    if (!current) return;
+    this.placement = null;
+    for (const batch of this.batches.values()) batch.pose(0, Infinity);
+    this.dirty = this.shadowsStale = true;
+    this.options.onPlacement?.({
+      active: false,
+      paused: false,
+      placed: current.plan.pieces.length,
+      total: current.plan.pieces.length,
+      layer: 0,
+    });
+  }
+
+  /** Scale pending instances to zero, then drop each real part a fraction of a stud into its final transform. */
+  private posePlacement() {
+    const current = this.placement;
+    if (!current) return;
+    const { plan, seconds } = current;
+    this.pose(0, this.visibleStep + 1, (piece, matrix) => {
+      const start = plan.starts.get(piece.id);
+      if (start === undefined) return;
+      const elapsed = seconds - start;
+      if (elapsed < 0) matrix.scale(new THREE.Vector3(0, 0, 0));
+      else if (elapsed < SETTLE_SECONDS) {
+        const progress = elapsed / SETTLE_SECONDS;
+        // The root flips LDraw Y; subtracting moves the piece upward in the visible world.
+        matrix.elements[13] -= 6 * (1 - progress) ** 3;
+      }
+    });
+  }
+
+  private advancePlacement(delta: number) {
+    const current = this.placement;
+    if (!current || current.paused) return;
+    current.seconds += delta * this.placementSpeed;
+    this.posePlacement();
+    const landed = placedCount(current.plan, current.seconds - SETTLE_SECONDS);
+    if (landed > current.sounded) {
+      placementPop(current.plan.pieces[landed - 1].part);
+      current.sounded = landed;
+    }
+    if (current.seconds >= current.plan.duration) this.finishPlacement();
+    else if (current.seconds - current.reported >= 0.05) this.reportPlacement();
+  }
+
+  private reportPlacement() {
+    const current = this.placement;
+    if (!current) return;
+    const placed = placedCount(current.plan, current.seconds);
+    current.reported = current.seconds;
+    const piece = current.plan.pieces[Math.max(0, placed - 1)];
+    this.options.onPlacement?.({
+      active: true,
+      paused: current.paused,
+      placed,
+      total: current.plan.pieces.length,
+      layer: Math.max(1, Math.round(-piece.pos[1] / PLATE) + 1),
+    });
   }
 
   setSpin(spin: boolean) {
@@ -1181,9 +1304,10 @@ export class BrickScene {
     const ctx = canvas.getContext("2d")!;
 
     try {
+      if (this.placement) for (const batch of this.batches.values()) batch.pose(0, Infinity);
       if (!page) {
         this.overlay.visible = false;
-        this.setVisibleStep(Infinity);
+        this.showStep(Infinity);
       }
       this.renderer.clippingPlanes = focus ? clippingPlanes(focus) : [];
       this.renderer.setPixelRatio(1);
@@ -1204,7 +1328,8 @@ export class BrickScene {
         }
       }
     } finally {
-      this.setVisibleStep(visibleStep);
+      this.showStep(visibleStep);
+      this.posePlacement();
       this.renderer.clippingPlanes = [];
       this.renderer.setPixelRatio(pixelRatio);
       this.resize();
@@ -1227,8 +1352,10 @@ export class BrickScene {
 
   /** The user's view as they see it, on the viewer's backdrop. */
   image(): Promise<Blob | null> {
+    if (this.placement) for (const batch of this.batches.values()) batch.pose(0, Infinity);
     this.overlay.visible = false;
-    this.draw();
+    this.shadowsStale = true;
+    this.draw(true);
     this.overlay.visible = true;
     this.dirty = true;
     const source = this.renderer.domElement;
@@ -1239,6 +1366,7 @@ export class BrickScene {
     ctx.fillStyle = getComputedStyle(this.container).backgroundColor;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(source, 0, 0);
+    this.posePlacement();
     return new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
   }
 

@@ -65,11 +65,11 @@ export class Platform {
     this.agent(id, { kind: "message_event", caller_id: "user", content: [text, ...images] });
   }
 
-  attach(id: string, name: string, contents: Buffer) {
+  attach(id: string, name: string, contents: Buffer, origin = "user") {
     const url = `${AGP}/files/${id}/${name}`;
     this.files.set(url, contents);
     this.push(id, "AttachmentEvent", {
-      origin: "user",
+      origin,
       name,
       path: `/workspace/files/${name}`,
       media_type: "application/octet-stream",
@@ -127,7 +127,15 @@ export async function platform(page: Page): Promise<Platform> {
       route.fulfill({ status, headers: CORS, ...(json === undefined ? { body: "" } : { json }) });
     if (method === "OPTIONS") return reply(204);
     if (agp.files.has(request.url()))
-      return route.fulfill({ headers: CORS, contentType: "application/gzip", body: agp.files.get(request.url())! });
+      return route.fulfill({
+        headers: CORS,
+        contentType: /\.jpe?g$/i.test(url.pathname)
+          ? "image/jpeg"
+          : /\.png$/i.test(url.pathname)
+            ? "image/png"
+            : "application/gzip",
+        body: agp.files.get(request.url())!,
+      });
     const body = method === "POST" ? request.postDataJSON() : undefined;
     agp.requests.push({ method, path: url.pathname, body });
     const [, , , , id, action] = url.pathname.split("/");

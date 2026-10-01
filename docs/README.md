@@ -180,6 +180,24 @@ Interrupted builds show a plain-language message with technical details collapse
 action. Activity labels follow the session's working/render-request state rather than rotating claims
 about construction progress.
 
+### Build animations
+
+Before the first pieces appear, the viewer follows Holo's observed reading, setup, reference and naming phases: a subject sketch, part silhouettes in LDraw colors, photos actually attached or opened/shared, and the assigned name. Part search results replace the initial examples. Later work stays in the chat, leaving the model available to orbit and walk through.
+
+Shared revisions reveal changed pieces individually, by assembly step and then bottom-up LDraw layer, with a short settling drop. Unchanged pieces stay placed. Forward timeline playback uses the same reveal; scrubbing backward, editing, walking and reduced-motion preferences show settled pieces immediately. Placement has pause, resume, skip and timeline speed controls. Quiet part-specific sounds are on by default after a browser gesture; the mute choice persists.
+
+Holo's inspection views, library thumbnails, PNGs, GIFs and instruction PDFs render completed geometry. Placement never changes model data or the user's camera for an inspection.
+
+For an account-free animation preview:
+
+```sh
+cd web
+npm ci
+npm run dev
+```
+
+Open `/dev/thinking.html` on the local server. It uses the actual viewer and waiting components with illustrative packed geometry, a small standalone palette and credited sample photos. Switch phases, change the subject, replay placement and try the speed/mute controls. This entry and its sample assets are excluded from the production build; a real Holo run still needs the toolkit and sign-in described above.
+
 ### Model history and forks
 
 **History** lists saved models as V1, V2, and so on. Assembly steps remain inside each model; they
