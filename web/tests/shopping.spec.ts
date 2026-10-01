@@ -67,7 +67,7 @@ test("one copy hands HoloTab the verified XML and nothing private", async ({ pag
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await open(page, duck());
   await page.getByRole("button", { name: "Shop bricks", exact: true }).click();
-  const dialog = page.getByRole("dialog", { name: "Make it real." });
+  const dialog = page.getByRole("dialog", { name: "Shop bricks" });
   await expect(dialog.getByRole("link", { name: "Install HoloTab" })).toHaveAttribute(
     "href",
     "https://chromewebstore.google.com/detail/holotab/hlaoiikljjgcjdhkakedfngifaopbcop",

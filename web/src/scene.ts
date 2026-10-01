@@ -107,6 +107,16 @@ function clippingPlanes(box: THREE.Box3): THREE.Plane[] {
   ];
 }
 
+/** `canvas` on the builder's backdrop, for formats without transparency. */
+function backed(canvas: HTMLCanvasElement): HTMLCanvasElement {
+  const ctx = canvas.getContext("2d")!;
+  ctx.globalCompositeOperation = "destination-over";
+  ctx.fillStyle = BACKDROP;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.globalCompositeOperation = "source-over";
+  return canvas;
+}
+
 /** One scene's instanced edge materials, faded together. */
 class Edges {
   private copies = new Map<THREE.Material, THREE.Material>();
@@ -401,6 +411,8 @@ export class BrickScene {
   private loading: Promise<void> = Promise.resolve();
   private wanted: Piece[] | null = null;
   private shown: Piece[] | null = null;
+  /** The shown pieces' bounds, whatever step is visible. */
+  private bounds: THREE.Box3 | null = null;
   /** Set once the user orbits or zooms, so live framing stops fighting them. */
   userMoved = false;
   private resizeObserver = new ResizeObserver(() => this.resize());
@@ -572,10 +584,13 @@ export class BrickScene {
 
   /** The world-space bounds of every piece, empty with none. */
   modelBox(): THREE.Box3 {
-    this.root.updateMatrixWorld(true);
-    const box = new THREE.Box3();
-    for (const batch of this.batches.values()) batch.expand(box);
-    return box.applyMatrix4(this.root.matrixWorld);
+    if (!this.bounds) {
+      this.root.updateMatrixWorld(true);
+      this.bounds = new THREE.Box3();
+      for (const batch of this.batches.values()) batch.expand(this.bounds);
+      this.bounds.applyMatrix4(this.root.matrixWorld);
+    }
+    return this.bounds.clone();
   }
 
   /** The world-space bounds of each step's pieces, indexed by step. */
@@ -797,6 +812,7 @@ export class BrickScene {
     });
     this.shown = pieces;
     this.solids = null;
+    this.bounds = null;
     this.dirty = this.shadowsStale = true;
     this.drawHighlights();
     return true;
@@ -1111,13 +1127,13 @@ export class BrickScene {
 
   /** Square renders of the whole model, or only of what lies in `box`, as a JPEG, leaving the user's camera and timeline untouched. */
   private offscreen(...args: Parameters<BrickScene["paint"]>): Promise<Blob | null> {
-    const canvas = this.paint(...args);
+    const canvas = backed(this.paint(...args));
     return new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", RENDER_QUALITY));
   }
 
   /**
-   * Square renders into a 2D canvas, leaving the user's camera and timeline untouched: the whole model, or only what
-   * lies in `box`; with `page`, only the steps shown and their highlights, as an instructions page.
+   * Square renders into a transparent 2D canvas, leaving the user's camera and timeline untouched: the whole model, or
+   * only what lies in `box`; with `page`, only the steps shown and their highlights, as an instructions page.
    */
   private paint(
     size: number,
@@ -1164,8 +1180,6 @@ export class BrickScene {
         this.aim(tile.direction, 32, 32, tile.zoom, tile.at, tile.focus ?? focus);
         this.adaptEdges(size);
         this.renderer.render(this.scene, this.camera);
-        ctx.fillStyle = BACKDROP;
-        ctx.fillRect(tile.x, tile.y, size, size);
         ctx.drawImage(this.renderer.domElement, tile.x, tile.y, size, size);
         if (tile.label) {
           ctx.font = "600 15px system-ui, sans-serif";
@@ -1194,7 +1208,7 @@ export class BrickScene {
 
   /** An instructions page: the steps shown with their highlights, from the 3/4 front, framing `focus` (world space). */
   page(size: number, focus: THREE.Box3): HTMLCanvasElement {
-    return this.paint(size, [{ direction: VIEW_DIRECTIONS.iso, focus, x: 0, y: 0 }], 1, null, true);
+    return backed(this.paint(size, [{ direction: VIEW_DIRECTIONS.iso, focus, x: 0, y: 0 }], 1, null, true));
   }
 
   /** The user's view as they see it, on the viewer's backdrop. */
@@ -1214,8 +1228,10 @@ export class BrickScene {
     return new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
   }
 
+  /** A library tile: the 3/4 view as a PNG with a transparent background, so it sits on either theme. */
   thumbnail(size = 320): Promise<Blob | null> {
-    return this.offscreen(size, [{ direction: VIEW_DIRECTIONS.iso, x: 0, y: 0 }]);
+    const canvas = this.paint(size, [{ direction: VIEW_DIRECTIONS.iso, x: 0, y: 0 }]);
+    return new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
   }
 
   /** The four labelled views a builder looks at to check its work, of the model or only of `box`. */

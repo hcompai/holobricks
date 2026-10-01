@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Build the web app with the toolkit and the showcases, and deploy it to Vercel: scripts/deploy.sh --preview|--prod
-# Pushes to master that pass CI deploy to production: the deploy job in .github/workflows/ci.yml runs this with CI set.
+# Pushes to master that pass CI deploy to production, and so does a weekly run that keeps the catalog snapshot fresh:
+# the deploy job in .github/workflows/ci.yml runs this with CI set.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -24,9 +25,9 @@ if [[ -n "${CI:-}" ]]; then
 else
   for id in "${builds[@]}"; do
     [[ -f "$data/builds/$id.json" ]] || { echo "missing build $id: run server/.venv/bin/python -m brickyard.showcase $id" >&2; exit 1; }
-    [[ -f "$data/thumbnails/$id.png" ]] || echo "warning: no thumbnail for $id yet" >&2
   done
   BRICKYARD_DATA=$data server/.venv/bin/brickyard-gallery web/public "${builds[@]}"
+  (cd web && node scripts/thumbnails.mjs)
   tar czf data/gallery.tgz -C web/public gallery
   gh release upload "$release" data/gallery.tgz --clobber
 fi

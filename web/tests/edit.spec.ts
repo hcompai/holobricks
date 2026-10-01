@@ -74,8 +74,8 @@ test("edit mode selects the piece under the pointer and saves its edits in this 
   await expect(pieces).toHaveText("7 pieces");
 
   const download = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Download" }).click();
-  await page.getByRole("menuitem", { name: "Download .ldr" }).click();
+  await page.getByRole("button", { name: "Share", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Download model (.ldr)" }).click();
   const ldr = await readFile(await (await download).path(), "utf8");
   expect(ldr.split("\n").filter((line) => line.startsWith("1 "))).toHaveLength(7);
 
@@ -132,8 +132,8 @@ test("the selection takes a new color, the model's own colors listed first", asy
   await expect(page.getByRole("toolbar", { name: "Edit mode" })).toContainText("1 change");
 
   const download = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Download" }).click();
-  await page.getByRole("menuitem", { name: "Download .ldr" }).click();
+  await page.getByRole("button", { name: "Share", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Download model (.ldr)" }).click();
   const ldr = await readFile(await (await download).path(), "utf8");
   const code = { Red: "4", Green: "2" }[next];
   expect(ldr.split("\n").filter((line) => line.startsWith(`1 ${code} `))).toHaveLength(3);

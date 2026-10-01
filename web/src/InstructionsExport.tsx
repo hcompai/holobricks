@@ -46,48 +46,42 @@ export function InstructionsExport({ build, describe, onClose }: Props) {
   };
 
   return (
-    <dialog
-      className="film-dialog instructions-dialog"
-      ref={dialog}
-      aria-labelledby="instructions-title"
-      onCancel={onClose}
-    >
-      <div className="film-heading">
+    <dialog className="dialog" ref={dialog} aria-labelledby="instructions-title" onCancel={onClose}>
+      <div className="dialog-head">
         <div>
           <h2 id="instructions-title">Building instructions</h2>
           <p>
-            A PDF of {pages.toLocaleString()} pages for {build.pieces.length.toLocaleString()} pieces: each step split
-            into layers from the bottom up, the new pieces outlined, the parts to add pictured, and the whole parts list
-            at the end.
+            A PDF of {pages.toLocaleString()} pages for {build.pieces.length.toLocaleString()} pieces. Each step goes
+            from the bottom up, with its new pieces outlined and pictured. The parts list comes last.
           </p>
         </div>
-        <button className="icon-button" aria-label="Close instructions" onClick={onClose}>
-          <XIcon size={20} />
+        <button className="quiet icon-button" aria-label="Close" onClick={onClose}>
+          <XIcon size={16} />
         </button>
       </div>
-      <div className="film-generation" aria-live="polite">
+      <div className="dialog-generation" aria-live="polite">
         {progress ? (
           <>
             <progress value={progress.done} max={progress.total} aria-label="Instructions progress" />
-            <div className="film-progress-row">
+            <div className="dialog-progress">
               <span>{progress.label}</span>
               <button onClick={() => job.current?.abort()}>Cancel</button>
             </div>
           </>
         ) : file ? (
-          <div className="film-actions">
+          <div className="dialog-actions">
             <span>{megabytes(file.size)}</span>
-            <a className="film-primary" href={file.url} download={`${build.name} instructions.pdf`}>
+            <a className="button primary" href={file.url} download={`${build.name} instructions.pdf`}>
               <DownloadSimpleIcon size={16} /> Download PDF
             </a>
           </div>
         ) : (
-          <button className="film-primary" onClick={generate}>
+          <button className="primary" onClick={generate}>
             Make the PDF
           </button>
         )}
         {error && (
-          <div role="alert" className="film-error">
+          <div role="alert" className="error-text">
             {error}
           </div>
         )}

@@ -11,14 +11,14 @@ import tempfile
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 
-from pydantic import BaseModel, ValidationError
+from pydantic import ValidationError
 
 from brickyard import assembly, catalog, ldraw
 from brickyard.model import (
     ACCESSORIES,
     FACINGS,
-    IDENTITY,
     ROTATIONS,
+    Brick,
     Matrix,
     Piece,
     Placement,
@@ -43,26 +43,11 @@ PARTS_SHOWN = 12
 PARTS_FOUND = 20
 FLOATING_SHOWN = 5
 LINES_CITED = 3
-SCRIPT_TIMEOUT_S = 60
+SCRIPT_TIMEOUT_S = 40
+"""Well under the agent's 60 s shell wait, so a run and the share after it see the same revision."""
 BASEPLATE = "3811.dat"
 BACKS = {"south": (2, 1), "north": (2, -1), "west": (0, 1), "east": (0, -1)}
 """For each facing, the LDU axis and direction from a mounted part to the wall behind it."""
-
-
-class Brick(BaseModel):
-    part: str
-    x: int = 0
-    y: int = 0
-    z: int = 0
-    color: int
-    rotation: int = 0
-    facing: str | None = None
-    """Set for a part mounted on a wall, its top turned to face that side."""
-    pos: tuple[float, float, float] | None = None
-    """Set for an exact LDraw placement in LDU, turned by `rot`; x, y, z, rotation and facing then go unused."""
-    rot: Matrix = IDENTITY
-    label: str | None = None
-    """How problems name the brick, like the script line that made it."""
 
 
 @dataclass
@@ -116,6 +101,20 @@ def _where(p: Placement | Piece) -> str:
     facing = next((f for f, m in FACINGS.items() if m == tuple(p.rot)), None)
     turn = f" facing={facing}" if facing else f" rot={rotation}" if rotation else ""
     return f"{p.part.removesuffix('.dat')} at x={x} y={y} z={z}{turn}"
+
+
+def _studs(boxes: list[tuple]) -> tuple[str, str]:
+    """The first and last studs the boxes cover along x and along y."""
+
+    def span(k: int) -> str:
+        lo, hi = min(b[0][k] for b in boxes), max(b[1][k] for b in boxes)
+        return f"{math.floor((lo + EPS) / ldraw.STUD)}-{math.ceil((hi - EPS) / ldraw.STUD) - 1}"
+
+    return span(0), span(2)
+
+
+def _invalid(error: ValidationError) -> str:
+    return "; ".join(f"{'.'.join(map(str, e['loc']))} {e['input']!r:.40}: {e['msg']}" for e in error.errors())
 
 
 def _first(lines: list[str]) -> str:
@@ -173,7 +172,7 @@ class Workbench:
         return self._indexed
 
     def _check(
-        self, bricks: list[Brick], mounted: list[Placement] = ()
+        self, bricks: list[dict], mounted: list[Placement] = ()
     ) -> tuple[list[Placement], list[str], list[tuple[str, str]]]:
         """Placements that fit, rejection lines, and (script line, note) per floating brick, for a batch.
 
@@ -192,15 +191,21 @@ class Workbench:
 
         accepted: list[tuple[Placement, tuple, str, str, bool, str | None]] = []
         rejected = []
+        parsed: list[tuple[int, Brick]] = []
+        for n, raw in enumerate(bricks, 1):
+            try:
+                parsed.append((n, Brick.model_validate(raw)))
+            except ValidationError as e:
+                rejected.append(f"{raw.get('label') or f'brick {n}'}: {_invalid(e)}")
         candidates: list[tuple[str, str, Placement, bool, str | None]] = []
         exact: set[int] = set()
         frames = {
             (ACCESSORIES[frame][0], b.pos, b.rot)
-            for b in bricks
+            for _, b in parsed
             if b.pos is not None and (frame := ldraw.resolve(b.part)) in ACCESSORIES
         }
         inserts: dict[tuple, list[Placement]] = defaultdict(list)
-        for n, brick in enumerate(bricks, 1):
+        for n, brick in parsed:
             at = f"x={brick.x} y={brick.y} z={brick.z}" if brick.pos is None else f"pos={brick.pos}"
             label = f"{brick.label or f'brick {n}'} ({brick.part} at {at})"
             origin = brick.label or label
@@ -288,13 +293,9 @@ class Workbench:
 
     def add(self, title: str, bricks: list[dict], mounted: list[Placement] = ()) -> Result:
         """Check the bricks and place the ones that fit as one step, if the whole model stays verified."""
-        try:
-            parsed = [Brick.model_validate(b) for b in bricks]
-        except ValidationError as e:
-            return Result(f"Invalid bricks in '{title}': {e.errors(include_url=False)}", problems=len(bricks))
-        if not parsed and not mounted:
+        if not bricks and not mounted:
             return Result("No bricks given.")
-        placements, rejected, floating = self._check(parsed, list(mounted))
+        placements, rejected, floating = self._check(bricks, list(mounted))
         lines = []
         if placements:
             candidate = self.workspace.build.model_copy(deep=True)
@@ -343,15 +344,10 @@ class Workbench:
         source = code.splitlines()
         reports, floating = [], []
         for n, (s, key) in enumerate(zip(steps[same:], keys[same:], strict=True), kept_steps + 1):
-            bricks = [b | {"label": _line(source, b["line"])} for b in s["bricks"]]
-            try:
-                parsed = [Brick.model_validate(b) for b in bricks]
-            except ValidationError as e:
-                reports.append((n, s["title"], [f"invalid bricks: {e.errors(include_url=False)}"]))
-                continue
-            placements, rejected, flags = draft._check(parsed)
+            bricks = [b | {"label": _cite(source, b["line"], b["call"])} for b in s["bricks"]]
+            placements, rejected, flags = draft._check(bricks)
             if placements:
-                candidate.add_step(s["title"], placements, "" if rejected else key)
+                candidate.add_step(s["title"], placements, "" if rejected or flags else key)
             if rejected:
                 reports.append((n, s["title"], rejected))
             floating += [(n, *flag) for flag in flags]
@@ -466,13 +462,12 @@ class Workbench:
         pieces = [p for p in self.pieces if p.part != BASEPLATE]
         if not pieces:
             return "Nothing is built yet."
-        boxes = [grid(p) for p in pieces]
         indexed = self._index()
-        highest = max(top(indexed[p.id][1]) for p in pieces)
-        xs, ys = [b[0] for b in boxes], [b[1] for b in boxes]
+        boxes = [indexed[p.id][1] for p in pieces]
+        x, y = _studs(boxes)
         return (
-            f"{len(pieces)} pieces in {len(self.workspace.build.steps)} steps, spanning x {min(xs)}-{max(xs)}, "
-            f"y {min(ys)}-{max(ys)}, up to plate height {highest}."
+            f"{len(pieces)} pieces in {len(self.workspace.build.steps)} steps, spanning x {x}, "
+            f"y {y}, up to plate height {max(map(top, boxes))}."
         )
 
     def describe(self) -> str:
@@ -481,17 +476,12 @@ class Workbench:
         boxes: dict[int, list[tuple]] = {}
         for p in self.pieces:
             boxes.setdefault(p.step, []).append(indexed[p.id][1])
-        s, lines = ldraw.STUD, []
-
-        def studs(lo: float, hi: float) -> str:
-            return f"{math.floor((lo + EPS) / s)}-{math.ceil((hi - EPS) / s) - 1}"
-
+        lines = []
         for step in self.workspace.build.steps:
             if step.index not in boxes:
                 continue
-            los, his = [b[0] for b in boxes[step.index]], [b[1] for b in boxes[step.index]]
-            x = studs(min(v[0] for v in los), max(v[0] for v in his))
-            y = studs(min(v[2] for v in los), max(v[2] for v in his))
+            x, y = _studs(boxes[step.index])
+            his = [b[1] for b in boxes[step.index]]
             z = f"{max(0, round(min(-v[1] for v in his) / ldraw.PLATE))}-{max(map(top, boxes[step.index]))}"
             n = len(boxes[step.index])
             lines.append(f"{step.index + 1} {step.title}: {n} piece{'s' * (n != 1)}, x {x}, y {y}, z {z}")
@@ -508,14 +498,14 @@ def _catalog_issues(report: dict) -> str:
 
 
 def _cite_lines(report: dict, steps: list[dict], source: list[str]) -> None:
-    """Give each catalog issue the first script lines that made its part/color pair."""
-    made: dict[tuple, set[int]] = defaultdict(set)
+    """Give each catalog issue the first script lines and calls that made its part/color pair."""
+    made: dict[tuple, set[tuple[int, int]]] = defaultdict(set)
     for step in steps:
         for b in step["bricks"]:
-            made[ldraw.resolve(str(b["part"])), b["color"]].add(b["line"])
+            made[ldraw.resolve(str(b["part"])), b["color"]].add((b["line"], b["call"]))
     for issue in report["issues"]:
         found = sorted(made.get((issue.get("part"), issue.get("color")), ()))
-        issue["lines"] = [where for n in found[:LINES_CITED] if (where := _line(source, n))]
+        issue["lines"] = [where for line, call in found[:LINES_CITED] if (where := _cite(source, line, call))]
 
 
 def _floating(flags: list[tuple[int, str, str]]) -> str:
@@ -540,21 +530,31 @@ def _line(source: list[str], n: int) -> str | None:
     return f"line {n} `{source[n - 1].strip()[:70]}`" if 0 < n <= len(source) else None
 
 
+def _cite(source: list[str], line: int, call: int) -> str | None:
+    """The line that made a brick, then the top-level line that called it when a helper made it."""
+    made, via = _line(source, line), _line(source, call)
+    return f"{made} from {via}" if made and via and call != line else made
+
+
 def _digest(step: dict) -> str:
-    bricks = [{k: v for k, v in b.items() if k != "line"} for b in step["bricks"]]
+    bricks = [{k: v for k, v in b.items() if k not in ("line", "call")} for b in step["bricks"]]
     return hashlib.sha256(json.dumps([step["title"], bricks], sort_keys=True).encode()).hexdigest()[:16]
 
 
 def _execute(code: str, taken: list[list[int]]) -> dict:
-    """Run a build script in a fresh process with an empty environment and a time limit."""
+    """Run a build script in a fresh process with a fixed hash seed, a clean environment and a time limit."""
     job = json.dumps({"code": code, "taken": taken})
     try:
         done = subprocess.run(
-            [sys.executable, "-I", "-m", "brickyard.script"],
+            [sys.executable, "-s", "-P", "-m", "brickyard.script"],
             input=job,
             capture_output=True,
             text=True,
-            env={"BRICKYARD_LDRAW": str(ldraw.LDRAW), "BRICKYARD_CATALOG": str(catalog.SNAPSHOT)},
+            env={
+                "BRICKYARD_LDRAW": str(ldraw.LDRAW),
+                "BRICKYARD_CATALOG": str(catalog.SNAPSHOT),
+                "PYTHONHASHSEED": "0",
+            },
             cwd=tempfile.gettempdir(),
             timeout=SCRIPT_TIMEOUT_S,
             check=False,

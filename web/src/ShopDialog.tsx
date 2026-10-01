@@ -1,4 +1,4 @@
-import { ArrowUpRightIcon, CheckIcon, CopyIcon, CubeIcon, ShoppingBagIcon, XIcon } from "@phosphor-icons/react";
+import { ArrowUpRightIcon, CheckIcon, CopyIcon, CubeIcon, XIcon } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
 import type { Build, ShoppingPackage } from "./model";
 import { HOLOTAB_INSTALL, prepareShopping, shoppingPrompt } from "./shopping";
@@ -81,17 +81,16 @@ export function ShopDialog({ build, preview, onClose }: Props) {
   };
 
   return (
-    <dialog ref={dialog} className="shop-dialog" aria-labelledby="shop-title" onCancel={onClose}>
-      <div className="shop-heading">
-        <span className="shop-eyebrow">
-          <ShoppingBagIcon size={16} /> FROM YOUR SCREEN TO YOUR HANDS
-        </span>
-        <button className="icon-button" aria-label="Close shopping" onClick={onClose}>
-          <XIcon size={18} />
+    <dialog ref={dialog} className="dialog shop-dialog" aria-labelledby="shop-title" onCancel={onClose}>
+      <div className="dialog-head">
+        <div>
+          <h2 id="shop-title">Shop bricks</h2>
+          <p>Let HoloTab find your bricks and get your carts ready. You choose when to pay.</p>
+        </div>
+        <button className="quiet icon-button" aria-label="Close" onClick={onClose}>
+          <XIcon size={16} />
         </button>
       </div>
-      <h2 id="shop-title">Make it real.</h2>
-      <p className="shop-intro">Let HoloTab find your bricks and get your carts ready. You choose when to pay.</p>
       <div className="shop-model">
         <div className="shop-image">
           {image ? <img src={image} alt={build.name} /> : <CubeIcon size={40} weight="duotone" />}
@@ -121,7 +120,7 @@ export function ShopDialog({ build, preview, onClose }: Props) {
           </span>
           <div>
             <b>Copy your shopping request</b>
-            <p>Your verified parts XML is included. No file to upload.</p>
+            <p>It includes your verified parts list. No file to upload.</p>
           </div>
         </li>
         <li>
@@ -134,11 +133,11 @@ export function ShopDialog({ build, preview, onClose }: Props) {
       </ol>
       {error ? (
         <div className="shop-error" role="alert">
-          <p style={{ whiteSpace: "pre-line" }}>{error}</p>
+          <p className="error-text">{error}</p>
         </div>
       ) : (
-        <button className="shop-copy" disabled={!pack || copying} onClick={copy}>
-          {copied ? <CheckIcon size={18} /> : <CopyIcon size={18} />}
+        <button className="primary shop-copy" disabled={!pack || copying} onClick={copy}>
+          {copied ? <CheckIcon size={16} /> : <CopyIcon size={16} />}
           {!pack ? "Verifying your parts and colors…" : copied ? "Copy again" : "Copy for HoloTab"}
         </button>
       )}

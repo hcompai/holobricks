@@ -132,7 +132,7 @@ export function FilmExport({ build, onClose }: Props) {
       r.calibrate(BROWSER_BUDGET_MS, BROWSER_MOST_SAMPLES);
       const blob = await encodeGif(r, BROWSER_FPS, signal, (value) => {
         setProgress(value);
-        setStatus(`Creating GIF… ${Math.round(value * 100)}%`);
+        setStatus(`Making the GIF… ${Math.round(value * 100)}%`);
       });
       signal.throwIfAborted();
       setFile(new File([blob], filmFilename(build.name, "gif"), { type: "image/gif" }));
@@ -154,7 +154,7 @@ export function FilmExport({ build, onClose }: Props) {
     try {
       await renderInBrowser(controller.signal);
     } catch (e) {
-      if (!controller.signal.aborted) setError(e instanceof Error ? e.message : "Could not make the film.");
+      if (!controller.signal.aborted) setError(e instanceof Error ? e.message : "Could not make the GIF.");
     } finally {
       if (job.current === controller) {
         job.current = null;
@@ -175,14 +175,17 @@ export function FilmExport({ build, onClose }: Props) {
   };
 
   return (
-    <dialog className="film-dialog" ref={dialog} aria-labelledby="film-title" onCancel={onClose}>
-      <div className="film-heading">
+    <dialog className="dialog film-dialog" ref={dialog} aria-labelledby="film-title" onCancel={onClose}>
+      <div className="dialog-head">
         <div>
-          <h2 id="film-title">Share the build</h2>
-          <p>Turn the timeline into a looping GIF.</p>
+          <h2 id="film-title">Share a GIF</h2>
+          <p>
+            Bricks drop in step by step, then the model takes a full turn.
+            {build.status === "building" && " It shows the build so far."}
+          </p>
         </div>
-        <button className="icon-button" aria-label="Close export" onClick={onClose}>
-          <XIcon size={20} />
+        <button className="quiet icon-button" aria-label="Close" onClick={onClose}>
+          <XIcon size={16} />
         </button>
       </div>
       <div className="film-layout">
@@ -199,10 +202,6 @@ export function FilmExport({ build, onClose }: Props) {
           {!ready && (error ? <span>Preview unavailable</span> : <BrickLoader label="Loading the bricks…" />)}
         </div>
         <div className="film-controls">
-          <p className="film-context">
-            {build.status === "building" ? "A snapshot of the build in progress. " : "A snapshot of this model. "}
-            Replays saved assembly steps, not the agent’s working history.
-          </p>
           <fieldset disabled={busy}>
             <legend className="sr-only">Film settings</legend>
             <label>
@@ -232,17 +231,16 @@ export function FilmExport({ build, onClose }: Props) {
               </label>
             )}
           </fieldset>
-          <p className="small muted">Bricks drop in step by step, then the finished model takes a full turn.</p>
-          <div className="film-generation" aria-live="polite">
+          <div className="dialog-generation" aria-live="polite">
             {busy ? (
               <>
                 <progress value={progress} max={1} aria-label="Film progress" />
-                <div className="film-progress-row">
+                <div className="dialog-progress">
                   <span>{status || "Starting…"}</span>
                   <button
                     onClick={() => {
                       job.current?.abort();
-                      setNotice("Export cancelled. You can start it again.");
+                      setNotice("Cancelled. You can start again.");
                     }}
                   >
                     Cancel
@@ -250,12 +248,12 @@ export function FilmExport({ build, onClose }: Props) {
                 </div>
               </>
             ) : (
-              <button className="film-primary" disabled={!ready} onClick={generate}>
-                {file ? "Generate again" : "Generate GIF"}
+              <button className="primary" disabled={!ready} onClick={generate}>
+                {file ? "Make it again" : "Make the GIF"}
               </button>
             )}
             {error && (
-              <div role="alert" className="film-error">
+              <div role="alert" className="error-text">
                 {error} <button onClick={() => setRetry((n) => n + 1)}>Retry</button>
               </div>
             )}
@@ -266,8 +264,8 @@ export function FilmExport({ build, onClose }: Props) {
                 {browserOptions(aspect, seconds, branded, 1).width} ×{" "}
                 {browserOptions(aspect, seconds, branded, 1).height} · {seconds}s · {megabytes(file.size)}
               </p>
-              <div className="film-actions">
-                <a className="film-primary" href={url} download={file.name}>
+              <div className="dialog-actions">
+                <a className="button primary" href={url} download={file.name}>
                   <DownloadSimpleIcon size={16} /> Download GIF
                 </a>
                 {canShare && (
@@ -277,10 +275,7 @@ export function FilmExport({ build, onClose }: Props) {
                 )}
               </div>
               <p className="small muted">
-                {canShare
-                  ? "Choose an app in the share sheet, or download to attach to a post."
-                  : "Download and attach to your social post. File sharing is unavailable in this browser."}{" "}
-                Some platforms may require a video instead.
+                {canShare ? "Share it to an app, or download it for a post." : "Download it and attach it to a post."}
               </p>
             </div>
           )}

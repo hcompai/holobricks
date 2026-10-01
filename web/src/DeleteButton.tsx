@@ -6,7 +6,7 @@ import { useMenu } from "./useMenu";
 export function DeleteButton({ name, onDelete }: { name: string; onDelete: () => Promise<void> }) {
   const { open, setOpen, root } = useMenu();
   return (
-    <div className="menu publish" ref={root}>
+    <div className="menu" ref={root}>
       <button
         className="icon-button"
         onClick={() => setOpen(!open)}

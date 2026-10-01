@@ -89,8 +89,9 @@ test("Import a build uploads the file as the signed-in user after a confirmation
   await mine
     .getByLabel("Model file to import")
     .setInputFiles({ ...file, buffer: gzipSync(JSON.stringify(exported())), name: "grand-rex.json.gz" });
-  const confirm = mine.getByRole("dialog", { name: "Import a build" });
-  await expect(confirm).toContainText("Import Grand Rex (8 pieces)? It will be public");
+  const confirm = mine.getByRole("dialog", { name: "Import" });
+  await expect(confirm).toContainText("Import Grand Rex?");
+  await expect(confirm).toContainText("Its 8 pieces go public in the library");
   await confirm.getByRole("button", { name: "Import" }).click();
 
   await expect(page).toHaveURL(/\?public=import-1$/);

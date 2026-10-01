@@ -96,7 +96,6 @@ class Kit:
 
     def __init__(self, id: str, name: str, prompt: str):
         self.store = Store()
-        self.store.thumbnail(id).unlink(missing_ok=True)
         self.workspace = Workspace(Build(id=id, name=name, prompt=prompt, builder="claude", status="done"))
         self.bench = Workbench(self.workspace)
         self.pending: list[dict] = []

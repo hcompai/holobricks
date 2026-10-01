@@ -1,4 +1,4 @@
-import { MoonIcon, SunIcon } from "@phosphor-icons/react";
+import { CheckIcon, MoonIcon } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
 
 type Theme = "light" | "dark";
@@ -15,7 +15,7 @@ function system(): Theme {
   return systemDark.matches ? "dark" : "light";
 }
 
-/** Follows the OS until clicked, then keeps the chosen theme; index.html applies it before the first paint. */
+/** A menu item turning the dark theme on or off: it follows the OS until clicked, then keeps the choice; index.html applies it before the first paint. */
 export function ThemeToggle() {
   const [theme, setTheme] = useState<Theme>(() => stored() ?? system());
 
@@ -34,10 +34,11 @@ export function ThemeToggle() {
     setTheme(next);
   };
 
-  const label = theme === "dark" ? "Switch to light theme" : "Switch to dark theme";
   return (
-    <button className="icon-button" onClick={toggle} title={label} aria-label={label}>
-      {theme === "dark" ? <SunIcon size={16} weight="bold" /> : <MoonIcon size={16} weight="bold" />}
+    <button role="menuitemcheckbox" aria-checked={theme === "dark"} onClick={toggle}>
+      <MoonIcon size={16} />
+      Dark theme
+      {theme === "dark" && <CheckIcon size={16} className="menu-check" />}
     </button>
   );
 }

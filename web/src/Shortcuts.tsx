@@ -1,6 +1,7 @@
 import { QuestionIcon } from "@phosphor-icons/react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect } from "react";
 import { typing } from "./scene";
+import { useMenu } from "./useMenu";
 
 const MAC = /Mac|iPhone|iPad/.test(navigator.platform);
 const MOD = MAC ? "⌘" : "Ctrl+";
@@ -49,30 +50,18 @@ const SECTIONS: { title: string; rows: [string, string][] }[] = [
 
 /** A "?" button beside the view controls opening every shortcut; the ? key toggles it too. */
 export function Shortcuts() {
-  const [open, setOpen] = useState(false);
-  const root = useRef<HTMLDivElement>(null);
+  const { open, setOpen, root } = useMenu();
 
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
-      if (typing(e)) return;
-      if (e.key === "?") setOpen((o) => !o);
-      else if (e.key === "Escape") setOpen(false);
+      if (!typing(e) && e.key === "?") setOpen((o) => !o);
     };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
   }, []);
 
-  useEffect(() => {
-    if (!open) return;
-    const outside = (e: PointerEvent) => {
-      if (!root.current?.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("pointerdown", outside);
-    return () => document.removeEventListener("pointerdown", outside);
-  }, [open]);
-
   return (
-    <div className="menu" ref={root}>
+    <div className="menu needs-mouse" ref={root}>
       <button
         className={open ? "active" : ""}
         onClick={() => setOpen(!open)}

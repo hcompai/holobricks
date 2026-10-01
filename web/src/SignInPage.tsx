@@ -22,7 +22,7 @@ export function SignInPage() {
       <h1>Brickyard</h1>
       <p className="sign-in-lead">Describe a model. Holo builds it, brick by brick.</p>
       <button
-        className="sign-in-google"
+        className="primary sign-in-google"
         disabled={leaving}
         onClick={() => {
           setLeaving(true);
@@ -33,7 +33,7 @@ export function SignInPage() {
         {leaving ? "Opening Google…" : "Continue with Google"}
       </button>
       {signInError && (
-        <p className="sign-in-error" role="alert">
+        <p className="error-text sign-in-error" role="alert">
           {signInError}
         </p>
       )}

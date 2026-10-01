@@ -21,7 +21,7 @@ export function PublishButton({ published, blocked, author, imported = false, on
         name: "Make private",
         question: "Make this build private?",
         note: imported
-          ? "It leaves the public library and stays under Mine for you alone. Its link still opens it for anyone who has it. You can publish it again."
+          ? "It leaves the public library and stays under Mine for you alone: its link only opens it for you. You can publish it again."
           : "It leaves the public library and its link stops working. You can publish it again.",
         doing: "Making private…",
         icon: <LockSimpleIcon size={16} />,
@@ -39,9 +39,9 @@ export function PublishButton({ published, blocked, author, imported = false, on
       };
 
   return (
-    <div className="menu publish" ref={root}>
+    <div className="menu" ref={root}>
       <button
-        className={published ? "publish-button active" : "publish-button"}
+        className={published ? "published" : undefined}
         onClick={() => setOpen(!open)}
         disabled={!published && blocked !== null}
         aria-haspopup="dialog"
@@ -53,7 +53,7 @@ export function PublishButton({ published, blocked, author, imported = false, on
         }
       >
         {published ? <GlobeIcon size={16} /> : <LockSimpleIcon size={16} />}
-        <span>{published ? "Public" : "Publish"}</span>
+        <span className="button-label">{published ? "Public" : "Publish"}</span>
         {published && <CaretDownIcon size={12} />}
       </button>
       {open && <Confirm {...ask} onClose={() => setOpen(false)} />}

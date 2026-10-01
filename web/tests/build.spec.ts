@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { fixture, revised, site } from "./fixtures";
 import { platform } from "./platform";
 
@@ -108,6 +108,40 @@ test("Holo keeps getting its renders while the user browses other builds", async
   expect(image).toMatch(/^data:image\/jpeg;base64,/);
 });
 
+test("a build running in the background outlives a failed first poll: Holo still gets its render", async ({ page }) => {
+  await site(page);
+  const agp = await platform(page);
+  const model = fixture();
+  agp.session("away");
+  agp.share("away", model);
+  agp.look("away", "while-away");
+  agp.offline = true;
+  await page.goto("/");
+  await expect.poll(() => agp.requests.some((r) => r.path.endsWith("/away/changes"))).toBe(true);
+  agp.offline = false;
+  await expect.poll(() => agp.posted("/tool_results")).toHaveLength(1);
+  expect(agp.posted("/tool_results")[0].result[0]).toMatch(`Revision ${model.revision.slice(0, 8)}`);
+});
+
+test("a model that fails to load leaves the chat readable, and Holo hears why", async ({ page }) => {
+  await site(page);
+  const agp = await platform(page);
+  agp.session("live");
+  agp.say("live", "A tower");
+  agp.share("live", fixture());
+  agp.files.clear();
+  agp.look("live", "lost");
+  await page.goto("/?build=live");
+  await expect(page.locator(".msg.user")).toHaveText("A tower");
+  await expect(page.getByRole("alert")).toContainText("Couldn't load the latest model.");
+  await expect.poll(() => agp.posted("/tool_results")).toHaveLength(1);
+  expect(agp.posted("/tool_results")[0]).toMatchObject({
+    kind: "error_event",
+    tool_req: { id: "lost" },
+    error: expect.stringContaining("could not be loaded"),
+  });
+});
+
 test("a lost connection hides the model until the platform answers again", async ({ page }) => {
   await site(page);
   const agp = await platform(page);
@@ -150,7 +184,7 @@ test("a new build sends the toolkit and the photos; Stop makes Holo answer and t
     environments: [{ kind: "workstation", id: "brickyard" }],
   });
   expect(session.agent.tools.map((t: { name: string }) => t.name)).toEqual(["look"]);
-  const [first] = agp.posted("/messages");
+  const [first] = session.messages;
   expect(first.message).toBe(prompt);
   expect(first.images).toEqual([expect.stringMatching(/^data:image\/jpeg;base64,/)]);
   expect(first.files.map((f: { name: string }) => f.name)).toEqual(["brickyard.tgz", "photo-1.jpg"]);
@@ -165,8 +199,8 @@ test("a new build sends the toolkit and the photos; Stop makes Holo answer and t
 
   await page.getByPlaceholder("Describe how to change it…").fill("Add the lighthouse");
   await send.click();
-  await expect.poll(() => agp.posted("/messages")).toHaveLength(2);
-  expect(agp.posted("/messages")[1]).toMatchObject({ message: "Add the lighthouse", files: [] });
+  await expect.poll(() => agp.posted("/messages")).toHaveLength(1);
+  expect(agp.posted("/messages")[0]).toMatchObject({ message: "Add the lighthouse", files: [] });
 });
 
 test("the library shows my builds by the names Holo gave them; showcases under Public", async ({ page }) => {
@@ -195,6 +229,59 @@ test("the library shows my builds by the names Holo gave them; showcases under P
   await expect(page.locator(".library-page")).toHaveCount(0);
   await shown(page, showcase.revision);
   await expect(page.getByText("A showcase from the gallery: remix it to make your own.")).toBeVisible();
+});
+
+/** A tile's transparent pixels and red ones. */
+const tilePixels = (tile: Locator) =>
+  tile.evaluate(async (img: HTMLImageElement) => {
+    await img.decode();
+    const canvas = Object.assign(document.createElement("canvas"), {
+      width: img.naturalWidth,
+      height: img.naturalHeight,
+    });
+    const ctx = canvas.getContext("2d")!;
+    ctx.drawImage(img, 0, 0);
+    const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    let clear = 0;
+    let red = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i + 3] === 0) clear++;
+      else if (data[i] > 140 && data[i + 1] < 90 && data[i + 2] < 90) red++;
+    }
+    return { clear, red };
+  });
+
+test("a build's library tile shows its latest revision on a transparent background, even when it finished off screen", async ({
+  page,
+}) => {
+  const showcase = { ...fixture(), id: "paris", name: "Paris" };
+  await site(page, [showcase]);
+  const agp = await platform(page);
+  const model = fixture();
+  agp.session("live");
+  agp.share("live", model);
+  agp.answer("live", "A tower.");
+  await page.goto("/?build=live");
+  await shown(page, model.revision);
+  await page.getByRole("button", { name: "Library" }).click();
+  const tile = page.getByRole("region", { name: "Mine" }).locator("img.tile-thumb");
+  await expect(tile).toHaveAttribute("src", /^data:image\/webp;base64,/);
+  const first = await tile.getAttribute("src");
+  const before = await tilePixels(tile);
+  expect(before.clear).toBeGreaterThan(0);
+  expect(before.red).toBeGreaterThan(0);
+
+  agp.state("live", "running");
+  await expect(page.getByRole("region", { name: "Mine" }).locator(".tile")).toContainText("building…");
+  await page.getByRole("region", { name: "Public" }).locator(".tile").click();
+  await expect(page).toHaveURL(/\?showcase=paris$/);
+  agp.share("live", revised({ ...model, pieces: model.pieces.map((p) => ({ ...p, color: 1 })) }));
+  agp.answer("live", "A blue tower.");
+  await page.getByRole("button", { name: "Library" }).click();
+  await expect(tile).not.toHaveAttribute("src", first!);
+  const after = await tilePixels(tile);
+  expect(after.clear).toBeGreaterThan(0);
+  expect(after.red).toBe(0);
 });
 
 test("missing geometry fails closed; a lost WebGL context never leaves a trusted stale canvas", async ({ page }) => {

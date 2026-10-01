@@ -61,6 +61,7 @@ export function PartsPanel({ build, counted }: { build: Build; counted: CountedL
   const error = problem(build, now);
   const lines = error || "error" in build.bom ? [] : build.bom.lines;
   const expiry = "error" in build.bom ? null : build.bom.validation.valid_until * 1000;
+  const size = build.width > 0 ? ` · ${build.width}×${build.depth} studs` : "";
 
   useEffect(() => {
     if (expiry === null || expiry <= Date.now()) return;
@@ -73,7 +74,9 @@ export function PartsPanel({ build, counted }: { build: Build; counted: CountedL
       <div className="parts">
         <div className="parts-head">
           <b>{build.pieces.length} pieces</b>
-          <span className="muted">{counted.length} distinct part and color combinations</span>
+          <span className="muted">
+            {counted.length} part and color combinations{size}
+          </span>
         </div>
         <p className="parts-note" role="status">
           Counted from your edits in this browser, not checked against BrickLink: some parts may not exist in the colors
@@ -107,7 +110,9 @@ export function PartsPanel({ build, counted }: { build: Build; counted: CountedL
     <div className="parts">
       <div className="parts-head">
         <b>{build.pieces.length} pieces</b>
-        <span className="muted">{lines.length} distinct part and color combinations</span>
+        <span className="muted">
+          {lines.length} part and color combinations{size}
+        </span>
       </div>
       {error ? (
         <div role="alert">

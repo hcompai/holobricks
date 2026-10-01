@@ -10,8 +10,8 @@ import sys
 from collections.abc import Sequence
 
 from brickyard import catalog, ldraw, shapes
-from brickyard.model import IDENTITY, Placement, bounds, extent
-from brickyard.shapes import Brick, Cell
+from brickyard.model import IDENTITY, Brick, Placement, bounds, extent
+from brickyard.shapes import Cell
 
 SOURCE = "<script>"
 MAX_BRICKS = 100_000
@@ -34,39 +34,41 @@ class Script:
             self.columns.setdefault(cell, []).append((lo, hi))
 
     @staticmethod
-    def _line() -> int:
+    def _lines() -> tuple[int, int]:
+        """The script line that made the brick and the top-level line that led to it, the same outside helpers."""
+        lines = []
         frame = sys._getframe(1)
-        while frame and frame.f_code.co_filename != SOURCE:
+        while frame:
+            if frame.f_code.co_filename == SOURCE:
+                lines.append(frame.f_lineno)
             frame = frame.f_back
-        return frame.f_lineno if frame else 0
+        return (lines[0], lines[-1]) if lines else (0, 0)
 
-    def _add(self, bricks: list[Brick]) -> None:
+    def _add(self, bricks: list[dict]) -> None:
         if not self.steps:
             self.step("Build")
         self.count += len(bricks)
         if self.count > MAX_BRICKS:
             raise ValueError(f"the script makes more than {MAX_BRICKS} bricks")
-        line = self._line()
+        line, call = self._lines()
         for b in bricks:
-            if "facing" in b:
-                self.steps[-1]["bricks"].append(b | {"line": line})
-                continue
+            self.steps[-1]["bricks"].append(b | {"line": line, "call": call})
             try:
-                x, y, w, d, z, height = self._extent(b)
-            except (KeyError, ValueError):
-                pass
-            else:
+                brick = Brick.model_validate(b)
+                x, y, w, d, z, height = self._extent(brick)
+            except (ArithmeticError, KeyError, ValueError):
+                continue
+            if brick.facing is None:
                 self._occupy(shapes.rect(x, y, w, d), z, z + height)
-            self.steps[-1]["bricks"].append(b | {"line": line})
 
     @staticmethod
     def _extent(b: Brick) -> tuple[int, int, int, int, int, int]:
         """(x, y, w, d, z, height) that the brick fills on the grid."""
-        part = ldraw.resolve(b["part"]) or b["part"]
-        if "pos" in b:
-            return extent(bounds(Placement(part=part, color=b["color"], pos=b["pos"], rot=b["rot"])))
-        w, d = shapes.footprint(b["part"], b["rotation"])
-        return b["x"], b["y"], w, d, b["z"], ldraw.info(part).plates
+        part = ldraw.resolve(b.part) or b.part
+        if b.pos is not None:
+            return extent(bounds(Placement(part=part, color=b.color, pos=b.pos, rot=b.rot)))
+        w, d = shapes.footprint(b.part, b.rotation)
+        return b.x, b.y, w, d, b.z, ldraw.info(part).plates
 
     def step(self, title: str) -> None:
         """Start a manual step; the calls after it go into it, with `random` seeded from its title."""

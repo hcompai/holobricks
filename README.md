@@ -56,13 +56,14 @@ browser ──same tab──▶ portal ──Google──▶ portal sets its acc
 portal ──redirect──▶ GET /api/session: who is it? mint a 30-day "Brickyard <email> <time>" key ──▶ back where the user was
 browser ──key──▶ Agents API (Holo builds, sessions listed per user)
 browser ──POST /api/builds (pass + key)──▶ snapshot of the session ──▶ Vercel Blob (public)
-signed in ──GET /api/builds──▶ the public library
+signed in ──GET /api/builds (pass + key)──▶ the public library
 ```
 
 - `web/api/` holds the Vercel functions; `web/scripts/build-api.mjs` bundles them, and `npm run dev` serves them too. Deployed, `/?public=<id>` and `/?showcase=<id>` go to `/api/preview`: the app's page, with that build's name, piece count, author and cover in its link preview.
 - The portal's cookie never reaches a local dev server, so there the portal sends a one-time code instead (PKCE, RFC 8252); it only redirects to `127.0.0.1`, where `localhost` forwards.
+- Every library read needs a pass: signed out, only link previews show a build's name and cover. A session is its owner's to publish, stop and change; a teammate who opens its link sees it read only, to remix.
 - Signing in again revokes the previous key. The key lives in the browser's local storage; the pass, signed with `BRICKYARD_SECRET`, names its holder to the functions.
-- An imported build has no session, so it lives only in the library: **Make private** moves its entry to `private/<owner>/`, out of the public listing, listed (`GET /api/builds?mine=1`) and opened only for its owner; its files keep their unguessable public URLs, so a shared link still opens it. **Delete** removes its entry and files. Sessions cannot be deleted through the Agents API; they end after 30 days.
+- An imported build has no session, so it lives only in the library: **Make private** moves its entry to `private/<owner>/`, out of the public listing, listed (`GET /api/builds?mine=1`) and opened only for its owner. **Delete** removes its entry and files. Sessions cannot be deleted through the Agents API; they are kept.
 - Publishing copies the session's model, transcript and images, so a public build stands on its own, even if its session is deleted. Only its author can publish or unpublish a build; the emails in `BRICKYARD_ADMINS` can unpublish any.
 - Server environment: `BRICKYARD_SECRET`, `BRICKYARD_ADMINS`, and `BLOB_READ_WRITE_TOKEN` from the `brickyard-library` Blob store.
 
