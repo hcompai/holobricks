@@ -938,9 +938,9 @@ export class BrickScene {
     if (walk === this.walking) return;
     this.walking = walk;
     this.glide = null;
-    this.camera.fov = walk ? FOV.walk : FOV.orbit;
-    this.camera.updateProjectionMatrix();
     if (walk) {
+      this.camera.fov = FOV.walk;
+      this.camera.updateProjectionMatrix();
       this.pointer ??= this.makePointer();
       this.controls.enabled = false;
       this.controls.autoRotate = false;
@@ -954,8 +954,9 @@ export class BrickScene {
       this.walker = null;
       this.pointer?.unlock();
       this.controls.enabled = true;
-      this.userMoved = false;
-      this.frameView(this.framing.view, this.framing.width, this.framing.depth);
+      // Carry on from where the walk ended: same place, same lens, orbiting what is in view. A chosen view resets both.
+      this.controls.target.copy(this.inView());
+      this.controls.update();
     }
     this.dirty = true;
   }
@@ -963,6 +964,16 @@ export class BrickScene {
   /** Take the mouse pointer to look around, while walking; the browser needs a click for it. */
   lockPointer() {
     if (this.walking) this.pointer?.lock();
+  }
+
+  /** The point the camera looks at: the piece in the middle of the view, else as far as the model's middle. */
+  private inView(): THREE.Vector3 {
+    this.raycaster.setFromCamera(new THREE.Vector2(0, 0), this.camera);
+    const meshes = [...this.batches.values()].flatMap((b) => b.meshes());
+    const hit = this.raycaster.intersectObjects(meshes, false)[0];
+    const middle = this.modelBox().getCenter(new THREE.Vector3());
+    const distance = hit?.distance ?? Math.max(this.camera.position.distanceTo(middle), 2 * STUD);
+    return this.raycaster.ray.at(distance, new THREE.Vector3());
   }
 
   private makePointer(): PointerLockControls {
@@ -1099,6 +1110,8 @@ export class BrickScene {
     if (box.isEmpty()) {
       box.set(new THREE.Vector3(0, 0, -depth * 20), new THREE.Vector3(width * 20, 40, 0));
     }
+    // A view framed by the app always uses the orbit lens, even right after a walk kept the wider one.
+    this.camera.fov = FOV.orbit;
     const center = box.getCenter(new THREE.Vector3());
     direction = direction.clone().normalize();
     this.camera.position.copy(center).add(direction);
@@ -1158,6 +1171,7 @@ export class BrickScene {
       target: this.controls.target.clone(),
       near,
       far,
+      fov: this.camera.fov,
     };
     const pixelRatio = this.renderer.getPixelRatio();
     const visibleStep = this.visibleStep;
@@ -1194,7 +1208,7 @@ export class BrickScene {
       this.renderer.clippingPlanes = [];
       this.renderer.setPixelRatio(pixelRatio);
       this.resize();
-      Object.assign(this.camera, { near: saved.near, far: saved.far });
+      Object.assign(this.camera, { near: saved.near, far: saved.far, fov: saved.fov });
       this.camera.position.copy(saved.position);
       this.camera.updateProjectionMatrix();
       this.controls.target.copy(saved.target);
