@@ -2,7 +2,9 @@ import { expect, test } from "@playwright/test";
 import { createServer } from "node:http";
 import { gzipSync } from "node:zlib";
 import { GET, POST, PATCH } from "../api/forks";
-import { pass } from "../api/lib/account";
+import { pass, privateScope } from "../api/lib/account";
+import { GET as namesGET, PATCH as namesPATCH } from "../api/names";
+import { projectName } from "../api/lib/names";
 import { snapshot } from "../api/lib/snapshot";
 import { forkSeed } from "../src/forkModel";
 import { ACCOUNT, fixture } from "./fixtures";
@@ -212,4 +214,54 @@ test("missing storage configuration reports an unavailable service without losin
   } finally {
     process.env.BLOB_READ_WRITE_TOKEN = "vercel_blob_rw_teststore_testsecret";
   }
+});
+
+test("rename persists for a saved fork without modifying geometry, history, links or starting Holo", async () => {
+  await POST(request("POST", { id: copy, seed: seed() }));
+  const before = await (await GET(request("GET", undefined, ACCOUNT.user, `?id=${copy}`))).json();
+  for (const name of ["Red lighthouse", "  Port light  "]) {
+    const response = await namesPATCH(request("PATCH", { id: copy, source: "fork", name }));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ id: copy, name: name.trim() });
+  }
+  expect(await (await namesGET(request())).json()).toEqual([
+    { id: copy, name: "Port light", updated: expect.any(Number) },
+  ]);
+  expect(await projectName(ACCOUNT.user.id, copy)).toMatchObject({ name: "Port light" });
+  expect(await (await GET(request("GET", undefined, ACCOUNT.user, `?id=${copy}`))).json()).toEqual(before);
+  expect(agentCalls).toEqual([]);
+});
+
+test("rename enforces authentication, ownership and short non-empty names", async () => {
+  expect((await namesGET(new Request("http://bricks.test/api/names"))).status).toBe(401);
+  await POST(request("POST", { id: copy, seed: seed() }));
+  const other = { ...ACCOUNT.user, id: "another-user" };
+  expect((await namesPATCH(request("PATCH", { id: copy, source: "fork", name: "Not mine" }, other))).status).toBe(404);
+  own = false;
+  expect((await namesPATCH(request("PATCH", { id: "own-run", source: "session", name: "Not mine" }))).status).toBe(403);
+  own = true;
+  expect((await namesPATCH(request("PATCH", { id: "own-run", source: "session", name: "My project" }))).status).toBe(
+    200,
+  );
+  for (const name of ["", "   ", "x".repeat(81), "bad\nname"])
+    expect((await namesPATCH(request("PATCH", { id: copy, source: "fork", name }))).status).toBe(400);
+  expect((await namesPATCH(request("PATCH", { id: "../path", source: "session", name: "X" }))).status).toBe(400);
+  expect((await namesPATCH(request("PATCH", { id: "showcase", source: "showcase", name: "X" }))).status).toBe(400);
+  expect(await (await namesGET(request("GET", undefined, other))).json()).toEqual([]);
+  expect(agentCalls.every((call) => call.startsWith("GET "))).toBe(true);
+});
+
+test("an imported or published project's rename retains its link and visibility", async () => {
+  const published = { id: "import-test", owner: ACCOUNT.user.id, name: "Old name", build: "unchanged-model-url" };
+  objects.set("library/import-test.json", Buffer.from(JSON.stringify(published)));
+  const response = await namesPATCH(request("PATCH", { id: "import-test", source: "public", name: "New name" }));
+  expect(response.status).toBe(200);
+  expect(JSON.parse(objects.get("library/import-test.json")!.toString())).toEqual({ ...published, name: "New name" });
+  expect(objects.has(`private/${ACCOUNT.user.id}/import-test.json`)).toBe(false);
+  expect(await projectName(ACCOUNT.user.id, "import-test")).toMatchObject({ name: "New name" });
+  const other = { ...ACCOUNT.user, id: "another-user" };
+  expect((await namesPATCH(request("PATCH", { id: "import-test", source: "public", name: "No" }, other))).status).toBe(
+    404,
+  );
+  expect([...objects.keys()].filter((key) => key.startsWith(`names/${privateScope(other.id)}/`))).toEqual([]);
 });

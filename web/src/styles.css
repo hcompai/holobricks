@@ -2493,3 +2493,68 @@ main {
     margin-top: 0;
   }
 }
+
+.project-title {
+  position: relative;
+  flex: 1;
+  overflow: visible;
+}
+.project-title > button {
+  min-width: 0;
+  width: 100%;
+  justify-content: flex-start;
+  gap: 6px;
+  padding: 3px 0;
+  font: inherit;
+}
+.project-title > button > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.project-title svg {
+  flex: none;
+}
+.project-title > button > svg {
+  color: var(--text-tertiary);
+}
+.project-title.editing {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin: 0;
+}
+.project-title input {
+  width: 0;
+  min-width: 0;
+  flex: 1;
+  padding: 5px;
+  font: inherit;
+}
+.project-title.editing > button {
+  width: auto;
+  flex: none;
+  padding: 5px;
+}
+.rename-error {
+  position: absolute;
+  z-index: 10;
+  top: 100%;
+  left: 0;
+  min-width: 200px;
+  max-width: 100%;
+  padding: 8px;
+  font-size: 12px;
+  white-space: normal;
+  background: var(--background-page);
+  border: 1px solid var(--stroke-default);
+  border-radius: 6px;
+}
+@media (max-width: 760px) {
+  header > .project-title {
+    flex-shrink: 1;
+  }
+  header > .project-title + .spacer {
+    display: none;
+  }
+}

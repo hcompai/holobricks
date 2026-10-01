@@ -4,6 +4,8 @@ import type { Account } from "./account";
 import { AccountMenu } from "./AccountMenu";
 import { RecoveryPanel } from "./RecoveryPanel";
 import { create, remix, say, stop } from "./agent";
+import { ProjectTitle } from "./ProjectTitle";
+import { useProjectNames } from "./useProjectNames";
 import { HistoryPanel } from "./HistoryPanel";
 import { design, useHistory, type Version } from "./history";
 import { startFork, forkSeed, type ForkSeed } from "./fork";
@@ -96,10 +98,15 @@ export default function App({ account }: { account: Account }) {
   const [libraryOpen, setLibraryOpen] = useState(urlLibrary);
   const buildId = ref?.id ?? null;
   const read = useBuild(ref);
+  const { names, rename } = useProjectNames(account.user.id);
   /** What the user just asked for, shown as a starting build where they asked it, until its session answers. */
   const [draft, setDraft] = useState<{ at: BuildRef | null; build: Build; since: number } | null>(null);
   const drafted = draft && same(draft.at, ref) && read.build?.id !== draft.build.id ? draft.build : null;
-  const live = drafted ?? read.build;
+  const rawLive = drafted ?? read.build;
+  const live = useMemo(
+    () => (rawLive && ref && names[ref.id] ? { ...rawLive, name: names[ref.id].name } : rawLive),
+    [rawLive, ref?.id, names],
+  );
   const loading = read.loading && !drafted;
   const activity = drafted ? { label: PHASES.idea, since: draft!.since, work: null } : read.activity;
   const { error, syncError, models, seed, runId, attachSession } = read;
@@ -137,7 +144,11 @@ export default function App({ account }: { account: Account }) {
   const palette = usePalette();
   const prices = usePrices();
   const viewer = useRef<ViewerHandle>(null);
-  const [builds, setBuilds] = useState<BuildSummary[] | null>(null);
+  const [loadedBuilds, setBuilds] = useState<BuildSummary[] | null>(null);
+  const builds = useMemo(
+    () => loadedBuilds?.map((b) => (names[b.id] ? { ...b, name: names[b.id].name } : b)) ?? null,
+    [loadedBuilds, names],
+  );
   const [buildsFailed, setBuildsFailed] = useState<Shelf[]>([]);
   const [center, setCenter] = useState<"model" | "parts">("model");
   const [step, setStep] = useState(Infinity);
@@ -385,6 +396,7 @@ export default function App({ account }: { account: Account }) {
         : ref?.source === "public" && summary?.owner === account.user.id;
   /** An imported build of theirs: it lives only in the library, with no session to fall back to. */
   const imported = owned && ref?.source === "public" && ref.id.startsWith("import-");
+  const renameTitle = ref && owned && !previewing ? (name: string) => rename(ref, name) : undefined;
 
   const unpublishBuild = async () => {
     if (!live) return;
@@ -557,9 +569,12 @@ export default function App({ account }: { account: Account }) {
           <span className="button-label">Library</span>
         </button>
         {phone && heading && (
-          <span className="title" title={heading.name}>
-            {heading.name}
-          </span>
+          <ProjectTitle
+            key={`${ref?.source}:${ref?.id}`}
+            className="title"
+            name={heading.name}
+            onRename={renameTitle}
+          />
         )}
         <span className="spacer" />
         {!phone && actions}
@@ -567,9 +582,12 @@ export default function App({ account }: { account: Account }) {
       </header>
       <aside>
         <div className="aside-bar">
-          <span className="aside-title" title={phone ? undefined : heading?.name}>
-            {previewing ? "Latest chat" : (!phone && heading?.name) || "Chat"}
-          </span>
+          <ProjectTitle
+            key={`${ref?.source}:${ref?.id}:${previewing}`}
+            className="aside-title"
+            name={previewing ? "Latest chat" : (!phone && heading?.name) || "Chat"}
+            onRename={!phone && heading ? renameTitle : undefined}
+          />
           {ref && (
             <button className="quiet" onClick={() => open(null)}>
               <PlusIcon size={16} />

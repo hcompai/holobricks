@@ -3,6 +3,7 @@ import { gzipSync } from "node:zlib";
 import { holder, isAdmin } from "./lib/account";
 import { body, Refusal, route } from "./lib/http";
 import { snapshot } from "./lib/snapshot";
+import { projectName } from "./lib/names";
 import {
   enter,
   files,
@@ -92,6 +93,7 @@ export const POST = route(async (request) => {
     (name, image) => keep(name, image, image.type || "image/png"),
     user.id,
   );
+  build.name = (await projectName(user.id, id))?.name ?? build.name;
   const coverUrl = cover ? await keep(coverName(cover), cover.data, cover.type) : null;
   // The Blob CDN can serve the previous entry for a minute, and with it the previous thumbnail.
   if (previous?.thumbnail) written.push(bare(previous.thumbnail));

@@ -159,7 +159,7 @@ export async function publicBuild(id: string): Promise<Build> {
   const published = newest(await read<Published>({ id }));
   const response = await fetch(published.build);
   if (!response.ok) throw new Error(`No public build ${id}`);
-  return { ...(await unpack<Build>(await response.blob())), id, open: false };
+  return { ...(await unpack<Build>(await response.blob())), id, name: published.name, open: false };
 }
 
 const signed = () => ({ Authorization: `Bearer ${current()?.pass}`, "X-Agents-Key": key() });
@@ -353,3 +353,16 @@ export async function linkFork(id: string, sessionId: string) {
     body: JSON.stringify({ id, sessionId }),
   });
 }
+
+export interface ProjectName {
+  id: string;
+  name: string;
+  updated: number;
+}
+export const projectNames = () => api<ProjectName[]>("/api/names", { headers: signed() });
+export const renameProject = (ref: { id: string; source: string }, name: string) =>
+  api<ProjectName>("/api/names", {
+    method: "PATCH",
+    headers: { ...signed(), "Content-Type": "application/json" },
+    body: JSON.stringify({ ...ref, name }),
+  });

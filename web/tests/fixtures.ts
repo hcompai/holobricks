@@ -81,6 +81,16 @@ export async function signedIn(page: Page, account = ACCOUNT) {
 /** Serve the static files the app reads: the palette, the toolkit and these showcases; the Agents API has no sessions and the public library is empty. `account` is signed in, if any. */
 export async function site(page: Page, showcases: Build[] = [], account: typeof ACCOUNT | null = ACCOUNT) {
   if (account) await signedIn(page, account);
+  const names = new Map<string, { id: string; name: string; updated: number }>();
+  await page.route("**/api/names", async (route) => {
+    if (route.request().method() === "PATCH") {
+      const { id, name } = route.request().postDataJSON();
+      const entry = { id, name: name.trim(), updated: Date.now() };
+      names.set(id, entry);
+      return route.fulfill({ json: entry });
+    }
+    return route.fulfill({ json: [...names.values()] });
+  });
   const copies = new Map<string, SavedFork>();
   const copyRequests: any[] = [];
   const copying = { loseResponse: false, fail: false };
@@ -149,5 +159,5 @@ export async function site(page: Page, showcases: Build[] = [], account: typeof 
     const shown = showcases.find((b) => b.id === id);
     return shown ? route.fulfill({ json: shown }) : route.fulfill({ status: 404 });
   });
-  return { copies, copyRequests, copying };
+  return { copies, copyRequests, copying, names };
 }
