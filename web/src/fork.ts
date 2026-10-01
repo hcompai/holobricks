@@ -84,7 +84,7 @@ export function forkOperation() {
     if (pending) return pending;
     const run = async () => {
       if (sent) {
-        const id = await find();
+        const id = await find().catch(() => null);
         if (id) return finish(id);
         throw new Error("Start unconfirmed. Check again before creating another fork.");
       }

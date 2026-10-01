@@ -4,10 +4,9 @@ import type { Account } from "./account";
 import { AccountMenu } from "./AccountMenu";
 import { RecoveryPanel } from "./RecoveryPanel";
 import { create, say, stop } from "./agent";
-import { ForkDialog } from "./ForkDialog";
 import { HistoryPanel } from "./HistoryPanel";
 import { design, useHistory, type Version } from "./history";
-import type { ForkOrigin } from "./fork";
+import { forkOperation, forkSeed, type ForkOrigin } from "./fork";
 import { provideParts } from "./scene";
 import { useEdits } from "./edits";
 import { type Build, type BuildSummary, type Piece, type Source, verified } from "./model";
@@ -80,7 +79,11 @@ export default function App({ account }: { account: Account }) {
   const [historyOpen, setHistoryOpen] = useState(() => urlVersion() !== null);
   const [wantedVersion, setWantedVersion] = useState<number | null>(urlVersion);
   const [selected, setSelected] = useState<Version | null>(null);
-  const [forking, setForking] = useState<{ build: Build; origin: ForkOrigin } | null>(null);
+  const [forking, setForking] = useState<{
+    build: Build;
+    origin: ForkOrigin;
+    send: ReturnType<typeof forkOperation>;
+  } | null>(null);
   const history = useHistory(
     ref?.source === "session" ? ref.id : null,
     models,
@@ -88,6 +91,7 @@ export default function App({ account }: { account: Account }) {
     historyOpen || wantedVersion !== null,
   );
   const previewing = selected !== null || wantedVersion !== null;
+  const readOnly = previewing || !!forking;
   useEffect(() => {
     if (wantedVersion === null || history.loading || history.error || loading) return;
     const version = history.versions.find((v) => v.number === wantedVersion);
@@ -98,11 +102,12 @@ export default function App({ account }: { account: Account }) {
   }, [wantedVersion, history.versions, history.loading, history.error, loading]);
   /** Preview never replaces the live model used by the builder or the manual-edit state. */
   const build =
-    wantedVersion !== null
+    forking?.build ??
+    (wantedVersion !== null
       ? null
       : selected && live
         ? { ...live, ...selected.model, name: live.name, open: false }
-        : edits.build;
+        : edits.build);
   const [mode, setMode] = useState<Mode>("view");
   const palette = usePalette();
   const prices = usePrices();
@@ -120,11 +125,11 @@ export default function App({ account }: { account: Account }) {
   const [exportBuild, setExportBuild] = useState<Build | null>(null);
   const [instructionsBuild, setInstructionsBuild] = useState<Build | null>(null);
   const [shopping, setShopping] = useState<{ build: Build; preview: Promise<Blob | null> } | null>(null);
-  const edited = !previewing && edits.edits.length > 0 && build !== live;
+  const edited = !readOnly && edits.edits.length > 0 && build !== live;
 
   useEffect(() => {
-    if (mode === "edit" && (!edits.editable || previewing)) setMode("view");
-  }, [mode, edits.editable, previewing]);
+    if (mode === "edit" && (!edits.editable || readOnly)) setMode("view");
+  }, [mode, edits.editable, readOnly]);
   const shop = () => {
     if (build?.status === "done" && build.pieces.length && !edited) {
       setShopping({ build: structuredClone(build), preview: viewer.current?.image() ?? Promise.resolve(null) });
@@ -270,13 +275,13 @@ export default function App({ account }: { account: Account }) {
   };
 
   const saveThumbnail = async (png: Blob) => {
-    if (previewing || ref?.source !== "session") return;
+    if (readOnly || ref?.source !== "session") return;
     remember(ref.id, { thumbnail: await thumbnail(png) });
     refreshBuilds();
   };
 
   const publishBuild = async () => {
-    if (!live || previewing) return;
+    if (!live || readOnly) return;
     const png = await viewer.current?.thumbnail();
     const hand = edits.edits.length ? { revision: live.revision, edits: edits.edits } : null;
     await publish(live.id, png ? await thumbnail(png) : null, hand);
@@ -345,10 +350,11 @@ export default function App({ account }: { account: Account }) {
     setPlaying(false);
   };
   const beginFork = () => {
-    if (!build?.pieces.length || !ref || wantedVersion !== null) return;
+    if (!build?.pieces.length || !ref || wantedVersion !== null || forking) return;
     const saved = !edited && [...history.versions].reverse().find((v) => design(v.model) === design(build));
     setForking({
-      build: structuredClone(build),
+      build: { ...structuredClone(build), name: `${build.name.slice(0, 70)} · Fork` },
+      send: forkOperation(),
       origin: {
         ...ref,
         name: build.name,
@@ -356,6 +362,11 @@ export default function App({ account }: { account: Account }) {
         revision: build.revision,
       },
     });
+    setHistoryOpen(false);
+    setMode("view");
+    setCenter("model");
+    setFollowing(true);
+    setPlaying(false);
   };
   const preview = previewing && (
     <>
@@ -411,7 +422,7 @@ export default function App({ account }: { account: Account }) {
           </>
         )}
         <span className="spacer" />
-        {build && owned && !previewing && (
+        {build && owned && !readOnly && (
           <PublishButton
             published={imported ? !summary?.private : ref?.source === "public" || !!listed}
             imported={imported}
@@ -427,8 +438,8 @@ export default function App({ account }: { account: Account }) {
             onUnpublish={unpublishBuild}
           />
         )}
-        {build && shared && !previewing && <CopyLink url={linkTo(shared)} />}
-        {build && imported && !previewing && <DeleteButton name={build.name} onDelete={deleteBuild} />}
+        {build && shared && !readOnly && <CopyLink url={linkTo(shared)} />}
+        {build && imported && !readOnly && <DeleteButton name={build.name} onDelete={deleteBuild} />}
         {build && (
           <button
             className="shop-trigger"
@@ -457,7 +468,7 @@ export default function App({ account }: { account: Account }) {
       )}
       <aside>
         <div className="aside-bar">
-          <span className="aside-title">{previewing ? "Latest chat" : "Chat"}</span>
+          <span className="aside-title">{previewing && !forking ? "Latest chat" : "Chat"}</span>
           {ref && (
             <button className="new-build" onClick={() => open(null)}>
               <PlusIcon size={14} weight="bold" />
@@ -466,7 +477,7 @@ export default function App({ account }: { account: Account }) {
           )}
         </div>
         <div className="aside-body">
-          {seed && (
+          {seed && !forking && (
             <p className="recovery-origin">
               Fork of{" "}
               <a
@@ -487,7 +498,7 @@ export default function App({ account }: { account: Account }) {
               </a>
             </p>
           )}
-          {ref?.source === "session" && card(ref.id)?.recoveredFrom && (
+          {!forking && ref?.source === "session" && card(ref.id)?.recoveredFrom && (
             <p className="recovery-origin">
               Recovery attempt ·{" "}
               <a
@@ -508,12 +519,29 @@ export default function App({ account }: { account: Account }) {
             activity={activity}
             closed={closed}
             preview={preview}
+            fork={
+              forking
+                ? {
+                    version: forking.origin.version,
+                    onCancel: () => setForking(null),
+                    onSend: async (text, images) => {
+                      const id = await forking.send(
+                        forkSeed(forking.build, forking.origin, forking.build.name),
+                        text,
+                        images,
+                      );
+                      if (same(ref, opened.current)) open({ id, source: "session" });
+                      refreshBuilds();
+                    },
+                  }
+                : undefined
+            }
             onCreate={start}
             onSay={async (text, images) => {
-              if (live?.open && !previewing && ref?.source === "session") await say(live.id, text, images);
+              if (live?.open && !readOnly && ref?.source === "session") await say(live.id, text, images);
             }}
             onStop={async () => {
-              if (live && !previewing && ref?.source === "session") await stop(live.id);
+              if (live && !readOnly && ref?.source === "session") await stop(live.id);
             }}
             onFork={beginFork}
           />
@@ -536,7 +564,7 @@ export default function App({ account }: { account: Account }) {
               Parts
             </button>
           </div>
-          {build && (build.pieces.length > 0 || models.length > 0) && (
+          {!forking && build && (build.pieces.length > 0 || models.length > 0) && (
             <div className="history-tools">
               {selected && <span className="preview-badge">Preview · V{selected.number}</span>}
               {ref?.source === "session" && (
@@ -554,8 +582,8 @@ export default function App({ account }: { account: Account }) {
               framing={framing}
               spin={spin}
               mode={mode}
-              canEdit={!previewing && edits.editable && !!build?.pieces.length}
-              editHint={previewing ? "Edit Latest or Fork" : undefined}
+              canEdit={!readOnly && edits.editable && !!build?.pieces.length}
+              editHint={forking ? "Send to start" : previewing ? "Edit Latest or Fork" : undefined}
               canWalk={!!build?.pieces.length}
               onFrame={(next) => {
                 if (mode === "walk") setMode("view");
@@ -563,7 +591,7 @@ export default function App({ account }: { account: Account }) {
               }}
               onSpin={setSpin}
               onMode={(mode) => {
-                if (mode !== "edit" || !previewing) setMode(mode);
+                if (mode !== "edit" || !readOnly) setMode(mode);
               }}
             />
           )}
@@ -586,17 +614,17 @@ export default function App({ account }: { account: Account }) {
                 buildId && !error ? `Opening ${heading?.name ?? "the build"}` : starting ? "Starting Holo…" : null
               }
               step={visibleStep}
-              syncError={selected ? null : syncError}
+              syncError={selected || forking ? null : syncError}
               framing={framing}
               spin={spin}
               onThumbnail={saveThumbnail}
               empty="Describe a model in the chat to start building."
               mode={mode}
-              edits={previewing ? { ...edits, editable: false, stale: 0, hidden: 0 } : edits}
+              edits={readOnly ? { ...edits, editable: false, stale: 0, hidden: 0 } : edits}
               describe={describer(build, palette)}
               palette={palette}
               onMode={(mode) => {
-                if (mode !== "edit" || !previewing) setMode(mode);
+                if (mode !== "edit" || !readOnly) setMode(mode);
               }}
             />
           </div>
@@ -662,17 +690,6 @@ export default function App({ account }: { account: Account }) {
         />
       )}
       {shopping && <ShopDialog build={shopping.build} preview={shopping.preview} onClose={() => setShopping(null)} />}
-      {forking && (
-        <ForkDialog
-          {...forking}
-          onClose={() => setForking(null)}
-          onCreated={(id) => {
-            setForking(null);
-            open({ id, source: "session" });
-            refreshBuilds();
-          }}
-        />
-      )}
     </div>
   );
 }

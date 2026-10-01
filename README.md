@@ -179,16 +179,16 @@ History is read from immutable authenticated session attachments, on demand, wit
 A missing or invalid attachment blocks numbering until it can be retrieved again.
 
 Only **Latest** takes edits. Earlier versions are read-only previews, including after reopening their
-`?build=…&version=N` URL. **Fork** opens a form; **Fork & build** creates a separate private model from
-that exact snapshot and the new request. Its starting model is V1, and subsequent changes become V2,
+`?build=…&version=N` URL. **Fork** opens the existing chat composer on that exact snapshot.
+**Send** creates a separate private model with the new request. Its starting model is V1, and subsequent changes become V2,
 V3, etc. The original history remains intact. Each model has one Library card; versions do not add cards.
 The fork keeps a link to its source version. A fork copies the model, not the old conversation; references
-for the new request can be attached in the form.
+for the new request use the existing attachment button. Cancel returns to the source and keeps its chat draft.
 
 The seed and source reference travel as a session attachment, so the initial model survives reloads
 and failed setup. Creation is atomic and is not automatically retried; an unconfirmed response offers
 **Check again**, which looks up the same operation without posting another creation. Preview never
 changes the model used to answer Holo's render requests. A downloaded preview remains viewable if
-live polling loses its connection. Published copies expose the chosen name, not private history or
+live polling loses its connection. Published copies expose the fork name, not private history or
 ancestry. Public and showcase snapshots can be forked but do not expose their author's session history.
 Browser-only hand edits keep their existing draft behaviour; they enter a new fork when explicitly copied.

@@ -178,17 +178,32 @@ interface Props {
   /** Why the builder takes no message here, or null when it does. */
   closed: ReactNode;
   preview?: ReactNode;
+  fork?: {
+    version: number | null;
+    onSend: (text: string, images: string[]) => Promise<void>;
+    onCancel: () => void;
+  };
   onCreate: (prompt: string, images: string[]) => Promise<void>;
   onSay: (text: string, images: string[]) => Promise<void>;
   onStop: () => Promise<void>;
   onFork: () => void;
 }
 
-export function ChatPanel({ build, loading, activity, closed, preview, onCreate, onSay, onStop, onFork }: Props) {
-  const [text, setText] = useState("");
-  const [attachments, setAttachments] = useState<string[]>([]);
+const emptyDraft = () => ({ text: "", attachments: [] as string[], error: "" });
+
+export function ChatPanel({ build, loading, activity, closed, preview, fork, onCreate, onSay, onStop, onFork }: Props) {
+  const [draft, setDraft] = useState(emptyDraft);
+  const [forkDraft, setForkDraft] = useState(emptyDraft);
+  const { text, attachments, error } = fork ? forkDraft : draft;
+  const update = fork ? setForkDraft : setDraft;
+  const setText = (text: string) => update((d) => ({ ...d, text }));
+  const setError = (error: string) => update((d) => ({ ...d, error }));
+  const setAttachments = (change: (images: string[]) => string[]) =>
+    update((d) => ({ ...d, attachments: change(d.attachments) }));
   const [sending, setSending] = useState(false);
-  const [error, setError] = useState("");
+  const pending = useRef(false);
+  const uncertain = !!fork && error.startsWith("Start unconfirmed");
+  const locked = sending || uncertain;
   const log = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
   const picker = useRef<HTMLInputElement>(null);
@@ -197,7 +212,7 @@ export function ChatPanel({ build, loading, activity, closed, preview, onCreate,
   const scrolled = useRef<string | null>(null);
   /** Whether the log sits at its end, so new lines scroll it and reading earlier ones is left alone. */
   const pinned = useRef(true);
-  const busy = build?.status === "building";
+  const busy = !fork && build?.status === "building";
   const changing = Boolean(build || loading);
   /** How many messages the build had when it opened: only later ones animate in. */
   const first = useRef<{ id: string | null; count: number }>({ id: null, count: 0 });
@@ -218,9 +233,13 @@ export function ChatPanel({ build, loading, activity, closed, preview, onCreate,
   useEffect(() => {
     if (home) input.current?.focus();
   }, [home]);
+  useEffect(() => {
+    setForkDraft(emptyDraft());
+    if (fork) input.current?.focus();
+  }, [!!fork]);
 
   const attach = async (files: File[]) => {
-    if (!files.length) return;
+    if (!files.length || locked) return;
     try {
       const added = await Promise.all(files.map(reference));
       setAttachments((current) => [...current, ...added].slice(0, MAX_ATTACHMENTS));
@@ -231,16 +250,22 @@ export function ChatPanel({ build, loading, activity, closed, preview, onCreate,
 
   const send = async () => {
     const prompt = text.trim();
-    if (preview || closed || (!prompt && !attachments.length) || sending || (changing && (busy || !build))) return;
+    if (
+      (!fork && (preview || closed || (changing && (busy || !build)))) ||
+      (!prompt && !attachments.length) ||
+      pending.current
+    )
+      return;
+    pending.current = true;
     setSending(true);
     setError("");
     try {
-      await (changing ? onSay : onCreate)(prompt, attachments);
-      setText("");
-      setAttachments([]);
+      await (fork?.onSend ?? (changing ? onSay : onCreate))(prompt, attachments);
+      update(emptyDraft());
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
+      pending.current = false;
       setSending(false);
     }
   };
@@ -255,7 +280,7 @@ export function ChatPanel({ build, loading, activity, closed, preview, onCreate,
           pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < PINNED_PX;
         }}
       >
-        {loading ? (
+        {fork ? null : loading ? (
           <div className="msg assistant live">
             <span className="shimmer">Opening the chat…</span>
           </div>
@@ -286,14 +311,22 @@ export function ChatPanel({ build, loading, activity, closed, preview, onCreate,
         {busy && activity && <Live activity={activity} />}
       </div>
       {home && <p className="tab-hint">Keep this tab open while Holo builds: your browser provides the renders.</p>}
-      {preview && <div className="preview-note">{preview}</div>}
-      {closed && !preview && (
+      {fork && (
+        <div className="fork-note">
+          <strong>Fork{fork.version ? ` · V${fork.version}` : ""}</strong>
+          <button disabled={sending} onClick={fork.onCancel}>
+            {uncertain ? "Close" : "Cancel"}
+          </button>
+        </div>
+      )}
+      {!fork && preview && <div className="preview-note">{preview}</div>}
+      {!fork && closed && !preview && (
         <div className="gallery-note">
           <div>{closed}</div>
           {!!build?.pieces.length && <button onClick={onFork}>Fork</button>}
         </div>
       )}
-      {!closed && !preview && (
+      {(fork || (!closed && !preview)) && (
         <div
           className={dragging ? "composer dragging" : "composer"}
           onDragOver={(e) => {
@@ -317,6 +350,7 @@ export function ChatPanel({ build, loading, activity, closed, preview, onCreate,
                   <button
                     title="Remove"
                     aria-label="Remove image"
+                    disabled={locked}
                     onClick={() => setAttachments((current) => current.filter((_, j) => j !== i))}
                   >
                     <XIcon size={10} weight="bold" />
@@ -328,6 +362,7 @@ export function ChatPanel({ build, loading, activity, closed, preview, onCreate,
           <textarea
             ref={input}
             value={text}
+            disabled={locked}
             placeholder={
               busy
                 ? `${WHO} is building: Stop to change course`
@@ -364,7 +399,7 @@ export function ChatPanel({ build, loading, activity, closed, preview, onCreate,
             className="round attach"
             title="Attach reference images"
             aria-label="Attach reference images"
-            disabled={attachments.length >= MAX_ATTACHMENTS}
+            disabled={locked || attachments.length >= MAX_ATTACHMENTS}
             onClick={() => picker.current?.click()}
           >
             <PlusIcon size={14} weight="bold" />
@@ -388,8 +423,8 @@ export function ChatPanel({ build, loading, activity, closed, preview, onCreate,
           ) : (
             <button
               className="round send"
-              title="Send"
-              aria-label="Send"
+              title={uncertain ? "Check again" : "Send"}
+              aria-label={uncertain ? "Check again" : "Send"}
               disabled={(!text.trim() && !attachments.length) || sending}
               onClick={send}
             >
@@ -398,7 +433,11 @@ export function ChatPanel({ build, loading, activity, closed, preview, onCreate,
           )}
         </div>
       )}
-      {error && <p className="composer-error">{error}</p>}
+      {error && (
+        <p className="composer-error" role="alert">
+          {error}
+        </p>
+      )}
       <Lightbox src={opened} onClose={() => setOpened(null)} />
     </div>
   );

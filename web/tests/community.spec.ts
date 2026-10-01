@@ -101,8 +101,8 @@ test("a fork of a public build starts a private session from a script placing ea
   await shown(page, tower.revision);
 
   await page.locator(".gallery-note").getByRole("button", { name: "Fork" }).click();
-  await page.getByRole("textbox", { name: "What should change?" }).fill("Make it twice as tall");
-  await page.getByRole("button", { name: "Fork & build", exact: true }).click();
+  await page.getByPlaceholder("Describe how to change it…").fill("Make it twice as tall");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
   await expect(page).toHaveURL(/\?build=new-build$/);
   await expect(page.locator("header .title")).toHaveText("Ada's tower · Fork");
   const first = agp.posted("/api/v2/sessions")[0].messages[0];

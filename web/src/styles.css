@@ -1226,7 +1226,6 @@ main {
 
 .history-tools,
 .history-heading,
-.fork-actions,
 .preview-note > div {
   display: flex;
   align-items: center;
@@ -1292,63 +1291,13 @@ main {
 .preview-note > div {
   margin-top: 10px;
 }
-.fork-dialog {
-  width: min(460px, calc(100vw - 24px));
-  max-height: calc(100dvh - 24px);
-  overflow: auto;
-  color: var(--text-default);
-  background: var(--background-card);
-  border: 1px solid var(--stroke-strong);
-  border-radius: var(--radius-large);
-  padding: 20px;
-}
-.fork-dialog::backdrop {
-  background: #0008;
-}
-.fork-dialog h2 {
-  font-size: 18px;
-  margin: 0;
-}
-.fork-dialog label {
+.fork-note {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin: 16px 0;
-}
-.fork-dialog input,
-.fork-dialog textarea {
-  font: inherit;
-  color: inherit;
-  width: 100%;
-  padding: 10px;
-  background: var(--background-page);
-  border: 1px solid var(--stroke-strong);
-  border-radius: var(--radius-button);
-}
-.fork-dialog textarea {
-  min-height: 110px;
-  resize: vertical;
-}
-.fork-dialog input[type="file"] {
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  border-top: 1px solid var(--stroke-default);
   font-size: 12px;
-}
-.fork-photos {
-  display: flex;
-  gap: 8px;
-}
-.fork-photos img {
-  width: 64px;
-  height: 64px;
-  object-fit: cover;
-  border-radius: var(--radius-button);
-}
-.fork-actions {
-  justify-content: flex-end;
-  margin-top: 20px;
-}
-.fork-actions .primary {
-  background: var(--background-primary);
-  color: var(--text-on-primary);
 }
 @media (max-width: 1050px) {
   .center-bar {
