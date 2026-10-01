@@ -102,8 +102,8 @@ test("Holo keeps getting its renders while the user browses other builds", async
   agp.share("live", model);
   await page.goto("/?build=live");
   await shown(page, model.revision);
-  await page.getByRole("button", { name: "Library" }).click();
-  await page.getByRole("region", { name: "Public" }).locator(".tile").click();
+  await page.getByRole("button", { name: "HoloBricks", exact: true }).click();
+  await page.getByRole("region", { name: "Public builds" }).locator(".tile").click();
   await shown(page, showcase.revision);
 
   agp.look("live", "away", { angle: 180 });
@@ -268,7 +268,7 @@ test("a change to my ended build continues it as a copy under the same name", as
   expect(agp.posted("/messages")).toHaveLength(0);
 });
 
-test("the library shows my builds by the names Holo gave them; showcases under Public", async ({ page }) => {
+test("home shows my builds by the names Holo gave them; showcases under Public builds", async ({ page }) => {
   const showcase = { ...fixture(), id: "paris", name: "Paris" };
   await site(page, [showcase]);
   const agp = await platform(page);
@@ -280,18 +280,15 @@ test("the library shows my builds by the names Holo gave them; showcases under P
     ),
   );
   await page.goto("/");
-  await page.getByRole("button", { name: "Library" }).click();
-  await expect(page).toHaveURL(/\?library$/);
-  const mine = page.getByRole("region", { name: "Mine" }).locator(".tile");
+  const mine = page.getByRole("region", { name: "Your builds" }).locator(".tile");
   await expect(mine).toHaveCount(1);
   await expect(mine).toContainText("Hollowbough");
   await expect(mine).toContainText("42 pieces");
-  const everyone = page.getByRole("region", { name: "Public" }).locator(".tile");
+  const everyone = page.getByRole("region", { name: "Public builds" }).locator(".tile");
   await expect(everyone).toHaveCount(1);
   await expect(everyone).toContainText("Showcase");
   await everyone.click();
   await expect(page).toHaveURL(/\?showcase=paris$/);
-  await expect(page.locator(".library-page")).toHaveCount(0);
   await shown(page, showcase.revision);
   await expect(page.getByText("A showcase from the gallery: remix it to make your own.")).toBeVisible();
 });
@@ -328,8 +325,8 @@ test("a build's library tile shows its latest revision on a transparent backgrou
   agp.answer("live", "A tower.");
   await page.goto("/?build=live");
   await shown(page, model.revision);
-  await page.getByRole("button", { name: "Library" }).click();
-  const tile = page.getByRole("region", { name: "Mine" }).locator("img.tile-thumb");
+  await page.getByRole("button", { name: "HoloBricks", exact: true }).click();
+  const tile = page.getByRole("region", { name: "Your builds" }).locator("img.tile-thumb");
   await expect(tile).toHaveAttribute("src", /^data:image\/webp;base64,/);
   const first = await tile.getAttribute("src");
   const before = await tilePixels(tile);
@@ -337,12 +334,12 @@ test("a build's library tile shows its latest revision on a transparent backgrou
   expect(before.red).toBeGreaterThan(0);
 
   agp.state("live", "running");
-  await expect(page.getByRole("region", { name: "Mine" }).locator(".tile")).toContainText("building…");
-  await page.getByRole("region", { name: "Public" }).locator(".tile").click();
+  await expect(page.getByRole("region", { name: "Your builds" }).locator(".tile")).toContainText("building…");
+  await page.getByRole("region", { name: "Public builds" }).locator(".tile").click();
   await expect(page).toHaveURL(/\?showcase=paris$/);
   agp.share("live", revised({ ...model, pieces: model.pieces.map((p) => ({ ...p, color: 1 })) }));
   agp.answer("live", "A blue tower.");
-  await page.getByRole("button", { name: "Library" }).click();
+  await page.getByRole("button", { name: "HoloBricks", exact: true }).click();
   await expect(tile).not.toHaveAttribute("src", first!);
   const after = await tilePixels(tile);
   expect(after.clear).toBeGreaterThan(0);

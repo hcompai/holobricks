@@ -71,7 +71,7 @@ async function library(page: import("@playwright/test").Page, build: Build) {
   return calls;
 }
 
-test("an imported build goes private and stays under Mine, goes public again, then is deleted after a confirmation", async ({
+test("an imported build goes private and stays under the user's builds, goes public again, then is deleted after a confirmation", async ({
   page,
 }) => {
   const build = { ...fixture(), id: "import-1", name: "Granite house" };
@@ -87,7 +87,7 @@ test("an imported build goes private and stays under Mine, goes public again, th
   await expect(menu).toContainText("In the public library: anyone at H can open it");
   await page.getByRole("menuitem", { name: "Make private…" }).click();
   const confirm = page.getByRole("dialog", { name: "Make private" });
-  await expect(confirm).toContainText("stays under Mine for you alone");
+  await expect(confirm).toContainText("stays under Your builds for you alone");
   await confirm.getByRole("button", { name: "Make private" }).click();
   await expect(confirm).toBeHidden();
   await share.click();
@@ -100,11 +100,10 @@ test("an imported build goes private and stays under Mine, goes public again, th
   });
   expect(calls.some((c) => c.method === "DELETE")).toBe(false);
 
-  const shelf = page.getByRole("button", { name: "Library" });
-  await shelf.click();
-  await expect(page.getByRole("region", { name: "Mine" }).locator(".tile")).toContainText("private");
-  await expect(page.getByRole("region", { name: "Public" }).locator(".tile")).toHaveCount(0);
-  await page.getByRole("region", { name: "Mine" }).locator(".tile").click();
+  await page.getByRole("button", { name: "HoloBricks", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Your builds" }).locator(".tile")).toContainText("private");
+  await expect(page.getByRole("region", { name: "Public builds" }).locator(".tile")).toHaveCount(0);
+  await page.getByRole("region", { name: "Your builds" }).locator(".tile").click();
   await expect(page.locator(".viewer")).toHaveAttribute("data-revision", build.revision);
 
   await share.click();
@@ -125,7 +124,7 @@ test("an imported build goes private and stays under Mine, goes public again, th
   await share.click();
   await page.getByRole("menuitem", { name: "Delete…" }).click();
   await remove.getByRole("button", { name: "Delete" }).click();
-  await expect(page).toHaveURL(/\?library$/);
+  await expect(page).toHaveURL(/\/$/);
   expect(calls.find((c) => c.method === "DELETE")).toMatchObject({ search: "?id=import-1" });
-  await expect(page.getByRole("region", { name: "Mine" }).locator(".tile")).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Your builds" }).locator(".tile")).toHaveCount(0);
 });
