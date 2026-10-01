@@ -88,7 +88,9 @@ test("a colleague's public build opens from the library's Public section, under 
   await expect(page).toHaveURL(/\?public=tower$/);
   await shown(page, tower.revision);
   await expect(page.locator(".gallery-note")).toHaveText(/^Shared by Ada Lovelace: remix it to make your own\./);
-  await expect(page.getByRole("button", { name: "Publish", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Share", exact: true }).click();
+  await expect(page.getByRole("menuitem", { name: /Publish/ })).toHaveCount(0);
+  await page.keyboard.press("Escape");
 });
 
 test("a remix of a public build starts a private session from a script placing each of its pieces, step by step", async ({
@@ -145,22 +147,21 @@ test("the author publishes a build after a confirmation, stays on it, then makes
   await page.goto("/?build=mine");
   await shown(page, model.revision);
   const share = page.getByRole("button", { name: "Share", exact: true });
+  const menu = page.getByRole("menu");
   const copyLink = page.getByRole("menuitem", { name: "Copy link" });
   await share.click();
-  await expect(page.getByRole("menuitem", { name: "Download image" })).toBeVisible();
-  await expect(copyLink).toHaveCount(0);
-  await share.click();
+  await expect(menu).toContainText("Private: not in the public library");
+  await expect(copyLink).toBeDisabled();
 
   const publishing = page.getByRole("dialog", { name: "Publish" });
-  await page.getByRole("button", { name: "Publish", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Publish to the library…" }).click();
   await expect(publishing).toContainText("the chat, and the photos you attached");
   await publishing.getByRole("button", { name: "Publish" }).click();
   await expect(publishing).toBeHidden();
   await expect(page).toHaveURL(/\?build=mine$/);
-  const unpublish = page.getByRole("button", { name: "Public", exact: true });
-  await expect(unpublish).toBeVisible();
   await share.click();
-  await expect(copyLink).toBeVisible();
+  await expect(menu).toContainText("In the public library: anyone at H can open it");
+  await expect(copyLink).toBeEnabled();
   await share.click();
   const post = calls.find((c) => c.method === "POST")!;
   expect(post.headers).toMatchObject({ authorization: `Bearer ${ACCOUNT.pass}`, "x-agents-key": ACCOUNT.key });
@@ -175,15 +176,20 @@ test("the author publishes a build after a confirmation, stays on it, then makes
   await shelf.click();
 
   const confirm = page.getByRole("dialog", { name: "Make private" });
+  const unpublish = page.getByRole("menuitem", { name: "Make private…" });
+  await share.click();
   await unpublish.click();
   await confirm.getByRole("button", { name: "Cancel" }).click();
   await expect(confirm).toBeHidden();
   expect(calls.some((c) => c.method === "DELETE")).toBe(false);
+  await share.click();
   await unpublish.click();
   await confirm.getByRole("button", { name: "Make private" }).click();
   await expect(page).toHaveURL(/\?build=mine$/);
-  await expect(page.getByRole("button", { name: "Publish", exact: true })).toBeVisible();
-  await expect(copyLink).toHaveCount(0);
+  await share.click();
+  await expect(page.getByRole("menuitem", { name: "Publish to the library…" })).toBeVisible();
+  await expect(copyLink).toBeDisabled();
+  await share.click();
   expect(calls.find((c) => c.method === "DELETE")).toMatchObject({
     search: "?id=mine",
     headers: { authorization: `Bearer ${ACCOUNT.pass}`, "x-agents-key": ACCOUNT.key },
@@ -221,7 +227,9 @@ test("a teammate's build link opens read only, to remix", async ({ page }) => {
   await shown(page, model.revision);
 
   await expect(page.locator(".gallery-note")).toHaveText(/^A teammate's build: remix it to make your own\./);
-  await expect(page.getByRole("button", { name: "Publish", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Share", exact: true }).click();
+  await expect(page.getByRole("menuitem", { name: /Publish/ })).toHaveCount(0);
+  await page.keyboard.press("Escape");
   await expect(page.getByRole("textbox")).toHaveCount(0);
   await page.locator(".gallery-note").getByRole("button", { name: "Remix" }).click();
   await expect(page.getByPlaceholder("What should Holo change?")).toBeVisible();
