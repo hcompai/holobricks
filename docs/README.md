@@ -71,8 +71,8 @@ signed in ──GET /api/builds (pass + key)──▶ the public library
 - The portal's cookie never reaches a local dev server, so there the portal sends a one-time code instead (PKCE, RFC 8252); it only redirects to `127.0.0.1`, where `localhost` forwards.
 - Every library read needs a pass: signed out, only link previews show a build's name and cover. A session is its owner's to publish, stop and change; a teammate who opens its link sees it read only, to remix.
 - Signing in again revokes the previous key. The key lives in the browser's local storage; the pass, signed with `BRICKYARD_SECRET`, names its holder to the functions.
-- An imported build has no session, so it lives only in the library: **Make private** moves its entry to `private/<owner>/`, out of the public listing, listed (`GET /api/builds?mine=1`) and opened only for its owner. **Delete** removes its entry and files. Sessions cannot be deleted through the Agents API; they are kept.
-- Publishing copies the session's model, transcript and images, so a public build stands on its own, even if its session is deleted. Only its author can publish or unpublish a build; the emails in `BRICKYARD_ADMINS` can unpublish any.
+- An imported build has no session, so it lives only in the library: **Make private** moves its entry to `private/<owner>/`, out of the public listing, listed (`GET /api/builds?mine=1`) and opened only for its owner. **Delete** removes its entry and files. Sessions cannot be deleted through the Agents API: deleting one (`DELETE /api/projects?id=&source=session`) unpublishes it and records it under `removed/<scope>/`, which `GET /api/projects` lists so the library leaves it out; the platform keeps its chat until the session ends. Deleting a fork removes its files and name, and removes the session it started. Owners rename, publish, make private and delete their builds from the ⋯ on their cards, or from Share in the build.
+- Publishing copies the session's model, transcript and images, so a public build stands on its own, even if its session is deleted. Only its author can rename, publish, make private, unpublish or delete a build. The emails in `BRICKYARD_ADMINS` can take anyone's build out of the public library to moderate it, but never delete it: it becomes private, kept for its owner.
 - Server environment: `BRICKYARD_SECRET`, `BRICKYARD_ADMINS`, and `BLOB_READ_WRITE_TOKEN` from the `brickyard-library` Blob store.
 
 ## Where to change things
@@ -197,3 +197,30 @@ npm run dev
 ```
 
 Open `/dev/thinking.html` on the local server. It uses the actual viewer and waiting components with illustrative packed geometry, a small standalone palette and credited sample photos. Switch phases, change the subject, replay placement and try the speed/mute controls. This entry and its sample assets are excluded from the production build; a real Holo run still needs the toolkit and sign-in described above.
+
+### Model history and forks
+
+**History** lists saved models as V1, V2, and so on. Assembly steps remain inside each model; they
+are not versions. Repeated shares of the same piece revision and assembly steps keep their number.
+History is read from immutable authenticated session attachments, on demand, with no new datastore.
+A missing or invalid attachment blocks numbering until it can be retrieved again.
+
+Only **Latest** takes edits. Earlier versions are read-only previews, including after reopening their
+`?build=…&version=N` URL. **Fork** immediately saves and opens a separate private copy of that snapshot.
+It is already in the Library and survives reloads before any message is sent. The ordinary chat's
+**Send** starts Holo on that copy. Its starting model is V1, and subsequent changes become V2,
+V3, etc. The original history remains intact. Each model has one Library card; versions do not add cards.
+The fork keeps a link to its source version. A fork copies the model, not the old conversation; references
+for the new request use the existing attachment button. There is no extra fork form or chat mode.
+
+Copies use the existing Blob store and app authentication, with owner-scoped, unguessable paths that
+are never returned to the browser. No new service or secret is required. The existing app signing
+secret also derives the storage scope and must remain stable to retain access to saved copies.
+The copy keeps one `?fork=…` URL and Library card after its Holo session starts. The seed and source
+reference also travel as a session attachment, so the initial model survives failed setup.
+Copy retries reuse the same identity. An ambiguous Holo start is not automatically retried; another
+Send checks the same operation for acceptance. Preview never
+changes the model used to answer Holo's render requests. A downloaded preview remains viewable if
+live polling loses its connection. Published copies expose the fork name, not private history or
+ancestry. Public and showcase snapshots can be forked but do not expose their author's session history.
+Browser-only hand edits keep their existing draft behaviour; they enter a new fork when explicitly copied.

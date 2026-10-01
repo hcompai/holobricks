@@ -1,3 +1,5 @@
+import { BlobError } from "@vercel/blob";
+
 export const SHARED = { "Cache-Control": "public, max-age=0, s-maxage=15, stale-while-revalidate=60" };
 
 /** A request the API turns down, with the status and the message the caller sees. */
@@ -18,6 +20,8 @@ export function route(handler: (request: Request) => Promise<Response>) {
     } catch (e) {
       if (e instanceof Refusal) return Response.json({ error: e.message }, { status: e.status });
       console.error(e);
+      if (e instanceof BlobError && e.message.startsWith("Vercel Blob: No blob credentials found."))
+        return Response.json({ error: "Saving is not configured on this server." }, { status: 503 });
       return Response.json({ error: "Something went wrong on our side." }, { status: 500 });
     }
   };

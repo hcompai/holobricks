@@ -56,3 +56,6 @@ export function holder(request: Request): { user: User; key: string } {
   if (sealed !== digest(key)) throw new Refusal(401, "Sign in again.");
   return { user: { id, email, name }, key };
 }
+
+/** Keep owner-only model storage paths unguessable even when a model is published. */
+export const privateScope = (owner: string) => seal(`brickyard-models:${owner}`).toString("hex");

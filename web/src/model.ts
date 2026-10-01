@@ -100,9 +100,10 @@ export interface Build extends Model {
 }
 
 /** Where a build is read from: a session of the signed-in user, the public library, or the showcases. */
-export type Source = "session" | "public" | "showcase";
+export type Source = "session" | "public" | "showcase" | "fork";
 
 export interface BuildSummary {
+  sessionId?: string | null;
   id: string;
   name: string;
   prompt: string;

@@ -1,9 +1,13 @@
 import { useEffect, useState } from "react";
-import { publicBuild, showcase } from "./library";
+import { publicBuild, showcase, savedFork } from "./library";
+import { forkSession } from "./agent";
 import type { Build, Source } from "./model";
 import type { Activity } from "./session";
 import { provideParts } from "./scene";
 import { useSession } from "./useSession";
+import type { ForkSeed } from "./fork";
+import type { SavedFork } from "./forkModel";
+import type { ModelAttachment } from "./session";
 
 export interface BuildRef {
   id: string;
@@ -11,6 +15,8 @@ export interface BuildRef {
 }
 
 export interface LiveBuild {
+  models: ModelAttachment[];
+  seed: ForkSeed | null;
   build: Build | null;
   loading: boolean;
   activity: Activity | null;
@@ -51,13 +57,75 @@ function useFinished(ref: BuildRef | null): LiveBuild {
     activity: null,
     error,
     syncError: null,
+    models: [],
+    seed: null,
   };
 }
 
 /** A showcase from the static gallery, a public build from the library, or a session read live from the Agents API. */
-export function useBuild(ref: BuildRef | null): LiveBuild {
-  const live = ref?.source === "session";
-  const finished = useFinished(live ? null : ref);
-  const session = useSession(ref && live ? ref.id : null);
-  return live ? session : finished;
+export function useBuild(ref: BuildRef | null): LiveBuild & {
+  runId: string | null;
+  attachSession: (id: string) => void;
+} {
+  const copyId = ref?.source === "fork" ? ref.id : null;
+  const [copy, setCopy] = useState<SavedFork | null>(null);
+  const [copyError, setCopyError] = useState<string | null>(null);
+  const [copySyncError, setCopySyncError] = useState<string | null>(null);
+  useEffect(() => {
+    setCopy(null);
+    setCopyError(null);
+    setCopySyncError(null);
+    if (!copyId) return;
+    let current = true;
+    savedFork(copyId)
+      .then(async (copy) => {
+        // Storage may lag a start, or the tab may have closed before the link was saved.
+        if (copy.sessionId) return copy;
+        try {
+          return { ...copy, sessionId: await forkSession(copyId) };
+        } catch {
+          // Preserve the saved drawing, but never present it as confirmed latest.
+          if (current) setCopySyncError("Connection lost. Showing the starting model.");
+          return copy;
+        }
+      })
+      .then(
+        (copy) => {
+          if (current) {
+            provideParts(copy.seed.model.parts);
+            setCopy(copy);
+          }
+        },
+        () => {
+          if (current) setCopyError("Couldn't load this build");
+        },
+      );
+    return () => {
+      current = false;
+    };
+  }, [copyId]);
+  const saved = copy?.id === copyId ? copy : null;
+  const runId = ref?.source === "session" ? ref.id : (saved?.sessionId ?? null);
+  const finished = useFinished(ref && (ref.source === "public" || ref.source === "showcase") ? ref : null);
+  const session = useSession(runId);
+  const attachSession = (id: string) => setCopy((copy) => (copy?.id === copyId ? { ...copy, sessionId: id } : copy));
+  if (!copyId) return { ...(runId ? session : finished), runId, attachSession };
+  if (saved?.sessionId)
+    return {
+      ...session,
+      runId,
+      attachSession,
+      build: session.build ? { ...session.build, id: copyId } : null,
+    };
+  return {
+    build: saved ? { ...saved.seed.model, id: copyId, status: "done", open: true, messages: [] } : null,
+    seed: saved?.seed ?? null,
+    models: [],
+    loading: !saved && !copyError,
+    activity: null,
+    error: copyError,
+    syncError: copySyncError,
+    runId: null,
+    attachSession,
+  };
 }

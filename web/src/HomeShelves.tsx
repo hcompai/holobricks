@@ -2,6 +2,7 @@ import { type ReactNode, useLayoutEffect, useRef, useState } from "react";
 import { Brick } from "./BrickLoader";
 import type { Shelf } from "./library";
 import type { BuildSummary } from "./model";
+import { type ProjectActions, ProjectMenu } from "./ProjectMenu";
 
 const PUBLIC_ROWS = 10;
 const PLACEHOLDERS = 4;
@@ -17,6 +18,8 @@ interface Props {
   onOpen: (build: BuildSummary) => void;
   /** What sits beside the user's heading, such as the import button. */
   mineActions?: ReactNode;
+  /** What the owner can do with one of their builds from its card, or null for none. */
+  manage?: (build: BuildSummary, published: boolean) => ProjectActions | null;
 }
 
 function meta(b: BuildSummary, published = false): string {
@@ -34,7 +37,8 @@ function meta(b: BuildSummary, published = false): string {
 
 /** The signed-in user's builds, running ones first, then newest: their sessions, and their library builds with no session, such as imported ones. */
 function mine(builds: BuildSummary[], me: string | null): BuildSummary[] {
-  const sessions = builds.filter((b) => b.source === "session");
+  const linked = new Set(builds.filter((b) => b.source === "fork").map((b) => b.sessionId));
+  const sessions = builds.filter((b) => b.source === "fork" || (b.source === "session" && !linked.has(b.id)));
   const ids = new Set(sessions.map((b) => b.id));
   const owned = builds.filter((b) => b.source === "public" && me && b.owner === me && !ids.has(b.id));
   return [...sessions, ...owned].sort(
@@ -42,8 +46,19 @@ function mine(builds: BuildSummary[], me: string | null): BuildSummary[] {
   );
 }
 
-/** A build as a card: its thumbnail, name and what to know about it. */
-function Tile({ build: b, published, onOpen }: { build: BuildSummary; published: boolean; onOpen: () => void }) {
+/** A build as a card: its thumbnail, name and what to know about it, with the owner's menu in its corner. */
+function Tile(props: { build: BuildSummary; published: boolean; onOpen: () => void; actions?: ProjectActions | null }) {
+  const { actions, ...card } = props;
+  if (!actions) return <Card {...card} />;
+  return (
+    <div className="tile-owned">
+      <Card {...card} />
+      <ProjectMenu {...actions} />
+    </div>
+  );
+}
+
+function Card({ build: b, published, onOpen }: { build: BuildSummary; published: boolean; onOpen: () => void }) {
   return (
     <button className="tile" title={b.prompt} onClick={onOpen}>
       {b.thumbnail != null ? (
@@ -82,12 +97,12 @@ function useColumns() {
 }
 
 /** Under the home composer: one row of the user's builds, then the public builds with the showcases, ten rows at a time. */
-export function HomeShelves({ builds, failed, me, onRetry, onOpen, mineActions }: Props) {
+export function HomeShelves({ builds, failed, me, onRetry, onOpen, mineActions, manage }: Props) {
   const [root, columns] = useColumns();
   const [allMine, setAllMine] = useState(false);
   const [publicRows, setPublicRows] = useState(PUBLIC_ROWS);
   // Private builds are their owner's alone: under the user's builds, never under Public.
-  const everyone = builds?.filter((b) => b.source !== "session" && !b.private) ?? [];
+  const everyone = builds?.filter((b) => b.source !== "session" && b.source !== "fork" && !b.private) ?? [];
   const published = new Set(everyone.filter((b) => b.source === "public").map((b) => b.id));
   const yours = mine(builds ?? [], me);
   const grid = { gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`, gap: GAP };
@@ -100,6 +115,7 @@ export function HomeShelves({ builds, failed, me, onRetry, onOpen, mineActions }
     empty: string,
     actions?: ReactNode,
     more?: ReactNode,
+    owned = false,
   ) => (
     <section className="home-shelf" aria-label={title}>
       <h2>
@@ -130,14 +146,18 @@ export function HomeShelves({ builds, failed, me, onRetry, onOpen, mineActions }
         !failed.includes(shelf) && <p className="home-empty">{empty}</p>
       ) : (
         <div className="home-grid" style={grid}>
-          {shown.map((b) => (
-            <Tile
-              key={`${b.source}:${b.id}`}
-              build={b}
-              published={b.source === "session" && published.has(b.id)}
-              onOpen={() => onOpen(b)}
-            />
-          ))}
+          {shown.map((b) => {
+            const isPublic = (b.source === "session" || b.source === "fork") && published.has(b.id);
+            return (
+              <Tile
+                key={`${b.source}:${b.id}`}
+                build={b}
+                published={isPublic}
+                onOpen={() => onOpen(b)}
+                actions={owned ? manage?.(b, isPublic || (b.source === "public" && !b.private)) : null}
+              />
+            );
+          })}
         </div>
       )}
       {more}
@@ -161,6 +181,8 @@ export function HomeShelves({ builds, failed, me, onRetry, onOpen, mineActions }
           )}
           {mineActions}
         </>,
+        undefined,
+        true,
       )}
       {section(
         "Public builds",

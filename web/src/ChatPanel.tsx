@@ -171,13 +171,25 @@ interface Props {
   onCreate: (prompt: string, images: string[]) => Promise<void>;
   onSay: (text: string, images: string[]) => Promise<void>;
   onStop: () => Promise<void>;
+  preview?: ReactNode;
+  onFork: () => void;
   /** Start a new build from a copy of this one, changed as asked: a closed build, or one whose session ended. */
   onRemix: (text: string, images: string[]) => Promise<void>;
 }
 
-export function ChatPanel({ build, loading, activity, closed, onCreate, onSay, onStop, onRemix }: Props) {
+export function ChatPanel({
+  build,
+  loading,
+  activity,
+  closed,
+  onCreate,
+  onSay,
+  onStop,
+  onRemix,
+  preview,
+  onFork,
+}: Props) {
   const [text, setText] = useState("");
-  const [remixing, setRemixing] = useState(false);
   const [attachments, setAttachments] = useState<string[]>([]);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
@@ -233,13 +245,13 @@ export function ChatPanel({ build, loading, activity, closed, onCreate, onSay, o
 
   /** Hand `prompt` to the builder, even mid-build; whether it took it. */
   const deliver = async (prompt: string, images: string[]) => {
-    const saying = !!build && !remixing && !ended;
+    const saying = !!build && !ended;
     const entry = { message: { role: "user" as const, text: prompt, images }, heard };
     if (saying) setQueued((list) => [...list, entry]);
     setSending(true);
     setError("");
     try {
-      await (remixing || ended ? onRemix : saying ? onSay : onCreate)(prompt, images);
+      await (ended ? onRemix : saying ? onSay : onCreate)(prompt, images);
       return true;
     } catch (e) {
       setQueued((list) => list.filter((q) => q !== entry));
@@ -251,7 +263,7 @@ export function ChatPanel({ build, loading, activity, closed, onCreate, onSay, o
   };
 
   const typed = !!(text.trim() || attachments.length);
-  const unsendable = !typed || sending || (changing && !build?.id);
+  const unsendable = !!preview || !!closed || !typed || sending || (changing && !build?.id);
   /** The composer empties at once, and gets its text and images back if the builder does not take them. */
   const send = async () => {
     if (unsendable) return;
@@ -264,7 +276,7 @@ export function ChatPanel({ build, loading, activity, closed, onCreate, onSay, o
     setAttachments((added) => (added.length ? added : images));
   };
 
-  const composer = (!closed || remixing) && (
+  const composer = !closed && !preview && (
     <div
       className={dragging ? "composer dragging" : "composer"}
       onDragOver={(e) => {
@@ -299,14 +311,7 @@ export function ChatPanel({ build, loading, activity, closed, onCreate, onSay, o
       <textarea
         ref={input}
         value={text}
-        autoFocus={remixing}
-        placeholder={
-          remixing
-            ? `What should ${WHO} change?`
-            : changing
-              ? "Ask for a change"
-              : "A red lighthouse on a rock… or drop a photo"
-        }
+        placeholder={changing ? "Ask for a change" : "A red lighthouse on a rock… or drop a photo"}
         onChange={(e) => setText(e.target.value)}
         onPaste={(e) => {
           const files = imageFiles(e.clipboardData.files);
@@ -408,12 +413,13 @@ export function ChatPanel({ build, loading, activity, closed, onCreate, onSay, o
           <Row key={`queued-${i}`} message={q.message} entering queued onOpen={setOpened} />
         ))}
       </div>
-      {closed && !remixing && (
+      {preview && <div className="preview-note">{preview}</div>}
+      {closed && !preview && (
         <div className="gallery-note">
           <div>{closed}</div>
           {!!build?.pieces.length && (
-            <button onClick={() => setRemixing(true)} title="Start your own build from a copy of this one">
-              <ShuffleIcon size={14} weight="bold" /> {typeof closed === "string" ? "Remix" : "Remix a copy"}
+            <button onClick={onFork} title="Start your own build from a copy of this one">
+              <ShuffleIcon size={14} weight="bold" /> Fork
             </button>
           )}
         </div>

@@ -2,6 +2,7 @@ import { isTerminalSessionStatus, type HaiAgents } from "hai-agents";
 import { answer, client, download, fail } from "./agent";
 import { card, remember, thumbnail } from "./library";
 import { H } from "./hosts";
+import { cachedSeed, readSeed, requestedSeed, type ForkSeed } from "./fork";
 import { caption, dataUrl, view } from "./look";
 import { EMPTY_MODEL, type Build, type Message, type Model } from "./model";
 import { BrickScene, provideParts } from "./scene";
@@ -13,6 +14,7 @@ import {
   read,
   status as buildStatus,
   type Transcript,
+  type ModelAttachment,
   unpack,
 } from "./session";
 
@@ -23,6 +25,8 @@ const LOAD_TRIES = 3;
 
 /** A session as the Agents API last told it. */
 export interface Followed {
+  models: ModelAttachment[];
+  seed: ForkSeed | null;
   build: Build | null;
   /** What the builder is doing, while it builds. */
   activity: Activity | null;
@@ -60,7 +64,7 @@ function render(model: Model, draw: (scene: BrickScene) => Promise<Blob | null>)
 
 /** Poll session `id` until it ends or `signal` aborts, answering every `look` it waits on. */
 function follow(id: string, signal: AbortSignal, notify: Listener, displayed: () => boolean) {
-  let state: Followed = { build: null, activity: null, error: null, syncError: null };
+  let state: Followed = { build: null, activity: null, error: null, syncError: null, models: [], seed: null };
   const set = (next: Partial<Followed>) => {
     if (signal.aborted) return;
     state = { ...state, ...next };
@@ -69,7 +73,9 @@ function follow(id: string, signal: AbortSignal, notify: Listener, displayed: ()
   let transcript: Transcript = EMPTY_TRANSCRIPT;
   let session: HaiAgents.TrajectoryStatus = "pending";
   let failure: string | null = null;
-  let model = EMPTY_MODEL;
+  let seed = cachedSeed(id);
+  let checkedSeed = !!seed;
+  let model = seed?.model ?? EMPTY_MODEL;
   let loaded = 0;
   /** The latest shared model while it fails to load: how many times, and why. */
   let unloaded: { shared: number; tries: number; reason: string } | null = null;
@@ -146,9 +152,11 @@ function follow(id: string, signal: AbortSignal, notify: Listener, displayed: ()
     }
     const end = ending(session, failure ?? transcript.error);
     set({
+      models: transcript.models,
+      seed,
       build: {
         ...model,
-        name: named(model) ? model.name : (card(id)?.name ?? model.name),
+        name: seed?.model.name ?? (named(model) ? model.name : (card(id)?.name ?? model.name)),
         id,
         status: buildStatus(session),
         messages: shown(end ? [...transcript.messages, end] : transcript.messages),
@@ -182,6 +190,21 @@ function follow(id: string, signal: AbortSignal, notify: Listener, displayed: ()
   };
 
   const loadModel = async () => {
+    if (!seed && transcript.fork) {
+      seed = await readSeed(await download(transcript.fork, signal));
+      checkedSeed = true;
+      provideParts(seed.model.parts);
+      if (!loaded) model = seed.model;
+    }
+    // Queued or failed setup may not have emitted attachment events yet.
+    if (!checkedSeed && !transcript.model) {
+      seed = await requestedSeed(id, signal);
+      checkedSeed = true;
+      if (seed) {
+        provideParts(seed.model.parts);
+        model = seed.model;
+      }
+    }
     const latest = transcript.model;
     if (!latest || latest.shared === loaded) return;
     try {
@@ -192,7 +215,7 @@ function follow(id: string, signal: AbortSignal, notify: Listener, displayed: ()
       model = next;
       loaded = latest.shared;
       unloaded = null;
-      remember(id, { pieces: model.pieces.length, ...(named(model) && { name: model.name }) });
+      remember(id, { pieces: model.pieces.length, ...(named(model) && { name: seed?.model.name ?? model.name }) });
     } catch (e) {
       if (signal.aborted) throw e;
       console.error("Could not load the latest model", e);
@@ -239,6 +262,10 @@ function follow(id: string, signal: AbortSignal, notify: Listener, displayed: ()
       }
     }
   };
+  if (seed) {
+    provideParts(seed.model.parts);
+    publish();
+  }
   void poll();
   return {
     refresh: () => {

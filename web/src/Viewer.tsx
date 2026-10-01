@@ -4,9 +4,10 @@ import { PlacementSoundToggle } from "./PlacementSound";
 import { type Ref, useEffect, useImperativeHandle, useRef, useState } from "react";
 import {
   ArrowsClockwiseIcon,
+  CrosshairSimpleIcon,
+  PauseIcon,
   PencilSimpleIcon,
   PersonSimpleWalkIcon,
-  PauseIcon,
   PlayIcon,
 } from "@phosphor-icons/react";
 import * as THREE from "three";
@@ -42,6 +43,7 @@ export function ViewControls({
   spin,
   mode,
   canEdit,
+  editHint,
   built,
   onFrame,
   onSpin,
@@ -51,6 +53,7 @@ export function ViewControls({
   spin: boolean;
   mode: Mode;
   canEdit: boolean;
+  editHint?: string;
   /** The model has pieces, so it can be edited or walked through. */
   built: boolean;
   onFrame: (framing: Framing) => void;
@@ -70,6 +73,9 @@ export function ViewControls({
           {v.label}
         </button>
       ))}
+      <button aria-label="Reset view" title="Reset view" onClick={() => onFrame({ view: "iso" })}>
+        <CrosshairSimpleIcon size={14} weight="bold" />
+      </button>
       <span className="tabs-sep" />
       <button className={spin ? "active" : ""} aria-pressed={spin} onClick={() => onSpin(!spin)}>
         <ArrowsClockwiseIcon size={14} weight="bold" />
@@ -82,7 +88,11 @@ export function ViewControls({
             className={mode === "edit" ? "active" : ""}
             aria-pressed={mode === "edit"}
             disabled={!canEdit && mode !== "edit"}
-            title={canEdit ? "Select pieces to move, turn or delete them" : "Pieces can be edited once Holo is done"}
+            title={
+              canEdit
+                ? "Select pieces to move, turn or delete them"
+                : (editHint ?? "Pieces can be edited once Holo is done")
+            }
             onClick={() => toggle("edit")}
           >
             <PencilSimpleIcon size={14} weight="bold" />

@@ -83,7 +83,7 @@ test("edit mode selects the piece under the pointer and saves its edits in this 
   await expect(page.locator(".viewer")).toHaveAttribute("data-render-state", "ready");
   await expect(pieces).toHaveText(/^7 pieces /);
   await page.getByRole("button", { name: "Edit", exact: true }).click();
-  await page.getByRole("button", { name: "Reset" }).click();
+  await page.getByRole("button", { name: "Reset", exact: true }).click();
   await expect(pieces).toHaveText(/^8 pieces /);
   await expect(page.locator(".viewer")).toHaveAttribute("data-revision", build.revision);
   expect(await page.evaluate(() => localStorage.getItem("brickyard.edits"))).toBe("{}");

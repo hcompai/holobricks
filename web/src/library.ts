@@ -8,6 +8,8 @@ import { status, unpack } from "./session";
 const GALLERY = "/gallery";
 const API = "/api/builds";
 const IMPORTS = "/api/imports";
+import type { ForkSeed, ForkSummary, SavedFork } from "./forkModel";
+
 const STORE = "brickyard.library";
 
 /** What the browser remembers of a session's model, since the platform keeps only its chat. */
@@ -18,6 +20,7 @@ interface Card {
   thumbnail?: string;
   recoveredFrom?: string;
   recoveryAttempt?: string;
+  forkStarting?: boolean;
   /** The revision the thumbnail shows. */
   revision?: string;
 }
@@ -102,10 +105,13 @@ export async function showcase(id: string): Promise<Build> {
   return { ...(await response.json()), id, open: false };
 }
 
+/** A safe error message returned by our library API, distinct from a network failure. */
+export class LibraryError extends Error {}
+
 async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(path, init);
   const body = response.status === 204 ? null : await response.json().catch(() => null);
-  if (!response.ok) throw new Error(body?.error ?? `The library is unavailable (HTTP ${response.status}).`);
+  if (!response.ok) throw new LibraryError(body?.error ?? `The library is unavailable (HTTP ${response.status}).`);
   return body as T;
 }
 
@@ -153,7 +159,7 @@ export async function publicBuild(id: string): Promise<Build> {
   const published = newest(await read<Published>({ id }));
   const response = await fetch(published.build);
   if (!response.ok) throw new Error(`No public build ${id}`);
-  return { ...(await unpack<Build>(await response.blob())), id, open: false };
+  return { ...(await unpack<Build>(await response.blob())), id, name: published.name, open: false };
 }
 
 const signed = () => ({ Authorization: `Bearer ${current()?.pass}`, "X-Agents-Key": key() });
@@ -229,21 +235,36 @@ export async function unpublish(id: string) {
 export type Shelf = "mine" | "public";
 
 /** Where the library lists a build from, in the order it lists them; each loads, or fails, on its own. */
-export const LISTINGS = ["session", "public", "private", "showcase"] as const;
+export const LISTINGS = ["session", "fork", "public", "private", "showcase"] as const;
 export type Listing = (typeof LISTINGS)[number];
 
-export const listing = (b: BuildSummary): Listing => (b.private ? "private" : b.source);
+export const listing = (b: BuildSummary): Listing => (b.source === "fork" ? "fork" : b.private ? "private" : b.source);
 
-export const SHELF: Record<Listing, Shelf> = { session: "mine", private: "mine", public: "public", showcase: "public" };
+export const SHELF: Record<Listing, Shelf> = {
+  session: "mine",
+  fork: "mine",
+  private: "mine",
+  public: "public",
+  showcase: "public",
+};
 
 /** The signed-in user's builds, newest first, then everyone's public builds, then the showcases; with the listings that failed to load. */
+/** Delete one of the user's projects; a session, which cannot be deleted, leaves their library instead. */
+export async function deleteProject(ref: { id: string; source: string }) {
+  const query = new URLSearchParams({ id: ref.id, source: ref.source });
+  await api(`/api/projects?${query}`, { method: "DELETE", headers: signed() });
+}
+
 export async function library(): Promise<{ builds: BuildSummary[]; failed: Listing[] }> {
-  const [sessionsLoaded, sharedLoaded, hiddenLoaded, shownLoaded] = await Promise.allSettled([
-    sessions(),
-    community(),
-    hidden(),
-    showcases(),
-  ]);
+  const [sessionsLoaded, sharedLoaded, hiddenLoaded, shownLoaded, forksLoaded, removedLoaded] =
+    await Promise.allSettled([
+      sessions(),
+      community(),
+      hidden(),
+      showcases(),
+      current() ? api<ForkSummary[]>("/api/forks", { headers: signed() }) : Promise.resolve([]),
+      current() ? api<string[]>("/api/projects", { headers: signed() }) : Promise.resolve([]),
+    ]);
   const failed: Listing[] = [];
   const value = <T>(result: PromiseSettledResult<T[]>, from: Listing): T[] => {
     if (result.status === "fulfilled") return result.value;
@@ -255,28 +276,60 @@ export async function library(): Promise<{ builds: BuildSummary[]; failed: Listi
   const shared = value(sharedLoaded, "public");
   const own = value(hiddenLoaded, "private");
   const shown = value(shownLoaded, "showcase");
+  const forks = value(forksLoaded, "fork");
+  // Without the removals, show everything rather than fail the shelf: a removed build may briefly reappear.
+  const removed = new Set(removedLoaded.status === "fulfilled" ? removedLoaded.value : []);
   const known = cards();
   const listed = new Map(shared.map((p) => [p.id, p]));
-  const builds = mine.map((s): BuildSummary => {
-    const saved = known[s.id];
-    const published = listed.get(s.id);
-    const prompt = saved?.prompt || s.firstMessage?.message || published?.prompt || "";
-    return {
-      id: s.id,
-      name: [saved?.name, published?.name, prompt.slice(0, 60)].find((n) => n && n !== NEW_CARD.name) ?? NEW_CARD.name,
-      prompt,
-      status: status(s.status),
-      created: s.createdAt.getTime() / 1000,
-      pieces: saved?.pieces ?? published?.pieces ?? null,
-      thumbnail: saved?.thumbnail ?? published?.thumbnail ?? null,
-      source: "session",
-      author: null,
-      owner: null,
-    };
-  });
+  const builds = mine
+    .filter((s) => !removed.has(s.id))
+    .map((s): BuildSummary => {
+      const saved = known[s.id];
+      const published = listed.get(s.id);
+      const prompt = saved?.prompt || s.firstMessage?.message || published?.prompt || "";
+      return {
+        id: s.id,
+        name:
+          [saved?.name, published?.name, prompt.slice(0, 60)].find((n) => n && n !== NEW_CARD.name) ?? NEW_CARD.name,
+        prompt,
+        status: status(s.status),
+        created: s.createdAt.getTime() / 1000,
+        pieces: saved?.pieces ?? published?.pieces ?? null,
+        thumbnail: saved?.thumbnail ?? published?.thumbnail ?? null,
+        source: "session",
+        author: null,
+        owner: null,
+      };
+    });
   // A build is public or private, never both: the public listing wins if a stale private entry lingers.
   const privately = own.filter((p) => !listed.has(p.id));
-  return { builds: [...builds.sort((a, b) => b.created - a.created), ...shared, ...privately, ...shown], failed };
+  const forkRuns = new Set(forks.flatMap((f) => (f.sessionId ? [f.sessionId] : [])));
+  const copies: BuildSummary[] = forks
+    .filter((f) => !removed.has(f.id))
+    .map((f) => {
+      const run = builds.find((b) => b.id === f.sessionId);
+      const saved = known[f.id];
+      const rendered = f.sessionId ? known[f.sessionId] : null;
+      return {
+        ...f,
+        name: f.name,
+        prompt: run?.prompt ?? "",
+        pieces: run?.pieces ?? f.pieces,
+        status: run?.status ?? "done",
+        thumbnail:
+          rendered?.thumbnail && rendered.revision !== saved?.revision
+            ? rendered.thumbnail
+            : (saved?.thumbnail ?? run?.thumbnail ?? null),
+        source: "fork",
+        author: null,
+        owner: current()?.user.id ?? null,
+        private: !listed.has(f.id),
+      };
+    });
+  return {
+    builds: [...builds.filter((b) => !forkRuns.has(b.id)), ...copies, ...shared, ...privately, ...shown],
+    failed,
+  };
 }
 
 const THUMBNAIL_SIDE = 320;
@@ -292,3 +345,39 @@ export async function thumbnail(png: Blob): Promise<string> {
   bitmap.close();
   return canvas.toDataURL("image/webp", 0.8);
 }
+
+export const savedFork = (id: string) =>
+  api<SavedFork>(`/api/forks?id=${encodeURIComponent(id)}`, { headers: signed() });
+
+export async function copyModel(id: string, seed: ForkSeed): Promise<string> {
+  const json = new Blob([JSON.stringify({ id, seed })]);
+  const body = await new Response(json.stream().pipeThrough(new CompressionStream("gzip"))).blob();
+  await api<ForkSummary>("/api/forks", {
+    method: "POST",
+    headers: { ...signed(), "Content-Type": "application/gzip" },
+    body,
+  });
+  remember(id, { name: seed.model.name, pieces: seed.model.pieces.length });
+  return id;
+}
+
+export async function linkFork(id: string, sessionId: string) {
+  await api("/api/forks", {
+    method: "PATCH",
+    headers: { ...signed(), "Content-Type": "application/json" },
+    body: JSON.stringify({ id, sessionId }),
+  });
+}
+
+export interface ProjectName {
+  id: string;
+  name: string;
+  updated: number;
+}
+export const projectNames = () => api<ProjectName[]>("/api/names", { headers: signed() });
+export const renameProject = (ref: { id: string; source: string }, name: string) =>
+  api<ProjectName>("/api/names", {
+    method: "PATCH",
+    headers: { ...signed(), "Content-Type": "application/json" },
+    body: JSON.stringify({ ...ref, name }),
+  });

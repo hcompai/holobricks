@@ -68,6 +68,18 @@ async function library(page: import("@playwright/test").Page, build: Build) {
     }
     return route.fulfill({ json: entries.filter((e) => !e.private) });
   });
+  await page.route("**/api/projects*", (route) => {
+    const request = route.request();
+    if (request.method() !== "DELETE") return route.fulfill({ json: [] });
+    calls.push({
+      method: "DELETE",
+      search: new URL(request.url()).search,
+      body: null,
+      auth: request.headers().authorization,
+    });
+    entries.splice(0, entries.length);
+    return route.fulfill({ status: 204 });
+  });
   return calls;
 }
 
@@ -125,6 +137,6 @@ test("an imported build goes private and stays under the user's builds, goes pub
   await page.getByRole("menuitem", { name: "Delete…" }).click();
   await remove.getByRole("button", { name: "Delete" }).click();
   await expect(page).toHaveURL(/\/$/);
-  expect(calls.find((c) => c.method === "DELETE")).toMatchObject({ search: "?id=import-1" });
+  expect(calls.find((c) => c.method === "DELETE")).toMatchObject({ search: "?id=import-1&source=public" });
   await expect(page.getByRole("region", { name: "Your builds" }).locator(".tile")).toHaveCount(0);
 });
