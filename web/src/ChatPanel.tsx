@@ -106,13 +106,18 @@ function Live({ activity, early }: { activity: Activity; early: boolean }) {
 interface RowProps {
   message: Message;
   entering: boolean;
+  /** Sent to the builder, which has not read it yet. */
+  queued?: boolean;
   onOpen: (src: string) => void;
 }
 
 const Row = memo(
-  function Row({ message: m, entering, onOpen }: RowProps) {
+  function Row({ message: m, entering, queued, onOpen }: RowProps) {
     return (
-      <div className={`msg ${m.role}${entering ? " enter" : ""}`}>
+      <div
+        className={`msg ${m.role}${entering ? " enter" : ""}${queued ? " queued" : ""}`}
+        title={queued ? `Sent: ${WHO} reads it at its next step` : undefined}
+      >
         {m.work && <WorkLog work={m.work} summary={`Worked for ${duration(m.work.end - m.work.start)}`} />}
         {m.role === "assistant" ? (
           <div className="markdown">
@@ -148,6 +153,7 @@ const Row = memo(
   },
   (a, b) =>
     a.entering === b.entering &&
+    a.queued === b.queued &&
     a.message.text === b.message.text &&
     a.message.role === b.message.role &&
     a.message.work?.end === b.message.work?.end &&
@@ -173,6 +179,8 @@ export function ChatPanel({ build, loading, activity, closed, onCreate, onSay, o
   const [attachments, setAttachments] = useState<string[]>([]);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
+  /** Messages sent to the builder that its chat does not show yet, each with how many user messages it showed then. */
+  const [queued, setQueued] = useState<{ message: Message; heard: number }[]>([]);
   const log = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
   const picker = useRef<HTMLInputElement>(null);
@@ -193,12 +201,18 @@ export function ChatPanel({ build, loading, activity, closed, onCreate, onSay, o
     if (!busy) setStopping(false);
   }, [busy]);
 
+  const heard = build?.messages.filter((m) => m.role === "user").length ?? 0;
+  const waiting = queued.length ? queued.slice(Math.max(0, heard - queued[0].heard)) : queued;
+  useEffect(() => {
+    if (queued.length && !waiting.length) setQueued([]);
+  }, [queued.length, waiting.length]);
+
   useEffect(() => {
     const jump = scrolled.current !== (build?.id ?? null);
     scrolled.current = build?.id ?? null;
     if (jump) pinned.current = true;
     if (pinned.current) log.current?.scrollTo({ top: log.current.scrollHeight, behavior: jump ? "instant" : "smooth" });
-  }, [build?.id, build?.messages.length, busy]);
+  }, [build?.id, build?.messages.length, busy, waiting.length]);
 
   const home = !build && !loading;
   useEffect(() => {
@@ -215,14 +229,18 @@ export function ChatPanel({ build, loading, activity, closed, onCreate, onSay, o
     }
   };
 
-  /** Hand `prompt` to the builder; whether it took it. */
+  /** Hand `prompt` to the builder, even mid-build; whether it took it. */
   const deliver = async (prompt: string, images: string[]) => {
+    const saying = !!build && !remixing && !ended;
+    const entry = { message: { role: "user" as const, text: prompt, images }, heard };
+    if (saying) setQueued((list) => [...list, entry]);
     setSending(true);
     setError("");
     try {
-      await (remixing || ended ? onRemix : build ? onSay : onCreate)(prompt, images);
+      await (remixing || ended ? onRemix : saying ? onSay : onCreate)(prompt, images);
       return true;
     } catch (e) {
+      setQueued((list) => list.filter((q) => q !== entry));
       setError(message(e));
       return false;
     } finally {
@@ -230,7 +248,8 @@ export function ChatPanel({ build, loading, activity, closed, onCreate, onSay, o
     }
   };
 
-  const unsendable = (!text.trim() && !attachments.length) || sending || (changing && (busy || !build));
+  const typed = !!(text.trim() || attachments.length);
+  const unsendable = !typed || sending || (changing && !build?.id);
   /** The composer empties at once, and gets its text and images back if the builder does not take them. */
   const send = async () => {
     if (unsendable) return;
@@ -283,7 +302,7 @@ export function ChatPanel({ build, loading, activity, closed, onCreate, onSay, o
           remixing
             ? `What should ${WHO} change?`
             : busy
-              ? `${WHO} is building, so press Stop if you want to change course`
+              ? `Ask for a change: ${WHO} takes it in as it builds`
               : changing
                 ? "Ask for a change"
                 : "A red lighthouse on a rock… or drop a photo"
@@ -323,7 +342,7 @@ export function ChatPanel({ build, loading, activity, closed, onCreate, onSay, o
       >
         <PlusIcon size={14} weight="bold" />
       </button>
-      {busy && build ? (
+      {busy && build && !typed ? (
         <button
           className="round send stop"
           title={stopping ? "Stopping after this step" : "Stop"}
@@ -385,6 +404,9 @@ export function ChatPanel({ build, loading, activity, closed, onCreate, onSay, o
           ))
         )}
         {busy && build && activity && <Live activity={activity} early={!build.pieces.length} />}
+        {waiting.map((q, i) => (
+          <Row key={`queued-${i}`} message={q.message} entering queued onOpen={setOpened} />
+        ))}
       </div>
       {closed && !remixing && (
         <div className="gallery-note">
