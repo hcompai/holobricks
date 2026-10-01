@@ -50,7 +50,7 @@ test("a failed workstation shows a recovery explanation; raw diagnostics are col
   await page.screenshot({ path: "test-results/recovery-desktop.png" });
   await page.setViewportSize({ width: 390, height: 844 });
   const panel = page.getByRole("region", { name: "Build recovery" });
-  await expect(page.getByRole("button", { name: "Remix a copy" })).toBeVisible();
+  await expect(page.locator(".gallery-note").getByRole("button", { name: "Fork", exact: true })).toBeVisible();
   expect((await panel.boundingBox())!.width).toBeGreaterThan(300);
   await page.screenshot({ path: "test-results/recovery-mobile.png" });
   await page.getByText("Technical details", { exact: true }).click();

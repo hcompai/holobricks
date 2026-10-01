@@ -1,4 +1,4 @@
-import { ArrowUpIcon, PlusIcon, ShuffleIcon, StopIcon, XIcon } from "@phosphor-icons/react";
+import { ArrowUpIcon, PlusIcon, StopIcon, XIcon } from "@phosphor-icons/react";
 import { memo, type ReactNode, useEffect, useRef, useState } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -177,16 +177,15 @@ interface Props {
   activity: Activity | null;
   /** Why the builder takes no message here, or null when it does. */
   closed: ReactNode;
+  preview?: ReactNode;
   onCreate: (prompt: string, images: string[]) => Promise<void>;
   onSay: (text: string, images: string[]) => Promise<void>;
   onStop: () => Promise<void>;
-  /** Start a new build from a copy of this closed one, changed as asked. */
-  onRemix: (text: string, images: string[]) => Promise<void>;
+  onFork: () => void;
 }
 
-export function ChatPanel({ build, loading, activity, closed, onCreate, onSay, onStop, onRemix }: Props) {
+export function ChatPanel({ build, loading, activity, closed, preview, onCreate, onSay, onStop, onFork }: Props) {
   const [text, setText] = useState("");
-  const [remixing, setRemixing] = useState(false);
   const [attachments, setAttachments] = useState<string[]>([]);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
@@ -232,11 +231,11 @@ export function ChatPanel({ build, loading, activity, closed, onCreate, onSay, o
 
   const send = async () => {
     const prompt = text.trim();
-    if ((!prompt && !attachments.length) || sending || (changing && (busy || !build))) return;
+    if (preview || closed || (!prompt && !attachments.length) || sending || (changing && (busy || !build))) return;
     setSending(true);
     setError("");
     try {
-      await (remixing ? onRemix : changing ? onSay : onCreate)(prompt, attachments);
+      await (changing ? onSay : onCreate)(prompt, attachments);
       setText("");
       setAttachments([]);
     } catch (e) {
@@ -287,17 +286,14 @@ export function ChatPanel({ build, loading, activity, closed, onCreate, onSay, o
         {busy && activity && <Live activity={activity} />}
       </div>
       {home && <p className="tab-hint">Keep this tab open while Holo builds: your browser provides the renders.</p>}
-      {closed && !remixing && (
+      {preview && <div className="preview-note">{preview}</div>}
+      {closed && !preview && (
         <div className="gallery-note">
           <div>{closed}</div>
-          {!!build?.pieces.length && (
-            <button onClick={() => setRemixing(true)} title="Start your own build from a copy of this one">
-              <ShuffleIcon size={14} weight="bold" /> {typeof closed === "string" ? "Remix" : "Remix a copy"}
-            </button>
-          )}
+          {!!build?.pieces.length && <button onClick={onFork}>Fork</button>}
         </div>
       )}
-      {(!closed || remixing) && (
+      {!closed && !preview && (
         <div
           className={dragging ? "composer dragging" : "composer"}
           onDragOver={(e) => {
@@ -332,15 +328,12 @@ export function ChatPanel({ build, loading, activity, closed, onCreate, onSay, o
           <textarea
             ref={input}
             value={text}
-            autoFocus={remixing}
             placeholder={
-              remixing
-                ? `What should ${WHO} change?`
-                : busy
-                  ? `${WHO} is building: Stop to change course`
-                  : changing
-                    ? "Describe how to change it…"
-                    : "Describe what to build…"
+              busy
+                ? `${WHO} is building: Stop to change course`
+                : changing
+                  ? "Describe how to change it…"
+                  : "Describe what to build…"
             }
             onChange={(e) => setText(e.target.value)}
             onPaste={(e) => {

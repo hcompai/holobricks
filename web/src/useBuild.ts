@@ -4,6 +4,8 @@ import type { Build, Source } from "./model";
 import type { Activity } from "./session";
 import { provideParts } from "./scene";
 import { useSession } from "./useSession";
+import type { ForkSeed } from "./fork";
+import type { ModelAttachment } from "./session";
 
 export interface BuildRef {
   id: string;
@@ -11,6 +13,8 @@ export interface BuildRef {
 }
 
 export interface LiveBuild {
+  models: ModelAttachment[];
+  seed: ForkSeed | null;
   build: Build | null;
   loading: boolean;
   activity: Activity | null;
@@ -51,6 +55,8 @@ function useFinished(ref: BuildRef | null): LiveBuild {
     activity: null,
     error,
     syncError: null,
+    models: [],
+    seed: null,
   };
 }
 

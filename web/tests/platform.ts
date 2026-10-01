@@ -18,6 +18,7 @@ interface Session {
   shared: number;
   group?: string;
   error?: string;
+  request?: any;
 }
 
 interface Request {
@@ -145,7 +146,13 @@ export async function platform(page: Page): Promise<Platform> {
       if (refused) return reply(refused, { detail: "The platform is unavailable." });
       agp.session("new-build", "pending");
       agp.sessions.get("new-build")!.group = body.group_id;
-      for (const m of body.messages ?? []) agp.say("new-build", m.message, m.images ?? []);
+      agp.sessions.get("new-build")!.request = body;
+      for (const m of body.messages ?? []) {
+        agp.say("new-build", m.message, m.images ?? []);
+        for (const file of m.files ?? []) {
+          if (file.type === "base64") agp.attach("new-build", file.name, Buffer.from(file.source, "base64"));
+        }
+      }
       if (agp.loseCreationResponse) {
         agp.loseCreationResponse = false;
         return reply(503, { detail: "Response lost" });
@@ -153,6 +160,13 @@ export async function platform(page: Page): Promise<Platform> {
       return reply(200, { id: "new-build", request: body, status: "pending", created_at: NOW });
     }
     if (!session) return reply(404, { detail: "No such session" });
+    if (!action && method === "GET")
+      return reply(200, {
+        id,
+        request: session.request ?? { agent: "brickyard", messages: [] },
+        status: { status: session.status },
+        created_at: NOW,
+      });
     if (action === "messages") {
       agp.say(session.id, body.message);
       agp.state(session.id, "running");

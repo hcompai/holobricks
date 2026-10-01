@@ -1224,6 +1224,151 @@ main {
   margin: 12px 16px;
 }
 
+.history-tools,
+.history-heading,
+.fork-actions,
+.preview-note > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.history-tools {
+  margin-left: auto;
+  flex-wrap: wrap;
+}
+.preview-badge {
+  color: var(--text-secondary);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.history-panel {
+  flex: none;
+  margin: 0 16px 12px;
+  padding: 8px 12px 12px;
+  border: 1px solid var(--stroke-default);
+  border-radius: var(--radius-large);
+  background: var(--background-card);
+}
+.history-heading {
+  min-width: 0;
+}
+.history-heading .icon-button {
+  width: 28px;
+  height: 28px;
+}
+.history-versions {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-top: 8px;
+}
+.history-versions button {
+  flex: 0 0 120px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 10px;
+  text-align: left;
+  font-size: 12px;
+}
+.history-versions button.active {
+  border-color: var(--accent);
+}
+.history-versions strong {
+  display: flex;
+  gap: 8px;
+}
+.history-error {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+}
+.preview-note {
+  padding: 16px;
+  border-top: 1px solid var(--stroke-default);
+}
+.preview-note > div {
+  margin-top: 10px;
+}
+.fork-dialog {
+  width: min(460px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
+  overflow: auto;
+  color: var(--text-default);
+  background: var(--background-card);
+  border: 1px solid var(--stroke-strong);
+  border-radius: var(--radius-large);
+  padding: 20px;
+}
+.fork-dialog::backdrop {
+  background: #0008;
+}
+.fork-dialog h2 {
+  font-size: 18px;
+  margin: 0;
+}
+.fork-dialog label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 16px 0;
+}
+.fork-dialog input,
+.fork-dialog textarea {
+  font: inherit;
+  color: inherit;
+  width: 100%;
+  padding: 10px;
+  background: var(--background-page);
+  border: 1px solid var(--stroke-strong);
+  border-radius: var(--radius-button);
+}
+.fork-dialog textarea {
+  min-height: 110px;
+  resize: vertical;
+}
+.fork-dialog input[type="file"] {
+  font-size: 12px;
+}
+.fork-photos {
+  display: flex;
+  gap: 8px;
+}
+.fork-photos img {
+  width: 64px;
+  height: 64px;
+  object-fit: cover;
+  border-radius: var(--radius-button);
+}
+.fork-actions {
+  justify-content: flex-end;
+  margin-top: 20px;
+}
+.fork-actions .primary {
+  background: var(--background-primary);
+  color: var(--text-on-primary);
+}
+@media (max-width: 1050px) {
+  .center-bar {
+    flex-wrap: wrap;
+  }
+}
+@media (max-width: 760px) {
+  .history-panel {
+    margin: 0 8px 8px;
+    padding: 4px 8px 8px;
+  }
+  .history-versions button {
+    padding: 6px 8px;
+    flex-basis: 112px;
+  }
+  .history-versions button > span:last-child {
+    display: none;
+  }
+}
+
 .tabs-sep {
   width: 1px;
   background: var(--stroke-strong);
@@ -2457,5 +2602,25 @@ main {
   }
   .build-notice {
     padding: 8px 12px;
+  }
+  /* History focuses the model on small screens; Latest restores the composer. */
+  .app.has-history {
+    grid-template-rows: 56px minmax(0, 1fr) auto;
+  }
+  .app.has-history.has-running {
+    grid-template-rows: 56px auto minmax(0, 1fr) auto;
+  }
+  .has-history aside .chat-log,
+  .has-history aside .aside-bar {
+    display: none;
+  }
+  .has-history .preview-note {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+  }
+  .has-history .preview-note > div {
+    margin-top: 0;
   }
 }

@@ -2,8 +2,6 @@ import { assertRequestUnderLimit, fileFromBlob, HaiAgentsClient, type HaiAgents 
 import prompt from "../../agent/holo.md?raw";
 import { expired, key } from "./account";
 import { H } from "./hosts";
-import type { Build } from "./model";
-import { script } from "./remix";
 import { AGENT } from "./session";
 const MODEL = "holo4-27b";
 const MAX_STEPS = 300;
@@ -98,9 +96,7 @@ async function message(
 
 /** Start a build; the session starts empty, then takes the first message with the toolkit, `attached` and the photos. */
 export async function create(text: string, photos: string[], attached: Record<string, Blob> = {}): Promise<string> {
-  const toolkit = await fetch(TOOLKIT);
-  if (!toolkit.ok) throw new Error("The Brickyard toolkit is missing from this site.");
-  const first = await message(text, photos, { "brickyard.tgz": await toolkit.blob(), ...attached });
+  const first = await initialMessage(text, photos, attached);
   const session = await client.startSession({
     agent: agent(),
     maxSteps: MAX_STEPS,
@@ -112,9 +108,11 @@ export async function create(text: string, photos: string[], attached: Record<st
   return session.id;
 }
 
-/** Start a build from an exact copy of `build`, which Holo then changes as `text` asks. */
-export const remix = (build: Build, text: string, photos: string[]) =>
-  create(text, photos, { "remix.py": new Blob([script(build)], { type: "text/x-python" }) });
+export async function initialMessage(text: string, photos: string[], attached: Record<string, Blob>) {
+  const toolkit = await fetch(TOOLKIT);
+  if (!toolkit.ok) throw new Error("The Brickyard toolkit is missing from this site.");
+  return message(text, photos, { "brickyard.tgz": await toolkit.blob(), ...attached });
+}
 
 export async function say(id: string, text: string, photos: string[]) {
   await client.session(id).sendMessage(await message(text, photos, {}, `photo-${Date.now()}`));
@@ -122,6 +120,11 @@ export async function say(id: string, text: string, photos: string[]) {
 
 /** Submit recovery inputs with session creation, so there is no empty-session/message gap. */
 export async function createRecovery(messages: HaiAgents.UserMessageEvent[], source: string): Promise<string> {
+  return preparedSession(messages, source)();
+}
+
+/** Validate before a caller records that a side-effecting request was sent. */
+export function preparedSession(messages: HaiAgents.UserMessageEvent[], source: string): () => Promise<string> {
   const request = {
     agent: agent(),
     messages,
@@ -133,7 +136,7 @@ export async function createRecovery(messages: HaiAgents.UserMessageEvent[], sou
   };
   assertRequestUnderLimit(request);
   // Creating a run is a side effect: never retry an ambiguous response automatically.
-  return (await client.sessions.createSession({ body: request }, { maxRetries: 0 })).id;
+  return async () => (await client.sessions.createSession({ body: request }, { maxRetries: 0 })).id;
 }
 
 /** Holo ends its current step and answers; the session stays open for the next message. */

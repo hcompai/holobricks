@@ -121,6 +121,12 @@ export async function snapshot(id: string, key: string, edited: unknown, keep: K
   const t = await transcript(agp, id);
   if (!t.model) throw new Refusal(409, "Nothing is built yet.");
   const model = await unpack<Model>(await download(t.model.url, key));
+  // A fork's user-chosen title survives Holo naming the reconstructed model differently.
+  const fork = t.fork
+    ? await unpack<{ format?: number; model?: { name?: string } }>(await download(t.fork, key))
+    : null;
+  if (fork?.format === 1 && typeof fork.model?.name === "string" && fork.model.name.trim())
+    model.name = fork.model.name.slice(0, 80);
   // Recovery source belongs to the session, not the public library.
   delete model.recovery;
   const prompt = t.messages.find((m) => m.role === "user")?.text ?? "";

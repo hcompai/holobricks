@@ -3,7 +3,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Account } from "./account";
 import { AccountMenu } from "./AccountMenu";
 import { RecoveryPanel } from "./RecoveryPanel";
-import { create, remix, say, stop } from "./agent";
+import { create, say, stop } from "./agent";
+import { ForkDialog } from "./ForkDialog";
+import { HistoryPanel } from "./HistoryPanel";
+import { design, useHistory, type Version } from "./history";
+import type { ForkOrigin } from "./fork";
+import { provideParts } from "./scene";
 import { useEdits } from "./edits";
 import { type Build, type BuildSummary, type Piece, type Source, verified } from "./model";
 import { type Color, usePalette } from "./palette";
@@ -44,6 +49,10 @@ function urlBuild(): BuildRef | null {
 const linkTo = (ref: BuildRef) => `${window.location.origin}/?${new URLSearchParams({ [PARAMS[ref.source]]: ref.id })}`;
 
 const LIBRARY = "library";
+const urlVersion = () => {
+  const n = Number(new URLSearchParams(window.location.search).get("version"));
+  return Number.isSafeInteger(n) && n > 0 ? n : null;
+};
 
 const urlLibrary = () => new URLSearchParams(window.location.search).has(LIBRARY);
 
@@ -66,10 +75,34 @@ export default function App({ account }: { account: Account }) {
   opened.current = ref;
   const [libraryOpen, setLibraryOpen] = useState(urlLibrary);
   const buildId = ref?.id ?? null;
-  const { build: live, loading, activity, error, syncError } = useBuild(ref);
+  const { build: live, loading, activity, error, syncError, models, seed } = useBuild(ref);
   const edits = useEdits(live);
-  /** The build as shown, with this browser's hand edits. */
-  const build = edits.build;
+  const [historyOpen, setHistoryOpen] = useState(() => urlVersion() !== null);
+  const [wantedVersion, setWantedVersion] = useState<number | null>(urlVersion);
+  const [selected, setSelected] = useState<Version | null>(null);
+  const [forking, setForking] = useState<{ build: Build; origin: ForkOrigin } | null>(null);
+  const history = useHistory(
+    ref?.source === "session" ? ref.id : null,
+    models,
+    seed?.model ?? null,
+    historyOpen || wantedVersion !== null,
+  );
+  const previewing = selected !== null || wantedVersion !== null;
+  useEffect(() => {
+    if (wantedVersion === null || history.loading || history.error || loading) return;
+    const version = history.versions.find((v) => v.number === wantedVersion);
+    if (!version) return;
+    provideParts(version.model.parts);
+    setSelected(version);
+    setWantedVersion(null);
+  }, [wantedVersion, history.versions, history.loading, history.error, loading]);
+  /** Preview never replaces the live model used by the builder or the manual-edit state. */
+  const build =
+    wantedVersion !== null
+      ? null
+      : selected && live
+        ? { ...live, ...selected.model, name: live.name, open: false }
+        : edits.build;
   const [mode, setMode] = useState<Mode>("view");
   const palette = usePalette();
   const prices = usePrices();
@@ -87,11 +120,11 @@ export default function App({ account }: { account: Account }) {
   const [exportBuild, setExportBuild] = useState<Build | null>(null);
   const [instructionsBuild, setInstructionsBuild] = useState<Build | null>(null);
   const [shopping, setShopping] = useState<{ build: Build; preview: Promise<Blob | null> } | null>(null);
-  const edited = edits.edits.length > 0 && build !== live;
+  const edited = !previewing && edits.edits.length > 0 && build !== live;
 
   useEffect(() => {
-    if (mode === "edit" && !edits.editable) setMode("view");
-  }, [mode, edits.editable]);
+    if (mode === "edit" && (!edits.editable || previewing)) setMode("view");
+  }, [mode, edits.editable, previewing]);
   const shop = () => {
     if (build?.status === "done" && build.pieces.length && !edited) {
       setShopping({ build: structuredClone(build), preview: viewer.current?.image() ?? Promise.resolve(null) });
@@ -145,41 +178,55 @@ export default function App({ account }: { account: Account }) {
     ref?.source === "session" ? (listed ? { id: ref.id, source: "public" } : null) : summary?.private ? null : ref;
 
   useEffect(() => {
-    if (build && builds && summary?.status !== build.status) refreshBuilds();
-  }, [build?.id, build?.status, summary?.status]);
+    if (live && builds && summary?.status !== live.status) refreshBuilds();
+  }, [live?.id, live?.status, summary?.status]);
 
   useEffect(() => {
     document.title = buildId && heading ? `${heading.name} · ${TITLE}` : TITLE;
   }, [buildId, heading?.name]);
 
-  const show = useCallback((next: BuildRef | null) => {
+  const show = useCallback((next: BuildRef | null, version: number | null = null) => {
     setRef(next);
     setCenter("model");
     setMode("view");
     setStep(Infinity);
     setFollowing(true);
     setPlaying(false);
+    setHistoryOpen(version !== null);
+    setWantedVersion(version);
+    setSelected(null);
+    setForking(null);
   }, []);
 
   /** Show this build, with the library over it or not, and put both in the URL. */
   const navigate = useCallback(
     (next: BuildRef | null, library: boolean) => {
-      if (!same(next, opened.current)) show(next);
+      const changed = !same(next, opened.current);
+      if (changed) show(next);
       setLibraryOpen(library);
       const url = new URL(window.location.href);
       for (const param of [...Object.values(PARAMS), LIBRARY]) url.searchParams.delete(param);
+      if (changed) url.searchParams.delete("version");
       if (next) url.searchParams.set(PARAMS[next.source], next.id);
       if (library) url.search += `${url.search ? "&" : "?"}${LIBRARY}`;
       if (url.href !== window.location.href) window.history.pushState(null, "", url);
     },
     [show],
   );
-  const open = (next: BuildRef | null) => navigate(next, false);
+  const open = (next: BuildRef | null) => {
+    navigate(next, false);
+    if (same(next, opened.current)) {
+      show(next);
+      const url = new URL(window.location.href);
+      url.searchParams.delete("version");
+      window.history.replaceState(null, "", url);
+    }
+  };
 
   useEffect(() => {
     const sync = () => {
       const next = urlBuild();
-      if (!same(next, opened.current)) show(next);
+      show(next, urlVersion());
       setLibraryOpen(urlLibrary());
     };
     window.addEventListener("popstate", sync);
@@ -209,12 +256,11 @@ export default function App({ account }: { account: Account }) {
     setFollowing(s >= last);
   };
 
-  /** Start a build and open it: a new one, or a remix of `from`. */
-  const start = async (prompt: string, images: string[], from?: Build) => {
+  const start = async (prompt: string, images: string[]) => {
     setStarting(true);
     try {
-      const id = await (from ? remix(from, prompt, images) : create(prompt, images));
-      const name = from ? `${from.name} remix` : prompt || "Untitled build";
+      const id = await create(prompt, images);
+      const name = prompt || "Untitled build";
       remember(id, { name: name.slice(0, 60), prompt });
       open({ id, source: "session" });
       refreshBuilds();
@@ -224,13 +270,13 @@ export default function App({ account }: { account: Account }) {
   };
 
   const saveThumbnail = async (png: Blob) => {
-    if (ref?.source !== "session") return;
+    if (previewing || ref?.source !== "session") return;
     remember(ref.id, { thumbnail: await thumbnail(png) });
     refreshBuilds();
   };
 
   const publishBuild = async () => {
-    if (!live) return;
+    if (!live || previewing) return;
     const png = await viewer.current?.thumbnail();
     const hand = edits.edits.length ? { revision: live.revision, edits: edits.edits } : null;
     await publish(live.id, png ? await thumbnail(png) : null, hand);
@@ -268,9 +314,9 @@ export default function App({ account }: { account: Account }) {
 
   const closed =
     ref?.source === "showcase" ? (
-      "A showcase from the gallery: remix it to make your own."
+      "Showcase · Fork to edit"
     ) : ref?.source === "public" ? (
-      `Shared by ${summary?.author ?? "an H builder"}: remix it to make your own.`
+      `By ${summary?.author ?? "an H builder"} · Fork to edit`
     ) : build && !build.open && build.status !== "building" ? (
       <RecoveryPanel
         key={build.id}
@@ -284,9 +330,53 @@ export default function App({ account }: { account: Account }) {
     ) : null;
 
   const visibleStep = Math.min(step, last);
+  const selectVersion = (version: Version | null) => {
+    setWantedVersion(null);
+    const url = new URL(window.location.href);
+    if (version) url.searchParams.set("version", String(version.number));
+    else url.searchParams.delete("version");
+    window.history.replaceState(null, "", url);
+    if (version) provideParts(version.model.parts);
+    setSelected(version);
+    setMode("view");
+    setCenter("model");
+    setFollowing(true);
+    setStep(Infinity);
+    setPlaying(false);
+  };
+  const beginFork = () => {
+    if (!build?.pieces.length || !ref || wantedVersion !== null) return;
+    const saved = !edited && [...history.versions].reverse().find((v) => design(v.model) === design(build));
+    setForking({
+      build: structuredClone(build),
+      origin: {
+        ...ref,
+        name: build.name,
+        version: selected?.number ?? (saved ? saved.number : null),
+        revision: build.revision,
+      },
+    });
+  };
+  const preview = previewing && (
+    <>
+      <strong>
+        {selected
+          ? `Preview · V${selected.number}`
+          : history.loading || loading
+            ? "Opening version…"
+            : "Version unavailable"}
+      </strong>
+      <div>
+        <button onClick={() => selectVersion(null)}>Latest</button>
+        <button disabled={!selected} onClick={beginFork}>
+          Fork
+        </button>
+      </div>
+    </>
+  );
 
   return (
-    <div className={running.length ? "app has-running" : "app"}>
+    <div className={`app${running.length ? " has-running" : ""}${historyOpen ? " has-history" : ""}`}>
       <header>
         <button className="brand" onClick={home}>
           <img className="brand-icon" src="/brick.png" alt="" />
@@ -321,7 +411,7 @@ export default function App({ account }: { account: Account }) {
           </>
         )}
         <span className="spacer" />
-        {build && owned && (
+        {build && owned && !previewing && (
           <PublishButton
             published={imported ? !summary?.private : ref?.source === "public" || !!listed}
             imported={imported}
@@ -337,8 +427,8 @@ export default function App({ account }: { account: Account }) {
             onUnpublish={unpublishBuild}
           />
         )}
-        {build && shared && <CopyLink url={linkTo(shared)} />}
-        {build && imported && <DeleteButton name={build.name} onDelete={deleteBuild} />}
+        {build && shared && !previewing && <CopyLink url={linkTo(shared)} />}
+        {build && imported && !previewing && <DeleteButton name={build.name} onDelete={deleteBuild} />}
         {build && (
           <button
             className="shop-trigger"
@@ -367,7 +457,7 @@ export default function App({ account }: { account: Account }) {
       )}
       <aside>
         <div className="aside-bar">
-          <span className="aside-title">Chat</span>
+          <span className="aside-title">{previewing ? "Latest chat" : "Chat"}</span>
           {ref && (
             <button className="new-build" onClick={() => open(null)}>
               <PlusIcon size={14} weight="bold" />
@@ -376,6 +466,27 @@ export default function App({ account }: { account: Account }) {
           )}
         </div>
         <div className="aside-body">
+          {seed && (
+            <p className="recovery-origin">
+              Fork of{" "}
+              <a
+                href={`${linkTo(seed.origin)}${seed.origin.version ? `&version=${seed.origin.version}` : ""}`}
+                onClick={(event) => {
+                  event.preventDefault();
+                  const origin = seed.origin;
+                  open({ id: origin.id, source: origin.source });
+                  if (origin.version) {
+                    setWantedVersion(origin.version);
+                    setHistoryOpen(true);
+                    window.history.replaceState(null, "", `${linkTo(origin)}&version=${origin.version}`);
+                  }
+                }}
+              >
+                {seed.origin.name}
+                {seed.origin.version ? ` · V${seed.origin.version}` : ""}
+              </a>
+            </p>
+          )}
           {ref?.source === "session" && card(ref.id)?.recoveredFrom && (
             <p className="recovery-origin">
               Recovery attempt ·{" "}
@@ -396,16 +507,15 @@ export default function App({ account }: { account: Account }) {
             loading={loading}
             activity={activity}
             closed={closed}
+            preview={preview}
             onCreate={start}
             onSay={async (text, images) => {
-              if (build) await say(build.id, text, images);
+              if (live?.open && !previewing && ref?.source === "session") await say(live.id, text, images);
             }}
             onStop={async () => {
-              if (build) await stop(build.id);
+              if (live && !previewing && ref?.source === "session") await stop(live.id);
             }}
-            onRemix={async (text, images) => {
-              if (build) await start(text, images, build);
-            }}
+            onFork={beginFork}
           />
         </div>
       </aside>
@@ -426,22 +536,46 @@ export default function App({ account }: { account: Account }) {
               Parts
             </button>
           </div>
+          {build && (build.pieces.length > 0 || models.length > 0) && (
+            <div className="history-tools">
+              {selected && <span className="preview-badge">Preview · V{selected.number}</span>}
+              {ref?.source === "session" && (
+                <button aria-expanded={historyOpen} onClick={() => setHistoryOpen((open) => !open)}>
+                  History
+                </button>
+              )}
+              <button disabled={!build.pieces.length || wantedVersion !== null} onClick={beginFork}>
+                Fork
+              </button>
+            </div>
+          )}
           {center === "model" && !error && (
             <ViewControls
               framing={framing}
               spin={spin}
               mode={mode}
-              canEdit={edits.editable && !!build?.pieces.length}
+              canEdit={!previewing && edits.editable && !!build?.pieces.length}
               canWalk={!!build?.pieces.length}
               onFrame={(next) => {
                 if (mode === "walk") setMode("view");
                 setFraming(next);
               }}
               onSpin={setSpin}
-              onMode={setMode}
+              onMode={(mode) => {
+                if (mode !== "edit" || !previewing) setMode(mode);
+              }}
             />
           )}
         </div>
+        {historyOpen && (
+          <HistoryPanel
+            {...history}
+            selected={selected?.id ?? null}
+            onRetry={history.retry}
+            onSelect={selectVersion}
+            onClose={() => setHistoryOpen(false)}
+          />
+        )}
         <div className="stage">
           <div className={center === "model" ? "pane" : "pane hidden"}>
             <Viewer
@@ -451,16 +585,18 @@ export default function App({ account }: { account: Account }) {
                 buildId && !error ? `Opening ${heading?.name ?? "the build"}` : starting ? "Starting Holo…" : null
               }
               step={visibleStep}
-              syncError={syncError}
+              syncError={selected ? null : syncError}
               framing={framing}
               spin={spin}
               onThumbnail={saveThumbnail}
               empty="Describe a model in the chat to start building."
               mode={mode}
-              edits={edits}
-              describe={describer(live, palette)}
+              edits={previewing ? { ...edits, editable: false, stale: 0, hidden: 0 } : edits}
+              describe={describer(build, palette)}
               palette={palette}
-              onMode={setMode}
+              onMode={(mode) => {
+                if (mode !== "edit" || !previewing) setMode(mode);
+              }}
             />
           </div>
           {center === "parts" && build && (
@@ -520,11 +656,22 @@ export default function App({ account }: { account: Account }) {
       {instructionsBuild && (
         <InstructionsExport
           build={instructionsBuild}
-          describe={describer(live, palette)}
+          describe={describer(build, palette)}
           onClose={() => setInstructionsBuild(null)}
         />
       )}
       {shopping && <ShopDialog build={shopping.build} preview={shopping.preview} onClose={() => setShopping(null)} />}
+      {forking && (
+        <ForkDialog
+          {...forking}
+          onClose={() => setForking(null)}
+          onCreated={(id) => {
+            setForking(null);
+            open({ id, source: "session" });
+            refreshBuilds();
+          }}
+        />
+      )}
     </div>
   );
 }

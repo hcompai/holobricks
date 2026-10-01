@@ -86,11 +86,11 @@ test("a colleague's public build opens from the library's Public section, under 
   await tile.click();
   await expect(page).toHaveURL(/\?public=tower$/);
   await shown(page, tower.revision);
-  await expect(page.locator(".gallery-note")).toHaveText(/^Shared by Ada Lovelace: remix it to make your own\./);
+  await expect(page.locator(".gallery-note")).toHaveText(/^By Ada Lovelace · Fork to edit/);
   await expect(page.getByRole("button", { name: "Publish", exact: true })).toHaveCount(0);
 });
 
-test("a remix of a public build starts a private session from a script placing each of its pieces, step by step", async ({
+test("a fork of a public build starts a private session from a script placing each of its pieces, step by step", async ({
   page,
 }) => {
   const tower = { ...fixture(), id: "tower", name: "Ada's tower" };
@@ -100,15 +100,19 @@ test("a remix of a public build starts a private session from a script placing e
   await page.goto("/?public=tower");
   await shown(page, tower.revision);
 
-  await page.locator(".gallery-note").getByRole("button", { name: "Remix" }).click();
-  await page.getByPlaceholder("What should Holo change?").fill("Make it twice as tall");
-  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await page.locator(".gallery-note").getByRole("button", { name: "Fork" }).click();
+  await page.getByRole("textbox", { name: "What should change?" }).fill("Make it twice as tall");
+  await page.getByRole("button", { name: "Fork & build", exact: true }).click();
   await expect(page).toHaveURL(/\?build=new-build$/);
-  await expect(page.locator("header .title")).toHaveText("Ada's tower remix");
-  const [first] = agp.posted("/messages");
+  await expect(page.locator("header .title")).toHaveText("Ada's tower · Fork");
+  const first = agp.posted("/api/v2/sessions")[0].messages[0];
   expect(first.message).toBe("Make it twice as tall");
-  expect(first.files.map((f: { name: string }) => f.name)).toEqual(["brickyard.tgz", "remix.py"]);
-  const script = Buffer.from(first.files[1].source, "base64").toString();
+  expect(first.files.map((f: { name: string }) => f.name)).toEqual([
+    "brickyard.tgz",
+    "brickyard-fork.json.gz",
+    "remix.py",
+  ]);
+  const script = Buffer.from(first.files[2].source, "base64").toString();
   expect(script.match(/^place\(/gm)).toHaveLength(tower.pieces.length);
   expect(script.match(/^step\(.*\)$/gm)).toEqual(tower.steps.map((s) => `step("${s.title}")`));
   expect(script).toMatch(
