@@ -242,9 +242,9 @@ hr {
 .app.home .aside-body {
   flex: none;
   gap: var(--space-5);
-  width: min(760px, 100%);
+  width: min(1120px, 100%);
   margin: 0 auto;
-  padding: 12vh var(--space-4) var(--space-5);
+  padding: 9vh var(--space-4) var(--space-5);
 }
 
 header {
@@ -281,15 +281,6 @@ header {
   text-overflow: ellipsis;
 }
 
-.chip {
-  font-size: var(--font-small);
-  line-height: 16px;
-  color: var(--text-secondary);
-  background: var(--background-muted);
-  border-radius: 999px;
-  padding: 3px 10px;
-}
-
 .spacer {
   flex: 1;
 }
@@ -309,6 +300,11 @@ aside {
   min-height: 49px;
   padding: var(--space-2) var(--space-3) var(--space-2) var(--space-4);
   border-bottom: 1px solid var(--stroke-default);
+}
+
+.aside-bar > button {
+  flex: none;
+  white-space: nowrap;
 }
 
 .aside-body {
@@ -369,6 +365,27 @@ aside {
   gap: var(--space-3);
 }
 
+.app.home .home-intro {
+  align-items: center;
+  width: min(680px, 100%);
+  margin: 0 auto;
+  text-align: center;
+}
+
+.app.home .home-intro .composer {
+  align-self: stretch;
+  text-align: left;
+}
+
+.app.home .home-intro .chips {
+  justify-content: center;
+}
+
+.app.home .home-intro h1 {
+  font-size: 40px;
+  line-height: 46px;
+}
+
 .home-intro h1 {
   margin: 0;
   font-size: var(--font-display);
@@ -403,7 +420,7 @@ aside {
 .home-row {
   display: grid;
   grid-auto-flow: column;
-  grid-auto-columns: 172px;
+  grid-auto-columns: 250px;
   gap: var(--space-3);
   overflow-x: auto;
   scrollbar-width: none;
@@ -769,6 +786,10 @@ aside {
 }
 
 .aside-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-weight: 600;
 }
 
@@ -1754,21 +1775,6 @@ main {
   border: 2px solid var(--background-primary);
 }
 
-.status {
-  flex: none;
-  font-size: var(--font-small);
-  line-height: 16px;
-  border-radius: 999px;
-  padding: 4px 10px;
-  background: var(--background-building);
-  color: var(--accent);
-  white-space: nowrap;
-}
-
-.status:empty {
-  display: none;
-}
-
 .composer-error {
   padding: var(--space-2) var(--space-1) 0;
 }
@@ -2227,10 +2233,6 @@ main {
     justify-content: center;
   }
 
-  header .chip {
-    display: none;
-  }
-
   header .button-label,
   .center-bar .button-label {
     position: absolute;
@@ -2396,5 +2398,29 @@ main {
   }
   .build-notice {
     padding: 8px 12px;
+  }
+  .app.home .home-intro h1 {
+    font-size: var(--font-display);
+    line-height: 34px;
+  }
+  .home-row {
+    grid-auto-columns: 172px;
+  }
+  .build-actions {
+    display: flex;
+    gap: var(--space-2);
+    margin: 0 var(--space-3) var(--space-3);
+  }
+  .build-actions > *,
+  .build-actions .menu > button {
+    flex: 1;
+  }
+  .build-actions .menu {
+    display: flex;
+  }
+  .build-actions > button,
+  .build-actions .menu > button {
+    height: 44px;
+    justify-content: center;
   }
 }

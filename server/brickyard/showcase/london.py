@@ -47,7 +47,7 @@ WATER = [(DBLUE, 4), (SBLUE, 3), (33, 1)]
 PROMPT = "London, Mind the Gap: a 32x32 microscale diorama from a Tube platform up to Big Ben, with Tower Bridge"
 STORY = [
     (
-        "Hand-scripted by Claude, as a showcase of what Brickyard's parts and checks can do. Every step went through "
+        "Hand-scripted by Claude, as a showcase of what HoloBricks' parts and checks can do. Every step went through "
         "the same validation Holo uses; ask for a change and Holo takes over."
     ),
     (

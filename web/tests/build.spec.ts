@@ -222,7 +222,7 @@ test("Send shows the request and a starting build at once, before the platform a
   await page.getByRole("textbox").press("Enter");
   await expect(page.locator(".msg.user")).toHaveText("A red lighthouse");
   await expect(page.getByRole("textbox")).toHaveValue("");
-  await expect(page.locator("header .title")).toHaveText("New build");
+  await expect(page.locator(".aside-title")).toHaveText("New build");
   expect(agp.posted("/api/v2/sessions")).toHaveLength(0);
 
   answer();
@@ -241,7 +241,7 @@ test("a suggestion starts its build in one click: Holo gets the full prompt, the
   const [first] = agp.posted("/api/v2/sessions")[0].messages;
   expect(first.message).toMatch(/^A tall red-and-white striped lighthouse on a rocky headland\./);
   await expect(page.locator(".msg.user")).toHaveText("A red-and-white lighthouse");
-  await expect(page.locator("header .title")).toHaveText("A red-and-white lighthouse");
+  await expect(page.locator(".aside-title")).toHaveText("A red-and-white lighthouse");
 });
 
 test("a change to my ended build continues it as a copy under the same name", async ({ page }) => {
@@ -255,11 +255,13 @@ test("a change to my ended build continues it as a copy under the same name", as
   agp.sessions.get("ended")!.status = "completed";
   await page.goto("/?build=ended");
   await shown(page, model.revision);
-  await expect(page.getByRole("button", { name: "Publish", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Share" }).click();
+  await expect(page.getByRole("menuitem", { name: "Publish to the library…" })).toBeVisible();
+  await page.keyboard.press("Escape");
   await page.getByPlaceholder("Ask for a change").fill("Make it blue");
   await page.getByRole("button", { name: "Send", exact: true }).click();
   await expect(page).toHaveURL(/\?build=new-build$/);
-  await expect(page.locator("header .title")).toHaveText(model.name);
+  await expect(page.locator(".aside-title")).toHaveText(model.name);
   const [first] = agp.posted("/api/v2/sessions")[0].messages;
   expect(first.message).toBe("Make it blue");
   expect(first.files.map((f: { name: string }) => f.name)).toEqual(["brickyard.tgz", "remix.py"]);

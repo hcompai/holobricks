@@ -48,8 +48,8 @@ test("a group turns a quarter about its middle, on the half-stud grid", () => {
 
 test("edit mode selects the piece under the pointer and saves its edits in this browser", async ({ page }) => {
   const build = await open(page);
-  const pieces = page.locator(".chip").first();
-  await expect(pieces).toHaveText("8 pieces");
+  const pieces = page.locator(".scrub-label span");
+  await expect(pieces).toHaveText(/^8 pieces /);
 
   await page.getByRole("button", { name: "Edit", exact: true }).click();
   await expect(page.getByRole("toolbar", { name: "Edit mode" })).toContainText("Click a piece to select it");
@@ -65,13 +65,13 @@ test("edit mode selects the piece under the pointer and saves its edits in this 
   await expect(page.getByRole("toolbar", { name: "Edit mode" })).toContainText("2 changes");
   await panel.getByRole("button", { name: "Delete" }).click();
   await expect(panel).toBeHidden();
-  await expect(pieces).toHaveText("7 pieces");
+  await expect(pieces).toHaveText(/^7 pieces /);
   await expect(page.locator(".viewer")).not.toHaveAttribute("data-revision", build.revision);
 
   await page.getByRole("button", { name: "Undo" }).click();
-  await expect(pieces).toHaveText("8 pieces");
+  await expect(pieces).toHaveText(/^8 pieces /);
   await page.getByRole("button", { name: "Redo" }).click();
-  await expect(pieces).toHaveText("7 pieces");
+  await expect(pieces).toHaveText(/^7 pieces /);
 
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "Share", exact: true }).click();
@@ -81,17 +81,17 @@ test("edit mode selects the piece under the pointer and saves its edits in this 
 
   await page.reload();
   await expect(page.locator(".viewer")).toHaveAttribute("data-render-state", "ready");
-  await expect(pieces).toHaveText("7 pieces");
+  await expect(pieces).toHaveText(/^7 pieces /);
   await page.getByRole("button", { name: "Edit", exact: true }).click();
   await page.getByRole("button", { name: "Reset" }).click();
-  await expect(pieces).toHaveText("8 pieces");
+  await expect(pieces).toHaveText(/^8 pieces /);
   await expect(page.locator(".viewer")).toHaveAttribute("data-revision", build.revision);
   expect(await page.evaluate(() => localStorage.getItem("brickyard.edits"))).toBe("{}");
 });
 
 test("Shift-click selects several pieces, and one edit changes them all", async ({ page }) => {
   await open(page);
-  const pieces = page.locator(".chip").first();
+  const pieces = page.locator(".scrub-label span");
   await page.getByRole("button", { name: "Edit", exact: true }).click();
   const center = await canvasCenter(page);
   const panel = page.getByRole("dialog", { name: "Selection" });
@@ -104,10 +104,10 @@ test("Shift-click selects several pieces, and one edit changes them all", async 
 
   await page.keyboard.press("PageUp");
   await panel.getByRole("button", { name: "Delete" }).click();
-  await expect(pieces).toHaveText("6 pieces");
+  await expect(pieces).toHaveText(/^6 pieces /);
   await expect(page.getByRole("toolbar", { name: "Edit mode" })).toContainText("2 changes");
   await page.getByRole("button", { name: "Undo" }).click();
-  await expect(pieces).toHaveText("8 pieces");
+  await expect(pieces).toHaveText(/^8 pieces /);
 
   await page.mouse.click(center.x, center.y);
   await expect(panel).toContainText(/test-brick · (Red|Yellow|Blue|Green)/);
@@ -163,7 +163,7 @@ test("duplicates take new ids after the model's, beside their originals, and com
 
 test("Shift-drag selects every piece in the box, and ⌘D duplicates the selection beside it", async ({ page }) => {
   await open(page);
-  const pieces = page.locator(".chip").first();
+  const pieces = page.locator(".scrub-label span");
   await page.getByRole("button", { name: "Edit", exact: true }).click();
   const box = (await page.locator(".viewer-canvas").boundingBox())!;
   await page.keyboard.down("Shift");
@@ -179,15 +179,15 @@ test("Shift-drag selects every piece in the box, and ⌘D duplicates the selecti
   await expect(panel.locator("b")).toHaveText("8 pieces");
 
   await page.keyboard.press("ControlOrMeta+d");
-  await expect(pieces).toHaveText("16 pieces");
+  await expect(pieces).toHaveText(/^16 pieces /);
   await expect(panel.locator("b")).toHaveText("8 pieces");
   await expect(page.getByRole("toolbar", { name: "Edit mode" })).toContainText("1 change");
   await panel.getByRole("button", { name: "Duplicate" }).click();
-  await expect(pieces).toHaveText("24 pieces");
+  await expect(pieces).toHaveText(/^24 pieces /);
 
   await page.getByRole("button", { name: "Undo" }).click();
   await page.getByRole("button", { name: "Undo" }).click();
-  await expect(pieces).toHaveText("8 pieces");
+  await expect(pieces).toHaveText(/^8 pieces /);
   await expect(panel).toBeHidden();
 });
 

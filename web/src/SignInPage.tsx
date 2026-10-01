@@ -8,7 +8,7 @@ function sharedBuild(): { name: string; author: string | null; cover: string | n
   const params = new URLSearchParams(window.location.search);
   if (!params.has("public") && !params.has("showcase")) return null;
   const tag = (key: string) => document.querySelector(`meta[property="${key}"]`)?.getAttribute("content") ?? "";
-  const name = tag("og:title").match(/^(.+) · Brickyard$/)?.[1];
+  const name = tag("og:title").match(/^(.+) · HoloBricks$/)?.[1];
   if (!name) return null;
   return {
     name,
@@ -42,14 +42,14 @@ export function SignInPage() {
       {shared ? (
         <>
           <p className="sign-in-kicker">
-            {shared.author ? `${shared.author} shared with you` : "From the Brickyard gallery"}
+            {shared.author ? `${shared.author} shared with you` : "From the HoloBricks gallery"}
           </p>
           <h1>{shared.name}</h1>
-          <p className="sign-in-lead">Sign in to open it in Brickyard.</p>
+          <p className="sign-in-lead">Sign in to open it in HoloBricks.</p>
         </>
       ) : (
         <>
-          <h1>Brickyard</h1>
+          <h1>HoloBricks</h1>
           <p className="sign-in-lead">Describe a model. Holo builds it, brick by brick.</p>
         </>
       )}

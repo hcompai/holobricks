@@ -107,7 +107,7 @@ test("a remix of a public build starts a private session from a script placing e
   await page.getByPlaceholder("What should Holo change?").fill("Make it twice as tall");
   await page.getByRole("button", { name: "Send", exact: true }).click();
   await expect(page).toHaveURL(/\?build=new-build$/);
-  await expect(page.locator("header .title")).toHaveText("Ada's tower remix");
+  await expect(page.locator(".aside-title")).toHaveText("Ada's tower remix");
   const [first] = agp.posted("/api/v2/sessions")[0].messages;
   expect(first.message).toBe("Make it twice as tall");
   expect(first.files.map((f: { name: string }) => f.name)).toEqual(["brickyard.tgz", "remix.py"]);
@@ -241,7 +241,7 @@ test("signed out, only the sign-in page shows; Google brings the user back signe
 }) => {
   const tower = fixture();
   await site(page, [tower], null);
-  let handoff: object = { error: "Brickyard is open to H Company accounts." };
+  let handoff: object = { error: "HoloBricks is open to H Company accounts." };
   const pending: { verifier: string }[] = [];
   const challenges: (string | null)[] = [];
   await page.route(`${PORTAL}/auth/authorize?*`, (route) => {
@@ -264,10 +264,10 @@ test("signed out, only the sign-in page shows; Google brings the user back signe
   const google = page.getByRole("button", { name: "Continue with Google" });
 
   await page.goto(`/?showcase=${tower.id}`);
-  await expect(page.getByRole("heading", { name: "Brickyard" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "HoloBricks" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Library" })).toHaveCount(0);
   await google.click();
-  await expect(page.getByRole("alert")).toHaveText("Brickyard is open to H Company accounts.");
+  await expect(page.getByRole("alert")).toHaveText("HoloBricks is open to H Company accounts.");
 
   handoff = ACCOUNT;
   await google.click();

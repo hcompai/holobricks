@@ -76,14 +76,14 @@ test("a hand-edited build prices its edits, cannot fill a BrickLink cart until r
   const box = (await page.locator(".viewer-canvas").boundingBox())!;
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
   await page.getByRole("dialog", { name: "Selection" }).getByRole("button", { name: "Delete" }).click();
-  await expect(page.locator(".chip").first()).toHaveText("7 pieces");
+  await expect(page.locator(".scrub-label span")).toHaveText(/^7 pieces /);
   await page.getByRole("button", { name: /^Get the bricks/ }).click();
   const sheet = page.getByRole("dialog", { name: "Build it for real" });
   await expect(sheet.getByRole("region", { name: "Pick a Brick" })).toContainText("Includes your edits.");
   const bricklink = sheet.getByRole("region", { name: "BrickLink" });
   await expect(bricklink.getByRole("alert")).toContainText("Reset your edits");
   await bricklink.getByRole("button", { name: "Reset my edits" }).click();
-  await expect(page.locator(".chip").first()).toHaveText("8 pieces");
+  await expect(page.locator(".scrub-label span")).toHaveText(/^8 pieces /);
   await expect(bricklink.getByRole("alert")).toContainText("The parts list was not checked.");
   await expect(sheet.getByRole("region", { name: "Pick a Brick" })).not.toContainText("Includes your edits.");
 

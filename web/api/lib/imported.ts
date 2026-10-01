@@ -9,7 +9,7 @@ const UNVERIFIED = "Imported from a file: the parts list was not verified agains
 const PART = /^[\w.-]{1,64}$/;
 
 const refuse = (why: string): never => {
-  throw new Refusal(400, `This is not a Brickyard model: ${why}.`);
+  throw new Refusal(400, `This is not a HoloBricks model: ${why}.`);
 };
 
 const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);

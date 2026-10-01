@@ -20,11 +20,6 @@ export const SUGGESTIONS = [
     prompt:
       "A friendly retro robot standing in a cluttered tinkerer's workshop. A boxy light grey body, a round head with two big glowing blue eyes and an antenna tipped with a red light, a chest panel of colored buttons and dials, jointed arms with claw hands holding a wrench, and tank treads for feet. Around it a workbench covered with tools, gears and a desk lamp, shelves of spare parts, a potted plant and a small robot dog.",
   },
-  {
-    label: "A pine tree",
-    prompt:
-      "A towering old pine in a snowy forest clearing. A thick trunk with rough bark and roots gripping mossy boulders, layered dark green boughs tapering to a sharp top, dusted with snow and hung with pine cones. At its foot a small log cabin with a smoking chimney and a woodpile, a frozen stream crossed by stepping stones, a fox and a deer at the edge of the clearing, and young saplings and rocks all around.",
-  },
 ];
 
 const LABELS = new Map(SUGGESTIONS.map((s) => [s.prompt, s.label]));

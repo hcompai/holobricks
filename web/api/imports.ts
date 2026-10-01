@@ -15,7 +15,7 @@ function unpacked(upload: Buffer): unknown {
   try {
     return JSON.parse(gunzipSync(upload, { maxOutputLength: MAX_UNPACKED }).toString());
   } catch {
-    throw new Refusal(400, "The file could not be read: send a gzipped Brickyard model.");
+    throw new Refusal(400, "The file could not be read: send a gzipped HoloBricks model.");
   }
 }
 

@@ -1,6 +1,6 @@
 # Shopping with HoloTab
 
-**Shop bricks → install HoloTab if needed → copy → paste and send.** Brickyard verifies
+**Shop bricks → install HoloTab if needed → copy → paste and send.** HoloBricks verifies
 every part/color pair before offering the handoff, and embeds the verified BrickLink XML
 directly in the shopping prompt. HoloTab pastes it into **Upload BrickLink XML format**,
 continues the import confirmation, checks stock and delivered cost, and prepares carts for

@@ -73,7 +73,7 @@ function agent(): HaiAgents.Agent {
     .replaceAll("{{max_minutes}}", String(MAX_TIME_S / 60));
   return {
     name: AGENT,
-    description: "Designs brick models from real LDraw parts, step by step, in Brickyard.",
+    description: "Designs brick models from real LDraw parts, step by step, in HoloBricks.",
     model: MODEL,
     instructions,
     environments: [{ kind: "workstation", id: AGENT }],
@@ -99,7 +99,7 @@ async function message(
 /** Start a build with its first message: the toolkit, `attached` and the photos. */
 export async function create(text: string, photos: string[], attached: Record<string, Blob> = {}): Promise<string> {
   const toolkit = await fetch(TOOLKIT);
-  if (!toolkit.ok) throw new Error("The Brickyard toolkit is missing from this site.");
+  if (!toolkit.ok) throw new Error("The HoloBricks toolkit is missing from this site.");
   const first = await message(text, photos, { "brickyard.tgz": await toolkit.blob(), ...attached });
   const session = await client.startSession({
     agent: agent(),
@@ -139,7 +139,7 @@ export async function createRecovery(messages: HaiAgents.UserMessageEvent[], sou
 /** Holo ends its current step and answers; the session stays open for the next message. */
 export const stop = (id: string) => client.session(id).forceAnswer();
 
-/** The caller's own Brickyard sessions, newest first. */
+/** The caller's own HoloBricks sessions, newest first. */
 export async function sessions(): Promise<HaiAgents.SessionSummary[]> {
   const all: HaiAgents.SessionSummary[] = [];
   for (let page = 1; ; page++) {

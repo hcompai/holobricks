@@ -169,14 +169,14 @@ export async function publish(id: string, thumbnail: string | null, edits: { rev
   return published;
 }
 
-/** A Brickyard model file as the browser reads it, before the library checks it. */
+/** A HoloBricks model file as the browser reads it, before the library checks it. */
 export type ModelFile = Pick<Model, "name" | "pieces" | "parts"> & Partial<Build>;
 
 /** Read a model file (a `brickyard-gallery` export or a session's model.json, gzipped or not), or say why not. */
 export async function readModel(file: Blob): Promise<ModelFile> {
   const model = await unpack<Partial<ModelFile>>(file).catch(() => null);
   if (!Array.isArray(model?.pieces) || !model.pieces.length)
-    throw new Error("This file is not a Brickyard model: choose a model's .json or .json.gz.");
+    throw new Error("This file is not a HoloBricks model: choose a model's .json or .json.gz.");
   if (!model.parts || typeof model.parts !== "object")
     throw new Error("This model has no part geometry: export it with brickyard-gallery, then import that file.");
   return { ...model, name: model.name || "Imported build" } as ModelFile;

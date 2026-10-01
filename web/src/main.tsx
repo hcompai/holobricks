@@ -13,7 +13,7 @@ function Root() {
   const account = useAccount();
   if (!account) return <SignInPage />;
   return (
-    <Suspense fallback={<BrickLoader label="Loading Brickyard…" />}>
+    <Suspense fallback={<BrickLoader label="Loading HoloBricks…" />}>
       <App account={account} />
     </Suspense>
   );

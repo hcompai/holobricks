@@ -120,7 +120,7 @@ export async function instructionsPdf(
     }, []);
 
     const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4", compress: true });
-    doc.setProperties({ title: latin1(`${build.name}: building instructions`), creator: "Brickyard" });
+    doc.setProperties({ title: latin1(`${build.name}: building instructions`), creator: "HoloBricks" });
     cover(doc, build, pages.length, jpeg(scene.page(RENDER.pixels, scene.modelBox()), 0.85));
     await report("Drawing the cover");
 
@@ -150,7 +150,7 @@ function cover(doc: jsPDF, build: Build, pages: number, render: string) {
   doc.text(`${pieces} pieces · ${build.steps.length} steps · ${pages} pages`, 14, 31);
   const side = 165;
   doc.addImage(render, "JPEG", (PAGE.width - side) / 2, 38, side, side);
-  doc.setFontSize(9).text("Building instructions made with Brickyard", 14, PAGE.height - 8);
+  doc.setFontSize(9).text("Building instructions made with HoloBricks", 14, PAGE.height - 8);
 }
 
 function step(

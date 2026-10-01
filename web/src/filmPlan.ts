@@ -155,12 +155,12 @@ export function filmFilename(name: string, extension: string): string {
     .replace(/[. ]+$/g, "")
     .slice(0, 100)
     .trim();
-  return `${safe || "brickyard"}-build.${extension}`;
+  return `${safe || "holobricks"}-build.${extension}`;
 }
 
 export function filmCaption(build: Build, branded: boolean): string {
-  const author = branded ? `${HOLO_MODEL} by H Company` : "Brickyard";
+  const author = branded ? `${HOLO_MODEL} by H Company` : "HoloBricks";
   const state = build.status === "building" ? " · work in progress" : "";
-  const tags = branded ? `#${HOLO_MODEL} #Brickyard #LEGO` : "#Brickyard #LEGO";
+  const tags = branded ? `#${HOLO_MODEL} #HoloBricks #LEGO` : "#HoloBricks #LEGO";
   return `${build.name}: ${build.pieces.length.toLocaleString()} LEGO pieces, built with ${author}${state}. ${tags}`;
 }

@@ -1,5 +1,5 @@
 import { PlusIcon, ShoppingBagIcon, SquaresFourIcon } from "@phosphor-icons/react";
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { Account } from "./account";
 import { AccountMenu } from "./AccountMenu";
 import { RecoveryPanel } from "./RecoveryPanel";
@@ -42,6 +42,12 @@ const ShopDialog = lazy(() => import("./ShopDialog").then((m) => ({ default: m.S
 const STEP_MS = 700;
 const TITLE = document.title;
 const NEW_BUILD = "New build";
+/** The phone breakpoint of styles.css. */
+const PHONE = window.matchMedia("(max-width: 760px)");
+const onPhoneChange = (change: () => void) => {
+  PHONE.addEventListener("change", change);
+  return () => PHONE.removeEventListener("change", change);
+};
 /** The URL parameter naming the open build, by where it is read from. */
 const PARAMS: Record<Source, string> = { session: "build", public: "public", showcase: "showcase" };
 
@@ -107,6 +113,7 @@ export default function App({ account }: { account: Account }) {
   const [instructionsBuild, setInstructionsBuild] = useState<Build | null>(null);
   const [shopping, setShopping] = useState<{ build: Build; preview: Promise<Blob | null> } | null>(null);
   const edited = edits.edits.length > 0 && build !== live;
+  const phone = useSyncExternalStore(onPhoneChange, () => PHONE.matches);
   const built = !!build?.pieces.length;
 
   useEffect(() => {
@@ -357,12 +364,54 @@ export default function App({ account }: { account: Account }) {
   /** The open build, once it is more than a request on its way. */
   const actionable = drafted ? null : build;
 
+  const actions = actionable && (
+    <>
+      <ShareMenu
+        build={actionable}
+        link={shared && linkTo(shared)}
+        loading={loading}
+        publishing={
+          owned
+            ? {
+                published: imported ? !summary?.private : ref?.source === "public" || !!listed,
+                imported,
+                blocked:
+                  actionable.status === "building"
+                    ? "Publish once Holo answers"
+                    : !actionable.pieces.length
+                      ? "Nothing is built yet"
+                      : null,
+                author: account.user.name,
+                onPublish: imported ? republish : publishBuild,
+                onUnpublish: unpublishBuild,
+              }
+            : null
+        }
+        onDelete={imported ? deleteBuild : null}
+        image={() => viewer.current?.image() ?? Promise.resolve(null)}
+        onGif={exportReplay}
+        onInstructions={exportInstructions}
+      />
+      {actionable.pieces.length > 0 && (
+        <button
+          className="primary"
+          onClick={shop}
+          disabled={!shoppable}
+          title={shoppable ? undefined : "Get the bricks once Holo finishes"}
+        >
+          <ShoppingBagIcon size={16} />
+          <span className="button-label">Get the bricks{price && ` · ≈ ${price}`}</span>
+        </button>
+      )}
+    </>
+  );
+
   return (
     <div className={`app${home ? " home" : ""}${libraryOpen ? " library" : ""}${running.length ? " has-running" : ""}`}>
       <header>
         <button className="brand" onClick={() => open(null)}>
           <img className="brand-icon" src="/brick.png" alt="" />
-          <span className="button-label">Brickyard</span>
+          <span className="button-label">HoloBricks</span>
         </button>
         <button
           className={libraryOpen ? "quiet active" : "quiet"}
@@ -372,71 +421,25 @@ export default function App({ account }: { account: Account }) {
           <SquaresFourIcon size={16} />
           <span className="button-label">Library</span>
         </button>
-        {loading && summary && <span className="title">{summary.name}</span>}
-        {build && (
-          <>
-            <span className="title" title={build.name}>
-              {build.name}
-            </span>
-            {build.pieces.length > 0 && <span className="chip">{build.pieces.length.toLocaleString()} pieces</span>}
-          </>
+        {phone && heading && (
+          <span className="title" title={heading.name}>
+            {heading.name}
+          </span>
         )}
         <span className="spacer" />
-        {actionable && (
-          <ShareMenu
-            build={actionable}
-            link={shared && linkTo(shared)}
-            loading={loading}
-            publishing={
-              owned
-                ? {
-                    published: imported ? !summary?.private : ref?.source === "public" || !!listed,
-                    imported,
-                    blocked:
-                      actionable.status === "building"
-                        ? "Publish once Holo answers"
-                        : !actionable.pieces.length
-                          ? "Nothing is built yet"
-                          : null,
-                    author: account.user.name,
-                    onPublish: imported ? republish : publishBuild,
-                    onUnpublish: unpublishBuild,
-                  }
-                : null
-            }
-            onDelete={imported ? deleteBuild : null}
-            image={() => viewer.current?.image() ?? Promise.resolve(null)}
-            onGif={exportReplay}
-            onInstructions={exportInstructions}
-          />
-        )}
-        {actionable && (
-          <button
-            className="primary"
-            onClick={shop}
-            disabled={!shoppable}
-            title={
-              shoppable
-                ? undefined
-                : actionable.pieces.length
-                  ? "Get the bricks once Holo finishes"
-                  : "Nothing is built yet"
-            }
-          >
-            <ShoppingBagIcon size={16} />
-            <span className="button-label">Get the bricks{price && ` · ≈ ${price}`}</span>
-          </button>
-        )}
+        {!phone && actions}
         <AccountMenu account={account} building={running.length > 0} />
       </header>
       {running.length > 0 && (
-        <div className="build-notice" role="note" aria-label="Keep Brickyard open">
+        <div className="build-notice" role="note" aria-label="Keep HoloBricks open">
           <strong>Keep this tab open while Holo builds:</strong> it looks at your model through it.
         </div>
       )}
       <aside>
         <div className="aside-bar">
-          <span className="aside-title">Chat</span>
+          <span className="aside-title" title={phone ? undefined : heading?.name}>
+            {(!phone && heading?.name) || "Chat"}
+          </span>
           {ref && (
             <button className="quiet" onClick={() => open(null)}>
               <PlusIcon size={16} />
@@ -566,6 +569,7 @@ export default function App({ account }: { account: Account }) {
             spaceKey={mode !== "walk"}
           />
         )}
+        {phone && actions && <div className="build-actions">{actions}</div>}
         {libraryOpen && (
           <LibraryPage
             builds={builds}

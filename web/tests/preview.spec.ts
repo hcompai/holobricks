@@ -79,7 +79,7 @@ test("a link to a public build or a showcase previews its name, pieces, author a
   };
   try {
     const tower = await page("?public=tower");
-    expect(meta(tower, "og:title")).toBe("Ada&#39;s &#60;tower&#62; &#38; &#34;keep&#34; · Brickyard");
+    expect(meta(tower, "og:title")).toBe("Ada&#39;s &#60;tower&#62; &#38; &#34;keep&#34; · HoloBricks");
     expect(meta(tower, "og:description")).toBe("1,534 pieces, shared by Ada Lovelace");
     expect(meta(tower, "og:url")).toMatch(/^https:\/\/[^/?]+\/\?public=tower$/);
     expect(meta(tower, "og:image")).toBe(TOWER.thumbnail);
@@ -89,8 +89,8 @@ test("a link to a public build or a showcase previews its name, pieces, author a
     expect(tower.replace(/<meta property="og:[^>]*>\s*/g, "")).toBe(index.replace(/<meta property="og:[^>]*>\s*/g, ""));
 
     const hogwarts = await page("?showcase=hogwarts");
-    expect(meta(hogwarts, "og:title")).toBe("Hogwarts · Brickyard");
-    expect(meta(hogwarts, "og:description")).toBe("26,987 pieces, from the Brickyard gallery");
+    expect(meta(hogwarts, "og:title")).toBe("Hogwarts · HoloBricks");
+    expect(meta(hogwarts, "og:description")).toBe("26,987 pieces, from the HoloBricks gallery");
     expect(meta(hogwarts, "og:image")).toMatch(/^https:\/\/[^/?]+\/gallery\/thumbnails\/hogwarts\.png\?v=179$/);
     expect(hogwarts).not.toContain(SHOWCASE.prompt);
 

@@ -46,13 +46,13 @@ export async function whoami(access: string): Promise<{ id: string; email: strin
   return { id: user.id, email: user.email };
 }
 
-/** A Brickyard API key for the token's user, valid for a month; key names are unique across the whole organization. */
+/** A HoloBricks API key for the token's user, valid for a month; key names are unique across the whole organization. */
 export async function mint(access: string, email: string): Promise<Key> {
   const now = new Date();
   const expiry = new Date(now.getTime() + KEY_DAYS * 86_400_000).toISOString().slice(0, 10);
   const response = await call(`/organizations/${organization(access)}/keys/`, access, {
     method: "POST",
-    body: JSON.stringify({ name: `Brickyard ${email} ${now.toISOString()}`, expiry_date: expiry }),
+    body: JSON.stringify({ name: `HoloBricks ${email} ${now.toISOString()}`, expiry_date: expiry }),
   });
   if (!response.ok)
     throw new Error(`The portal failed to create an API key (HTTP ${response.status}): ${await response.text()}`);

@@ -152,7 +152,7 @@ export function ShopDialog({ build, preview, table, edited, describe, onReset, o
           {pack && (
             <a
               href={`data:application/xml;charset=utf-8,${encodeURIComponent(pack.xml)}`}
-              download={`brickyard-${pack.id.slice(0, 12)}-parts.xml`}
+              download={`holobricks-${pack.id.slice(0, 12)}-parts.xml`}
             >
               Download parts XML <ArrowUpRightIcon size={13} />
             </a>

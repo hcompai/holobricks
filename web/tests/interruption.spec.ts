@@ -11,7 +11,7 @@ test("the tab notice and close guard follow running builds through the library a
   agp.say("live", "Build a tower");
   agp.share("live", fixture());
   await page.goto("/?build=live");
-  const note = page.getByRole("note", { name: "Keep Brickyard open" });
+  const note = page.getByRole("note", { name: "Keep HoloBricks open" });
   await expect(note).toContainText("it looks at your model through it");
   await page.getByRole("button", { name: "Library" }).click();
   await expect(note).toBeVisible();
@@ -62,7 +62,7 @@ test("signing out during a build requires an explicit choice", async ({ page }) 
   const agp = await platform(page);
   agp.session("live");
   await page.goto("/?build=live");
-  await expect(page.getByRole("note", { name: "Keep Brickyard open" })).toBeVisible();
+  await expect(page.getByRole("note", { name: "Keep HoloBricks open" })).toBeVisible();
   await page.getByRole("button", { name: "Account", exact: true }).click();
   page.once("dialog", (dialog) => dialog.dismiss());
   await page.getByRole("menuitem", { name: "Sign out" }).click();

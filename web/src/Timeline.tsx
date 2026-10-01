@@ -97,9 +97,6 @@ export function Timeline(props: Props) {
           style={{ "--fill": `${last > 0 ? (current / last) * 100 : 0}%` } as CSSProperties}
         />
       </div>
-      <span className="status" aria-live="polite">
-        {building ? "Building…" : ""}
-      </span>
       <button
         className="quiet speed"
         onClick={() => onSpeed(SPEEDS[(SPEEDS.indexOf(speed) + 1) % SPEEDS.length])}
