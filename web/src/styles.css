@@ -803,7 +803,8 @@ aside {
   font-weight: 600;
 }
 
-.tile {
+.tile,
+.skeleton {
   display: flex;
   flex-direction: column;
   align-items: stretch;

@@ -3,7 +3,7 @@
   HoloBricks
 </h1>
 
-<p align="center"><b>Describe a model. Holo builds it, brick by brick.</b><br />Real parts, every brick checked, ready to buy.</p>
+<p align="center"><b>Tell Holo what you'd like to build, watch it come together brick by brick, then order the real parts and build it yourself.</b></p>
 
 ![HoloBricks showing the Paris diorama](docs/holobricks.jpg)
 
@@ -20,12 +20,12 @@
 
 | | |
 | --- | --- |
-| **Describe** | Type an idea or drop a photo. Holo builds it live in 3D. |
-| **Trust** | Every brick is a real LDraw part, checked to fit and connect. |
-| **Replay** | Scrub the steps, or share a GIF. |
+| **Describe** | Type an idea or drop in a photo, and Holo builds it in 3D while you watch. |
+| **Trust** | Every brick is a real LDraw part, checked to make sure it fits and connects. |
+| **Replay** | Scrub back through the steps, or share the build as a GIF. |
 | **Tweak** | Move, turn and recolor pieces, or walk through the model. |
-| **Build it for real** | Instructions PDF, a Pick a Brick list, or BrickLink carts via [HoloTab](SHOPPING.md). |
-| **Share** | Publish to the H library. Teammates open it read only and remix. |
+| **Build it for real** | Get the instructions as a PDF, a Pick a Brick list, or BrickLink carts through [HoloTab](SHOPPING.md). |
+| **Share** | Publish a build so your teammates can open it and remix it into their own. |
 
 ## How it works
 
@@ -39,4 +39,4 @@ Your browser renders every revision and shows it to Holo, so keep the tab open w
 
 ## Run it
 
-For H Company: sign in with your `@hcompany.ai` account. Setup, deploy, tests and the toolkit's checks are in [docs/README.md](docs/README.md).
+Anyone at H Company can sign in with their `@hcompany.ai` account. Setup, deploy, tests and the toolkit's checks are in [docs/README.md](docs/README.md).

@@ -283,7 +283,7 @@ export function ChatPanel({ build, loading, activity, closed, onCreate, onSay, o
           remixing
             ? `What should ${WHO} change?`
             : busy
-              ? `${WHO} is building: Stop to change course`
+              ? `${WHO} is building, so press Stop if you want to change course`
               : changing
                 ? "Ask for a change"
                 : "A red lighthouse on a rock… or drop a photo"
@@ -305,6 +305,7 @@ export function ChatPanel({ build, loading, activity, closed, onCreate, onSay, o
       <input
         ref={picker}
         type="file"
+        aria-label="Photos to attach"
         accept="image/*"
         multiple
         hidden
@@ -351,7 +352,7 @@ export function ChatPanel({ build, loading, activity, closed, onCreate, onSay, o
     return (
       <div className="home-intro">
         <h1>What should we build?</h1>
-        <p>Describe a model. {WHO} builds it in real bricks while you watch.</p>
+        <p>Describe anything you like and {WHO} will build it in real bricks while you watch.</p>
         {composer}
         {failure}
         <div className="chips">

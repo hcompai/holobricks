@@ -117,7 +117,7 @@ export function HomeShelves({ builds, failed, me, onRetry, onOpen, mineActions }
       {builds === null ? (
         <div className="home-grid" style={grid} aria-busy="true">
           {Array.from({ length: Math.min(PLACEHOLDERS, columns) }, (_, i) => (
-            <div key={i} className="tile skeleton">
+            <div key={i} className="skeleton">
               <div className="tile-thumb" />
               <div className="tile-body">
                 <div className="bar wide" />
@@ -152,7 +152,7 @@ export function HomeShelves({ builds, failed, me, onRetry, onOpen, mineActions }
         "mine",
         yours,
         allMine ? yours : yours.slice(0, columns),
-        "No builds yet. Describe one above, or import one.",
+        "Your builds will show up here once you describe one above or import a model.",
         <>
           {yours.length > columns && (
             <button className="quiet" onClick={() => setAllMine(!allMine)}>
@@ -167,7 +167,7 @@ export function HomeShelves({ builds, failed, me, onRetry, onOpen, mineActions }
         "public",
         everyone,
         publicShown,
-        "Nothing public yet. Publish one of your builds to share it here.",
+        "Builds your teammates publish will show up here, and yours can be the first.",
         undefined,
         publicShown.length < everyone.length && (
           <button className="home-more" onClick={() => setPublicRows(publicRows + PUBLIC_ROWS)}>

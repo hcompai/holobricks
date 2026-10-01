@@ -35,7 +35,9 @@ test("a live build shows the loader until its first model, each shared model, an
   await expect(holo.locator("strong")).toHaveText("too thin");
   await expect(holo.locator("li")).toHaveCount(2);
   await expect(page.locator(".msg.user")).toHaveText("A tower of **bricks**");
-  const planning = page.getByText("Holo is getting its bricks ready. First bricks in a few minutes.");
+  const planning = page.getByText(
+    "Holo is sorting through its bricks, and the first ones should appear in a few minutes.",
+  );
   await expect(planning).toBeVisible();
   const walk = page.getByRole("button", { name: "Walk", exact: true });
   await expect(page.locator(".timeline")).toHaveCount(0);
@@ -173,7 +175,7 @@ test("a new build sends the toolkit and the photos; Stop makes Holo answer and t
   const composer = page.getByPlaceholder("A red lighthouse on a rock… or drop a photo");
   const prompt = "Construis la Citadelle de Port-Louis à Lorient";
   await composer.fill(prompt);
-  await page.locator('input[type="file"]').setInputFiles(PHOTO);
+  await page.getByLabel("Photos to attach").setInputFiles(PHOTO);
   const send = page.getByRole("button", { name: "Send", exact: true });
   await send.click();
   await expect(page.getByText("The platform is unavailable.")).toBeVisible();
@@ -325,6 +327,9 @@ test("a build's library tile shows its latest revision on a transparent backgrou
   agp.answer("live", "A tower.");
   await page.goto("/?build=live");
   await shown(page, model.revision);
+  await expect
+    .poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("brickyard.library") ?? "{}").live?.revision))
+    .toBe(model.revision);
   await page.getByRole("button", { name: "HoloBricks", exact: true }).click();
   const tile = page.getByRole("region", { name: "Your builds" }).locator("img.tile-thumb");
   await expect(tile).toHaveAttribute("src", /^data:image\/webp;base64,/);
