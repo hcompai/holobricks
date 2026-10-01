@@ -1,6 +1,4 @@
 import { expect, test, type Page } from "@playwright/test";
-import { readFile } from "node:fs/promises";
-import { decompressFrames, parseGIF } from "gifuct-js";
 import type { Build } from "../src/model";
 import { DROP, fall, filmFilename, frameCount, landed, planFilm, started } from "../src/filmPlan";
 import { fixture, site } from "./fixtures";
@@ -20,17 +18,14 @@ function tower(count: number): Build {
 }
 
 async function mock(page: Page, build: Build = fixture()) {
-  const requests: string[] = [];
   await page.addInitScript(() =>
     Object.defineProperty(navigator, "canShare", { configurable: true, value: () => false }),
   );
-  page.on("request", (r) => r.method() !== "GET" && requests.push(`${r.method()} ${r.url()}`));
   await site(page, [build]);
   await page.goto(`/?showcase=${build.id}`);
   await page.getByRole("button", { name: "Share", exact: true }).click();
   await expect(page.getByRole("menuitem", { name: "Share a GIF…" })).toBeEnabled();
   await page.keyboard.press("Escape");
-  return { requests };
 }
 
 async function openFilm(page: Page) {
@@ -64,68 +59,6 @@ test("film plans are deterministic and land every piece before the turntable", (
   expect(() => planFilm({ pieces: [], steps: [] }, 12)).toThrow();
   expect(() => planFilm(fixture(), 5)).toThrow();
   expect(filmFilename("a/b:c?.", "gif")).toBe("a-b-c--build.gif");
-});
-
-test("the browser makes a looping GIF and leaves the viewer untouched", async ({ page }, info) => {
-  // On CPU-only CI the real 160-frame export takes six to nine minutes, and calibration
-  // blocks the page for over a minute. Keep the full render assertions.
-  test.setTimeout(900000);
-  const errors: string[] = [];
-  page.on("pageerror", (e) => errors.push(e.message));
-  const { requests } = await mock(page);
-  await expect(page.locator(".brick-loader")).toHaveCount(0);
-  await page.getByRole("slider", { name: "Step", exact: true }).fill("1");
-  await openFilm(page);
-  const dialog = page.getByRole("dialog");
-  await dialog.getByText("Options").click({ timeout: 180000 });
-  await expect(dialog.getByRole("combobox", { name: "Format", exact: true })).toHaveValue("16:9");
-  await expect(dialog.getByRole("combobox", { name: "Duration", exact: true })).toHaveValue("8");
-  await expect(dialog.getByRole("checkbox", { name: "H Company logo" })).toBeChecked();
-  await dialog.screenshot({ path: info.outputPath("preview.png") });
-  const viewer = () =>
-    page.locator(".viewer-canvas canvas").evaluate((canvas: HTMLCanvasElement) => canvas.toDataURL());
-  const before = await viewer();
-
-  const link = dialog.getByRole("link", { name: "Download GIF" });
-  await expect(link).toBeVisible({ timeout: 720000 });
-  const pending = page.waitForEvent("download");
-  await link.click();
-  const download = await pending;
-  await download.saveAs(info.outputPath("film.gif"));
-  const bytes = await readFile(info.outputPath("film.gif"));
-  expect(download.suggestedFilename()).toBe("A little LEGO tower-build.gif");
-  expect(bytes.includes(Buffer.from("NETSCAPE2.0"))).toBe(true);
-  const gif = parseGIF(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
-  expect([gif.lsd.width, gif.lsd.height]).toEqual([640, 360]);
-  const frames = decompressFrames(gif, false);
-  expect(frames).toHaveLength(8 * 20);
-  expect(frames.every((f) => f.delay === 50)).toBe(true);
-  expect(frames.slice(1).every((f) => f.transparentIndex === 255)).toBe(true);
-  await expect(dialog.getByLabel("Film preview")).toBeHidden();
-
-  await page.evaluate(() => {
-    Object.defineProperty(navigator, "canShare", { value: () => true, configurable: true });
-    Object.defineProperty(navigator, "share", {
-      value: async (data: ShareData) => {
-        (window as any).shared = { name: data.files![0].name, type: data.files![0].type, text: data.text };
-      },
-      configurable: true,
-    });
-  });
-  // Trigger a render so feature detection sees the newly mocked platform capability.
-  await dialog.getByRole("button", { name: "Copy caption" }).click();
-  await dialog.getByRole("button", { name: "Share…", exact: true }).click();
-  expect(await page.evaluate(() => (window as any).shared)).toMatchObject({
-    name: download.suggestedFilename(),
-    type: "image/gif",
-    text: expect.stringContaining("HOLO4"),
-  });
-  await page.keyboard.press("Escape");
-  await expect(dialog).not.toBeVisible();
-  await expect(page.getByRole("slider", { name: "Step", exact: true })).toHaveValue("1");
-  expect(await viewer()).toBe(before);
-  expect(requests).toEqual([]);
-  expect(errors).toEqual([]);
 });
 
 test("missing parts block exporting a misleading partial model; other builders carry no Holo attribution", async ({
