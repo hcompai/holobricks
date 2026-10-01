@@ -1,4 +1,4 @@
-import { BlobNotFoundError, head, list, put } from "@vercel/blob";
+import { BlobNotFoundError, del, head, list, put } from "@vercel/blob";
 import { privateScope } from "./account";
 
 export interface ProjectName {
@@ -53,3 +53,5 @@ export async function saveProjectName(owner: string, id: string, name: string): 
   });
   return entry;
 }
+
+export const deleteProjectName = (owner: string, id: string) => del(path(owner, id));

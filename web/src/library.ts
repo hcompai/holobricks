@@ -249,14 +249,22 @@ export const SHELF: Record<Listing, Shelf> = {
 };
 
 /** The signed-in user's builds, newest first, then everyone's public builds, then the showcases; with the listings that failed to load. */
+/** Delete one of the user's projects; a session, which cannot be deleted, leaves their library instead. */
+export async function deleteProject(ref: { id: string; source: string }) {
+  const query = new URLSearchParams({ id: ref.id, source: ref.source });
+  await api(`/api/projects?${query}`, { method: "DELETE", headers: signed() });
+}
+
 export async function library(): Promise<{ builds: BuildSummary[]; failed: Listing[] }> {
-  const [sessionsLoaded, sharedLoaded, hiddenLoaded, shownLoaded, forksLoaded] = await Promise.allSettled([
-    sessions(),
-    community(),
-    hidden(),
-    showcases(),
-    current() ? api<ForkSummary[]>("/api/forks", { headers: signed() }) : Promise.resolve([]),
-  ]);
+  const [sessionsLoaded, sharedLoaded, hiddenLoaded, shownLoaded, forksLoaded, removedLoaded] =
+    await Promise.allSettled([
+      sessions(),
+      community(),
+      hidden(),
+      showcases(),
+      current() ? api<ForkSummary[]>("/api/forks", { headers: signed() }) : Promise.resolve([]),
+      current() ? api<string[]>("/api/projects", { headers: signed() }) : Promise.resolve([]),
+    ]);
   const failed: Listing[] = [];
   const value = <T>(result: PromiseSettledResult<T[]>, from: Listing): T[] => {
     if (result.status === "fulfilled") return result.value;
@@ -269,48 +277,55 @@ export async function library(): Promise<{ builds: BuildSummary[]; failed: Listi
   const own = value(hiddenLoaded, "private");
   const shown = value(shownLoaded, "showcase");
   const forks = value(forksLoaded, "fork");
+  // Without the removals, show everything rather than fail the shelf: a removed build may briefly reappear.
+  const removed = new Set(removedLoaded.status === "fulfilled" ? removedLoaded.value : []);
   const known = cards();
   const listed = new Map(shared.map((p) => [p.id, p]));
-  const builds = mine.map((s): BuildSummary => {
-    const saved = known[s.id];
-    const published = listed.get(s.id);
-    const prompt = saved?.prompt || s.firstMessage?.message || published?.prompt || "";
-    return {
-      id: s.id,
-      name: [saved?.name, published?.name, prompt.slice(0, 60)].find((n) => n && n !== NEW_CARD.name) ?? NEW_CARD.name,
-      prompt,
-      status: status(s.status),
-      created: s.createdAt.getTime() / 1000,
-      pieces: saved?.pieces ?? published?.pieces ?? null,
-      thumbnail: saved?.thumbnail ?? published?.thumbnail ?? null,
-      source: "session",
-      author: null,
-      owner: null,
-    };
-  });
+  const builds = mine
+    .filter((s) => !removed.has(s.id))
+    .map((s): BuildSummary => {
+      const saved = known[s.id];
+      const published = listed.get(s.id);
+      const prompt = saved?.prompt || s.firstMessage?.message || published?.prompt || "";
+      return {
+        id: s.id,
+        name:
+          [saved?.name, published?.name, prompt.slice(0, 60)].find((n) => n && n !== NEW_CARD.name) ?? NEW_CARD.name,
+        prompt,
+        status: status(s.status),
+        created: s.createdAt.getTime() / 1000,
+        pieces: saved?.pieces ?? published?.pieces ?? null,
+        thumbnail: saved?.thumbnail ?? published?.thumbnail ?? null,
+        source: "session",
+        author: null,
+        owner: null,
+      };
+    });
   // A build is public or private, never both: the public listing wins if a stale private entry lingers.
   const privately = own.filter((p) => !listed.has(p.id));
   const forkRuns = new Set(forks.flatMap((f) => (f.sessionId ? [f.sessionId] : [])));
-  const copies: BuildSummary[] = forks.map((f) => {
-    const run = builds.find((b) => b.id === f.sessionId);
-    const saved = known[f.id];
-    const rendered = f.sessionId ? known[f.sessionId] : null;
-    return {
-      ...f,
-      name: f.name,
-      prompt: run?.prompt ?? "",
-      pieces: run?.pieces ?? f.pieces,
-      status: run?.status ?? "done",
-      thumbnail:
-        rendered?.thumbnail && rendered.revision !== saved?.revision
-          ? rendered.thumbnail
-          : (saved?.thumbnail ?? run?.thumbnail ?? null),
-      source: "fork",
-      author: null,
-      owner: current()?.user.id ?? null,
-      private: !listed.has(f.id),
-    };
-  });
+  const copies: BuildSummary[] = forks
+    .filter((f) => !removed.has(f.id))
+    .map((f) => {
+      const run = builds.find((b) => b.id === f.sessionId);
+      const saved = known[f.id];
+      const rendered = f.sessionId ? known[f.sessionId] : null;
+      return {
+        ...f,
+        name: f.name,
+        prompt: run?.prompt ?? "",
+        pieces: run?.pieces ?? f.pieces,
+        status: run?.status ?? "done",
+        thumbnail:
+          rendered?.thumbnail && rendered.revision !== saved?.revision
+            ? rendered.thumbnail
+            : (saved?.thumbnail ?? run?.thumbnail ?? null),
+        source: "fork",
+        author: null,
+        owner: current()?.user.id ?? null,
+        private: !listed.has(f.id),
+      };
+    });
   return {
     builds: [...builds.filter((b) => !forkRuns.has(b.id)), ...copies, ...shared, ...privately, ...shown],
     failed,
