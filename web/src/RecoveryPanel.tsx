@@ -34,7 +34,7 @@ export function RecoveryPanel({
   };
   return (
     <section className="recovery-panel" aria-label="Build recovery">
-      <strong>{build.status === "error" ? "Building was interrupted" : "This session has ended"}</strong>
+      <strong>Building was interrupted</strong>
       <p>
         {restore
           ? "Continue from the last shared version in a new attempt. Your original model stays here; later unshared changes may be lost."

@@ -4,11 +4,13 @@ import type { Account } from "./account";
 import { AccountMenu } from "./AccountMenu";
 import { RecoveryPanel } from "./RecoveryPanel";
 import { create, remix, say, stop } from "./agent";
+import { PHASES } from "./activity";
 import { useEdits } from "./edits";
-import { type Build, type BuildSummary, type Piece, type Source, verified } from "./model";
+import { type Build, type BuildSummary, EMPTY_MODEL, type Piece, type Source, verified } from "./model";
 import { type Color, usePalette } from "./palette";
 import { estimate, money, usePrices } from "./pickabrick";
 import { ChatPanel } from "./ChatPanel";
+import { HomeShelves } from "./HomeShelves";
 import { ImportBuild } from "./ImportBuild";
 import { LibraryPage } from "./LibraryPage";
 import { countParts, PartsPanel } from "./PartsPanel";
@@ -28,6 +30,7 @@ import {
   thumbnail,
   unpublish,
 } from "./library";
+import { label } from "./suggestions";
 import { type BuildRef, useBuild } from "./useBuild";
 import { useKeeper } from "./useSession";
 import { type Framing, type Mode, ViewControls, Viewer, type ViewerHandle } from "./Viewer";
@@ -38,6 +41,7 @@ const ShopDialog = lazy(() => import("./ShopDialog").then((m) => ({ default: m.S
 
 const STEP_MS = 700;
 const TITLE = document.title;
+const NEW_BUILD = "New build";
 /** The URL parameter naming the open build, by where it is read from. */
 const PARAMS: Record<Source, string> = { session: "build", public: "public", showcase: "showcase" };
 
@@ -75,7 +79,14 @@ export default function App({ account }: { account: Account }) {
   opened.current = ref;
   const [libraryOpen, setLibraryOpen] = useState(urlLibrary);
   const buildId = ref?.id ?? null;
-  const { build: live, loading, activity, error, syncError } = useBuild(ref);
+  const read = useBuild(ref);
+  /** What the user just asked for, shown as a starting build where they asked it, until its session answers. */
+  const [draft, setDraft] = useState<{ at: BuildRef | null; build: Build; since: number } | null>(null);
+  const drafted = draft && same(draft.at, ref) && read.build?.id !== draft.build.id ? draft.build : null;
+  const live = drafted ?? read.build;
+  const loading = read.loading && !drafted;
+  const activity = drafted ? { label: PHASES.idea, since: draft!.since, work: null } : read.activity;
+  const { error, syncError } = read;
   const edits = useEdits(live);
   /** The build as shown, with this browser's hand edits. */
   const build = edits.build;
@@ -86,7 +97,6 @@ export default function App({ account }: { account: Account }) {
   const [builds, setBuilds] = useState<BuildSummary[] | null>(null);
   const [buildsFailed, setBuildsFailed] = useState<Shelf[]>([]);
   const [center, setCenter] = useState<"model" | "parts">("model");
-  const [starting, setStarting] = useState(false);
   const [step, setStep] = useState(Infinity);
   const [following, setFollowing] = useState(true);
   const [playing, setPlaying] = useState(false);
@@ -171,11 +181,12 @@ export default function App({ account }: { account: Account }) {
   }, [build?.id, build?.status, summary?.status]);
 
   useEffect(() => {
-    document.title = buildId && heading ? `${heading.name} · ${TITLE}` : TITLE;
-  }, [buildId, heading?.name]);
+    document.title = heading ? `${heading.name} · ${TITLE}` : TITLE;
+  }, [heading?.name]);
 
   const show = useCallback((next: BuildRef | null) => {
     setRef(next);
+    setDraft(null);
     setCenter("model");
     setMode("view");
     setStep(Infinity);
@@ -208,8 +219,6 @@ export default function App({ account }: { account: Account }) {
     return () => window.removeEventListener("popstate", sync);
   }, [show]);
 
-  const home = () => open(null);
-
   useEffect(() => {
     if (following) setStep(last);
   }, [following, last]);
@@ -231,19 +240,39 @@ export default function App({ account }: { account: Account }) {
     setFollowing(s >= last);
   };
 
-  /** Start a build and open it: a new one, or a remix of `from`. */
+  /** Start a build and show it at once: a new one, or a copy of `from` that Holo changes as asked, under the same name if it is the user's. */
   const start = async (prompt: string, images: string[], from?: Build) => {
-    setStarting(true);
+    const name = from ? (owned ? from.name : `${from.name} remix`) : (label(prompt) ?? NEW_BUILD);
+    const at = opened.current;
+    const since = Date.now();
+    const build: Build = {
+      ...EMPTY_MODEL,
+      id: "",
+      name,
+      status: "building",
+      open: false,
+      messages: [{ role: "user", text: prompt, images }],
+    };
+    setDraft({ at, build, since });
     try {
       const id = await (from ? remix(from, prompt, images) : create(prompt, images));
       started.current.add(id);
-      const name = from ? `${from.name} remix` : prompt || "Untitled build";
       remember(id, { name: name.slice(0, 60), prompt });
-      open({ id, source: "session" });
       refreshBuilds();
-    } finally {
-      setStarting(false);
+      if (!same(opened.current, at)) return;
+      const next: BuildRef = { id, source: "session" };
+      open(next);
+      setDraft({ at: next, build: { ...build, id }, since });
+    } catch (e) {
+      setDraft((current) => (current?.build === build ? null : current));
+      throw e;
     }
+  };
+
+  /** Open a listed build: the user's public builds as their session, when they have one. */
+  const openListed = (b: BuildSummary) => {
+    const session = b.source === "public" && builds?.some((s) => s.source === "session" && s.id === b.id);
+    open({ id: b.id, source: session ? "session" : b.source });
   };
 
   const saveThumbnail = async (png: Blob, revision: string) => {
@@ -309,7 +338,7 @@ export default function App({ account }: { account: Account }) {
       `Shared by ${summary?.author ?? "an H builder"}: remix it to make your own.`
     ) : ref?.source === "session" && builds && !buildsFailed.includes("mine") && !owned ? (
       "A teammate's build: remix it to make your own."
-    ) : build && !build.open && build.status !== "building" ? (
+    ) : build?.status === "error" ? (
       <RecoveryPanel
         key={build.id}
         build={live!}
@@ -323,11 +352,14 @@ export default function App({ account }: { account: Account }) {
     ) : null;
 
   const visibleStep = Math.min(step, last);
+  const home = !ref && !drafted;
+  /** The open build, once it is more than a request on its way. */
+  const actionable = drafted ? null : build;
 
   return (
-    <div className={`app${ref ? "" : " home"}${running.length ? " has-running" : ""}`}>
+    <div className={`app${home ? " home" : ""}${libraryOpen ? " library" : ""}${running.length ? " has-running" : ""}`}>
       <header>
-        <button className="brand" onClick={home}>
+        <button className="brand" onClick={() => open(null)}>
           <img className="brand-icon" src="/brick.png" alt="" />
           <span className="button-label">Brickyard</span>
         </button>
@@ -349,9 +381,9 @@ export default function App({ account }: { account: Account }) {
           </>
         )}
         <span className="spacer" />
-        {build && (
+        {actionable && (
           <ShareMenu
-            build={build}
+            build={actionable}
             link={shared && linkTo(shared)}
             loading={loading}
             publishing={
@@ -360,9 +392,9 @@ export default function App({ account }: { account: Account }) {
                     published: imported ? !summary?.private : ref?.source === "public" || !!listed,
                     imported,
                     blocked:
-                      build.status === "building"
+                      actionable.status === "building"
                         ? "Publish once Holo answers"
-                        : !build.pieces.length
+                        : !actionable.pieces.length
                           ? "Nothing is built yet"
                           : null,
                     author: account.user.name,
@@ -377,13 +409,17 @@ export default function App({ account }: { account: Account }) {
             onInstructions={exportInstructions}
           />
         )}
-        {build && (
+        {actionable && (
           <button
             className="primary"
             onClick={shop}
             disabled={!shoppable}
             title={
-              shoppable ? undefined : build.pieces.length ? "Get the bricks once Holo finishes" : "Nothing is built yet"
+              shoppable
+                ? undefined
+                : actionable.pieces.length
+                  ? "Get the bricks once Holo finishes"
+                  : "Nothing is built yet"
             }
           >
             <ShoppingBagIcon size={16} />
@@ -440,6 +476,14 @@ export default function App({ account }: { account: Account }) {
               if (build) await start(text, images, build);
             }}
           />
+          {home && builds && (
+            <HomeShelves
+              builds={builds}
+              me={account.user.id}
+              onOpen={openListed}
+              onLibrary={() => navigate(null, true)}
+            />
+          )}
         </div>
       </aside>
       <main>
@@ -480,16 +524,13 @@ export default function App({ account }: { account: Account }) {
             <Viewer
               ref={viewer}
               build={build}
-              opening={
-                buildId && !error ? `Opening ${heading?.name ?? "the build"}` : starting ? "Starting Holo…" : null
-              }
+              opening={buildId && !error ? `Opening ${heading?.name ?? "the build"}` : null}
               step={visibleStep}
               syncError={syncError}
               framing={framing}
               spin={spin}
               onThumbnail={ref?.source === "session" && owned ? saveThumbnail : undefined}
               thumbnailed={ref?.source === "session" && owned ? card(ref.id)?.revision : undefined}
-              empty="Describe a model in the chat to start building."
               mode={mode}
               edits={edits}
               describe={describer(live, palette)}
@@ -532,10 +573,7 @@ export default function App({ account }: { account: Account }) {
             active={ref}
             onRetry={refreshBuilds}
             onClose={() => navigate(ref, false)}
-            onOpen={(b) => {
-              const mine = b.source === "public" && builds?.some((s) => s.source === "session" && s.id === b.id);
-              open({ id: b.id, source: mine ? "session" : b.source });
-            }}
+            onOpen={openListed}
             me={account.user.id}
             mineActions={
               <ImportBuild
