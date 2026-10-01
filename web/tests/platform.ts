@@ -37,6 +37,8 @@ export class Platform {
   /** Answer the next session creations with this HTTP status. */
   refuse: number[] = [];
   offline = false;
+  /** Leave the user's messages unread until the test says them. */
+  hold = false;
   /** When the next event happens, in ms since the epoch. */
   now = Date.parse(NOW);
   loseCreationResponse = false;
@@ -171,6 +173,7 @@ export async function platform(page: Page): Promise<Platform> {
         created_at: NOW,
       });
     if (action === "messages") {
+      if (agp.hold) return reply(202);
       agp.say(session.id, body.message);
       agp.state(session.id, "running");
       return reply(202);

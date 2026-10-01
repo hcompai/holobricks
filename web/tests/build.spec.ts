@@ -65,6 +65,37 @@ test("a live build shows the loader until its first model, each shared model, an
   expect(agp.posted("/tool_results")[2].result[0]).toMatch(`Revision ${recolored.revision.slice(0, 8)}`);
 });
 
+test("a message sent while Holo builds reaches it without stopping, and shows as sent until Holo reads it", async ({
+  page,
+}) => {
+  await site(page);
+  const agp = await platform(page);
+  agp.session("live");
+  agp.say("live", "A tower");
+  await page.goto("/?build=live");
+  const composer = page.getByPlaceholder("Ask for a change");
+  const stop = page.getByRole("button", { name: "Stop", exact: true });
+  const send = page.getByRole("button", { name: "Send", exact: true });
+  await expect(stop).toBeVisible();
+
+  agp.hold = true;
+  await composer.fill("Make it taller");
+  await expect(stop).toHaveCount(0);
+  await send.click();
+  await expect(composer).toHaveValue("");
+  await expect(stop).toBeVisible();
+  const sent = page.locator(".msg.user.queued");
+  await expect(sent).toHaveText("Make it taller");
+  await expect.poll(() => agp.posted("/messages")).toMatchObject([{ message: "Make it taller" }]);
+  expect(agp.posted("/force_answer")).toHaveLength(0);
+  await expect(page.locator(".msg.live")).toBeVisible();
+
+  agp.say("live", "Make it taller");
+  await expect(sent).toHaveCount(0);
+  await expect(page.locator(".msg.user")).toHaveText(["A tower", "Make it taller"]);
+  await expect(page.locator(".msg.live")).toContainText("Reading your message");
+});
+
 test("Holo's work shows as what it does now, then folds under its message; a repeated answer shows once", async ({
   page,
 }) => {
@@ -340,7 +371,7 @@ test("a build's library tile shows its latest revision on a transparent backgrou
 
   agp.state("live", "running");
   await page.goBack();
-  await expect(page.getByPlaceholder("Holo is building, so press Stop if you want to change course")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Stop", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "HoloBricks", exact: true }).click();
   await expect(page.getByRole("region", { name: "Your builds" }).locator(".tile")).toContainText("building…");
   await page.getByRole("region", { name: "Public builds" }).locator(".tile").click();

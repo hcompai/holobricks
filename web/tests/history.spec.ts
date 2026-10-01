@@ -346,5 +346,15 @@ test("a fork reload preserves its latest model when storage briefly returns the 
   await page.getByPlaceholder("Ask for a change").fill("Keep the yellow roof");
   await page.getByRole("button", { name: "Send", exact: true }).click();
   await expect.poll(() => agp.posted("/messages")).toHaveLength(1);
+  await expect(page.getByRole("button", { name: "Stop", exact: true })).toBeVisible();
+  // The restored fork also accepts the new mid-build chat flow, in its existing session.
+  agp.hold = true;
+  await page.getByPlaceholder("Ask for a change").fill("Add a window too");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await expect(page.locator(".msg.user.queued")).toHaveText("Add a window too");
+  await expect.poll(() => agp.posted("/messages")).toHaveLength(2);
   expect(agp.posted("/api/v2/sessions")).toHaveLength(1);
+  expect(agp.posted("/force_answer")).toHaveLength(0);
+  agp.say("new-build", "Add a window too");
+  await expect(page.locator(".msg.user.queued")).toHaveCount(0);
 });

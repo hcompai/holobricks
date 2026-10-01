@@ -610,7 +610,7 @@ export default function App({ account }: { account: Account }) {
             preview={preview}
             onCreate={start}
             onSay={async (text, images) => {
-              if (!live?.open || readOnly) return;
+              if (!live || readOnly || (!live.open && live.status !== "building")) return;
               if (runId) await say(runId, text, images);
               else if (ref?.source === "fork" && seed) {
                 const id = await startFork(ref.id, seed, text, images);

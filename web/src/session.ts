@@ -113,7 +113,8 @@ function step(t: Transcript, event: HaiAgents.SessionEvent): Transcript {
     case "message_event": {
       if (data.callerId !== "user") return t;
       const said = say({ role: "user", text: text(data.content ?? []), images: images(data.content ?? []) });
-      return { ...said, since: at, phase: PHASES.idea, work: t.work?.steps.length ? t.work : fresh };
+      const phase = t.messages.some((m) => m.role === "user") ? PHASES.message : PHASES.idea;
+      return { ...said, since: at, phase, work: t.work?.steps.length ? t.work : fresh };
     }
     case "policy_event": {
       const calls = (data.toolReqs ?? []).filter((c) => c.toolName !== "answer");

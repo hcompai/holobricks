@@ -503,6 +503,10 @@ aside {
   background: var(--background-muted);
 }
 
+.msg.user.queued {
+  opacity: 0.6;
+}
+
 .msg.assistant {
   align-self: stretch;
   max-width: none;

@@ -3,6 +3,7 @@ import type { HaiAgents } from "hai-agents";
 /** The few phases of a build, as the chat's live line names them. */
 export const PHASES = {
   idea: "Reading your idea",
+  message: "Reading your message",
   setup: "Getting its bricks ready",
   photos: "Finding photos",
   naming: "Naming it",
