@@ -33,7 +33,7 @@ export function ViewControls({
   spin,
   mode,
   canEdit,
-  canWalk,
+  built,
   onFrame,
   onSpin,
   onMode,
@@ -42,7 +42,8 @@ export function ViewControls({
   spin: boolean;
   mode: Mode;
   canEdit: boolean;
-  canWalk: boolean;
+  /** The model has pieces, so it can be edited or walked through. */
+  built: boolean;
   onFrame: (framing: Framing) => void;
   onSpin: (spin: boolean) => void;
   onMode: (mode: Mode) => void;
@@ -65,27 +66,30 @@ export function ViewControls({
         <ArrowsClockwiseIcon size={14} weight="bold" />
         <span className="button-label">Spin</span>
       </button>
-      <span className="tabs-sep" />
-      <button
-        className={mode === "edit" ? "active" : ""}
-        aria-pressed={mode === "edit"}
-        disabled={!canEdit && mode !== "edit"}
-        title={canEdit ? "Select pieces to move, turn or delete them" : "Pieces can be edited once Holo is done"}
-        onClick={() => toggle("edit")}
-      >
-        <PencilSimpleIcon size={14} weight="bold" />
-        <span className="button-label">Edit</span>
-      </button>
-      <button
-        className={mode === "walk" ? "needs-mouse active" : "needs-mouse"}
-        aria-pressed={mode === "walk"}
-        disabled={!canWalk && mode !== "walk"}
-        title="Walk through the model: WASD and the mouse"
-        onClick={() => toggle("walk")}
-      >
-        <PersonSimpleWalkIcon size={14} weight="bold" />
-        <span className="button-label">Walk</span>
-      </button>
+      {built && (
+        <>
+          <span className="tabs-sep" />
+          <button
+            className={mode === "edit" ? "active" : ""}
+            aria-pressed={mode === "edit"}
+            disabled={!canEdit && mode !== "edit"}
+            title={canEdit ? "Select pieces to move, turn or delete them" : "Pieces can be edited once Holo is done"}
+            onClick={() => toggle("edit")}
+          >
+            <PencilSimpleIcon size={14} weight="bold" />
+            <span className="button-label">Edit</span>
+          </button>
+          <button
+            className={mode === "walk" ? "needs-mouse active" : "needs-mouse"}
+            aria-pressed={mode === "walk"}
+            title="Walk through the model: WASD and the mouse"
+            onClick={() => toggle("walk")}
+          >
+            <PersonSimpleWalkIcon size={14} weight="bold" />
+            <span className="button-label">Walk</span>
+          </button>
+        </>
+      )}
       <Shortcuts />
     </div>
   );
@@ -145,7 +149,7 @@ export function Viewer(props: Props) {
   const ready = !!build && drawn?.key === version && drawn.pieces === build.pieces && !renderError;
   /** Some revision of this build is drawn; the scene keeps it up until the next one is ready. */
   const shown = !!build && drawn?.id === build.id && !renderError;
-  const waiting = shown && !build.pieces.length;
+  const empty = !!build && !build.pieces.length;
   const failed = (error: unknown) => {
     setDrawn(null);
     setRenderError(error instanceof Error ? error.message : "Could not draw the latest model");
@@ -437,8 +441,8 @@ export function Viewer(props: Props) {
         </div>
       ) : (
         <>
-          {opening && !shown && <BrickLoader label={build ? "Loading the model…" : opening} />}
-          {waiting &&
+          {opening && !shown && !empty && <BrickLoader label={build ? "Loading the model…" : opening} />}
+          {empty &&
             (build.status === "building" ? (
               <BrickLoader label="Holo is getting its bricks ready. First bricks in a few minutes." />
             ) : (

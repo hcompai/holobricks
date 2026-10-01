@@ -37,6 +37,9 @@ test("a live build shows the loader until its first model, each shared model, an
   await expect(page.locator(".msg.user")).toHaveText("A tower of **bricks**");
   const planning = page.getByText("Holo is getting its bricks ready. First bricks in a few minutes.");
   await expect(planning).toBeVisible();
+  const walk = page.getByRole("button", { name: "Walk", exact: true });
+  await expect(page.locator(".timeline")).toHaveCount(0);
+  await expect(walk).toHaveCount(0);
 
   const model = fixture();
   agp.state("live", "running");
@@ -44,6 +47,8 @@ test("a live build shows the loader until its first model, each shared model, an
   agp.look("live", "side", { angle: 90 });
   await shown(page, model.revision);
   await expect(planning).toHaveCount(0);
+  await expect(page.locator(".timeline")).toBeVisible();
+  await expect(walk).toBeVisible();
   await expect.poll(() => agp.posted("/tool_results")).toHaveLength(2);
   const [caption, image] = agp.posted("/tool_results")[1].result;
   expect(caption).toMatch(new RegExp(`^Revision ${model.revision.slice(0, 8)}, 8 pieces\\. The view from 90 degrees`));
