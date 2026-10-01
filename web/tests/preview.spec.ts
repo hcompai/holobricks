@@ -66,7 +66,7 @@ async function bundled(): Promise<(request: Request) => Promise<Response>> {
 }
 
 const meta = (html: string, key: string) =>
-  html.match(new RegExp(`<meta (?:property|name)="${key}" content="([^"]*)"`))?.[1];
+  html.match(new RegExp(`<meta\\s+(?:property|name)="${key}"\\s+content="([^"]*)"`))?.[1];
 
 test("a link to a public build or a showcase previews its name, pieces, author and cover; any other gets the app as is", async () => {
   const GET = await bundled();
@@ -86,7 +86,9 @@ test("a link to a public build or a showcase previews its name, pieces, author a
     expect(meta(tower, "og:image:width")).toBeUndefined();
     expect(tower).not.toContain("<tower>");
     expect(tower).not.toContain(TOWER.prompt);
-    expect(tower.replace(/<meta property="og:[^>]*>\s*/g, "")).toBe(index.replace(/<meta property="og:[^>]*>\s*/g, ""));
+    expect(tower.replace(/<meta\s+property="og:[^>]*>\s*/g, "")).toBe(
+      index.replace(/<meta\s+property="og:[^>]*>\s*/g, ""),
+    );
 
     const hogwarts = await page("?showcase=hogwarts");
     expect(meta(hogwarts, "og:title")).toBe("Hogwarts · HoloBricks");

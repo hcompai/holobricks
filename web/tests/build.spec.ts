@@ -339,6 +339,9 @@ test("a build's library tile shows its latest revision on a transparent backgrou
   expect(before.red).toBeGreaterThan(0);
 
   agp.state("live", "running");
+  await page.goBack();
+  await expect(page.getByPlaceholder("Holo is building, so press Stop if you want to change course")).toBeVisible();
+  await page.getByRole("button", { name: "HoloBricks", exact: true }).click();
   await expect(page.getByRole("region", { name: "Your builds" }).locator(".tile")).toContainText("building…");
   await page.getByRole("region", { name: "Public builds" }).locator(".tile").click();
   await expect(page).toHaveURL(/\?showcase=paris$/);
