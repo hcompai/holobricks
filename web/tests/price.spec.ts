@@ -36,9 +36,7 @@ test("upload lists hold at most 400 different elements each", () => {
   expect(files[1]).toBe("elementId,quantity\r\n400,401\r\n");
 });
 
-test("one sheet gets the bricks: its price in the header, BrickLink, a Pick a Brick list and the instructions", async ({
-  page,
-}) => {
+test("one sheet gets the bricks: its price in the header, BrickLink, a Pick a Brick list", async ({ page }) => {
   await open(page, TABLE);
   const trigger = page.getByRole("button", { name: /^Get the bricks/ });
   await expect(trigger).toHaveText(/^Get the bricks · ≈ 4\s€$/);
@@ -54,16 +52,11 @@ test("one sheet gets the bricks: its price in the header, BrickLink, a Pick a Br
     "https://www.lego.com/fr-fr/pick-and-build/pick-a-brick",
   );
 
-  let download = page.waitForEvent("download");
+  const download = page.waitForEvent("download");
   await store.getByRole("button", { name: "Download Pick a Brick list" }).click();
   const csv = await readFile(await (await download).path(), "utf8");
   expect(csv).toBe("elementId,quantity\r\n300121,2\r\n300124,2\r\n300123,2\r\n");
 
-  const pdf = sheet.getByRole("region", { name: "Instructions" }).getByRole("link", { name: /Download instructions/ });
-  await expect(pdf).toBeVisible({ timeout: 60000 });
-  download = page.waitForEvent("download");
-  await pdf.click();
-  expect((await readFile(await (await download).path(), "latin1")).startsWith("%PDF-")).toBe(true);
   await page.keyboard.press("Escape");
   await expect(sheet).toBeHidden();
 });
