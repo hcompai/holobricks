@@ -73,7 +73,7 @@ test("a message sent while Holo builds reaches it without stopping, and shows as
   agp.session("live");
   agp.say("live", "A tower");
   await page.goto("/?build=live");
-  const composer = page.getByPlaceholder("Ask for a change: Holo takes it in as it builds");
+  const composer = page.getByPlaceholder("Ask for a change");
   const stop = page.getByRole("button", { name: "Stop", exact: true });
   const send = page.getByRole("button", { name: "Send", exact: true });
   await expect(stop).toBeVisible();
@@ -371,7 +371,7 @@ test("a build's library tile shows its latest revision on a transparent backgrou
 
   agp.state("live", "running");
   await page.goBack();
-  await expect(page.getByPlaceholder("Ask for a change: Holo takes it in as it builds")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Stop", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "HoloBricks", exact: true }).click();
   await expect(page.getByRole("region", { name: "Your builds" }).locator(".tile")).toContainText("building…");
   await page.getByRole("region", { name: "Public builds" }).locator(".tile").click();

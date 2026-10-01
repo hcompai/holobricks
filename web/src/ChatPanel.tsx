@@ -301,11 +301,9 @@ export function ChatPanel({ build, loading, activity, closed, onCreate, onSay, o
         placeholder={
           remixing
             ? `What should ${WHO} change?`
-            : busy
-              ? `Ask for a change: ${WHO} takes it in as it builds`
-              : changing
-                ? "Ask for a change"
-                : "A red lighthouse on a rock… or drop a photo"
+            : changing
+              ? "Ask for a change"
+              : "A red lighthouse on a rock… or drop a photo"
         }
         onChange={(e) => setText(e.target.value)}
         onPaste={(e) => {
