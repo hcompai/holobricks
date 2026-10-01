@@ -96,6 +96,43 @@ test("a message sent while Holo builds reaches it without stopping, and shows as
   await expect(page.locator(".msg.live")).toContainText("Reading your message");
 });
 
+test("Delete takes a build out of my builds for good after a confirmation, and stops Holo if it is building", async ({
+  page,
+}) => {
+  const { deleted } = await site(page);
+  const agp = await platform(page);
+  agp.session("live");
+  agp.say("live", "A tower");
+  agp.session("done", "idle");
+  agp.say("done", "A bridge");
+  agp.answer("done", "Built a bridge.");
+  await page.goto("/?build=live");
+  const share = page.getByRole("button", { name: "Share", exact: true });
+  const confirm = page.getByRole("dialog", { name: "Delete" });
+  const mine = page.getByRole("region", { name: "Your builds" }).locator(".tile");
+  const cancels = () => agp.requests.filter((r) => r.method === "DELETE").map((r) => r.path);
+
+  await share.click();
+  await page.getByRole("menuitem", { name: "Delete…" }).click();
+  await expect(confirm).toContainText("It leaves your builds and the public library.");
+  await confirm.getByRole("button", { name: "Delete" }).click();
+  await expect(page).toHaveURL(/\/$/);
+  expect(deleted).toEqual(["live"]);
+  expect(cancels()).toEqual(["/api/v2/sessions/live"]);
+  await expect(mine).toHaveCount(1);
+
+  await page.reload();
+  await expect(mine).toHaveCount(1);
+  await mine.click();
+  await share.click();
+  await page.getByRole("menuitem", { name: "Delete…" }).click();
+  await confirm.getByRole("button", { name: "Delete" }).click();
+  await expect(page).toHaveURL(/\/$/);
+  expect(deleted).toEqual(["live", "done"]);
+  expect(cancels()).toHaveLength(1);
+  await expect(mine).toHaveCount(0);
+});
+
 test("Holo's work shows as what it does now, then folds under its message; a repeated answer shows once", async ({
   page,
 }) => {

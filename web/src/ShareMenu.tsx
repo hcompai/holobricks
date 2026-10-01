@@ -72,7 +72,7 @@ function publishAsk({ published, imported, author, onPublish, onUnpublish }: Pub
 const deleteAsk = (name: string, action: () => Promise<void>): Ask => ({
   name: "Delete",
   question: `Delete ${name}?`,
-  note: "It leaves your library and the public one, and its link stops working. This cannot be undone.",
+  note: "It leaves your builds and the public library. This cannot be undone.",
   doing: "Deleting…",
   icon: <TrashIcon size={16} />,
   danger: true,

@@ -3,7 +3,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useS
 import type { Account } from "./account";
 import { AccountMenu } from "./AccountMenu";
 import { RecoveryPanel } from "./RecoveryPanel";
-import { create, remix, say, stop } from "./agent";
+import { cancel, create, remix, say, stop } from "./agent";
 import { ProjectTitle } from "./ProjectTitle";
 import { useProjectNames } from "./useProjectNames";
 import { HistoryPanel } from "./HistoryPanel";
@@ -31,6 +31,7 @@ import {
   onRemember,
   publish,
   remember,
+  remove,
   SHELF,
   setPrivate,
   type Shelf,
@@ -396,7 +397,8 @@ export default function App({ account }: { account: Account }) {
 
   const deleteBuild = async () => {
     if (!live) return;
-    await unpublish(live.id);
+    if (live.status === "building" && runId) await cancel(runId).catch(console.error);
+    await remove(live.id);
     open(null);
     await refreshBuilds();
   };
@@ -512,7 +514,7 @@ export default function App({ account }: { account: Account }) {
               }
             : null
         }
-        onDelete={imported && !readOnly ? deleteBuild : null}
+        onDelete={owned && !readOnly ? deleteBuild : null}
         image={() => viewer.current?.image() ?? Promise.resolve(null)}
         onGif={exportReplay}
         onInstructions={exportInstructions}

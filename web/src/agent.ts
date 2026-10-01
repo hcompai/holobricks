@@ -154,6 +154,9 @@ export async function forkSession(groupId: string): Promise<string | null> {
   return items[0]?.id ?? null;
 }
 
+/** Holo stops for good, without answering. */
+export const cancel = (id: string) => client.sessions.cancelSession({ id });
+
 /** The caller's own HoloBricks sessions, newest first. */
 export async function sessions(): Promise<HaiAgents.SessionSummary[]> {
   const all: HaiAgents.SessionSummary[] = [];

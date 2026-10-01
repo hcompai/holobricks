@@ -7,7 +7,7 @@ const AGP = "https://agp.eu.hcompany.ai";
 const CORS = {
   "access-control-allow-origin": "*",
   "access-control-allow-headers": "*",
-  "access-control-allow-methods": "GET, POST, OPTIONS",
+  "access-control-allow-methods": "GET, POST, DELETE, OPTIONS",
 };
 const NOW = "2026-01-01T00:00:00Z";
 
@@ -172,6 +172,10 @@ export async function platform(page: Page): Promise<Platform> {
         status: { status: session.status },
         created_at: NOW,
       });
+    if (method === "DELETE" && !action) {
+      agp.state(session.id, "interrupted");
+      return reply(204);
+    }
     if (action === "messages") {
       if (agp.hold) return reply(202);
       agp.say(session.id, body.message);
