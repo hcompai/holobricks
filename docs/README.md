@@ -15,7 +15,7 @@ Setup, architecture, deploy and the toolkit's checks. The [main README](../READM
 
 ## Features in detail
 
-- **Chat** to describe a model, with photos if you like. Holo writes a Python build script on a hosted Workstation, and every revision it shares appears in 3D. Ask for changes at any time; a build whose session ended takes them as a remix, from a copy. **Stop** makes Holo wrap up with an answer, and the build stays open.
+- **Chat** to describe a model, with photos if you like. Holo writes a Python build script on a hosted Workstation, and every revision it shares appears in 3D. Ask for changes at any time, even while Holo builds: a message reaches it at once and Holo folds it in at its next step, without stopping. A build whose session ended takes them as a remix, from a copy. **Stop** (shown while the composer is empty) makes Holo wrap up with an answer, and the build stays open.
 - **Every brick is checked**: a run places the bricks that fit and names each one that does not by its script line. Checks use bounding boxes and supported stud connections; they do not certify strength or stability.
 - **Replay** the steps on the timeline, browse the Parts tab, and from **Share** download the `.ldr` or a PNG, or make a GIF of the build (8 seconds by default, up to 30).
 - **Building instructions** (Share, or the Get the bricks sheet): a PDF with a cover, then each step split into layers from the bottom up, one page each, the new pieces outlined in a render framed on the model so far and pictured in a parts callout, and the whole parts list at the end. It is drawn in the browser, so it includes your edits; large models take a while (the Grand Rex makes about 250 pages).
