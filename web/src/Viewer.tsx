@@ -1,5 +1,10 @@
 import { type Ref, useEffect, useImperativeHandle, useRef, useState } from "react";
-import { ArrowsClockwiseIcon, PencilSimpleIcon, PersonSimpleWalkIcon } from "@phosphor-icons/react";
+import {
+  ArrowsClockwiseIcon,
+  CrosshairSimpleIcon,
+  PencilSimpleIcon,
+  PersonSimpleWalkIcon,
+} from "@phosphor-icons/react";
 import * as THREE from "three";
 import type { Build, Piece } from "./model";
 import { BrickLoader } from "./BrickLoader";
@@ -63,6 +68,9 @@ export function ViewControls({
           {v.label}
         </button>
       ))}
+      <button aria-label="Reset view" title="Reset view" onClick={() => onFrame({ view: "iso" })}>
+        <CrosshairSimpleIcon size={14} weight="bold" />
+      </button>
       <span className="tabs-sep" />
       <button className={spin ? "active" : ""} aria-pressed={spin} onClick={() => onSpin(!spin)}>
         <ArrowsClockwiseIcon size={14} weight="bold" />

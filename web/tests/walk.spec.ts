@@ -97,3 +97,67 @@ test("walk mode shows its controls, takes Space to fly, and Escape leaves it", a
   await expect(walk).toHaveAttribute("aria-pressed", "false");
   await expect(hud).toBeHidden();
 });
+
+test("leaving walk mode keeps the view, so editing starts from there; choosing a view frames the model again", async ({
+  page,
+}) => {
+  const build = fixture();
+  await site(page, [build]);
+  await page.goto(`/?showcase=${build.id}`);
+  await expect(page.locator(".viewer")).toHaveAttribute("data-render-state", "ready");
+  const canvas = page.locator(".viewer-canvas canvas");
+  /** The canvas's own pixels, without the toolbars drawn over it. */
+  const picture = async () => {
+    await page.waitForTimeout(600); // let damping and glides settle
+    return canvas.evaluate((c: HTMLCanvasElement) => c.toDataURL());
+  };
+  await page.mouse.move(0, 0);
+  const framed = await picture();
+
+  const walk = page.getByRole("button", { name: "Walk", exact: true });
+  await walk.click();
+  await page.keyboard.down("KeyS");
+  await page.waitForTimeout(500);
+  await page.keyboard.up("KeyS");
+  await page.keyboard.press("Escape");
+  await expect(walk).toHaveAttribute("aria-pressed", "false");
+  const walked = await picture();
+  expect(walked).not.toBe(framed);
+
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  expect(await picture()).toBe(walked);
+
+  await page.getByRole("button", { name: "3/4", exact: true }).click();
+  await page.waitForTimeout(1200);
+  expect(await picture()).toBe(framed);
+});
+
+test("Reset view frames the model again, from a walk or after one", async ({ page }) => {
+  const build = fixture();
+  await site(page, [build]);
+  await page.goto(`/?showcase=${build.id}`);
+  await expect(page.locator(".viewer")).toHaveAttribute("data-render-state", "ready");
+  const canvas = page.locator(".viewer-canvas canvas");
+  const picture = async () => {
+    await page.waitForTimeout(1200); // let damping and glides settle
+    return canvas.evaluate((c: HTMLCanvasElement) => c.toDataURL());
+  };
+  await page.mouse.move(0, 0);
+  const framed = await picture();
+  const walk = page.getByRole("button", { name: "Walk", exact: true });
+  const reset = page.getByRole("button", { name: "Reset view" });
+
+  await walk.click();
+  await reset.click();
+  await expect(walk).toHaveAttribute("aria-pressed", "false");
+  expect(await picture()).toBe(framed);
+
+  await walk.click();
+  await page.keyboard.down("KeyS");
+  await page.waitForTimeout(500);
+  await page.keyboard.up("KeyS");
+  await page.keyboard.press("Escape");
+  expect(await picture()).not.toBe(framed);
+  await reset.click();
+  expect(await picture()).toBe(framed);
+});
