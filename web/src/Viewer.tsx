@@ -1,5 +1,14 @@
+import { Thinking } from "./Thinking";
+import type { Activity } from "./session";
+import { PlacementSoundToggle } from "./PlacementSound";
 import { type Ref, useEffect, useImperativeHandle, useRef, useState } from "react";
-import { ArrowsClockwiseIcon, PencilSimpleIcon, PersonSimpleWalkIcon } from "@phosphor-icons/react";
+import {
+  ArrowsClockwiseIcon,
+  PencilSimpleIcon,
+  PersonSimpleWalkIcon,
+  PauseIcon,
+  PlayIcon,
+} from "@phosphor-icons/react";
 import * as THREE from "three";
 import type { Build, Piece } from "./model";
 import { BrickLoader } from "./BrickLoader";
@@ -7,7 +16,7 @@ import { buildRevision } from "./buildRevision";
 import { ACTION_KEYS, type Action, EditBar, EditPanel } from "./EditPanel";
 import { type Edit, type Edits, PLATE, pivot, STUD } from "./edits";
 import type { Color } from "./palette";
-import { BrickScene, typing, type View } from "./scene";
+import { BrickScene, typing, type View, type PlacementProgress } from "./scene";
 import { Shortcuts } from "./Shortcuts";
 import { WalkHud } from "./WalkHud";
 
@@ -103,6 +112,9 @@ export interface ViewerHandle {
 }
 
 interface Props {
+  thinking?: Activity | null;
+  placementSpeed?: number;
+  onPlacing?: (placing: boolean) => void;
   ref?: Ref<ViewerHandle>;
   build: Build | null;
   /** What is opening, shown until its pieces are drawn; null when no build is open. */
@@ -131,6 +143,10 @@ export function Viewer(props: Props) {
   const container = useRef<HTMLDivElement>(null);
   const scene = useRef<BrickScene | null>(null);
   const framedBuild = useRef<string | null>(null);
+  const [placement, setPlacement] = useState<PlacementProgress | null>(null);
+  const placingListener = useRef(props.onPlacing);
+  placingListener.current = props.onPlacing;
+  const previousBuild = useRef<string | null>(null);
   const [drawn, setDrawn] = useState<{ id: string; key: string; pieces: Build["pieces"] } | null>(null);
   const [renderError, setRenderError] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
@@ -148,9 +164,10 @@ export function Viewer(props: Props) {
   /** This exact revision is drawn. */
   const ready = !!build && drawn?.key === version && drawn.pieces === build.pieces && !renderError;
   /** Some revision of this build is drawn; the scene keeps it up until the next one is ready. */
-  const shown = !!build && drawn?.id === build.id && !renderError;
+  const shown = !!build?.pieces.length && drawn?.id === build.id && !renderError;
   const empty = !!build && !build.pieces.length;
   const failed = (error: unknown) => {
+    scene.current?.finishPlacement();
     setDrawn(null);
     setRenderError(error instanceof Error ? error.message : "Could not draw the latest model");
   };
@@ -161,10 +178,19 @@ export function Viewer(props: Props) {
     setDrawn(null);
     setRenderError(null);
     try {
-      const s = new BrickScene(container.current!, { onError: failed, onWalkLock: setLocked, onFly: setFlying });
+      const s = new BrickScene(container.current!, {
+        onError: failed,
+        onWalkLock: setLocked,
+        onFly: setFlying,
+        onPlacement: (next) => {
+          setPlacement(next);
+          placingListener.current?.(next.active);
+        },
+      });
       scene.current = s;
       return () => {
         scene.current = null;
+        placingListener.current?.(false);
         s.dispose();
       };
     } catch (error) {
@@ -191,7 +217,9 @@ export function Viewer(props: Props) {
     setRenderError(null);
     if (!build) setDrawn(null);
     s.setVisibleStep(step);
-    s.setPieces(build?.pieces ?? [])
+    const fresh = previousBuild.current !== (build?.id ?? null);
+    previousBuild.current = build?.id ?? null;
+    s.setPieces(build?.pieces ?? [], { fresh, animate: mode === "view" && build?.status === "building" })
       .then(async (applied) => {
         if (!current || !build || !applied) return;
         if ((await buildRevision(build.pieces)) !== build.revision) {
@@ -235,9 +263,11 @@ export function Viewer(props: Props) {
     };
   }, [ready, build?.status, version, thumbnailed, !onThumbnail]);
 
-  useEffect(() => scene.current?.setVisibleStep(step), [step, retry]);
+  useEffect(() => scene.current?.setVisibleStep(step, mode === "view"), [step, retry]);
+  useEffect(() => scene.current?.setPlacementSpeed(props.placementSpeed ?? 1), [props.placementSpeed, retry]);
 
   useEffect(() => {
+    scene.current?.setPlacementEnabled(mode === "view");
     scene.current?.setWalk(mode === "walk");
     if (mode !== "walk") {
       setLocked(false);
@@ -388,6 +418,9 @@ export function Viewer(props: Props) {
     <div
       className="viewer"
       data-revision={ready ? build?.revision : undefined}
+      data-placing={placement?.active ? "true" : "false"}
+      data-placed={placement?.placed ?? 0}
+      data-placement-total={placement?.total ?? 0}
       data-render-state={ready ? "ready" : renderError ? "error" : "loading"}
     >
       <div
@@ -434,6 +467,21 @@ export function Viewer(props: Props) {
         />
       )}
       {mode === "walk" && shown && <WalkHud locked={locked} flying={flying} />}
+      {shown && mode === "view" && placement?.active && (
+        <div className="placement-hud" role="status" aria-live="off">
+          <span>
+            Layer {placement.layer} · {placement.placed.toLocaleString()} / {placement.total.toLocaleString()}
+          </span>
+          <button
+            onClick={() => scene.current?.pausePlacement(!placement.paused)}
+            aria-label={placement.paused ? "Resume placement" : "Pause placement"}
+          >
+            {placement.paused ? <PlayIcon size={12} weight="fill" /> : <PauseIcon size={12} weight="fill" />}
+          </button>
+          <button onClick={() => scene.current?.finishPlacement()}>Skip</button>
+        </div>
+      )}
+      {shown && <PlacementSoundToggle />}
       {syncError || renderError ? (
         <div className="viewer-empty" role="alert">
           <div>{syncError ?? `The latest model could not be displayed. ${renderError}`}</div>
@@ -441,13 +489,20 @@ export function Viewer(props: Props) {
         </div>
       ) : (
         <>
-          {opening && !shown && !empty && <BrickLoader label={build ? "Loading the model…" : opening} />}
-          {empty &&
-            (build.status === "building" ? (
-              <BrickLoader label="Holo is sorting through its bricks, and the first ones should appear in a few minutes." />
-            ) : (
-              <BrickLoader idle label="There's nothing here yet, so ask Holo in the chat to start building." />
-            ))}
+          {props.thinking && !shown && (
+            <Thinking
+              activity={props.thinking}
+              name={build?.name}
+              request={build?.messages.find((m) => m.role === "user")?.text}
+              photos={build?.messages.find((m) => m.role === "user")?.images}
+            />
+          )}
+          {!props.thinking && opening && !shown && !empty && (
+            <BrickLoader label={build ? "Loading the model…" : opening} />
+          )}
+          {empty && build.status !== "building" && (
+            <BrickLoader idle label="There's nothing here yet, so ask Holo in the chat to start building." />
+          )}
         </>
       )}
     </div>

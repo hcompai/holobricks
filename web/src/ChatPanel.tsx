@@ -1,3 +1,4 @@
+import { ThinkingIcon } from "./Thinking";
 import { ArrowUpIcon, PlusIcon, ShuffleIcon, StopIcon, XIcon } from "@phosphor-icons/react";
 import { memo, type ReactNode, useEffect, useRef, useState } from "react";
 import Markdown from "react-markdown";
@@ -90,6 +91,7 @@ function Live({ activity, early }: { activity: Activity; early: boolean }) {
   const elapsed = useNow() - activity.since;
   const head = (
     <span className="live-head">
+      <ThinkingIcon label={label} />
       <span key={label} className="shimmer">
         {label}
       </span>

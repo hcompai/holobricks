@@ -11,6 +11,8 @@ export const PHASES = {
   checking: "Checking every side",
 } as const;
 
+export const THINKING_PHASES: string[] = [PHASES.idea, PHASES.setup, PHASES.photos, PHASES.naming];
+
 type Phase = (typeof PHASES)[keyof typeof PHASES];
 
 /** A tool call as the builder's work log says it, and its phase; a null phase carries on the one before. */
@@ -67,7 +69,9 @@ export function doing({ toolName, args = {} }: HaiAgents.ToolRequest): Doing {
     case "view_image":
       return quiet(showcase ? "Studying a showcase" : "Studying a photo");
     case "share_files":
-      return { label: "Showing you the model", phase: PHASES.bricks };
+      return JSON.stringify(args).includes("model.json.gz")
+        ? { label: "Showing you the model", phase: PHASES.bricks }
+        : quiet("Sharing reference photos");
     case "look":
       return { label: "Looking at the model", phase: PHASES.checking };
     case "web_search":

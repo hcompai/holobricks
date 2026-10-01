@@ -100,6 +100,7 @@ export default function App({ account }: { account: Account }) {
   const [step, setStep] = useState(Infinity);
   const [following, setFollowing] = useState(true);
   const [playing, setPlaying] = useState(false);
+  const [placing, setPlacing] = useState(false);
   const [speed, setSpeed] = useState(1);
   const [framing, setFraming] = useState<Framing>({ view: "iso" });
   const [spin, setSpin] = useState(false);
@@ -220,7 +221,7 @@ export default function App({ account }: { account: Account }) {
   }, [following, last]);
 
   useEffect(() => {
-    if (!playing) return;
+    if (!playing || placing) return;
     if (step >= last) {
       setPlaying(false);
       setFollowing(true);
@@ -228,7 +229,7 @@ export default function App({ account }: { account: Account }) {
     }
     const timer = setTimeout(() => setStep((s) => s + 1), STEP_MS / speed);
     return () => clearTimeout(timer);
-  }, [playing, speed, step, last]);
+  }, [playing, placing, speed, step, last]);
 
   const scrub = (s: number) => {
     setPlaying(false);
@@ -512,6 +513,9 @@ export default function App({ account }: { account: Account }) {
               build={build}
               opening={buildId && !error ? `Opening ${heading?.name ?? "the build"}` : null}
               step={visibleStep}
+              thinking={!built && !error && build?.status === "building" ? activity : null}
+              placementSpeed={speed}
+              onPlacing={setPlacing}
               syncError={syncError}
               framing={framing}
               spin={spin}
