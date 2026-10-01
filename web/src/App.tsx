@@ -110,10 +110,11 @@ export default function App({ account }: { account: Account }) {
   const [instructionsBuild, setInstructionsBuild] = useState<Build | null>(null);
   const [shopping, setShopping] = useState<{ build: Build; preview: Promise<Blob | null> } | null>(null);
   const edited = edits.edits.length > 0 && build !== live;
+  const built = !!build?.pieces.length;
 
   useEffect(() => {
-    if (mode === "edit" && !edits.editable) setMode("view");
-  }, [mode, edits.editable]);
+    if ((mode === "edit" && !edits.editable) || (mode !== "view" && !built)) setMode("view");
+  }, [mode, edits.editable, built]);
   const shop = () => {
     if (build?.status === "done" && build.pieces.length && !edited) {
       setShopping({ build: structuredClone(build), preview: viewer.current?.image() ?? Promise.resolve(null) });
@@ -425,8 +426,7 @@ export default function App({ account }: { account: Account }) {
       </header>
       {running.length > 0 && (
         <div className="build-notice" role="note" aria-label="Keep Brickyard open">
-          <strong>Keep this tab open while Holo builds.</strong> Your browser renders the model for Holo. You can browse
-          within Brickyard; closing this tab, leaving the site or sleeping your device can interrupt the build.
+          <strong>Keep this tab open while Holo builds:</strong> it looks at your model through it.
         </div>
       )}
       <aside>
@@ -503,8 +503,8 @@ export default function App({ account }: { account: Account }) {
               framing={framing}
               spin={spin}
               mode={mode}
-              canEdit={edits.editable && !!build?.pieces.length}
-              canWalk={!!build?.pieces.length}
+              canEdit={edits.editable && built}
+              built={built}
               onFrame={(next) => {
                 if (mode === "walk") setMode("view");
                 setFraming(next);
@@ -545,7 +545,7 @@ export default function App({ account }: { account: Account }) {
             </div>
           )}
         </div>
-        {!error && (
+        {!error && (!build || built) && (
           <Timeline
             build={build}
             loading={loading}

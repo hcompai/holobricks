@@ -12,7 +12,7 @@ test("the tab notice and close guard follow running builds through the library a
   agp.share("live", fixture());
   await page.goto("/?build=live");
   const note = page.getByRole("note", { name: "Keep Brickyard open" });
-  await expect(note).toContainText("sleeping your device can interrupt");
+  await expect(note).toContainText("it looks at your model through it");
   await page.getByRole("button", { name: "Library" }).click();
   await expect(note).toBeVisible();
   await page.getByRole("region", { name: "Public" }).locator(".tile").click();

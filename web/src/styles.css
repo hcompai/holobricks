@@ -615,8 +615,8 @@ aside {
 }
 
 .shimmer {
-  background: linear-gradient(100deg, var(--text-tertiary) 40%, var(--text-default) 50%, var(--text-tertiary) 60%) 0 0 /
-    250% 100% no-repeat;
+  background: linear-gradient(100deg, var(--text-secondary) 40%, var(--text-default) 50%, var(--text-secondary) 60%) 0
+    0 / 250% 100% no-repeat;
   background-clip: text;
   color: transparent;
   animation:
@@ -2325,6 +2325,14 @@ main {
   .center-bar .tabs {
     overflow-x: auto;
     scrollbar-width: none;
+  }
+
+  .center-bar .tabs:first-child {
+    flex: none;
+  }
+
+  .center-bar .tabs button {
+    padding: 4px 10px;
   }
 
   .stage {
