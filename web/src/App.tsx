@@ -555,6 +555,7 @@ export default function App({ account }: { account: Account }) {
               spin={spin}
               mode={mode}
               canEdit={!previewing && edits.editable && !!build?.pieces.length}
+              editHint={previewing ? "Edit Latest or Fork" : undefined}
               canWalk={!!build?.pieces.length}
               onFrame={(next) => {
                 if (mode === "walk") setMode("view");
