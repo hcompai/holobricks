@@ -407,7 +407,7 @@ export default function App({ account }: { account: Account }) {
   );
 
   return (
-    <div className={`app${home ? " home" : ""}${libraryOpen ? " library" : ""}${running.length ? " has-running" : ""}`}>
+    <div className={`app${home ? " home" : ""}${libraryOpen ? " library" : ""}`}>
       <header>
         <button className="brand" onClick={() => open(null)}>
           <img className="brand-icon" src="/brick.png" alt="" />
@@ -430,11 +430,6 @@ export default function App({ account }: { account: Account }) {
         {!phone && actions}
         <AccountMenu account={account} building={running.length > 0} />
       </header>
-      {running.length > 0 && (
-        <div className="build-notice" role="note" aria-label="Keep HoloBricks open">
-          <strong>Keep this tab open while Holo builds:</strong> it looks at your model through it.
-        </div>
-      )}
       <aside>
         <div className="aside-bar">
           <span className="aside-title" title={phone ? undefined : heading?.name}>

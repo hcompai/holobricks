@@ -64,10 +64,27 @@ export function useKeeper(running: string[], onSettled: () => void) {
     [],
   );
 
+  /** Holo sees the model through this tab: warn before it closes, and keep the screen awake while it shows. */
   useEffect(() => {
     if (!running.length) return;
     const warn = (event: BeforeUnloadEvent) => event.preventDefault();
+    let lock: WakeLockSentinel | null = null;
+    let stopped = false;
+    const awake = () => {
+      if (stopped || document.visibilityState !== "visible" || (lock && !lock.released)) return;
+      navigator.wakeLock?.request("screen").then(
+        (held) => (stopped ? void held.release() : (lock = held)),
+        () => {},
+      );
+    };
+    awake();
+    document.addEventListener("visibilitychange", awake);
     window.addEventListener("beforeunload", warn);
-    return () => window.removeEventListener("beforeunload", warn);
+    return () => {
+      stopped = true;
+      void lock?.release();
+      document.removeEventListener("visibilitychange", awake);
+      window.removeEventListener("beforeunload", warn);
+    };
   }, [running.length > 0]);
 }

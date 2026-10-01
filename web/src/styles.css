@@ -6,7 +6,6 @@
   --background-selected: light-dark(#ffffff, #2e2e2e);
   --background-viewer: light-dark(#f6f6f9, #0e0e0e);
   --background-primary: light-dark(#1c1c26, #ededed);
-  --background-building: light-dark(#fff6f0, #2e1c0d);
   --text-default: light-dark(#1c1c26, #ededed);
   --text-secondary: light-dark(#4a4a58, #b0b0b0);
   --text-tertiary: light-dark(#7a7a8a, #7c7c7c);
@@ -2343,21 +2342,6 @@ main {
   font-size: 12px;
 }
 
-.app.has-running {
-  grid-template-rows: 56px auto minmax(0, 1fr);
-}
-.build-notice {
-  grid-column: 1 / -1;
-  padding: 9px 20px;
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--text-secondary);
-  background: var(--background-building);
-  border-bottom: 1px solid var(--stroke-default);
-}
-.build-notice strong {
-  color: var(--text-default);
-}
 .failure-detail {
   overflow-wrap: anywhere;
   font-family: monospace;
@@ -2381,24 +2365,6 @@ main {
   border: 1px solid var(--stroke-default);
 }
 @media (max-width: 760px) {
-  .app.has-running {
-    grid-template-rows: 56px auto minmax(0, 11fr) minmax(0, 9fr);
-  }
-  .app.has-running main {
-    grid-row: 3;
-  }
-  .app.has-running aside {
-    grid-row: 4;
-  }
-  .app.home.has-running {
-    grid-template-rows: 56px auto minmax(0, 1fr);
-  }
-  .app.home.has-running aside {
-    grid-row: 3;
-  }
-  .build-notice {
-    padding: 8px 12px;
-  }
   .app.home .home-intro h1 {
     font-size: var(--font-display);
     line-height: 34px;
