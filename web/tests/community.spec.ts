@@ -85,7 +85,7 @@ test("a colleague's public build opens from the home page's public builds, under
   await tile.click();
   await expect(page).toHaveURL(/\?public=tower$/);
   await shown(page, tower.revision);
-  await expect(page.locator(".gallery-note")).toHaveText(/^Shared by Ada Lovelace: remix it to make your own\./);
+  await expect(page.locator(".gallery-note")).toHaveText(/^By Ada Lovelace · Fork to edit/);
   await page.getByRole("button", { name: "Share", exact: true }).click();
   await expect(page.getByRole("menuitem", { name: /Publish/ })).toHaveCount(0);
   await page.keyboard.press("Escape");
@@ -122,7 +122,7 @@ test("home shows one row of my builds and ten rows of public ones, with more bel
   await expect(more).toHaveCount(0);
 });
 
-test("a remix of a public build starts a private session from a script placing each of its pieces, step by step", async ({
+test("a fork of a public build opens a private copy, then chat starts a session from a script placing each of its pieces, step by step", async ({
   page,
 }) => {
   const tower = { ...fixture(), id: "tower", name: "Ada's tower" };
@@ -132,15 +132,20 @@ test("a remix of a public build starts a private session from a script placing e
   await page.goto("/?public=tower");
   await shown(page, tower.revision);
 
-  await page.locator(".gallery-note").getByRole("button", { name: "Remix" }).click();
-  await page.getByPlaceholder("What should Holo change?").fill("Make it twice as tall");
+  await page.locator(".gallery-note").getByRole("button", { name: "Fork" }).click();
+  await page.getByPlaceholder("Ask for a change").fill("Make it twice as tall");
   await page.getByRole("button", { name: "Send", exact: true }).click();
-  await expect(page).toHaveURL(/\?build=new-build$/);
-  await expect(page.locator(".aside-title")).toHaveText("Ada's tower remix");
-  const [first] = agp.posted("/api/v2/sessions")[0].messages;
+  await expect.poll(() => agp.posted("/api/v2/sessions")).toHaveLength(1);
+  await expect(page).toHaveURL(/\?fork=fork-/);
+  await expect(page.locator(".aside-title")).toHaveText("Ada's tower · Fork");
+  const first = agp.posted("/api/v2/sessions")[0].messages[0];
   expect(first.message).toBe("Make it twice as tall");
-  expect(first.files.map((f: { name: string }) => f.name)).toEqual(["brickyard.tgz", "remix.py"]);
-  const script = Buffer.from(first.files[1].source, "base64").toString();
+  expect(first.files.map((f: { name: string }) => f.name)).toEqual([
+    "brickyard.tgz",
+    "brickyard-fork.json.gz",
+    "remix.py",
+  ]);
+  const script = Buffer.from(first.files[2].source, "base64").toString();
   expect(script.match(/^place\(/gm)).toHaveLength(tower.pieces.length);
   expect(script.match(/^step\(.*\)$/gm)).toEqual(tower.steps.map((s) => `step("${s.title}")`));
   expect(script).toMatch(
@@ -256,13 +261,13 @@ test("a teammate's build link opens read only, to remix", async ({ page }) => {
   await page.goto("/?build=theirs");
   await shown(page, model.revision);
 
-  await expect(page.locator(".gallery-note")).toHaveText(/^A teammate's build: remix it to make your own\./);
+  await expect(page.locator(".gallery-note")).toHaveText(/^Teammate’s build · Fork to edit/);
   await page.getByRole("button", { name: "Share", exact: true }).click();
   await expect(page.getByRole("menuitem", { name: /Publish/ })).toHaveCount(0);
   await page.keyboard.press("Escape");
   await expect(page.getByRole("textbox")).toHaveCount(0);
-  await page.locator(".gallery-note").getByRole("button", { name: "Remix" }).click();
-  await expect(page.getByPlaceholder("What should Holo change?")).toBeVisible();
+  await page.locator(".gallery-note").getByRole("button", { name: "Fork" }).click();
+  await expect(page.getByPlaceholder("Ask for a change")).toBeVisible();
 });
 
 test("signed out, only the sign-in page shows; Google brings the user back signed in where they left", async ({

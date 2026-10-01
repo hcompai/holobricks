@@ -101,3 +101,12 @@ export async function unlist(id: string, owner?: string) {
   const urls = await files(id);
   if (urls.length) await del(urls);
 }
+
+/** Renaming a published/imported project keeps its files, visibility and URL. */
+export async function renamePublished(owner: string, id: string, name: string) {
+  for (const pathname of [hidden(owner, id), entry(id)]) {
+    const published = await read(pathname);
+    if (published?.owner === owner)
+      await put(pathname, JSON.stringify({ ...published, name }), { ...PUBLIC, contentType: "application/json" });
+  }
+}

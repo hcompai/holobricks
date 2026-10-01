@@ -34,7 +34,8 @@ function meta(b: BuildSummary, published = false): string {
 
 /** The signed-in user's builds, running ones first, then newest: their sessions, and their library builds with no session, such as imported ones. */
 function mine(builds: BuildSummary[], me: string | null): BuildSummary[] {
-  const sessions = builds.filter((b) => b.source === "session");
+  const linked = new Set(builds.filter((b) => b.source === "fork").map((b) => b.sessionId));
+  const sessions = builds.filter((b) => b.source === "fork" || (b.source === "session" && !linked.has(b.id)));
   const ids = new Set(sessions.map((b) => b.id));
   const owned = builds.filter((b) => b.source === "public" && me && b.owner === me && !ids.has(b.id));
   return [...sessions, ...owned].sort(
@@ -87,7 +88,7 @@ export function HomeShelves({ builds, failed, me, onRetry, onOpen, mineActions }
   const [allMine, setAllMine] = useState(false);
   const [publicRows, setPublicRows] = useState(PUBLIC_ROWS);
   // Private builds are their owner's alone: under the user's builds, never under Public.
-  const everyone = builds?.filter((b) => b.source !== "session" && !b.private) ?? [];
+  const everyone = builds?.filter((b) => b.source !== "session" && b.source !== "fork" && !b.private) ?? [];
   const published = new Set(everyone.filter((b) => b.source === "public").map((b) => b.id));
   const yours = mine(builds ?? [], me);
   const grid = { gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`, gap: GAP };
@@ -134,7 +135,7 @@ export function HomeShelves({ builds, failed, me, onRetry, onOpen, mineActions }
             <Tile
               key={`${b.source}:${b.id}`}
               build={b}
-              published={b.source === "session" && published.has(b.id)}
+              published={(b.source === "session" || b.source === "fork") && published.has(b.id)}
               onOpen={() => onOpen(b)}
             />
           ))}

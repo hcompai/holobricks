@@ -33,6 +33,7 @@ export function ViewControls({
   spin,
   mode,
   canEdit,
+  editHint,
   built,
   onFrame,
   onSpin,
@@ -42,6 +43,7 @@ export function ViewControls({
   spin: boolean;
   mode: Mode;
   canEdit: boolean;
+  editHint?: string;
   /** The model has pieces, so it can be edited or walked through. */
   built: boolean;
   onFrame: (framing: Framing) => void;
@@ -73,7 +75,11 @@ export function ViewControls({
             className={mode === "edit" ? "active" : ""}
             aria-pressed={mode === "edit"}
             disabled={!canEdit && mode !== "edit"}
-            title={canEdit ? "Select pieces to move, turn or delete them" : "Pieces can be edited once Holo is done"}
+            title={
+              canEdit
+                ? "Select pieces to move, turn or delete them"
+                : (editHint ?? "Pieces can be edited once Holo is done")
+            }
             onClick={() => toggle("edit")}
           >
             <PencilSimpleIcon size={14} weight="bold" />

@@ -86,7 +86,7 @@ test("a message sent while Holo builds reaches it without stopping, and shows as
   await expect(stop).toBeVisible();
   const sent = page.locator(".msg.user.queued");
   await expect(sent).toHaveText("Make it taller");
-  expect(agp.posted("/messages")).toMatchObject([{ message: "Make it taller" }]);
+  await expect.poll(() => agp.posted("/messages")).toMatchObject([{ message: "Make it taller" }]);
   expect(agp.posted("/force_answer")).toHaveLength(0);
   await expect(page.locator(".msg.live")).toBeVisible();
 
@@ -323,7 +323,7 @@ test("home shows my builds by the names Holo gave them; showcases under Public b
   await everyone.click();
   await expect(page).toHaveURL(/\?showcase=paris$/);
   await shown(page, showcase.revision);
-  await expect(page.getByText("A showcase from the gallery: remix it to make your own.")).toBeVisible();
+  await expect(page.getByText("Showcase · Fork to edit")).toBeVisible();
 });
 
 /** A tile's transparent pixels and red ones. */

@@ -179,3 +179,30 @@ background rendering service and does not automatically pause the session clock.
 Interrupted builds show a plain-language message with technical details collapsed under the recovery
 action. Activity labels follow the session's working/render-request state rather than rotating claims
 about construction progress.
+
+### Model history and forks
+
+**History** lists saved models as V1, V2, and so on. Assembly steps remain inside each model; they
+are not versions. Repeated shares of the same piece revision and assembly steps keep their number.
+History is read from immutable authenticated session attachments, on demand, with no new datastore.
+A missing or invalid attachment blocks numbering until it can be retrieved again.
+
+Only **Latest** takes edits. Earlier versions are read-only previews, including after reopening their
+`?build=…&version=N` URL. **Fork** immediately saves and opens a separate private copy of that snapshot.
+It is already in the Library and survives reloads before any message is sent. The ordinary chat's
+**Send** starts Holo on that copy. Its starting model is V1, and subsequent changes become V2,
+V3, etc. The original history remains intact. Each model has one Library card; versions do not add cards.
+The fork keeps a link to its source version. A fork copies the model, not the old conversation; references
+for the new request use the existing attachment button. There is no extra fork form or chat mode.
+
+Copies use the existing Blob store and app authentication, with owner-scoped, unguessable paths that
+are never returned to the browser. No new service or secret is required. The existing app signing
+secret also derives the storage scope and must remain stable to retain access to saved copies.
+The copy keeps one `?fork=…` URL and Library card after its Holo session starts. The seed and source
+reference also travel as a session attachment, so the initial model survives failed setup.
+Copy retries reuse the same identity. An ambiguous Holo start is not automatically retried; another
+Send checks the same operation for acceptance. Preview never
+changes the model used to answer Holo's render requests. A downloaded preview remains viewable if
+live polling loses its connection. Published copies expose the fork name, not private history or
+ancestry. Public and showcase snapshots can be forked but do not expose their author's session history.
+Browser-only hand edits keep their existing draft behaviour; they enter a new fork when explicitly copied.

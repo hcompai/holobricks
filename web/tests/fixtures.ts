@@ -1,4 +1,6 @@
 import type { Page } from "@playwright/test";
+import { gunzipSync } from "node:zlib";
+import type { SavedFork } from "../src/forkModel";
 import { createHash } from "node:crypto";
 import type { Build, Piece } from "../src/model";
 
@@ -79,6 +81,48 @@ export async function signedIn(page: Page, account = ACCOUNT) {
 /** Serve the static files the app reads: the palette, the toolkit and these showcases; the Agents API has no sessions and the public library is empty. `account` is signed in, if any. */
 export async function site(page: Page, showcases: Build[] = [], account: typeof ACCOUNT | null = ACCOUNT) {
   if (account) await signedIn(page, account);
+  const names = new Map<string, { id: string; name: string; updated: number }>();
+  await page.route("**/api/names", async (route) => {
+    if (route.request().method() === "PATCH") {
+      const { id, name } = route.request().postDataJSON();
+      const entry = { id, name: name.trim(), updated: Date.now() };
+      names.set(id, entry);
+      return route.fulfill({ json: entry });
+    }
+    return route.fulfill({ json: [...names.values()] });
+  });
+  const copies = new Map<string, SavedFork>();
+  const copyRequests: any[] = [];
+  const copying = { loseResponse: false, fail: false };
+  await page.route("**/api/forks*", async (route) => {
+    const request = route.request();
+    if (request.method() === "POST") {
+      const { id, seed } = JSON.parse(gunzipSync(request.postDataBuffer()!).toString());
+      copyRequests.push({ id, seed });
+      if (copying.fail) return route.fulfill({ status: 503, json: { error: "Unavailable" } });
+      if (!copies.has(id))
+        copies.set(id, {
+          id,
+          seed,
+          name: seed.model.name,
+          pieces: seed.model.pieces.length,
+          created: 2,
+          sessionId: null,
+        });
+      if (copying.loseResponse) {
+        copying.loseResponse = false;
+        return route.abort("failed");
+      }
+      return route.fulfill({ status: 201, json: copies.get(id) });
+    }
+    if (request.method() === "PATCH") {
+      const { id, sessionId } = request.postDataJSON();
+      copies.get(id)!.sessionId = sessionId;
+      return route.fulfill({ status: 204 });
+    }
+    const id = new URL(request.url()).searchParams.get("id");
+    return route.fulfill({ json: id ? copies.get(id) : [...copies.values()].map(({ seed, ...info }) => info) });
+  });
   await page.route("https://agp.eu.hcompany.ai/**", (route) =>
     route.fulfill({
       headers: { "access-control-allow-origin": "*", "access-control-allow-headers": "*" },
@@ -115,4 +159,5 @@ export async function site(page: Page, showcases: Build[] = [], account: typeof 
     const shown = showcases.find((b) => b.id === id);
     return shown ? route.fulfill({ json: shown }) : route.fulfill({ status: 404 });
   });
+  return { copies, copyRequests, copying, names };
 }

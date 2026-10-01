@@ -4,6 +4,7 @@ import { H } from "../../src/hosts";
 import { applyEdits, type Edit, toLdraw } from "../../src/edits";
 import { type Build, EMPTY_MODEL, type Message, type Model } from "../../src/model";
 import { AGENT, EMPTY_TRANSCRIPT, read, status, type Transcript, unpack } from "../../src/session";
+import { readFork } from "./forks";
 import { Refusal } from "./http";
 
 /** Chat images kept with a public build; past this, the chat keeps its text only. */
@@ -68,6 +69,8 @@ async function mine(agp: HaiAgentsClient, id: string): Promise<HaiAgents.Session
   return session;
 }
 
+export const ownedSession = (id: string, key: string) => mine(platform(key), id);
+
 async function transcript(agp: HaiAgentsClient, id: string): Promise<Transcript> {
   let t = EMPTY_TRANSCRIPT;
   for (;;) {
@@ -131,7 +134,13 @@ async function withEdits(build: Build, edited: Edited | null): Promise<Build> {
 }
 
 /** The caller's finished build as the public sees it: its latest model with any hand edits, and its chat. */
-export async function snapshot(id: string, key: string, edited: unknown, keep: Keep): Promise<Build> {
+export async function snapshot(id: string, key: string, edited: unknown, keep: Keep, owner?: string): Promise<Build> {
+  if (id.startsWith("fork-")) {
+    const fork = owner ? await readFork(owner, id) : null;
+    if (!fork) throw new Refusal(404, "No such build.");
+    if (fork.sessionId) return { ...(await snapshot(fork.sessionId, key, edited, keep)), id };
+    return withEdits({ ...fork.seed.model, id, status: "done", open: false, messages: [] }, checked(edited));
+  }
   const agp = platform(key);
   const session = await mine(agp, id);
   const state = status(session.status.status);
@@ -139,6 +148,12 @@ export async function snapshot(id: string, key: string, edited: unknown, keep: K
   const t = await transcript(agp, id);
   if (!t.model) throw new Refusal(409, "Nothing is built yet.");
   const model = await unpack<Model>(await download(t.model.url, key));
+  // A fork's title survives Holo naming the reconstructed model differently.
+  const fork = t.fork
+    ? await unpack<{ format?: number; model?: { name?: string } }>(await download(t.fork, key))
+    : null;
+  if (fork?.format === 1 && typeof fork.model?.name === "string" && fork.model.name.trim())
+    model.name = fork.model.name.slice(0, 80);
   // Recovery source belongs to the session, not the public library.
   delete model.recovery;
   const prompt = t.messages.find((m) => m.role === "user")?.text ?? "";

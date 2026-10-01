@@ -1,9 +1,9 @@
-import type { Build, Matrix } from "./model";
+import type { Model, Matrix } from "./model";
 
 const IDENTITY: Matrix = [1, 0, 0, 0, 1, 0, 0, 0, 1];
 
 /** A build script placing every piece of `build` exactly where it is, one `step` per step of it. */
-export function script(build: Build): string {
+export function script(build: Model): string {
   const lines: string[] = [];
   for (const step of build.steps) {
     lines.push(`step(${JSON.stringify(step.title)})`);
