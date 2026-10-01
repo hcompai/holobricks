@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { publicBuild, showcase, savedFork } from "./library";
+import { forkSession } from "./agent";
 import type { Build, Source } from "./model";
 import type { Activity } from "./session";
 import { provideParts } from "./scene";
@@ -69,22 +70,36 @@ export function useBuild(ref: BuildRef | null): LiveBuild & {
   const copyId = ref?.source === "fork" ? ref.id : null;
   const [copy, setCopy] = useState<SavedFork | null>(null);
   const [copyError, setCopyError] = useState<string | null>(null);
+  const [copySyncError, setCopySyncError] = useState<string | null>(null);
   useEffect(() => {
     setCopy(null);
     setCopyError(null);
+    setCopySyncError(null);
     if (!copyId) return;
     let current = true;
-    savedFork(copyId).then(
-      (copy) => {
-        if (current) {
-          provideParts(copy.seed.model.parts);
-          setCopy(copy);
+    savedFork(copyId)
+      .then(async (copy) => {
+        // Storage may lag a start, or the tab may have closed before the link was saved.
+        if (copy.sessionId) return copy;
+        try {
+          return { ...copy, sessionId: await forkSession(copyId) };
+        } catch {
+          // Preserve the saved drawing, but never present it as confirmed latest.
+          if (current) setCopySyncError("Connection lost. Showing the starting model.");
+          return copy;
         }
-      },
-      () => {
-        if (current) setCopyError("Couldn't load this build");
-      },
-    );
+      })
+      .then(
+        (copy) => {
+          if (current) {
+            provideParts(copy.seed.model.parts);
+            setCopy(copy);
+          }
+        },
+        () => {
+          if (current) setCopyError("Couldn't load this build");
+        },
+      );
     return () => {
       current = false;
     };
@@ -109,7 +124,7 @@ export function useBuild(ref: BuildRef | null): LiveBuild & {
     loading: !saved && !copyError,
     activity: null,
     error: copyError,
-    syncError: null,
+    syncError: copySyncError,
     runId: null,
     attachSession,
   };

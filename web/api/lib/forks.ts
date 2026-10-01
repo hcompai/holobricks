@@ -2,17 +2,36 @@ import { BlobNotFoundError, head, list, put } from "@vercel/blob";
 import { gzipSync } from "node:zlib";
 import { readSeed, type ForkSeed, type ForkSummary, type SavedFork } from "../../src/forkModel";
 import { privateScope } from "./account";
+import { Refusal } from "./http";
 
 const options = { access: "public", addRandomSuffix: false, allowOverwrite: true, cacheControlMaxAge: 60 } as const;
 const prefix = (owner: string) => `models/${privateScope(owner)}/`;
 const path = (owner: string, id: string) => `${prefix(owner)}${id}.json`;
+const sessionPath = (owner: string, id: string) => `${prefix(owner)}${id}.session.json`;
+
+/** Written once: a cached pre-start metadata record cannot hide an accepted session. */
+async function sessionLink(owner: string, id: string): Promise<string | null> {
+  try {
+    const blob = await head(sessionPath(owner, id));
+    const response = await fetch(blob.url);
+    if (!response.ok) throw new Error("Session link unavailable");
+    return (await response.json()).sessionId;
+  } catch (e) {
+    if (e instanceof BlobNotFoundError) return null;
+    throw e;
+  }
+}
+
+async function linked(owner: string, info: ForkSummary): Promise<ForkSummary> {
+  return { ...info, sessionId: (await sessionLink(owner, info.id)) ?? info.sessionId };
+}
 
 async function entry(owner: string, id: string): Promise<ForkSummary | null> {
   try {
     const blob = await head(path(owner, id));
     const response = await fetch(`${blob.url}?v=${blob.uploadedAt.getTime()}`);
     if (!response.ok) throw new Error("Copy unavailable");
-    return response.json();
+    return linked(owner, await response.json());
   } catch (e) {
     if (e instanceof BlobNotFoundError) return null;
     throw e;
@@ -33,11 +52,17 @@ export async function forkList(owner: string): Promise<ForkSummary[]> {
   let cursor: string | undefined;
   do {
     const page = await list({ prefix: prefix(owner), cursor, limit: 1000 });
-    for (const blob of page.blobs.filter((b) => b.pathname.endsWith(".json"))) {
-      const response = await fetch(`${blob.url}?v=${blob.uploadedAt.getTime()}`);
-      if (!response.ok) throw new Error("Copies unavailable");
-      found.push(await response.json());
-    }
+    const entries = page.blobs.filter((b) => b.pathname.endsWith(".json") && !b.pathname.endsWith(".session.json"));
+    for (let i = 0; i < entries.length; i += 16)
+      found.push(
+        ...(await Promise.all(
+          entries.slice(i, i + 16).map(async (blob) => {
+            const response = await fetch(`${blob.url}?v=${blob.uploadedAt.getTime()}`);
+            if (!response.ok) throw new Error("Copies unavailable");
+            return linked(owner, await response.json());
+          }),
+        )),
+      );
     cursor = page.cursor;
   } while (cursor);
   return found;
@@ -65,6 +90,21 @@ export async function saveFork(owner: string, id: string, seed: ForkSeed): Promi
 export async function linkFork(owner: string, id: string, sessionId: string): Promise<void> {
   const info = await entry(owner, id);
   if (!info) throw new Error("Copy unavailable");
-  if (info.sessionId && info.sessionId !== sessionId) throw new Error("Copy already has a session");
-  await put(path(owner, id), JSON.stringify({ ...info, sessionId }), { ...options, contentType: "application/json" });
+  if (info.sessionId) {
+    if (info.sessionId !== sessionId) throw new Refusal(409, "Copy already has a session.");
+    return;
+  }
+  try {
+    await put(sessionPath(owner, id), JSON.stringify({ sessionId }), {
+      ...options,
+      allowOverwrite: false,
+      contentType: "application/json",
+    });
+  } catch (e) {
+    // A lost response or simultaneous retry may have saved the same link already.
+    const saved = await sessionLink(owner, id);
+    if (saved === sessionId) return;
+    if (saved) throw new Refusal(409, "Copy already has a session.");
+    throw e;
+  }
 }

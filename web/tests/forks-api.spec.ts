@@ -5,6 +5,7 @@ import { GET, POST, PATCH } from "../api/forks";
 import { pass, privateScope } from "../api/lib/account";
 import { GET as namesGET, PATCH as namesPATCH } from "../api/names";
 import { projectName } from "../api/lib/names";
+import { linkFork } from "../api/lib/forks";
 import { snapshot } from "../api/lib/snapshot";
 import { forkSeed } from "../src/forkModel";
 import { ACCOUNT, fixture } from "./fixtures";
@@ -14,6 +15,7 @@ process.env.BRICKYARD_SECRET = "fork-test-secret";
 process.env.BLOB_READ_WRITE_TOKEN = "vercel_blob_rw_teststore_testsecret";
 process.env.VERCEL_BLOB_RETRIES = "0";
 const objects = new Map<string, Buffer>();
+const cachedObjects = new Map<string, Buffer>();
 let base = "";
 let writes = 0;
 const metadata = (pathname: string) => ({
@@ -32,13 +34,16 @@ const server = createServer(async (request, response) => {
     response.end(JSON.stringify(data));
   };
   if (url.pathname.startsWith("/objects/")) {
-    const data = objects.get(url.pathname.slice(9));
+    const path = url.pathname.slice(9);
+    const data = cachedObjects.get(path) ?? objects.get(path);
     response.writeHead(data ? 200 : 404);
     response.end(data);
   } else if (request.method === "PUT") {
     const chunks: Buffer[] = [];
     for await (const chunk of request) chunks.push(Buffer.from(chunk));
     const pathname = url.searchParams.get("pathname")!;
+    if (request.headers["x-allow-overwrite"] === "0" && objects.has(pathname))
+      return send({ error: { code: "bad_request", message: "Blob already exists" } }, 400);
     objects.set(pathname, Buffer.concat(chunks));
     writes++;
     send(metadata(pathname));
@@ -97,6 +102,7 @@ test.beforeAll(async () => {
 });
 test.beforeEach(() => {
   objects.clear();
+  cachedObjects.clear();
   writes = 0;
   agentCalls = [];
   own = true;
@@ -264,4 +270,44 @@ test("an imported or published project's rename retains its link and visibility"
     404,
   );
   expect([...objects.keys()].filter((key) => key.startsWith(`names/${privateScope(other.id)}/`))).toEqual([]);
+});
+
+test("a stale pre-start record cannot hide the session from reload or Library", async () => {
+  await POST(request("POST", { id: copy, seed: seed() }));
+  const path = `models/${privateScope(ACCOUNT.user.id)}/${copy}.json`;
+  const before = objects.get(path)!;
+  cachedObjects.set(path, before);
+  expect((await PATCH(request("PATCH", { id: copy, sessionId: "own-run" }))).status).toBe(204);
+  expect((await PATCH(request("PATCH", { id: copy, sessionId: "own-run" }))).status).toBe(204);
+  expect(objects.get(path)).toEqual(before);
+  expect(writes).toBe(3); // Seed, metadata and one immutable session link.
+  expect(await (await GET(request("GET", undefined, ACCOUNT.user, `?id=${copy}`))).json()).toMatchObject({
+    sessionId: "own-run",
+    seed: { model: { revision: original.revision } },
+  });
+  expect(await (await GET(request())).json()).toEqual([expect.objectContaining({ id: copy, sessionId: "own-run" })]);
+  expect((await PATCH(request("PATCH", { id: copy, sessionId: "different-run" }))).status).toBe(403);
+  await expect(linkFork(ACCOUNT.user.id, copy, "different-run")).rejects.toMatchObject({ status: 409 });
+  expect(agentCalls.every((call) => call.startsWith("GET "))).toBe(true);
+});
+
+test("concurrent links cannot replace the winning session and legacy links still load", async () => {
+  await POST(request("POST", { id: copy, seed: seed() }));
+  const attempts = await Promise.allSettled([
+    linkFork(ACCOUNT.user.id, copy, "first"),
+    linkFork(ACCOUNT.user.id, copy, "second"),
+  ]);
+  expect(attempts.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+  expect(attempts.find((r) => r.status === "rejected")).toMatchObject({ reason: { status: 409 } });
+  const winner = await (await GET(request("GET", undefined, ACCOUNT.user, `?id=${copy}`))).json();
+  await expect(linkFork(ACCOUNT.user.id, copy, winner.sessionId)).resolves.toBeUndefined();
+  const path = `models/${privateScope(ACCOUNT.user.id)}/${copy}`;
+  objects.delete(`${path}.session.json`);
+  objects.set(
+    `${path}.json`,
+    Buffer.from(JSON.stringify({ ...JSON.parse(objects.get(`${path}.json`)!.toString()), sessionId: "legacy" })),
+  );
+  expect(await (await GET(request("GET", undefined, ACCOUNT.user, `?id=${copy}`))).json()).toMatchObject({
+    sessionId: "legacy",
+  });
 });

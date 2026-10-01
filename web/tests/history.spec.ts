@@ -247,6 +247,7 @@ test("an unconfirmed fork can only check for acceptance, without posting again o
   expect(agp.posted("/api/v2/sessions")).toHaveLength(1);
   await page.reload();
   await shown(page, saved[5].revision);
+  await expect(page.locator(".viewer").getByRole("alert")).toContainText("Showing the starting model");
   await page.getByRole("textbox").fill("Add ears");
   await page.getByRole("button", { name: "Send", exact: true }).click();
   await expect(page.locator(".composer-error")).toContainText("Start unconfirmed");
@@ -310,4 +311,40 @@ test("an unavailable copy service explains the failure and preserves the model a
   await shown(page, saved[5].revision);
   await expect(page.getByRole("textbox")).toHaveValue("Keep my draft");
   expect(agp.posted("/api/v2/sessions")).toHaveLength(0);
+});
+
+test("a fork reload preserves its latest model when storage briefly returns the pre-link metadata", async ({
+  page,
+}) => {
+  const { copies } = await site(page);
+  const agp = await platform(page);
+  const original = fixture();
+  const changed = revised({ ...original, pieces: original.pieces.map((p) => ({ ...p, color: 14 })) });
+  agp.session("original", "idle");
+  agp.share("original", original);
+  await page.goto("/?build=original");
+  await expect(page.locator(".viewer")).toHaveAttribute("data-revision", original.revision);
+  await page.getByRole("button", { name: "Fork", exact: true }).click();
+  await expect(page).toHaveURL(/\?fork=fork-/);
+  const id = new URL(page.url()).searchParams.get("fork")!;
+  await page.getByPlaceholder("Ask for a change").fill("Make it yellow");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await expect.poll(() => copies.get(id)?.sessionId).toBe("new-build");
+  agp.share("new-build", changed);
+  agp.answer("new-build", "Done");
+  await expect(page.locator(".viewer")).toHaveAttribute("data-revision", changed.revision);
+  // Simulate the documented 60s public Blob cache, without changing the durable record.
+  await page.route("**/api/forks*", async (route) => {
+    const q = new URL(route.request().url()).searchParams.get("id");
+    if (route.request().method() === "GET" && q === id)
+      return route.fulfill({ json: { ...copies.get(id), sessionId: null } });
+    return route.fallback();
+  });
+  await page.evaluate(() => localStorage.removeItem("brickyard.library"));
+  await page.reload();
+  await expect(page.locator(".viewer")).toHaveAttribute("data-revision", changed.revision);
+  await page.getByPlaceholder("Ask for a change").fill("Keep the yellow roof");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await expect.poll(() => agp.posted("/messages")).toHaveLength(1);
+  expect(agp.posted("/api/v2/sessions")).toHaveLength(1);
 });

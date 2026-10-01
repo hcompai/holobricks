@@ -1,4 +1,4 @@
-import { client, preparedSession, download, initialMessage } from "./agent";
+import { client, preparedSession, download, initialMessage, forkSession } from "./agent";
 import { card, remember, linkFork } from "./library";
 import { script } from "./remix";
 import { FORK_FILE } from "./session";
@@ -29,10 +29,7 @@ export function forkOperation(group = `fork-${crypto.randomUUID()}`) {
   let accepted: string | null = null;
   let seed: ForkSeed;
   let prompt: string;
-  const find = async () => {
-    const attempts = await client.sessions.listSessions({ groupId: group, size: 100 });
-    return attempts.items[0]?.id ?? null;
-  };
+  const find = () => forkSession(group);
   const finish = (id: string) => {
     accepted = id;
     remember(group, { forkStarting: false });
@@ -86,14 +83,15 @@ export function forkOperation(group = `fork-${crypto.randomUUID()}`) {
   };
 }
 
-const starts = new Map<string, ReturnType<typeof forkOperation>>();
+const starts = new Map<string, { run: ReturnType<typeof forkOperation> }>();
 
 /** The first ordinary chat message starts Holo; the saved copy keeps its identity. */
 export async function startFork(id: string, seed: ForkSeed, text: string, photos: string[]): Promise<string> {
+  if (!/^fork-[a-f0-9-]{36}$/.test(id)) throw new Error("Invalid copy.");
   let operation = starts.get(id);
-  if (!operation) starts.set(id, (operation = forkOperation(id)));
+  if (!operation) starts.set(id, (operation = { run: forkOperation(id) }));
   const start = async () => {
-    const session = await operation(seed, text, photos);
+    const session = await operation.run(seed, text, photos);
     await linkFork(id, session);
     return session;
   };

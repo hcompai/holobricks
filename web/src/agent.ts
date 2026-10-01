@@ -148,6 +148,12 @@ export function preparedSession(messages: HaiAgents.UserMessageEvent[], source: 
 /** Holo ends its current step and answers; the session stays open for the next message. */
 export const stop = (id: string) => client.session(id).forceAnswer();
 
+/** Read the caller's existing run for a copy; never start a new one while reopening it. */
+export async function forkSession(groupId: string): Promise<string | null> {
+  const { items } = await client.sessions.listSessions({ owner: "me", groupId, size: 100 });
+  return items[0]?.id ?? null;
+}
+
 /** The caller's own HoloBricks sessions, newest first. */
 export async function sessions(): Promise<HaiAgents.SessionSummary[]> {
   const all: HaiAgents.SessionSummary[] = [];
