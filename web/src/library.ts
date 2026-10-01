@@ -105,10 +105,13 @@ export async function showcase(id: string): Promise<Build> {
   return { ...(await response.json()), id, open: false };
 }
 
+/** A safe error message returned by our library API, distinct from a network failure. */
+export class LibraryError extends Error {}
+
 async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(path, init);
   const body = response.status === 204 ? null : await response.json().catch(() => null);
-  if (!response.ok) throw new Error(body?.error ?? `The library is unavailable (HTTP ${response.status}).`);
+  if (!response.ok) throw new LibraryError(body?.error ?? `The library is unavailable (HTTP ${response.status}).`);
   return body as T;
 }
 

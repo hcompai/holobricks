@@ -24,6 +24,7 @@ import {
   card,
   copyModel,
   library,
+  LibraryError,
   listing,
   LISTINGS,
   onRemember,
@@ -471,8 +472,8 @@ export default function App({ account }: { account: Account }) {
       const id = await copyModel(attempt.id, attempt.seed);
       if (same(ref, opened.current)) open({ id, source: "fork" });
       refreshBuilds();
-    } catch {
-      setForkError("Couldn't copy. Try Fork again.");
+    } catch (e) {
+      setForkError(e instanceof LibraryError ? e.message : "Couldn't copy. Try Fork again.");
     } finally {
       setForking(false);
     }

@@ -200,3 +200,16 @@ test("attaching Holo requires both session ownership and the same copy operation
   });
   expect(agentCalls.every((call) => call.startsWith("GET "))).toBe(true);
 });
+
+test("missing storage configuration reports an unavailable service without losing or starting a model", async () => {
+  delete process.env.BLOB_READ_WRITE_TOKEN;
+  try {
+    const response = await POST(request("POST", { id: copy, seed: seed() }));
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ error: "Saving is not configured on this server." });
+    expect(objects.size).toBe(0);
+    expect(agentCalls).toEqual([]);
+  } finally {
+    process.env.BLOB_READ_WRITE_TOKEN = "vercel_blob_rw_teststore_testsecret";
+  }
+});

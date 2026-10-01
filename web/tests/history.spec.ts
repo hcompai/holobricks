@@ -296,3 +296,18 @@ test("retrying a lost copy response opens the same saved drawing without duplica
   expect(copyRequests[0].id).toBe(copyRequests[1].id);
   expect(agp.posted("/api/v2/sessions")).toHaveLength(0);
 });
+
+test("an unavailable copy service explains the failure and preserves the model and draft", async ({ page }) => {
+  const { agp, saved } = await history(page);
+  await page.getByPlaceholder("Ask for a change").fill("Keep my draft");
+  await page.route("**/api/forks", async (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    return route.fulfill({ status: 503, json: { error: "Saving is not configured on this server." } });
+  });
+  await page.locator(".history-tools").getByRole("button", { name: "Fork", exact: true }).click();
+  await expect(page.getByRole("alert")).toHaveText("Saving is not configured on this server.");
+  await expect(page).toHaveURL(/\?build=panther$/);
+  await shown(page, saved[5].revision);
+  await expect(page.getByRole("textbox")).toHaveValue("Keep my draft");
+  expect(agp.posted("/api/v2/sessions")).toHaveLength(0);
+});
