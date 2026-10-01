@@ -50,7 +50,9 @@ export function SignInPage() {
       ) : (
         <>
           <h1>HoloBricks</h1>
-          <p className="sign-in-lead">Describe a model. Holo builds it, brick by brick.</p>
+          <p className="sign-in-lead">
+            Tell Holo what you'd like to build and watch it come together, one brick at a time.
+          </p>
         </>
       )}
       <button
@@ -69,7 +71,7 @@ export function SignInPage() {
           {signInError}
         </p>
       )}
-      <p className="sign-in-fine">For H Company accounts</p>
+      <p className="sign-in-fine">HoloBricks is open to everyone at H Company.</p>
     </main>
   );
 }

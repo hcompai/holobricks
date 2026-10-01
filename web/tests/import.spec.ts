@@ -41,7 +41,7 @@ for (const [why, damage, message] of [
     await expect(attempt).rejects.toThrow(message);
   });
 
-test("Import a build uploads the file as the signed-in user after a confirmation, then shows it under Mine", async ({
+test("Import a build uploads the file as the signed-in user after a confirmation, then shows it under the user's builds", async ({
   page,
 }) => {
   await site(page);
@@ -79,9 +79,9 @@ test("Import a build uploads the file as the signed-in user after a confirmation
     const id = new URL(route.request().url()).searchParams.get("id");
     return route.fulfill({ json: id ? listed.find((e: any) => e.id === id) : listed });
   });
-  await page.goto("/?library");
+  await page.goto("/");
 
-  const mine = page.getByRole("region", { name: "Mine" });
+  const mine = page.getByRole("region", { name: "Your builds" });
   const file = { name: "grand-rex.json", mimeType: "application/json" };
   await mine.getByLabel("Model file to import").setInputFiles({ ...file, buffer: Buffer.from("{}") });
   await expect(mine.getByRole("alert")).toContainText("not a HoloBricks model");
@@ -100,7 +100,7 @@ test("Import a build uploads the file as the signed-in user after a confirmation
   expect(uploads[0].headers).toMatchObject({ authorization: `Bearer ${ACCOUNT.pass}`, "x-agents-key": ACCOUNT.key });
   expect(uploads[0].body.thumbnail).toMatch(/^data:image\/webp;base64,/);
 
-  await page.getByRole("button", { name: "Library" }).click();
+  await page.getByRole("button", { name: "HoloBricks", exact: true }).click();
   await expect(mine.locator(".tile")).toContainText("Grand Rex");
   await expect(mine.locator(".tile")).toContainText("imported");
 });

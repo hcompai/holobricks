@@ -20,7 +20,7 @@ const COPIED_MS = 2000;
 /** The owner's side of sharing: whether the build is in the public library, and how to change it. */
 export interface Publishing {
   published: boolean;
-  /** An imported build: making it private keeps it under Mine, since it has no session to fall back to. */
+  /** An imported build: making it private keeps it under the user's builds, since it has no session to fall back to. */
   imported: boolean;
   /** Why the build cannot be published yet, or null when it can. */
   blocked: string | null;
@@ -51,7 +51,7 @@ function publishAsk({ published, imported, author, onPublish, onUnpublish }: Pub
         name: "Make private",
         question: "Make this build private?",
         note: imported
-          ? "It leaves the public library and stays under Mine for you alone: its link only opens it for you. You can publish it again."
+          ? "It leaves the public library and stays under Your builds for you alone: its link only opens it for you. You can publish it again."
           : "It leaves the public library and its link stops working. You can publish it again.",
         doing: "Making private…",
         icon: <LockSimpleIcon size={16} />,

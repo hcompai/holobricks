@@ -26,7 +26,7 @@ export function RecoveryPanel({
       setError(
         e instanceof RecoveryProblem
           ? e.message
-          : "We couldn't open a recovery attempt. Your original build is unchanged. Check Library for a new attempt before trying again.",
+          : "We couldn't open a recovery attempt. Your original build is unchanged. Check Your builds on the home page for a new attempt before trying again.",
       );
     } finally {
       setBusy(false);

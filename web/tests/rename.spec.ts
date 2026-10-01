@@ -38,8 +38,10 @@ test("rename saves in place, survives a fresh read and stays through new Holo ve
   await page.evaluate((owner) => localStorage.removeItem(`brickyard.names.${owner}`), ACCOUNT.user.id);
   await page.reload();
   await expect(page.locator(".aside-title")).toHaveText("Harbour light");
-  await page.getByRole("button", { name: "Library", exact: true }).click();
-  await expect(page.getByRole("region", { name: "Mine", exact: true }).locator(".tile")).toContainText("Harbour light");
+  await page.locator(".brand").click();
+  await expect(page.getByRole("region", { name: "Your builds", exact: true }).locator(".tile")).toContainText(
+    "Harbour light",
+  );
 });
 
 test("a fork has its own name on mobile; Escape cancels and failed saves preserve the input", async ({ page }) => {

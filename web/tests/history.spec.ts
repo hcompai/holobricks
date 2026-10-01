@@ -111,9 +111,9 @@ test("fork V4 keeps V5/V6 in the original and starts its own V1, then V2 only wh
   await page.getByRole("link", { name: "Panther · V4", exact: true }).click();
   await shown(page, saved[3].revision);
   await expect(page.getByRole("button", { name: "V6 · Latest", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Library", exact: true }).click();
-  await expect(page.getByRole("region", { name: "Mine", exact: true }).locator(".tile")).toHaveCount(2);
-  await expect(page.getByRole("region", { name: "Mine", exact: true })).toContainText("Panther · Fork");
+  await page.locator(".brand").click();
+  await expect(page.getByRole("region", { name: "Your builds", exact: true }).locator(".tile")).toHaveCount(2);
+  await expect(page.getByRole("region", { name: "Your builds", exact: true })).toContainText("Panther · Fork");
   // A result rendered off screen must replace the copy's original thumbnail on the next library read.
   await page.route("https://images.test/latest-fork.png", (route) => route.fulfill({ status: 204 }));
   await page.evaluate((revision) => {
@@ -124,7 +124,7 @@ test("fork V4 keeps V5/V6 in the original and starts its own V1, then V2 only wh
   await page.reload();
   await expect(
     page
-      .getByRole("region", { name: "Mine", exact: true })
+      .getByRole("region", { name: "Your builds", exact: true })
       .getByRole("button", { name: /Panther · Fork/ })
       .locator("img"),
   ).toHaveAttribute("src", "https://images.test/latest-fork.png");
@@ -271,8 +271,8 @@ test("Fork saves and opens the drawing before any message; reload and Library ke
   await page.screenshot({ path: "test-results/fork-mobile.png" });
   await page.reload();
   await shown(page, saved[3].revision);
-  await page.getByRole("button", { name: "Library", exact: true }).click();
-  const mine = page.getByRole("region", { name: "Mine", exact: true });
+  await page.locator(".brand").click();
+  const mine = page.getByRole("region", { name: "Your builds", exact: true });
   await expect(mine.locator(".tile")).toHaveCount(2);
   await mine.getByRole("button", { name: /Panther · Fork/ }).click();
   await expect(page).toHaveURL(url);

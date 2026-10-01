@@ -218,19 +218,14 @@ hr {
   background: var(--background-card);
 }
 
-/* Home is one column: the composer and the shelves, or the library over it. */
+/* Home is one column: the composer, then the shelves. */
 .app.home {
   grid-template-columns: minmax(0, 1fr);
 }
 
 .app.home main,
-.app.home.library aside,
 .app.home .aside-bar {
   display: none;
-}
-
-.app.home.library main {
-  display: flex;
 }
 
 .app.home aside {
@@ -241,7 +236,7 @@ hr {
 .app.home .aside-body {
   flex: none;
   gap: var(--space-5);
-  width: min(1120px, 100%);
+  width: min(1600px, 100%);
   margin: 0 auto;
   padding: 9vh var(--space-4) var(--space-5);
 }
@@ -406,25 +401,41 @@ aside {
   padding: 14px 16px 48px;
 }
 
+.home-shelves {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.home-shelf {
+  display: flex;
+  flex-direction: column;
+}
+
 .home-shelf h2 {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  margin: 0 0 var(--space-2);
+  gap: var(--space-2);
+  min-height: var(--control);
+  margin: 0 0 var(--space-3);
   font-size: var(--font-title);
   font-weight: 600;
 }
 
-/* Tiles lift on hover: the padding keeps the lift and its shadow inside the scroller. */
-.home-row {
+.home-shelf h2 .count {
+  font-size: var(--font-small);
+  font-weight: 500;
+  color: var(--text-tertiary);
+}
+
+.home-grid {
   display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: 250px;
-  gap: var(--space-3);
-  overflow-x: auto;
-  scrollbar-width: none;
-  margin: -6px calc(-1 * var(--space-4)) -20px;
-  padding: 6px var(--space-4) 20px;
+  grid-auto-rows: max-content;
+}
+
+.home-more {
+  align-self: center;
+  margin-top: var(--space-5);
 }
 
 .chips {
@@ -792,48 +803,8 @@ aside {
   font-weight: 600;
 }
 
-.library-page {
-  position: absolute;
-  inset: 0;
-  z-index: 5;
-  overflow-y: auto;
-  padding: var(--space-3) var(--space-4) var(--space-5);
-  background: var(--background-page);
-  animation: fade-in 0.15s ease-out;
-}
-
-.library-page:focus {
-  outline: none;
-}
-
-.library-section + .library-section {
-  margin-top: var(--space-5);
-}
-
-.library-section h2 {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-height: var(--control);
-  margin: 0 0 var(--space-3);
-  font-size: var(--font-title);
-  font-weight: 600;
-}
-
-.library-section h2 .count {
-  font-size: var(--font-small);
-  font-weight: 500;
-  color: var(--text-tertiary);
-}
-
-.library-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  grid-auto-rows: max-content;
-  gap: var(--space-4);
-}
-
-.tile {
+.tile,
+.skeleton {
   display: flex;
   flex-direction: column;
   align-items: stretch;
@@ -886,7 +857,7 @@ aside {
   white-space: nowrap;
 }
 
-.library-empty {
+.home-empty {
   margin: 0;
   padding: 28px 16px;
   border: 1px dashed var(--stroke-default);
@@ -2255,7 +2226,7 @@ main {
   color: var(--text-secondary);
 }
 
-/* Importing a model file, beside the Mine heading. */
+/* Importing a model file, beside the Your builds heading. */
 .import-build {
   margin-left: auto;
   display: flex;
@@ -2361,11 +2332,6 @@ main {
     margin: 0 var(--space-2);
   }
 
-  .library-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--space-3);
-  }
-
   .timeline {
     gap: var(--space-1);
     margin: var(--space-2);
@@ -2454,9 +2420,6 @@ main {
   .app.home .home-intro h1 {
     font-size: var(--font-display);
     line-height: 34px;
-  }
-  .home-row {
-    grid-auto-columns: 172px;
   }
   .build-actions {
     display: flex;

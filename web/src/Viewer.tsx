@@ -450,9 +450,9 @@ export function Viewer(props: Props) {
           {opening && !shown && !empty && <BrickLoader label={build ? "Loading the model…" : opening} />}
           {empty &&
             (build.status === "building" ? (
-              <BrickLoader label="Holo is getting its bricks ready. First bricks in a few minutes." />
+              <BrickLoader label="Holo is sorting through its bricks, and the first ones should appear in a few minutes." />
             ) : (
-              <BrickLoader idle label="Nothing built yet. Ask Holo in the chat." />
+              <BrickLoader idle label="There's nothing here yet, so ask Holo in the chat to start building." />
             ))}
         </>
       )}
