@@ -8,6 +8,8 @@ import { status, unpack } from "./session";
 const GALLERY = "/gallery";
 const API = "/api/builds";
 const IMPORTS = "/api/imports";
+import type { ForkSeed, ForkSummary, SavedFork } from "./forkModel";
+
 const STORE = "brickyard.library";
 
 /** What the browser remembers of a session's model, since the platform keeps only its chat. */
@@ -18,6 +20,7 @@ interface Card {
   thumbnail?: string;
   recoveredFrom?: string;
   recoveryAttempt?: string;
+  forkStarting?: boolean;
 }
 
 const cards = (): Record<string, Card> => {
@@ -203,11 +206,12 @@ export type Shelf = "mine" | "public";
 
 /** The signed-in user's builds, newest first, then everyone's public builds, then the showcases; with the shelves that failed to load. */
 export async function library(): Promise<{ builds: BuildSummary[]; failed: Shelf[] }> {
-  const [sessionsLoaded, sharedLoaded, hiddenLoaded, shownLoaded] = await Promise.allSettled([
+  const [sessionsLoaded, sharedLoaded, hiddenLoaded, shownLoaded, forksLoaded] = await Promise.allSettled([
     current() ? sessions() : Promise.resolve([]),
     community(),
     current() ? hidden() : Promise.resolve([]),
     showcases(),
+    current() ? api<ForkSummary[]>("/api/forks", { headers: signed() }) : Promise.resolve([]),
   ]);
   const failed: Shelf[] = [];
   const value = <T>(result: PromiseSettledResult<T[]>, shelf: Shelf): T[] => {
@@ -220,6 +224,7 @@ export async function library(): Promise<{ builds: BuildSummary[]; failed: Shelf
   const shared = value(sharedLoaded, "public");
   const own = value(hiddenLoaded, "mine");
   const shown = value(shownLoaded, "public");
+  const forks = value(forksLoaded, "mine");
   const known = cards();
   const listed = new Map(shared.map((p) => [p.id, p]));
   const builds = mine.map((s): BuildSummary => {
@@ -241,7 +246,27 @@ export async function library(): Promise<{ builds: BuildSummary[]; failed: Shelf
   });
   // A build is public or private, never both: the public listing wins if a stale private entry lingers.
   const privately = own.filter((p) => !listed.has(p.id));
-  return { builds: [...builds.sort((a, b) => b.created - a.created), ...shared, ...privately, ...shown], failed };
+  const forkRuns = new Set(forks.flatMap((f) => (f.sessionId ? [f.sessionId] : [])));
+  const copies: BuildSummary[] = forks.map((f) => {
+    const run = builds.find((b) => b.id === f.sessionId);
+    const saved = known[f.id];
+    return {
+      ...f,
+      name: f.name,
+      prompt: run?.prompt ?? "",
+      pieces: run?.pieces ?? f.pieces,
+      status: run?.status ?? "done",
+      thumbnail: saved?.thumbnail ?? run?.thumbnail ?? null,
+      source: "fork",
+      author: null,
+      owner: current()?.user.id ?? null,
+      private: !listed.has(f.id),
+    };
+  });
+  return {
+    builds: [...builds.filter((b) => !forkRuns.has(b.id)), ...copies, ...shared, ...privately, ...shown],
+    failed,
+  };
 }
 
 const THUMBNAIL_SIDE = 320;
@@ -256,4 +281,27 @@ export async function thumbnail(png: Blob): Promise<string> {
   canvas.getContext("2d")!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
   bitmap.close();
   return canvas.toDataURL("image/webp", 0.8);
+}
+
+export const savedFork = (id: string) =>
+  api<SavedFork>(`/api/forks?id=${encodeURIComponent(id)}`, { headers: signed() });
+
+export async function copyModel(id: string, seed: ForkSeed): Promise<string> {
+  const json = new Blob([JSON.stringify({ id, seed })]);
+  const body = await new Response(json.stream().pipeThrough(new CompressionStream("gzip"))).blob();
+  await api<ForkSummary>("/api/forks", {
+    method: "POST",
+    headers: { ...signed(), "Content-Type": "application/gzip" },
+    body,
+  });
+  remember(id, { name: seed.model.name, pieces: seed.model.pieces.length });
+  return id;
+}
+
+export async function linkFork(id: string, sessionId: string) {
+  await api("/api/forks", {
+    method: "PATCH",
+    headers: { ...signed(), "Content-Type": "application/json" },
+    body: JSON.stringify({ id, sessionId }),
+  });
 }

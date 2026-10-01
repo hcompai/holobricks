@@ -15,7 +15,7 @@ const versions = () =>
   );
 
 async function history(page: Page) {
-  await site(page);
+  const copies = await site(page);
   const agp = await platform(page);
   const saved = versions();
   agp.session("panther", "idle");
@@ -28,7 +28,7 @@ async function history(page: Page) {
   await shown(page, saved[5].revision);
   await page.getByRole("button", { name: "History", exact: true }).click();
   await expect(page.getByRole("button", { name: "V6 · Latest", exact: true })).toBeVisible();
-  return { agp, saved };
+  return { agp, saved, ...copies };
 }
 
 test("preview is read-only, survives reload, preserves the latest draft and never creates a run", async ({ page }) => {
@@ -65,14 +65,17 @@ test("fork V4 keeps V5/V6 in the original and starts its own V1, then V2 only wh
   await page.getByRole("button", { name: "V4", exact: true }).click();
   await page.locator(".history-tools").getByRole("button", { name: "Fork", exact: true }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
-  await expect(page.locator(".fork-note")).toContainText("Fork · V4");
-  await expect(page.getByRole("textbox")).toBeFocused();
+  await expect(page).toHaveURL(/\?fork=fork-/);
+  await expect(page.getByRole("textbox")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Edit", exact: true })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Cancel", exact: true })).toHaveCount(0);
   await expect(page.locator(".chat-log .msg")).toHaveCount(0);
   expect(agp.posted("/api/v2/sessions")).toHaveLength(0);
   await page.getByPlaceholder("Describe how to change it…").fill("Make it sit");
   await page.screenshot({ path: "test-results/fork-composer.png" });
   await page.getByRole("button", { name: "Send", exact: true }).click();
-  await expect(page).toHaveURL(/build=new-build$/);
+  await expect.poll(() => agp.posted("/api/v2/sessions")).toHaveLength(1);
+  await expect(page).toHaveURL(/\?fork=fork-/);
   await shown(page, saved[3].revision);
   await expect(page.locator("header .title")).toHaveText("Panther · Fork");
   const [created] = agp.posted("/api/v2/sessions");
@@ -85,6 +88,7 @@ test("fork V4 keeps V5/V6 in the original and starts its own V1, then V2 only wh
   expect(seed.model).not.toHaveProperty("messages");
   expect(seed.model).not.toHaveProperty("recovery");
   expect(agp.posted("/messages")).toHaveLength(0);
+  await expect(page.getByRole("button", { name: "Stop", exact: true })).toBeVisible();
   await page.reload();
   await shown(page, saved[3].revision);
   await expect(page.locator("header .title")).toHaveText("Panther · Fork");
@@ -118,11 +122,12 @@ test("preview does not change Holo's live render or the chosen fork snapshot whe
   await shown(page, saved[3].revision);
   await expect.poll(() => agp.posted("/tool_results")).toHaveLength(1);
   expect(agp.posted("/tool_results")[0].result[0]).toContain(`Revision ${next.revision.slice(0, 8)}`);
-  await expect(page.locator(".fork-note")).toContainText("Fork · V4");
+  await expect(page).toHaveURL(/\?fork=fork-/);
   await expect(page.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);
   await page.getByRole("textbox").fill("Keep these proportions");
   await page.getByRole("button", { name: "Send", exact: true }).click();
-  await expect(page).toHaveURL(/build=new-build$/);
+  await expect.poll(() => agp.posted("/api/v2/sessions")).toHaveLength(1);
+  await expect(page).toHaveURL(/\?fork=fork-/);
   await shown(page, saved[3].revision);
   expect(agp.sessions.get("panther")!.shared).toBe(7);
   expect(agp.posted("/force_answer")).toHaveLength(0);
@@ -133,9 +138,11 @@ test("lost fork creation response reopens the accepted session, without a duplic
   const { agp } = await history(page);
   agp.loseCreationResponse = true;
   await page.locator(".history-tools").getByRole("button", { name: "Fork", exact: true }).click();
+  await expect(page).toHaveURL(/\?fork=fork-/);
   await page.getByPlaceholder("Describe how to change it…").fill("Add ears");
   await page.getByRole("button", { name: "Send", exact: true }).dblclick();
-  await expect(page).toHaveURL(/build=new-build$/);
+  await expect.poll(() => agp.posted("/api/v2/sessions")).toHaveLength(1);
+  await expect(page).toHaveURL(/\?fork=fork-/);
   expect(agp.posted("/api/v2/sessions")).toHaveLength(1);
 });
 
@@ -165,9 +172,12 @@ test("a fork whose setup failed before delivering files still shows its durable 
 }) => {
   const { agp, saved } = await history(page);
   await page.locator(".history-tools").getByRole("button", { name: "Fork", exact: true }).click();
+  await expect(page).toHaveURL(/\?fork=fork-/);
   await page.getByPlaceholder("Describe how to change it…").fill("Add ears");
   await page.getByRole("button", { name: "Send", exact: true }).click();
-  await expect(page).toHaveURL(/build=new-build$/);
+  await expect.poll(() => agp.posted("/api/v2/sessions")).toHaveLength(1);
+  await expect(page).toHaveURL(/\?fork=fork-/);
+  await expect(page.getByRole("button", { name: "Stop", exact: true })).toBeVisible();
   const session = agp.sessions.get("new-build")!;
   session.events = [];
   session.status = "failed";
@@ -203,40 +213,64 @@ test("an unconfirmed fork can only check for acceptance, without posting again o
   const { agp, saved } = await history(page);
   agp.refuse = [503];
   await page.locator(".history-tools").getByRole("button", { name: "Fork", exact: true }).click();
+  await expect(page).toHaveURL(/\?fork=fork-/);
   await page.getByPlaceholder("Describe how to change it…").fill("Add ears");
   await page.getByRole("button", { name: "Send", exact: true }).click();
-  await expect(page.locator(".chat").getByRole("alert")).toContainText("Start unconfirmed");
-  await expect(page.getByRole("textbox")).toBeDisabled();
+  await expect(page.locator(".composer-error")).toContainText("Start unconfirmed");
   await page.route("**/api/v2/sessions?**", (route) =>
     new URL(route.request().url()).searchParams.has("group_id") ? route.abort("failed") : route.fallback(),
   );
-  await page.getByRole("button", { name: "Check again", exact: true }).click();
-  await expect(page.locator(".chat").getByRole("alert")).toContainText("Start unconfirmed");
-  await expect(page.getByRole("textbox")).toBeDisabled();
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await expect(page.locator(".composer-error")).toContainText("Start unconfirmed");
   expect(agp.posted("/api/v2/sessions")).toHaveLength(1);
+  await page.reload();
   await shown(page, saved[5].revision);
-  await page.getByRole("button", { name: "Close", exact: true }).click();
+  await page.getByRole("textbox").fill("Add ears");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await expect(page.locator(".composer-error")).toContainText("Start unconfirmed");
+  expect(agp.posted("/api/v2/sessions")).toHaveLength(1);
   await shown(page, saved[5].revision);
 });
 
-test("cancelling a fork preserves the original chat draft and selected version, including on mobile", async ({
+test("Fork saves and opens the drawing before any message; reload and Library keep the copy on mobile", async ({
   page,
 }) => {
   const { agp, saved } = await history(page);
-  await page.getByRole("textbox").fill("Keep this original draft");
   await page.getByRole("button", { name: "V4", exact: true }).click();
   await page.setViewportSize({ width: 390, height: 844 });
   await page.locator(".history-tools").getByRole("button", { name: "Fork", exact: true }).click();
-  await expect(page.getByRole("textbox")).toBeVisible();
+  await expect(page).toHaveURL(/\?fork=fork-/);
+  const url = page.url();
+  await shown(page, saved[3].revision);
   await expect(page.getByRole("textbox")).toHaveValue("");
-  await page.getByRole("textbox").fill("Different fork draft");
-  await shown(page, saved[3].revision);
+  await expect(page.getByRole("button", { name: "Cancel", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Edit", exact: true })).toBeEnabled();
   await page.screenshot({ path: "test-results/fork-mobile.png" });
-  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
-  await page.getByRole("button", { name: "Cancel", exact: true }).click();
+  await page.reload();
   await shown(page, saved[3].revision);
-  await page.locator(".preview-note").getByRole("button", { name: "Latest", exact: true }).click();
-  await expect(page.getByRole("textbox")).toHaveValue("Keep this original draft");
+  await page.getByRole("button", { name: "Library", exact: true }).click();
+  const mine = page.getByRole("region", { name: "Mine", exact: true });
+  await expect(mine.locator(".tile")).toHaveCount(2);
+  await mine.getByRole("button", { name: /Panther · Fork/ }).click();
+  await expect(page).toHaveURL(url);
+  await shown(page, saved[3].revision);
   expect(agp.posted("/api/v2/sessions")).toHaveLength(0);
   expect(agp.posted("/messages")).toHaveLength(0);
+});
+
+test("retrying a lost copy response opens the same saved drawing without duplicating it or starting Holo", async ({
+  page,
+}) => {
+  const { agp, copies, copying, copyRequests, saved } = await history(page);
+  copying.loseResponse = true;
+  const fork = page.locator(".history-tools").getByRole("button", { name: "Fork", exact: true });
+  await fork.click();
+  await expect(page.getByRole("alert")).toContainText("Couldn't copy");
+  await shown(page, saved[5].revision);
+  await fork.click();
+  await expect(page).toHaveURL(/\?fork=fork-/);
+  expect(copies.size).toBe(1);
+  expect(copyRequests).toHaveLength(2);
+  expect(copyRequests[0].id).toBe(copyRequests[1].id);
+  expect(agp.posted("/api/v2/sessions")).toHaveLength(0);
 });

@@ -85,7 +85,13 @@ export const POST = route(async (request) => {
     written.push(url);
     return url;
   };
-  const build = await snapshot(id, key, given.edits, (name, image) => keep(name, image, image.type || "image/png"));
+  const build = await snapshot(
+    id,
+    key,
+    given.edits,
+    (name, image) => keep(name, image, image.type || "image/png"),
+    user.id,
+  );
   const coverUrl = cover ? await keep(`thumbnail.${cover.type.split("/")[1]}`, cover.data, cover.type) : null;
   if (!cover && previous?.thumbnail) written.push(bare(previous.thumbnail));
   const at = Math.floor(Date.now() / 1000);

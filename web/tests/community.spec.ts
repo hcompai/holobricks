@@ -90,7 +90,7 @@ test("a colleague's public build opens from the library's Public section, under 
   await expect(page.getByRole("button", { name: "Publish", exact: true })).toHaveCount(0);
 });
 
-test("a fork of a public build starts a private session from a script placing each of its pieces, step by step", async ({
+test("a fork of a public build opens a private copy, then chat starts a session from a script placing each of its pieces, step by step", async ({
   page,
 }) => {
   const tower = { ...fixture(), id: "tower", name: "Ada's tower" };
@@ -103,7 +103,8 @@ test("a fork of a public build starts a private session from a script placing ea
   await page.locator(".gallery-note").getByRole("button", { name: "Fork" }).click();
   await page.getByPlaceholder("Describe how to change it…").fill("Make it twice as tall");
   await page.getByRole("button", { name: "Send", exact: true }).click();
-  await expect(page).toHaveURL(/\?build=new-build$/);
+  await expect.poll(() => agp.posted("/api/v2/sessions")).toHaveLength(1);
+  await expect(page).toHaveURL(/\?fork=fork-/);
   await expect(page.locator("header .title")).toHaveText("Ada's tower · Fork");
   const first = agp.posted("/api/v2/sessions")[0].messages[0];
   expect(first.message).toBe("Make it twice as tall");

@@ -1,48 +1,9 @@
 import { client, preparedSession, download, initialMessage } from "./agent";
-import { buildRevision } from "./buildRevision";
-import { remember } from "./library";
-import type { Build, Model, Source } from "./model";
+import { card, remember, linkFork } from "./library";
 import { script } from "./remix";
-import { FORK_FILE, unpack } from "./session";
-
-export interface ForkOrigin {
-  id: string;
-  source: Source;
-  name: string;
-  version: number | null;
-  revision: string;
-}
-export interface ForkSeed {
-  format: 1;
-  origin: ForkOrigin;
-  model: Model;
-}
-
-/** Explicit fields keep chat, private work and attachment URLs out of the fork. */
-export function forkSeed(build: Build, origin: ForkOrigin, name: string): ForkSeed {
-  const { builder, width, depth, updated, revision, pieces, steps, parts, ldr, bom, shopping } = build;
-  return structuredClone({
-    format: 1,
-    origin,
-    model: { name, builder, width, depth, updated, revision, pieces, steps, parts, ldr, bom, shopping },
-  });
-}
-
-export async function readSeed(blob: Blob): Promise<ForkSeed> {
-  const seed = await unpack<ForkSeed>(blob);
-  if (
-    seed?.format !== 1 ||
-    !seed.origin ||
-    !["session", "public", "showcase"].includes(seed.origin.source) ||
-    typeof seed.origin.id !== "string" ||
-    typeof seed.model?.name !== "string" ||
-    !Array.isArray(seed.model.steps) ||
-    !seed.model.parts ||
-    (await buildRevision(seed.model.pieces)) !== seed.model.revision
-  )
-    throw new Error("The fork's starting model is unavailable.");
-  return seed;
-}
+import { FORK_FILE } from "./session";
+import { readSeed, type ForkSeed } from "./forkModel";
+export { forkSeed, readSeed, type ForkSeed, type ForkOrigin } from "./forkModel";
 
 const seeds = new Map<string, ForkSeed>();
 export const cachedSeed = (id: string) => seeds.get(id) ?? null;
@@ -62,8 +23,7 @@ export async function requestedSeed(id: string, signal: AbortSignal): Promise<Fo
 }
 
 /** An ambiguous POST may already have started Holo. Check that same operation; never repeat its POST. */
-export function forkOperation() {
-  const group = `fork-${crypto.randomUUID()}`;
+export function forkOperation(group = `fork-${crypto.randomUUID()}`) {
   let sent = false;
   let pending: Promise<string> | null = null;
   let accepted: string | null = null;
@@ -75,6 +35,7 @@ export function forkOperation() {
   };
   const finish = (id: string) => {
     accepted = id;
+    remember(group, { forkStarting: false });
     seeds.set(id, seed);
     remember(id, { name: seed.model.name, prompt, pieces: seed.model.pieces.length });
     return id;
@@ -83,13 +44,15 @@ export function forkOperation() {
     if (accepted) return Promise.resolve(accepted);
     if (pending) return pending;
     const run = async () => {
-      if (sent) {
+      seed = selected;
+      prompt = text;
+      if (sent || card(group)?.forkStarting) {
         const id = await find().catch(() => null);
         if (id) return finish(id);
         throw new Error("Start unconfirmed. Check again before creating another fork.");
       }
-      seed = selected;
-      prompt = text;
+      const existing = await find();
+      if (existing) return finish(existing);
       const json = new Blob([JSON.stringify(seed)], { type: "application/json" });
       const packed = await new Response(json.stream().pipeThrough(new CompressionStream("gzip"))).blob();
       const first = await initialMessage(text, photos, {
@@ -98,12 +61,16 @@ export function forkOperation() {
       });
       const submit = preparedSession([first], group);
       sent = true;
+      remember(group, { forkStarting: true });
       try {
         return finish(await submit());
       } catch (e) {
         // A definite client refusal did not create a session. Preparation and these refusals are safe to retry.
         const code = (e as { statusCode?: number }).statusCode;
-        if (code && [400, 401, 403, 413, 422, 429].includes(code)) sent = false;
+        if (code && [400, 401, 403, 413, 422, 429].includes(code)) {
+          sent = false;
+          remember(group, { forkStarting: false });
+        }
         if (sent) {
           const id = await find().catch(() => null);
           if (id) return finish(id);
@@ -117,4 +84,18 @@ export function forkOperation() {
     });
     return pending;
   };
+}
+
+const starts = new Map<string, ReturnType<typeof forkOperation>>();
+
+/** The first ordinary chat message starts Holo; the saved copy keeps its identity. */
+export async function startFork(id: string, seed: ForkSeed, text: string, photos: string[]): Promise<string> {
+  let operation = starts.get(id);
+  if (!operation) starts.set(id, (operation = forkOperation(id)));
+  const start = async () => {
+    const session = await operation(seed, text, photos);
+    await linkFork(id, session);
+    return session;
+  };
+  return navigator.locks ? navigator.locks.request(`brickyard-fork-${id}`, start) : start();
 }

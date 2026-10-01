@@ -24,7 +24,7 @@ interface Props {
 function meta(b: BuildSummary, published: Set<string>): string {
   return [
     b.source === "showcase" ? "Showcase" : b.author ? `by ${b.author}` : null,
-    b.source === "session" && published.has(b.id) ? "public" : null,
+    (b.source === "session" || b.source === "fork") && published.has(b.id) ? "public" : null,
     b.id.startsWith("import-") ? "imported" : null,
     b.private ? "private" : null,
     b.pieces === null ? null : `${b.pieces.toLocaleString()} pieces`,
@@ -45,9 +45,9 @@ export function LibraryPage({ builds, failed, active, onRetry, onOpen, onClose, 
     window.addEventListener("keydown", close);
     return () => window.removeEventListener("keydown", close);
   }, [onClose]);
-  const sessions = builds?.filter((b) => b.source === "session") ?? [];
+  const sessions = builds?.filter((b) => b.source === "session" || b.source === "fork") ?? [];
   // Private builds are their owner's alone: under Mine, never under Public.
-  const everyone = builds?.filter((b) => b.source !== "session" && !b.private) ?? [];
+  const everyone = builds?.filter((b) => b.source !== "session" && b.source !== "fork" && !b.private) ?? [];
   const privately = builds?.filter((b) => b.private) ?? [];
   const ids = new Set(sessions.map((b) => b.id));
   // Builds with no session of theirs, like imported ones, are the user's through the library only.

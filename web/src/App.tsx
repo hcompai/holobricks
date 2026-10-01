@@ -6,7 +6,7 @@ import { RecoveryPanel } from "./RecoveryPanel";
 import { create, say, stop } from "./agent";
 import { HistoryPanel } from "./HistoryPanel";
 import { design, useHistory, type Version } from "./history";
-import { forkOperation, forkSeed, type ForkOrigin } from "./fork";
+import { startFork, forkSeed, type ForkSeed } from "./fork";
 import { provideParts } from "./scene";
 import { useEdits } from "./edits";
 import { type Build, type BuildSummary, type Piece, type Source, verified } from "./model";
@@ -25,7 +25,7 @@ import { ShopDialog } from "./ShopDialog";
 import { Timeline } from "./Timeline";
 import { FilmExport } from "./FilmExport";
 import { InstructionsExport } from "./InstructionsExport";
-import { card, library, publish, remember, setPrivate, type Shelf, thumbnail, unpublish } from "./library";
+import { card, copyModel, library, publish, remember, setPrivate, type Shelf, thumbnail, unpublish } from "./library";
 import { type BuildRef, useBuild } from "./useBuild";
 import { useKeeper } from "./useSession";
 import { ThemeToggle } from "./ThemeToggle";
@@ -34,7 +34,7 @@ import { type Framing, type Mode, ViewControls, Viewer, type ViewerHandle } from
 const STEP_MS = 700;
 const TITLE = document.title;
 /** The URL parameter naming the open build, by where it is read from. */
-const PARAMS: Record<Source, string> = { session: "build", public: "public", showcase: "showcase" };
+const PARAMS: Record<Source, string> = { session: "build", public: "public", showcase: "showcase", fork: "fork" };
 
 function urlBuild(): BuildRef | null {
   const params = new URLSearchParams(window.location.search);
@@ -74,24 +74,22 @@ export default function App({ account }: { account: Account }) {
   opened.current = ref;
   const [libraryOpen, setLibraryOpen] = useState(urlLibrary);
   const buildId = ref?.id ?? null;
-  const { build: live, loading, activity, error, syncError, models, seed } = useBuild(ref);
+  const { build: live, loading, activity, error, syncError, models, seed, runId, attachSession } = useBuild(ref);
   const edits = useEdits(live);
   const [historyOpen, setHistoryOpen] = useState(() => urlVersion() !== null);
   const [wantedVersion, setWantedVersion] = useState<number | null>(urlVersion);
   const [selected, setSelected] = useState<Version | null>(null);
-  const [forking, setForking] = useState<{
-    build: Build;
-    origin: ForkOrigin;
-    send: ReturnType<typeof forkOperation>;
-  } | null>(null);
+  const [forking, setForking] = useState(false);
+  const [forkError, setForkError] = useState("");
+  const copyAttempt = useRef<{ key: string; id: string; seed: ForkSeed } | null>(null);
   const history = useHistory(
-    ref?.source === "session" ? ref.id : null,
+    ref && (ref.source === "session" || ref.source === "fork") ? ref.id : null,
     models,
     seed?.model ?? null,
     historyOpen || wantedVersion !== null,
   );
   const previewing = selected !== null || wantedVersion !== null;
-  const readOnly = previewing || !!forking;
+  const readOnly = previewing;
   useEffect(() => {
     if (wantedVersion === null || history.loading || history.error || loading) return;
     const version = history.versions.find((v) => v.number === wantedVersion);
@@ -102,12 +100,11 @@ export default function App({ account }: { account: Account }) {
   }, [wantedVersion, history.versions, history.loading, history.error, loading]);
   /** Preview never replaces the live model used by the builder or the manual-edit state. */
   const build =
-    forking?.build ??
-    (wantedVersion !== null
+    wantedVersion !== null
       ? null
       : selected && live
         ? { ...live, ...selected.model, name: live.name, open: false }
-        : edits.build);
+        : edits.build;
   const [mode, setMode] = useState<Mode>("view");
   const palette = usePalette();
   const prices = usePrices();
@@ -150,7 +147,9 @@ export default function App({ account }: { account: Account }) {
       ({ builds: next, failed }) => {
         if (request !== latest.current) return;
         const kept = (shelf: Shelf, previous: BuildSummary[] | null) =>
-          failed.includes(shelf) ? (previous ?? []).filter((b) => (b.source === "session") === (shelf === "mine")) : [];
+          failed.includes(shelf)
+            ? (previous ?? []).filter((b) => (b.source === "session" || b.source === "fork") === (shelf === "mine"))
+            : [];
         setBuilds((previous) => [...kept("mine", previous), ...next, ...kept("public", previous)]);
         setBuildsFailed(failed);
       },
@@ -167,10 +166,13 @@ export default function App({ account }: { account: Account }) {
     ...new Set([
       ...(builds ?? [])
         .filter(
-          (b) => b.source === "session" && b.status === "building" && (b.id !== live?.id || live.status === "building"),
+          (b) =>
+            (b.source === "session" || b.source === "fork") &&
+            b.status === "building" &&
+            ((b.sessionId ?? b.id) !== runId || live?.status === "building"),
         )
-        .map((b) => b.id),
-      ...(live?.status === "building" ? [live.id] : []),
+        .map((b) => b.sessionId ?? b.id),
+      ...(live?.status === "building" && runId ? [runId] : []),
     ]),
   ];
   useKeeper(running, refreshBuilds);
@@ -180,7 +182,13 @@ export default function App({ account }: { account: Account }) {
   const listed = builds?.find((b) => b.id === buildId && b.source === "public");
   /** The build as anyone opens it: a showcase, or in the public library. */
   const shared: BuildRef | null =
-    ref?.source === "session" ? (listed ? { id: ref.id, source: "public" } : null) : summary?.private ? null : ref;
+    ref?.source === "session" || ref?.source === "fork"
+      ? listed
+        ? { id: ref.id, source: "public" }
+        : null
+      : summary?.private
+        ? null
+        : ref;
 
   useEffect(() => {
     if (live && builds && summary?.status !== live.status) refreshBuilds();
@@ -200,7 +208,8 @@ export default function App({ account }: { account: Account }) {
     setHistoryOpen(version !== null);
     setWantedVersion(version);
     setSelected(null);
-    setForking(null);
+    setForkError("");
+    copyAttempt.current = null;
   }, []);
 
   /** Show this build, with the library over it or not, and put both in the URL. */
@@ -275,7 +284,7 @@ export default function App({ account }: { account: Account }) {
   };
 
   const saveThumbnail = async (png: Blob) => {
-    if (readOnly || ref?.source !== "session") return;
+    if (readOnly || !ref || !["session", "fork"].includes(ref.source)) return;
     remember(ref.id, { thumbnail: await thumbnail(png) });
     refreshBuilds();
   };
@@ -289,7 +298,10 @@ export default function App({ account }: { account: Account }) {
   };
 
   /** The signed-in user's build, from their session or as they published it. */
-  const owned = ref?.source === "session" || (ref?.source === "public" && summary?.owner === account.user.id);
+  const owned =
+    ref?.source === "session" ||
+    ref?.source === "fork" ||
+    (ref?.source === "public" && summary?.owner === account.user.id);
   /** An imported build of theirs: it lives only in the library, with no session to fall back to. */
   const imported = owned && ref?.source === "public" && ref.id.startsWith("import-");
 
@@ -299,7 +311,7 @@ export default function App({ account }: { account: Account }) {
     if (imported) await setPrivate(live.id, true);
     else {
       await unpublish(live.id);
-      if (ref?.source === "public") open({ id: live.id, source: "session" });
+      if (ref?.source === "public") open({ id: live.id, source: live.id.startsWith("fork-") ? "fork" : "session" });
     }
     await refreshBuilds();
   };
@@ -325,10 +337,10 @@ export default function App({ account }: { account: Account }) {
     ) : build && !build.open && build.status !== "building" ? (
       <RecoveryPanel
         key={build.id}
-        build={live!}
+        build={runId && live ? { ...live, id: runId } : live!}
         edited={edited}
         onOpen={(id) => {
-          if (opened.current?.source === "session" && opened.current.id === build.id) open({ id, source: "session" });
+          if (same(ref, opened.current)) open({ id, source: "session" });
           refreshBuilds();
         }}
       />
@@ -349,24 +361,38 @@ export default function App({ account }: { account: Account }) {
     setStep(Infinity);
     setPlaying(false);
   };
-  const beginFork = () => {
+  const beginFork = async () => {
     if (!build?.pieces.length || !ref || wantedVersion !== null || forking) return;
-    const saved = !edited && [...history.versions].reverse().find((v) => design(v.model) === design(build));
-    setForking({
-      build: { ...structuredClone(build), name: `${build.name.slice(0, 70)} · Fork` },
-      send: forkOperation(),
-      origin: {
-        ...ref,
-        name: build.name,
-        version: selected?.number ?? (saved ? saved.number : null),
-        revision: build.revision,
-      },
-    });
-    setHistoryOpen(false);
-    setMode("view");
-    setCenter("model");
-    setFollowing(true);
-    setPlaying(false);
+    const key = `${ref.source}:${ref.id}:${design(build)}`;
+    if (copyAttempt.current?.key !== key) {
+      const saved = !edited && [...history.versions].reverse().find((v) => design(v.model) === design(build));
+      copyAttempt.current = {
+        key,
+        id: `fork-${crypto.randomUUID()}`,
+        seed: forkSeed(
+          build,
+          {
+            ...ref,
+            name: build.name,
+            version: selected?.number ?? (saved ? saved.number : null),
+            revision: build.revision,
+          },
+          `${build.name.slice(0, 70)} · Fork`,
+        ),
+      };
+    }
+    setForking(true);
+    setForkError("");
+    const attempt = copyAttempt.current;
+    try {
+      const id = await copyModel(attempt.id, attempt.seed);
+      if (same(ref, opened.current)) open({ id, source: "fork" });
+      refreshBuilds();
+    } catch {
+      setForkError("Couldn't copy. Try Fork again.");
+    } finally {
+      setForking(false);
+    }
   };
   const preview = previewing && (
     <>
@@ -379,7 +405,7 @@ export default function App({ account }: { account: Account }) {
       </strong>
       <div>
         <button onClick={() => selectVersion(null)}>Latest</button>
-        <button disabled={!selected} onClick={beginFork}>
+        <button disabled={!selected || forking} onClick={beginFork}>
           Fork
         </button>
       </div>
@@ -468,7 +494,7 @@ export default function App({ account }: { account: Account }) {
       )}
       <aside>
         <div className="aside-bar">
-          <span className="aside-title">{previewing && !forking ? "Latest chat" : "Chat"}</span>
+          <span className="aside-title">{previewing ? "Latest chat" : "Chat"}</span>
           {ref && (
             <button className="new-build" onClick={() => open(null)}>
               <PlusIcon size={14} weight="bold" />
@@ -477,7 +503,7 @@ export default function App({ account }: { account: Account }) {
           )}
         </div>
         <div className="aside-body">
-          {seed && !forking && (
+          {seed && (
             <p className="recovery-origin">
               Fork of{" "}
               <a
@@ -498,7 +524,7 @@ export default function App({ account }: { account: Account }) {
               </a>
             </p>
           )}
-          {!forking && ref?.source === "session" && card(ref.id)?.recoveredFrom && (
+          {ref?.source === "session" && card(ref.id)?.recoveredFrom && (
             <p className="recovery-origin">
               Recovery attempt ·{" "}
               <a
@@ -519,32 +545,22 @@ export default function App({ account }: { account: Account }) {
             activity={activity}
             closed={closed}
             preview={preview}
-            fork={
-              forking
-                ? {
-                    version: forking.origin.version,
-                    onCancel: () => setForking(null),
-                    onSend: async (text, images) => {
-                      const id = await forking.send(
-                        forkSeed(forking.build, forking.origin, forking.build.name),
-                        text,
-                        images,
-                      );
-                      if (same(ref, opened.current)) open({ id, source: "session" });
-                      refreshBuilds();
-                    },
-                  }
-                : undefined
-            }
             onCreate={start}
             onSay={async (text, images) => {
-              if (live?.open && !readOnly && ref?.source === "session") await say(live.id, text, images);
+              if (!live?.open || readOnly) return;
+              if (runId) await say(runId, text, images);
+              else if (ref?.source === "fork" && seed) attachSession(await startFork(ref.id, seed, text, images));
             }}
             onStop={async () => {
-              if (live && !readOnly && ref?.source === "session") await stop(live.id);
+              if (runId && !readOnly) await stop(runId);
             }}
             onFork={beginFork}
           />
+          {forkError && (
+            <p className="composer-error" role="alert">
+              {forkError}
+            </p>
+          )}
         </div>
       </aside>
       <main>
@@ -564,15 +580,15 @@ export default function App({ account }: { account: Account }) {
               Parts
             </button>
           </div>
-          {!forking && build && (build.pieces.length > 0 || models.length > 0) && (
+          {build && (build.pieces.length > 0 || models.length > 0) && (
             <div className="history-tools">
               {selected && <span className="preview-badge">Preview · V{selected.number}</span>}
-              {ref?.source === "session" && (
+              {(ref?.source === "session" || ref?.source === "fork") && (
                 <button aria-expanded={historyOpen} onClick={() => setHistoryOpen((open) => !open)}>
                   History
                 </button>
               )}
-              <button disabled={!build.pieces.length || wantedVersion !== null} onClick={beginFork}>
+              <button disabled={forking || !build.pieces.length || wantedVersion !== null} onClick={beginFork}>
                 Fork
               </button>
             </div>
@@ -583,7 +599,7 @@ export default function App({ account }: { account: Account }) {
               spin={spin}
               mode={mode}
               canEdit={!readOnly && edits.editable && !!build?.pieces.length}
-              editHint={forking ? "Send to start" : previewing ? "Edit Latest or Fork" : undefined}
+              editHint={previewing ? "Edit Latest or Fork" : undefined}
               canWalk={!!build?.pieces.length}
               onFrame={(next) => {
                 if (mode === "walk") setMode("view");
@@ -614,7 +630,7 @@ export default function App({ account }: { account: Account }) {
                 buildId && !error ? `Opening ${heading?.name ?? "the build"}` : starting ? "Starting Holo…" : null
               }
               step={visibleStep}
-              syncError={selected || forking ? null : syncError}
+              syncError={selected ? null : syncError}
               framing={framing}
               spin={spin}
               onThumbnail={saveThumbnail}
@@ -666,8 +682,10 @@ export default function App({ account }: { account: Account }) {
             onRetry={refreshBuilds}
             onClose={() => navigate(ref, false)}
             onOpen={(b) => {
-              const mine = b.source === "public" && builds?.some((s) => s.source === "session" && s.id === b.id);
-              open({ id: b.id, source: mine ? "session" : b.source });
+              const mine =
+                b.source === "public" &&
+                builds?.find((s) => (s.source === "session" || s.source === "fork") && s.id === b.id);
+              open({ id: b.id, source: mine ? mine.source : b.source });
             }}
             me={account.user.id}
             mineActions={

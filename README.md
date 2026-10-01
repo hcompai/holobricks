@@ -179,15 +179,20 @@ History is read from immutable authenticated session attachments, on demand, wit
 A missing or invalid attachment blocks numbering until it can be retrieved again.
 
 Only **Latest** takes edits. Earlier versions are read-only previews, including after reopening their
-`?build=…&version=N` URL. **Fork** opens the existing chat composer on that exact snapshot.
-**Send** creates a separate private model with the new request. Its starting model is V1, and subsequent changes become V2,
+`?build=…&version=N` URL. **Fork** immediately saves and opens a separate private copy of that snapshot.
+It is already in the Library and survives reloads before any message is sent. The ordinary chat's
+**Send** starts Holo on that copy. Its starting model is V1, and subsequent changes become V2,
 V3, etc. The original history remains intact. Each model has one Library card; versions do not add cards.
 The fork keeps a link to its source version. A fork copies the model, not the old conversation; references
-for the new request use the existing attachment button. Cancel returns to the source and keeps its chat draft.
+for the new request use the existing attachment button. There is no extra fork form or chat mode.
 
-The seed and source reference travel as a session attachment, so the initial model survives reloads
-and failed setup. Creation is atomic and is not automatically retried; an unconfirmed response offers
-**Check again**, which looks up the same operation without posting another creation. Preview never
+Copies use the existing Blob store and app authentication, with owner-scoped, unguessable paths that
+are never returned to the browser. No new service or secret is required. The existing app signing
+secret also derives the storage scope and must remain stable to retain access to saved copies.
+The copy keeps one `?fork=…` URL and Library card after its Holo session starts. The seed and source
+reference also travel as a session attachment, so the initial model survives failed setup.
+Copy retries reuse the same identity. An ambiguous Holo start is not automatically retried; another
+Send checks the same operation for acceptance. Preview never
 changes the model used to answer Holo's render requests. A downloaded preview remains viewable if
 live polling loses its connection. Published copies expose the fork name, not private history or
 ancestry. Public and showcase snapshots can be forked but do not expose their author's session history.

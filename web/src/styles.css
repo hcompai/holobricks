@@ -1291,14 +1291,6 @@ main {
 .preview-note > div {
   margin-top: 10px;
 }
-.fork-note {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 16px;
-  border-top: 1px solid var(--stroke-default);
-  font-size: 12px;
-}
 @media (max-width: 1050px) {
   .center-bar {
     flex-wrap: wrap;
