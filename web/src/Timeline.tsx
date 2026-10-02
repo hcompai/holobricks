@@ -34,17 +34,19 @@ export function Timeline(props: Props) {
         ? "Stopped with an error"
         : finished
           ? "Finished"
-          : `Step ${current + 1} of ${steps.length}: ${steps[current]?.title ?? ""}`;
+          : current < 0
+            ? "Empty canvas"
+            : `Step ${current + 1} of ${steps.length}: ${steps[current]?.title ?? ""}`;
 
   const toggle = () => {
-    if (!playing && current >= last) onStep(0);
+    if (!playing && current >= last) onStep(-1);
     onPlay(!playing);
   };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!spaceKey || document.querySelector("dialog[open]")) return;
-      if (e.key !== " " || e.repeat || e.ctrlKey || e.metaKey || e.altKey || steps.length < 2) return;
+      if (e.key !== " " || e.repeat || e.ctrlKey || e.metaKey || e.altKey || !steps.length) return;
       if (e.target instanceof Element && e.target.closest("input, textarea, select, button, a, [contenteditable]"))
         return;
       e.preventDefault();
@@ -65,7 +67,7 @@ export function Timeline(props: Props) {
       >
         <SkipBackIcon size={16} weight="fill" />
       </button>
-      <button className="play" disabled={steps.length < 2} onClick={toggle} title={playing ? "Pause" : "Play"}>
+      <button className="play" disabled={!steps.length} onClick={toggle} title={playing ? "Pause" : "Play"}>
         {playing ? <PauseIcon size={16} weight="fill" /> : <PlayIcon size={16} weight="fill" />}
       </button>
       <button
@@ -89,12 +91,12 @@ export function Timeline(props: Props) {
         <input
           type="range"
           aria-label="Step"
-          min={0}
+          min={-1}
           max={Math.max(last, 0)}
-          value={Math.max(current, 0)}
+          value={Math.max(current, -1)}
           disabled={!steps.length}
           onChange={(e) => onStep(Number(e.target.value))}
-          style={{ "--fill": `${last > 0 ? (current / last) * 100 : 0}%` } as CSSProperties}
+          style={{ "--fill": `${steps.length ? ((current + 1) / steps.length) * 100 : 0}%` } as CSSProperties}
         />
       </div>
       <button
