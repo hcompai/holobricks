@@ -1,3 +1,5 @@
+import { plasticClick } from "./plasticClick";
+
 /** The audio engine is separate from React and the renderer's off-screen work. */
 const KEY = "brickyard.placement-sound";
 const listeners = new Set<() => void>();
@@ -13,35 +15,28 @@ let enabled = preference();
 let context: AudioContext | null = null;
 let output: GainNode | null = null;
 let last = -Infinity;
+const clicks = new Map<string, AudioBuffer>();
 
-/** Short, quiet synthesized pops: part family sets the timbre, part number varies the pitch. */
+/** Short plastic seating clicks, with subtle differences between part families. */
 export function placementPop(part: string) {
   if (!enabled || !context || !output || context.state !== "running" || document.hidden) return;
   const now = context.currentTime;
-  // At high placement speeds, one pop per audible beat keeps thousands of parts from becoming noise.
+  // At high placement speeds, one click per audible beat keeps thousands of parts from becoming noise.
   if (now - last < 0.055) return;
   last = now;
-  let hash = 0;
-  for (const character of part) hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
-  const plate = /^(302|303|379|383)|plate/i.test(part);
-  const tile = /^(3068|3070|4150|6636)|tile/i.test(part);
-  const slope = /^(304|3039|3298|3660|4286)|slope/i.test(part);
-  const frequency = (tile ? 620 : slope ? 290 : plate ? 390 : 210) * 2 ** ((hash % 7) / 12);
-  const voice = context.createOscillator();
-  const envelope = context.createGain();
-  voice.type = slope ? "triangle" : "sine";
-  voice.frequency.setValueAtTime(frequency * 1.65, now);
-  voice.frequency.exponentialRampToValueAtTime(frequency, now + 0.035);
-  envelope.gain.setValueAtTime(0.001, now);
-  envelope.gain.exponentialRampToValueAtTime(0.18, now + 0.004);
-  envelope.gain.exponentialRampToValueAtTime(0.001, now + 0.075);
-  voice.connect(envelope).connect(output);
+  let buffer = clicks.get(part);
+  if (!buffer) {
+    const samples = plasticClick(part, context.sampleRate);
+    buffer = context.createBuffer(1, samples.length, context.sampleRate);
+    buffer.copyToChannel(samples, 0);
+    if (clicks.size >= 32) clicks.delete(clicks.keys().next().value!);
+    clicks.set(part, buffer);
+  }
+  const voice = context.createBufferSource();
+  voice.buffer = buffer;
+  voice.connect(output);
   voice.start(now);
-  voice.stop(now + 0.08);
-  voice.onended = () => {
-    voice.disconnect();
-    envelope.disconnect();
-  };
+  voice.onended = () => voice.disconnect();
 }
 
 export const placementSoundEnabled = () => enabled;
@@ -81,5 +76,6 @@ if (enabled && typeof window !== "undefined") {
 }
 if (import.meta.hot)
   import.meta.hot.dispose(() => {
+    clicks.clear();
     void context?.close();
   });
