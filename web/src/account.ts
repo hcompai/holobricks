@@ -81,16 +81,20 @@ const base64url = (bytes: Uint8Array) =>
     .replace(/\//g, "_")
     .replace(/=+$/, "");
 
-/** Leave for the portal's Google sign-in; it comes back through /api/session, then to this page. */
-export async function signIn() {
-  const loopback = window.location.hostname === LOOPBACK;
-  const verifier = loopback ? base64url(crypto.getRandomValues(new Uint8Array(32))) : null;
+function leave(verifier: string | null) {
   const pending: Pending = {
     previous: localStorage.getItem(PREVIOUS),
     back: window.location.pathname + window.location.search,
     verifier,
   };
   document.cookie = setCookie(PENDING, JSON.stringify(pending), 600, "/api/session");
+}
+
+/** Leave for the portal's Google sign-in; it comes back through /api/session, then to this page. */
+export async function signIn() {
+  const loopback = window.location.hostname === LOOPBACK;
+  const verifier = loopback ? base64url(crypto.getRandomValues(new Uint8Array(32))) : null;
+  leave(verifier);
   const query = new URLSearchParams({ provider: "google", redirect_uri: `${window.location.origin}/api/session` });
   if (verifier) {
     const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
@@ -98,6 +102,41 @@ export async function signIn() {
     query.set("code_challenge_method", "S256");
   }
   window.location.assign(`${H.portal}/auth/authorize?${query}`);
+}
+
+/**
+ * Sign in on the Platform's login page, in a popup, with any method it takes (email and password, Google, MFA),
+ * then post its access token to /api/session, which hands the sign-in to this page like the Google redirect does.
+ * Resolves false if the popup was blocked, true once it closes.
+ */
+export function signInOnPlatform(): Promise<boolean> {
+  const query = new URLSearchParams({ sdk_auth: "true", return_origin: window.location.origin });
+  const popup = window.open(`${H.platform}/login?${query}`, "h-platform-sign-in", "width=520,height=720");
+  if (!popup) return Promise.resolve(false);
+  return new Promise((resolve) => {
+    const done = () => {
+      window.removeEventListener("message", received);
+      clearInterval(watch);
+      resolve(true);
+    };
+    const received = (event: MessageEvent) => {
+      if (event.origin !== H.platform || event.source !== popup) return;
+      if (event.data?.type !== "H_PORTAL_AUTH_SUCCESS" || typeof event.data.accessToken !== "string") return;
+      done();
+      popup.close();
+      leave(null);
+      const form = document.createElement("form");
+      form.method = "POST";
+      form.action = "/api/session";
+      const access = form.appendChild(document.createElement("input"));
+      access.type = "hidden";
+      access.name = "access";
+      access.value = event.data.accessToken;
+      document.body.appendChild(form).submit();
+    };
+    const watch = setInterval(() => popup.closed && done(), 500);
+    window.addEventListener("message", received);
+  });
 }
 
 /** The key stopped working, revoked or expired: sign out. */

@@ -6,6 +6,17 @@ import { exchange, mint, revoke, whoami } from "./lib/portal";
 
 const text = (value: unknown) => (typeof value === "string" ? value : null);
 
+const PASSWORD_ACCOUNT = "Your H account uses an email and password: sign in with those below.";
+
+/** What the portal's Google sign-in `error` codes mean to the user. */
+const PORTAL_ERRORS = new Map([
+  ["non_oauth_user", PASSWORD_ACCOUNT],
+  ["user_already_exists", PASSWORD_ACCOUNT],
+  ["session_unavailable", "The H portal is busy right now: try again in a minute."],
+  ["user_registration_failed", "The H portal could not create your account: try again."],
+  ["google_oauth_failed", "Google did not finish the sign-in: try again."],
+]);
+
 function pending(header: string | null): Pending {
   try {
     const { previous, back, verifier } = JSON.parse(cookie(header, PENDING) ?? "{}");
@@ -25,9 +36,8 @@ async function portalToken(request: Request, verifier: string | null): Promise<s
   return access;
 }
 
-async function signIn(request: Request, { previous, verifier }: Pending): Promise<Handoff> {
-  if (new URL(request.url).searchParams.has("error")) throw new Refusal(401, "The Google sign-in failed: try again.");
-  const access = await portalToken(request, verifier);
+/** Mint a HoloBricks key for the Agents API and a pass for this API, both good for a month, and revoke the browser's previous key. */
+async function signIn(access: string, previous: string | null): Promise<Handoff> {
   const user = admit(await whoami(access));
   if (previous) await revoke(access, previous);
   const key = await mint(access, user.email);
@@ -35,16 +45,12 @@ async function signIn(request: Request, { previous, verifier }: Pending): Promis
   return { user, key: key.key, keyId: key.id, expires, pass: pass(user, expires, key.key) };
 }
 
-/**
- * Where the portal's Google sign-in comes back to, with its access token in a cookie on the parent domain: mint
- * a HoloBricks key for the Agents API and a pass for this API, both good for a month, revoke the browser's previous
- * key, and hand them to the page the user left from.
- */
-export async function GET(request: Request): Promise<Response> {
+/** Hand the sign-in over to the page the user left from. */
+async function handOver(request: Request, signedIn: (left: Pending) => Promise<Handoff>): Promise<Response> {
   const left = pending(request.headers.get("cookie"));
   let handoff: Handoff;
   try {
-    handoff = await signIn(request, left);
+    handoff = await signedIn(left);
   } catch (e) {
     if (!(e instanceof Refusal)) console.error(e);
     handoff = { error: e instanceof Refusal ? e.message : "Something went wrong on our side: try again." };
@@ -54,3 +60,24 @@ export async function GET(request: Request): Promise<Response> {
   headers.append("Set-Cookie", setCookie(PENDING, "", 0, "/api/session"));
   return new Response(null, { status: 303, headers });
 }
+
+/** Where the portal's Google sign-in comes back to, with its access token in a cookie on the parent domain. */
+export const GET = (request: Request) =>
+  handOver(request, async ({ previous, verifier }) => {
+    const error = new URL(request.url).searchParams.get("error");
+    if (error !== null) {
+      console.warn(`The portal refused a Google sign-in: ${error.slice(0, 64)}`);
+      throw new Refusal(401, PORTAL_ERRORS.get(error) ?? "The Google sign-in failed: try again.");
+    }
+    return signIn(await portalToken(request, verifier), previous);
+  });
+
+/** Where this site's own form posts the access token the Platform's login popup sent it, for any sign-in method. */
+export const POST = (request: Request) =>
+  handOver(request, async ({ previous }) => {
+    if (request.headers.get("origin") !== H.site) throw new Refusal(403, "The sign-in did not come from HoloBricks.");
+    const access = (await request.formData()).get("access");
+    if (typeof access !== "string" || !access)
+      throw new Refusal(401, "The H sign-in did not reach HoloBricks: try again.");
+    return signIn(access, previous);
+  });

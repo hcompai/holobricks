@@ -938,7 +938,7 @@ aside {
   font-size: var(--font-title);
 }
 
-.sign-in-google {
+.sign-in-method {
   justify-content: center;
   gap: 10px;
   min-width: 240px;
