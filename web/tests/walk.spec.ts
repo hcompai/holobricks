@@ -24,7 +24,7 @@ for (const native of [true, false]) {
     const viewport = await page.evaluate(() => ({ x: 0, y: 0, width: innerWidth, height: innerHeight }));
     await expect.poll(() => viewer.boundingBox()).toEqual(viewport);
     await expect.poll(() => page.locator(".viewer-canvas canvas").boundingBox()).toEqual(viewport);
-    if (!native) await page.screenshot({ path: "/private/tmp/brickyard-walk-fullscreen.png" });
+    if (!native) await page.screenshot({ path: test.info().outputPath("walk-fullscreen.png") });
 
     await page.getByRole("button", { name: "Exit fullscreen", exact: true }).click();
     await expect(viewer).toHaveClass("viewer");
