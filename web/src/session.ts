@@ -35,6 +35,9 @@ export interface Transcript {
   fork: string | null;
   /** `look` calls awaiting a render, with how many models were shared when each was made. */
   looks: { call: HaiAgents.ToolRequest; shared: number }[];
+  references: Reference[];
+  parts: StudyPart[];
+  title: string | null;
   error: string | null;
 }
 
@@ -49,21 +52,71 @@ export const EMPTY_TRANSCRIPT: Transcript = {
   models: [],
   fork: null,
   looks: [],
+  references: [],
+  parts: [],
+  title: null,
   error: null,
 };
 
 /** An image in event content as a URL: inline ones as data URLs, stored ones as platform URLs that need the API key. */
 function picture(item: unknown): string | null {
   if (typeof item === "string") return item.startsWith("data:image/") ? item : null;
-  if (typeof item !== "object" || item === null || !("source" in item) || typeof item.source !== "string") return null;
-  const { type, source, mediaType } = item as HaiAgents.ImageContent;
-  return type === "base64" ? `data:${mediaType ?? "image/png"};base64,${source}` : source;
+  if (typeof item !== "object" || item === null) return null;
+  const value = item as Record<string, unknown>;
+  // Tool results are opaque JSON: nested images keep the workstation's snake_case keys.
+  const mime = String(value.mediaType ?? value.media_type ?? value.mimeType ?? "image/png");
+  if (!mime.startsWith("image/")) return null;
+  if (value.type === "image" && typeof value.data === "string") return `data:${mime};base64,${value.data}`;
+  if (typeof value.source !== "string") return null;
+  if (value.type === "base64") return `data:${mime};base64,${value.source}`;
+  if (value.type === "url" && /^(https?:\/\/|data:image\/)/.test(value.source)) return value.source;
+  return null;
 }
 
 const images = (content: unknown[]) => content.map(picture).filter((src): src is string => src !== null);
 
 const text = (content: unknown[]) =>
   content.filter((item): item is string => typeof item === "string" && !picture(item)).join("\n\n");
+
+/** The image content shapes returned by view_image, including structured and MCP results. */
+function resultImages(value: unknown, depth = 0): string[] {
+  const src = picture(value);
+  if (src) return [src];
+  if (depth > 5 || !value || typeof value !== "object") return [];
+  if (Array.isArray(value)) return value.flatMap((item) => resultImages(item, depth + 1));
+  const object = value as Record<string, unknown>;
+  return ["content", "image", "images", "result"].flatMap((key) => resultImages(object[key], depth + 1));
+}
+
+function resultText(value: unknown): string {
+  if (typeof value === "string") return picture(value) ? "" : value;
+  if (Array.isArray(value)) return value.map(resultText).join("\n");
+  if (!value || typeof value !== "object") return "";
+  const object = value as Record<string, unknown>;
+  return ["text", "stdout", "output", "content"].map((key) => resultText(object[key])).join("\n");
+}
+
+export interface StudyPart {
+  id: string;
+  title: string;
+}
+
+export interface Reference {
+  id: string;
+  src: string;
+  caption: string;
+  kind: "photo" | "showcase" | "attachment";
+}
+
+function references(t: Transcript, added: Reference[]): Transcript {
+  const next = [...t.references];
+  for (const reference of added) {
+    const existing = next.findIndex((r) => r.id === reference.id || r.src === reference.src);
+    if (existing >= 0) next[existing] = reference;
+    else next.push(reference);
+  }
+  return { ...t, references: next.slice(-8) };
+}
 
 /** A `look` result as the chat shows it: its caption and the render. */
 function render(result: unknown): Message | null {
@@ -82,7 +135,10 @@ function step(t: Transcript, event: HaiAgents.SessionEvent): Transcript {
     case "AttachmentEvent": {
       const { origin, name, url } = (event as HaiAgents.SessionEventZero.AttachmentEvent).data;
       if (origin === "user" && name === FORK_FILE) return { ...t, fork: t.fork ?? url };
-      if (origin !== "agent" || name !== MODEL_FILE) return t;
+      if (origin !== "agent") return t;
+      if (/\.(jpe?g|png|webp)$/i.test(name))
+        return references(t, [{ id: name, src: url, caption: name, kind: "photo" }]);
+      if (name !== MODEL_FILE) return t;
       return {
         ...t,
         model: { url, shared: (t.model?.shared ?? 0) + 1 },
@@ -133,7 +189,32 @@ function step(t: Transcript, event: HaiAgents.SessionEvent): Transcript {
     }
     case "tool_result": {
       const looked = data.toolReq.toolName === "look" ? render(data.result) : null;
-      return looked ? say(looked) : t;
+      if (looked) return say(looked);
+      const { toolName, args = {}, id } = data.toolReq;
+      if (toolName === "view_image" || toolName === "web_search") {
+        const path = String(args.path ?? args.file_path ?? args.source ?? "");
+        const name = path.split("/").pop();
+        return references(
+          t,
+          resultImages(data.result).map((src, index) => ({
+            id: `${name || id || "reference"}${index ? `-${index}` : ""}`,
+            src,
+            caption: name || "Search reference",
+            kind: path.includes("showcase/") ? "showcase" : "photo",
+          })),
+        );
+      }
+      if (toolName === "shell") {
+        const output = resultText(data.result);
+        const title = output.match(/Build is now called '([^\n]+)'\./)?.[1] ?? t.title;
+        const parts = /\bbricks parts\b/.test(String(args.command))
+          ? [...output.matchAll(/^([\w.-]+): ([^|\n]+)\s*\|/gm)]
+              .slice(0, 6)
+              .map(([, id, title]) => ({ id, title: title.trim() }))
+          : t.parts;
+        return { ...t, title, parts };
+      }
+      return t;
     }
     case "answer_event": {
       const answer = (typeof data.answer === "string" ? data.answer : JSON.stringify(data.answer)).trim();
@@ -163,9 +244,15 @@ export interface Activity {
   since: number;
   /** Its work since its last message. */
   work: Work | null;
+  references?: Reference[];
+  parts?: StudyPart[];
+  title?: string | null;
 }
 
 export const activity = (t: Transcript): Activity => ({
+  references: t.references,
+  parts: t.parts,
+  title: t.title,
   label: t.phase,
   since: t.since,
   work: t.work?.steps.length ? t.work : null,

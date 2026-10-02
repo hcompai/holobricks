@@ -38,6 +38,8 @@ interface Props {
   publishing: Publishing | null;
   /** Deletes the build for good, or null when it cannot be deleted. */
   onDelete: (() => Promise<void>) | null;
+  /** What deleting does, when it is not the default: a session only leaves the user's library. */
+  deleteNote?: string;
   image: () => Promise<Blob | null>;
   onGif: () => void;
   onInstructions: () => void;
@@ -69,10 +71,16 @@ function publishAsk({ published, imported, author, onPublish, onUnpublish }: Pub
       };
 }
 
-const deleteAsk = (name: string, action: () => Promise<void>): Ask => ({
+export const DELETE_NOTE =
+  "It leaves your library and the public one, and its link stops working. This cannot be undone.";
+/** A session cannot be deleted from the platform: it leaves the library, and the platform ends it in its time. */
+export const SESSION_DELETE_NOTE =
+  "It leaves your library, and the public one if you published it. Its chat stays on H's platform until the session ends, 30 days after it began. This cannot be undone.";
+
+export const deleteAsk = (name: string, action: () => Promise<void>, note = DELETE_NOTE): Ask => ({
   name: "Delete",
   question: `Delete ${name}?`,
-  note: "It leaves your builds and the public library. This cannot be undone.",
+  note,
   doing: "Deleting…",
   icon: <TrashIcon size={16} />,
   danger: true,
@@ -80,7 +88,17 @@ const deleteAsk = (name: string, action: () => Promise<void>): Ask => ({
 });
 
 /** Every way to take the build elsewhere: who can open it, its link, a GIF, instructions, the model file or an image. */
-export function ShareMenu({ build, link, loading, publishing, onDelete, image, onGif, onInstructions }: Props) {
+export function ShareMenu({
+  build,
+  link,
+  loading,
+  publishing,
+  onDelete,
+  deleteNote,
+  image,
+  onGif,
+  onInstructions,
+}: Props) {
   const { open, setOpen, root } = useMenu();
   const [ask, setAsk] = useState<Ask | null>(null);
   const [copied, setCopied] = useState(false);
@@ -182,7 +200,11 @@ export function ShareMenu({ build, link, loading, publishing, onDelete, image, o
             {onDelete && (
               <>
                 <hr />
-                <button role="menuitem" className="danger" onClick={() => setAsk(deleteAsk(build.name, onDelete))}>
+                <button
+                  role="menuitem"
+                  className="danger"
+                  onClick={() => setAsk(deleteAsk(build.name, onDelete, deleteNote))}
+                >
                   <TrashIcon size={16} />
                   Delete…
                 </button>

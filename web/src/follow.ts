@@ -1,6 +1,7 @@
 import { isTerminalSessionStatus, type HaiAgents } from "hai-agents";
 import { answer, client, download, fail } from "./agent";
 import { card, remember, thumbnail } from "./library";
+import { H } from "./hosts";
 import { cachedSeed, readSeed, requestedSeed, type ForkSeed } from "./fork";
 import { caption, dataUrl, view } from "./look";
 import { EMPTY_MODEL, type Build, type Message, type Model } from "./model";
@@ -86,23 +87,24 @@ function follow(id: string, signal: AbortSignal, notify: Listener, displayed: ()
   const shown = (messages: Message[]) =>
     messages.map((m) => ({
       ...m,
-      images: m.images.flatMap((src) => (src.startsWith("data:") ? [src] : (pictures.get(src) ?? []))),
+      images: m.images.flatMap((src) => (!src.startsWith(`${H.agents}/`) ? [src] : (pictures.get(src) ?? []))),
     }));
 
   const fetchPictures = () => {
     if (!displayed()) return;
-    for (const m of transcript.messages)
-      for (const src of m.images) {
-        if (src.startsWith("data:") || pictures.has(src)) continue;
-        pictures.set(src, null);
-        download(src, signal).then(
-          (blob) => {
-            pictures.set(src, URL.createObjectURL(blob));
-            publish();
-          },
-          () => pictures.delete(src),
-        );
-      }
+    const sources = [...transcript.messages.flatMap((m) => m.images), ...transcript.references.map((r) => r.src)];
+    for (const src of sources) {
+      if (src.startsWith("data:") || !src.startsWith(`${H.agents}/`) || pictures.has(src)) continue;
+      pictures.set(src, null);
+      download(src, signal).then(
+        (blob) => {
+          if (signal.aborted) return;
+          pictures.set(src, URL.createObjectURL(blob));
+          publish();
+        },
+        () => pictures.delete(src),
+      );
+    }
   };
 
   const see = async (call: HaiAgents.ToolRequest, shared: number) => {
@@ -161,7 +163,16 @@ function follow(id: string, signal: AbortSignal, notify: Listener, displayed: ()
         open: session === "idle",
         failure: failure ?? transcript.error,
       },
-      activity: buildStatus(session) === "building" ? activity(transcript) : null,
+      activity:
+        buildStatus(session) === "building"
+          ? {
+              ...activity(transcript),
+              references: transcript.references.flatMap((r) => {
+                const src = r.src.startsWith(`${H.agents}/`) ? pictures.get(r.src) : r.src;
+                return src ? [{ ...r, src }] : [];
+              }),
+            }
+          : null,
     });
     if (transcript.state !== "awaiting_tool_results") return;
     const lost = unloaded && unloaded.tries >= LOAD_TRIES ? unloaded : null;

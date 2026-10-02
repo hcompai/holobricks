@@ -114,13 +114,21 @@ export const POST = route(async (request) => {
   return Response.json(published, { status: 201 });
 });
 
-/** Take a build out of the library and delete its files: its author, or an admin for a public one. */
+/**
+ * Take a build out of the library and delete its files: its author only. An admin can take someone else's build out
+ * of the public library to moderate it, but never delete it: it becomes private, kept for its owner.
+ */
 export const DELETE = route(async (request) => {
   const { user } = holder(request);
   const id = buildId(new URL(request.url).searchParams.get("id"));
   const published = (await find(id)) ?? (await findOwn(user.id, id));
   if (!published) throw new Refusal(404, "No such build in the library.");
-  if (published.owner !== user.id && !isAdmin(user)) throw new Refusal(403, "Only its author can unpublish a build.");
+  if (published.owner !== user.id) {
+    // A private build is found for its owner only, so a moderator only ever reaches a public one here.
+    if (!isAdmin(user)) throw new Refusal(403, "Only its author can unpublish a build.");
+    await setPrivate(published, true);
+    return new Response(null, { status: 204 });
+  }
   await unlist(id, published.owner);
   return new Response(null, { status: 204 });
 });

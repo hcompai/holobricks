@@ -1,4 +1,4 @@
-import { BlobNotFoundError, head, list, put } from "@vercel/blob";
+import { BlobNotFoundError, del, head, list, put } from "@vercel/blob";
 import { gzipSync } from "node:zlib";
 import { readSeed, type ForkSeed, type ForkSummary, type SavedFork } from "../../src/forkModel";
 import { privateScope } from "./account";
@@ -107,4 +107,12 @@ export async function linkFork(owner: string, id: string, sessionId: string): Pr
     if (saved) throw new Refusal(409, "Copy already has a session.");
     throw e;
   }
+}
+
+/** Delete a copy's model, metadata and session link; returns the session it had, if any. */
+export async function deleteFork(owner: string, id: string): Promise<string | null> {
+  const info = await entry(owner, id);
+  if (!info) return null;
+  await del([`${prefix(owner)}${id}.gz`, path(owner, id), sessionPath(owner, id)]);
+  return info.sessionId;
 }

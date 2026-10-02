@@ -78,7 +78,7 @@ export async function signedIn(page: Page, account = ACCOUNT) {
   await page.addInitScript((a) => localStorage.setItem("brickyard.account", JSON.stringify(a)), account);
 }
 
-/** Serve the static files the app reads: the palette, the toolkit and these showcases; the Agents API has no sessions and the public library is empty. `account` is signed in, if any. Returns the ids of the builds the user deletes. */
+/** Serve the static files the app reads: the palette, the toolkit and these showcases; the Agents API has no sessions and the public library is empty. `account` is signed in, if any. */
 export async function site(page: Page, showcases: Build[] = [], account: typeof ACCOUNT | null = ACCOUNT) {
   if (account) await signedIn(page, account);
   const names = new Map<string, { id: string; name: string; updated: number }>();
@@ -134,10 +134,11 @@ export async function site(page: Page, showcases: Build[] = [], account: typeof 
       ? route.fulfill({ status: 404, json: { error: "This build is not public." } })
       : route.fulfill({ json: [] }),
   );
+  /** The ids of the builds the user deleted, as `/api/projects` lists them. */
   const deleted: string[] = [];
-  await page.route("**/api/deleted", (route) => {
-    if (route.request().method() !== "POST") return route.fulfill({ json: deleted });
-    deleted.push(route.request().postDataJSON().id);
+  await page.route("**/api/projects*", (route) => {
+    if (route.request().method() !== "DELETE") return route.fulfill({ json: deleted });
+    deleted.push(new URL(route.request().url()).searchParams.get("id")!);
     return route.fulfill({ status: 204 });
   });
   await page.route("**/LDConfig.ldr", (route) => route.fulfill({ body: colors }));

@@ -19,7 +19,7 @@ interface Entry {
   private?: boolean;
 }
 
-/** The library API holding one imported build of the signed-in user's, with PATCH, ?mine=1, DELETE and /api/deleted. */
+/** The library API holding one imported build of the signed-in user's, with PATCH, ?mine=1 and DELETE. */
 async function library(page: import("@playwright/test").Page, build: Build) {
   const entries: Entry[] = [
     {
@@ -35,7 +35,7 @@ async function library(page: import("@playwright/test").Page, build: Build) {
       build: `${BLOB}/builds/${build.id}/build.json.gz`,
     },
   ];
-  const calls: { method: string; path: string; search: string; body: unknown; auth: string | undefined }[] = [];
+  const calls: { method: string; search: string; body: unknown; auth: string | undefined }[] = [];
   await page.route(`${BLOB}/**`, (route) =>
     entries.length
       ? route.fulfill({ headers: { "access-control-allow-origin": "*" }, body: gzipSync(JSON.stringify(build)) })
@@ -47,7 +47,6 @@ async function library(page: import("@playwright/test").Page, build: Build) {
     const method = request.method();
     calls.push({
       method,
-      path: url.pathname,
       search: url.search.replace(/[?&]t=\d+/, ""),
       body: method === "PATCH" ? request.postDataJSON() : null,
       auth: request.headers().authorization,
@@ -69,14 +68,13 @@ async function library(page: import("@playwright/test").Page, build: Build) {
     }
     return route.fulfill({ json: entries.filter((e) => !e.private) });
   });
-  await page.route("**/api/deleted", (route) => {
+  await page.route("**/api/projects*", (route) => {
     const request = route.request();
-    if (request.method() !== "POST") return route.fulfill({ json: [] });
+    if (request.method() !== "DELETE") return route.fulfill({ json: [] });
     calls.push({
-      method: "POST",
-      path: "/api/deleted",
-      search: "",
-      body: request.postDataJSON(),
+      method: "DELETE",
+      search: new URL(request.url()).search,
+      body: null,
       auth: request.headers().authorization,
     });
     entries.splice(0, entries.length);
@@ -134,13 +132,11 @@ test("an imported build goes private and stays under the user's builds, goes pub
   const remove = page.getByRole("dialog", { name: "Delete" });
   await expect(remove).toContainText("Delete Granite house?");
   await remove.getByRole("button", { name: "Cancel" }).click();
-  expect(calls.some((c) => c.path === "/api/deleted")).toBe(false);
+  expect(calls.some((c) => c.method === "DELETE")).toBe(false);
   await share.click();
   await page.getByRole("menuitem", { name: "Delete…" }).click();
   await remove.getByRole("button", { name: "Delete" }).click();
   await expect(page).toHaveURL(/\/$/);
-  expect(calls.filter((c) => c.path === "/api/deleted")).toMatchObject([
-    { body: { id: "import-1" }, auth: `Bearer ${ACCOUNT.pass}` },
-  ]);
+  expect(calls.find((c) => c.method === "DELETE")).toMatchObject({ search: "?id=import-1&source=public" });
   await expect(page.getByRole("region", { name: "Your builds" }).locator(".tile")).toHaveCount(0);
 });
