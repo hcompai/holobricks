@@ -3,6 +3,48 @@ import { type Solid, Solids, WALK, Walker } from "../src/walker";
 import { fixture, site } from "./fixtures";
 
 const FRAME = 1 / 60;
+
+for (const native of [true, false]) {
+  test(`walk fullscreen fills the canvas and restores its layout (${native ? "native" : "embedded browser"})`, async ({
+    page,
+  }) => {
+    if (!native) await page.addInitScript(() => Object.defineProperty(document, "fullscreenEnabled", { value: false }));
+    const build = fixture();
+    await site(page, [build]);
+    await page.goto(`/?showcase=${build.id}`);
+    const viewer = page.locator(".viewer");
+    await expect(viewer).toHaveAttribute("data-revision", build.revision);
+    const original = await viewer.boundingBox();
+    const walk = page.getByRole("button", { name: "Walk", exact: true });
+    await walk.click();
+    await page.getByTitle("Enter fullscreen", { exact: true }).click();
+    await expect(viewer).toHaveClass("viewer walk-fullscreen");
+    if (native)
+      await expect.poll(() => page.evaluate(() => document.fullscreenElement?.classList.contains("viewer"))).toBe(true);
+    const viewport = await page.evaluate(() => ({ x: 0, y: 0, width: innerWidth, height: innerHeight }));
+    await expect.poll(() => viewer.boundingBox()).toEqual(viewport);
+    await expect.poll(() => page.locator(".viewer-canvas canvas").boundingBox()).toEqual(viewport);
+    if (!native) await page.screenshot({ path: "/private/tmp/brickyard-walk-fullscreen.png" });
+
+    await page.getByRole("button", { name: "Exit fullscreen", exact: true }).click();
+    await expect(viewer).toHaveClass("viewer");
+    await expect.poll(() => page.evaluate(() => document.fullscreenElement)).toBeNull();
+    await expect(walk).toHaveAttribute("aria-pressed", "true");
+
+    await page.getByTitle("Enter fullscreen", { exact: true }).click();
+    await page.getByRole("button", { name: "Leave walk mode", exact: true }).click();
+    await expect(walk).toHaveAttribute("aria-pressed", "false");
+    await expect(viewer).toHaveClass("viewer");
+    await expect.poll(() => page.evaluate(() => document.fullscreenElement)).toBeNull();
+    await expect.poll(() => viewer.boundingBox()).toEqual(original);
+
+    await walk.click();
+    await page.getByTitle("Enter fullscreen", { exact: true }).click();
+    await page.keyboard.press("Escape");
+    await expect(viewer).toHaveClass("viewer");
+    await expect.poll(() => page.evaluate(() => document.fullscreenElement)).toBeNull();
+  });
+}
 /** Heading along +x. */
 const EAST = -Math.PI / 2;
 

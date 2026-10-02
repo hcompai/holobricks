@@ -1,4 +1,4 @@
-import { CursorClickIcon, FeatherIcon } from "@phosphor-icons/react";
+import { ArrowsInIcon, ArrowsOutIcon, CursorClickIcon, FeatherIcon, XIcon } from "@phosphor-icons/react";
 import { type ReactNode, useEffect, useState } from "react";
 
 /** How long the controls stay up once walking takes the mouse. */
@@ -39,7 +39,19 @@ const CONTROLS: [ReactNode, string][] = [
 ];
 
 /** Walk mode's controls as keycaps: a call to click until walking takes the mouse, then fading away; a chip while flying. */
-export function WalkHud({ locked, flying }: { locked: boolean; flying: boolean }) {
+export function WalkHud({
+  locked,
+  flying,
+  fullscreen,
+  onFullscreen,
+  onLeave,
+}: {
+  locked: boolean;
+  flying: boolean;
+  fullscreen: boolean;
+  onFullscreen: () => void;
+  onLeave: () => void;
+}) {
   const [away, setAway] = useState(false);
 
   useEffect(() => {
@@ -51,6 +63,17 @@ export function WalkHud({ locked, flying }: { locked: boolean; flying: boolean }
 
   return (
     <>
+      {!locked && (
+        <div className="walk-actions">
+          <button className="quiet" onClick={onFullscreen} title={fullscreen ? "Exit fullscreen" : "Enter fullscreen"}>
+            {fullscreen ? <ArrowsInIcon size={16} /> : <ArrowsOutIcon size={16} />}
+            {fullscreen ? "Exit fullscreen" : "Fullscreen"}
+          </button>
+          <button className="quiet icon-button" onClick={onLeave} title="Leave walk mode" aria-label="Leave walk mode">
+            <XIcon size={16} />
+          </button>
+        </div>
+      )}
       <div className={flying ? "walk-flying" : "walk-flying away"} role="status">
         <FeatherIcon size={13} weight="bold" />
         Flying
