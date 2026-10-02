@@ -5,6 +5,47 @@ import type { Piece } from "../src/model";
 import { fixture, revised, site } from "./fixtures";
 import { platform } from "./platform";
 
+for (const singleStep of [false, true]) {
+  test(`replay starts empty and animates the first step (${singleStep ? "one step, Space" : "multiple steps, Play"})`, async ({
+    page,
+  }) => {
+    const seed = fixture();
+    const build = singleStep
+      ? revised({ ...seed, steps: seed.steps.slice(0, 1), pieces: seed.pieces.map((p) => ({ ...p, step: 0 })) })
+      : seed;
+    await site(page, [build]);
+    await page.goto(`/?showcase=${build.id}`);
+    const viewer = page.locator(".viewer");
+    const slider = page.getByRole("slider", { name: "Step", exact: true });
+    await expect(viewer).toHaveAttribute("data-revision", build.revision);
+    // Slow down the short fixture's placement so the test can pause it.
+    for (let i = 0; i < 3; i++) await page.getByTitle("Playback speed", { exact: true }).click();
+    if (singleStep) {
+      await page.locator(".scrub-label").click();
+      await page.keyboard.press("Space");
+    } else await page.getByTitle("Play", { exact: true }).click();
+    await expect(slider).toHaveValue("-1");
+    await page.getByTitle("Pause", { exact: true }).click();
+    await expect(page.locator(".scrub-label")).toHaveText(`Empty canvas0 pieces · 0/${build.steps.length} steps`);
+    await expect(slider).toHaveCSS("--fill", "0%");
+    await page.waitForTimeout(150);
+    await expect(slider).toHaveValue("-1");
+
+    await page.getByTitle("Play", { exact: true }).click();
+    await page.getByRole("button", { name: "Pause placement", exact: true }).click();
+    await expect(slider).toHaveValue("0");
+    await expect(viewer).toHaveAttribute(
+      "data-placement-total",
+      String(build.pieces.filter((p) => p.step === 0).length),
+    );
+    await page.getByRole("button", { name: "Skip", exact: true }).click();
+    await expect(page.locator(".scrub-label b")).toHaveText("Finished");
+    await expect(slider).toHaveValue(String(build.steps.length - 1));
+    await expect(slider).toHaveCSS("--fill", "100%");
+    await expect(page.getByTitle("Play", { exact: true })).toBeEnabled();
+  });
+}
+
 test("placements follow steps and LDraw layers, preserve unchanged pieces and reveal recolors and moves", () => {
   const pieces = fixture().pieces;
   const moved: Piece = { ...pieces[0], pos: [120, 0, 0] };
