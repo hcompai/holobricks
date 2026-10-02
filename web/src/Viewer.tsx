@@ -20,6 +20,7 @@ import type { Color } from "./palette";
 import { BrickScene, typing, type View, type PlacementProgress } from "./scene";
 import { Shortcuts } from "./Shortcuts";
 import { WalkHud } from "./WalkHud";
+import { useWalkFullscreen } from "./useWalkFullscreen";
 
 /** Hand edits come in bursts; the library tile waits for a pause. */
 const THUMBNAIL_IDLE_MS = 1500;
@@ -150,6 +151,7 @@ interface Props {
 export function Viewer(props: Props) {
   const { ref, build, opening, step, framing, spin, onThumbnail, thumbnailed, syncError } = props;
   const { mode, edits, describe, palette, onMode } = props;
+  const walkScreen = useWalkFullscreen(mode === "walk");
   const container = useRef<HTMLDivElement>(null);
   const scene = useRef<BrickScene | null>(null);
   const framedBuild = useRef<string | null>(null);
@@ -426,7 +428,8 @@ export function Viewer(props: Props) {
 
   return (
     <div
-      className="viewer"
+      ref={walkScreen.ref}
+      className={walkScreen.fullscreen ? "viewer walk-fullscreen" : "viewer"}
       data-revision={ready ? build?.revision : undefined}
       data-placing={placement?.active ? "true" : "false"}
       data-placed={placement?.placed ?? 0}
@@ -476,7 +479,15 @@ export function Viewer(props: Props) {
           }}
         />
       )}
-      {mode === "walk" && shown && <WalkHud locked={locked} flying={flying} />}
+      {mode === "walk" && shown && (
+        <WalkHud
+          locked={locked}
+          flying={flying}
+          fullscreen={walkScreen.fullscreen}
+          onFullscreen={walkScreen.toggle}
+          onLeave={() => onMode("view")}
+        />
+      )}
       {shown && mode === "view" && placement?.active && (
         <div className="placement-hud" role="status" aria-live="off">
           <span>
