@@ -358,3 +358,26 @@ test("a fork reload preserves its latest model when storage briefly returns the 
   agp.say("new-build", "Add a window too");
   await expect(page.locator(".msg.user.queued")).toHaveCount(0);
 });
+
+test("deleting a running fork stops Holo, and neither the fork nor its run comes back to Your builds", async ({
+  page,
+}) => {
+  const { agp, deleted } = await history(page);
+  await page.getByRole("button", { name: "V4", exact: true }).click();
+  await page.locator(".history-tools").getByRole("button", { name: "Fork", exact: true }).click();
+  await expect(page).toHaveURL(/\?fork=fork-/);
+  await page.getByRole("textbox").fill("Make it blue");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Stop", exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "Share", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Delete…" }).click();
+  await page.getByRole("dialog", { name: "Delete" }).getByRole("button", { name: "Delete" }).click();
+  await expect(page).toHaveURL(/\/$/);
+  expect(deleted).toEqual([expect.stringMatching(/^fork-/)]);
+  expect(agp.requests.filter((r) => r.method === "DELETE").map((r) => r.path)).toEqual(["/api/v2/sessions/new-build"]);
+  const mine = page.getByRole("region", { name: "Your builds", exact: true }).locator(".tile");
+  await expect(mine).toHaveCount(1);
+  await page.reload();
+  await expect(mine).toHaveCount(1);
+});

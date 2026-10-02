@@ -134,9 +134,13 @@ export async function site(page: Page, showcases: Build[] = [], account: typeof 
       ? route.fulfill({ status: 404, json: { error: "This build is not public." } })
       : route.fulfill({ json: [] }),
   );
-  await page.route("**/api/projects*", (route) =>
-    route.request().method() === "DELETE" ? route.fulfill({ status: 204 }) : route.fulfill({ json: [] }),
-  );
+  /** The ids of the builds the user deleted, as `/api/projects` lists them. */
+  const deleted: string[] = [];
+  await page.route("**/api/projects*", (route) => {
+    if (route.request().method() !== "DELETE") return route.fulfill({ json: deleted });
+    deleted.push(new URL(route.request().url()).searchParams.get("id")!);
+    return route.fulfill({ status: 204 });
+  });
   await page.route("**/LDConfig.ldr", (route) => route.fulfill({ body: colors }));
   await page.route("**/brickyard.tgz", (route) => route.fulfill({ body: Buffer.from("toolkit") }));
   await page.route("**/gallery/builds.json", (route) =>
@@ -162,5 +166,5 @@ export async function site(page: Page, showcases: Build[] = [], account: typeof 
     const shown = showcases.find((b) => b.id === id);
     return shown ? route.fulfill({ json: shown }) : route.fulfill({ status: 404 });
   });
-  return { copies, copyRequests, copying, names };
+  return { copies, copyRequests, copying, names, deleted };
 }

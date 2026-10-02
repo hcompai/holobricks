@@ -3,7 +3,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useS
 import type { Account } from "./account";
 import { AccountMenu } from "./AccountMenu";
 import { RecoveryPanel } from "./RecoveryPanel";
-import { create, remix, say, stop } from "./agent";
+import { cancel, create, remix, say, stop } from "./agent";
 import type { ProjectActions } from "./ProjectMenu";
 import { ProjectTitle } from "./ProjectTitle";
 import { useProjectNames } from "./useProjectNames";
@@ -418,6 +418,7 @@ export default function App({ account }: { account: Account }) {
         await after();
       },
       onDelete: async () => {
+        if (b.status === "building") await cancel(b.sessionId ?? b.id).catch(console.error);
         await deleteProject(target);
         if (ref?.id === b.id) open(null);
         await after();
@@ -434,6 +435,7 @@ export default function App({ account }: { account: Account }) {
 
   const deleteBuild = async () => {
     if (!project) return;
+    if (live?.status === "building" && runId) await cancel(runId).catch(console.error);
     await deleteProject({ id: project.id, source: project.source });
     open(null);
     await refreshBuilds();
