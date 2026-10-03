@@ -75,6 +75,7 @@ function agent(): HaiAgents.Agent {
     name: AGENT,
     description: "Designs brick models from real LDraw parts, step by step, in HoloBricks.",
     model: MODEL,
+    reasoningEffort: "xhigh",
     instructions,
     environments: [{ kind: "workstation", id: AGENT }],
     tools: [LOOK],
