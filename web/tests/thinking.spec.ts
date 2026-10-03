@@ -1,9 +1,11 @@
 import { expect, test } from "@playwright/test";
-import { fixture, site } from "./fixtures";
+import { fixture, revised, site } from "./fixtures";
 import { platform } from "./platform";
 import { readFileSync } from "node:fs";
 
-test("the thinking illustration follows real activity, then gives way to the shared model", async ({ page }) => {
+test("the thinking illustration follows real activity, then gives way to the shared model", async ({
+  page,
+}, testInfo) => {
   await site(page);
   const agp = await platform(page);
   agp.session("thinking");
@@ -19,29 +21,35 @@ test("the thinking illustration follows real activity, then gives way to the sha
   await expect(thinking).not.toContainText("Your brief");
   await expect(page.locator(".live-clock")).toHaveCount(0);
 
-  await thinking.getByRole("button", { name: "Pause animation", exact: true }).click();
-  await expect(thinking.locator(".thinking-outline")).toHaveCSS("animation-play-state", "paused");
-  await thinking.getByRole("button", { name: "Resume animation", exact: true }).click();
-  await expect(thinking.locator(".thinking-outline")).toHaveCSS("animation-play-state", "running");
+  await expect(thinking.getByRole("button")).toHaveCount(0);
 
   const stages = [
-    { tool_name: "shell", args: { command: ".brickyard/setup.sh" }, label: "Getting its bricks ready", art: "setup" },
+    { tool_name: "shell", args: { command: ".brickyard/setup.sh" }, label: "Preparing bricks", art: "setup" },
     { tool_name: "web_search", args: { query: "garden tower" }, label: "Finding photos", art: "photos" },
     { tool_name: "shell", args: { command: 'bricks name "Garden Tower"' }, label: "Naming it", art: "naming" },
   ];
   for (const { tool_name, args, label, art } of stages) {
     agp.step("thinking", "", "", [{ tool_name, args, id: art }]);
     await expect(status).toContainText(label);
-    await expect(thinking.locator(`.thinking-stage-${art}`)).toBeVisible();
+    await expect(thinking).toHaveClass(`thinking thinking-stage-${art}`);
   }
 
   await expect(thinking.locator(".thinking-card")).toHaveAttribute("data-subject", "tower");
   agp.step("thinking", "", "", [{ tool_name: "write_file", args: { path: "/workspace/build.py" }, id: "script" }]);
-  await expect(thinking).toHaveCount(0);
-  await expect(page.locator(".msg.live")).toContainText("Placing bricks");
+  await expect(status).toContainText("Building first draft");
+  await expect(page.locator(".msg.live")).toContainText("Building first draft");
+  await expect(status).toHaveCSS("opacity", "1");
+  await page.screenshot({ path: testInfo.outputPath("building-first-draft.png") });
+  // A user follow-up must not leave the empty viewer without a status either.
+  agp.say("thinking", "Keep the courtyard open");
+  await expect(status).toContainText("Reading your message");
   agp.step("thinking", "", "", [{ tool_name: "look", args: {}, id: "check" }]);
-  await expect(thinking).toHaveCount(0);
-  await expect(page.locator(".msg.live")).toContainText("Checking every side");
+  await expect(status).toContainText("Building first draft");
+  await expect(page.locator(".msg.live")).toContainText("Building first draft");
+
+  // An empty shared file is not a visible draft.
+  agp.share("thinking", revised({ ...fixture(), pieces: [], steps: [] }));
+  await expect(status).toContainText("Building first draft");
 
   agp.share("thinking", fixture());
   await expect(thinking).toHaveCount(0);
@@ -49,12 +57,23 @@ test("the thinking illustration follows real activity, then gives way to the sha
   await expect(page.locator(".msg.live .thinking-icon")).toBeVisible();
   await expect(page.locator(".msg.live")).toContainText("Checking every side");
 
+  const repair = { tool_name: "shell", args: { command: "bricks run" }, id: "repair" };
+  agp.step("thinking", "Fixing the roof connections.", "", [repair]);
+  agp.result("thinking", repair, { stdout: "The script stopped, so the model did not change.", exit_code: 1 });
+  await expect(page.locator(".msg.live")).toContainText("Placing bricks");
+  await expect(page.locator(".viewer")).toHaveAttribute("data-revision", fixture().revision);
+  await expect(thinking).toHaveCount(0);
+  const corrected = revised({ ...fixture(), pieces: fixture().pieces.map((p) => ({ ...p, color: 4 })) });
+  agp.share("thinking", corrected);
+  await expect(page.locator(".viewer")).toHaveAttribute("data-revision", corrected.revision);
+  await expect(thinking).toHaveCount(0);
+
   agp.answer("thinking", "Built your garden tower.");
   await expect(page.locator(".msg.live")).toHaveCount(0);
   await expect(page.locator(".msg.assistant").last()).toContainText("Built your garden tower.");
 });
 
-test("thinking respects reduced motion and fits a narrower viewer", async ({ page }) => {
+test("thinking respects reduced motion and fits a narrower viewer", async ({ page }, testInfo) => {
   await page.emulateMedia({ reducedMotion: "reduce", colorScheme: "dark" });
   await page.setViewportSize({ width: 860, height: 640 });
   await site(page);
@@ -65,11 +84,11 @@ test("thinking respects reduced motion and fits a narrower viewer", async ({ pag
   await page.goto("/?build=quiet");
 
   const thinking = page.locator(".thinking");
-  await expect(thinking.getByRole("status")).toContainText("Getting its bricks ready");
-  await expect(thinking.locator(".thinking-material").first()).toHaveCSS("animation-name", "none");
-  await expect(thinking.locator(".thinking-material").first()).toHaveCSS("opacity", "1");
-  await expect(thinking.getByRole("button", { name: "Pause animation", includeHidden: true })).toBeHidden();
-  const card = await thinking.locator(".thinking-card").boundingBox();
+  await expect(thinking.getByRole("status")).toContainText("Preparing bricks");
+  await expect(thinking.locator(".brick-hop")).toHaveCSS("animation-name", "none");
+  await expect(thinking.locator(".brick-hop")).toHaveCSS("opacity", "1");
+  await expect(thinking.getByRole("button")).toHaveCount(0);
+  const card = await thinking.getByRole("status").boundingBox();
   const pane = await thinking.boundingBox();
   expect(card).not.toBeNull();
   expect(pane).not.toBeNull();
@@ -77,9 +96,10 @@ test("thinking respects reduced motion and fits a narrower viewer", async ({ pag
   expect(card!.y).toBeGreaterThanOrEqual(pane!.y);
   expect(card!.x + card!.width).toBeLessThanOrEqual(pane!.x + pane!.width);
   expect(card!.y + card!.height).toBeLessThanOrEqual(pane!.y + pane!.height);
+  await page.screenshot({ path: testInfo.outputPath("preparing-bricks.png") });
 });
 
-test("real reference photos arrive from image tools and shared files, including while paused", async ({ page }) => {
+test("real reference photos arrive from image tools and shared files and can be inspected", async ({ page }) => {
   await site(page);
   const agp = await platform(page);
   agp.session("references");
@@ -89,7 +109,6 @@ test("real reference photos arrive from image tools and shared files, including 
   await page.goto("/?build=references");
   const thinking = page.locator(".thinking");
   await expect(thinking.locator(".thinking-search-study")).toContainText("stone castle towers");
-  await thinking.getByRole("button", { name: "Pause animation", exact: true }).click();
   const opened = { tool_name: "view_image", args: { path: "/workspace/reference-1.jpg" }, id: "photo-1" };
   agp.step("references", "The paired round towers will define the silhouette.", "", [opened]);
   agp.result("references", opened, {
@@ -129,7 +148,7 @@ test("real reference photos arrive from image tools and shared files, including 
   await expect(thinking).toHaveCount(0);
 });
 
-test("part searches and successful naming supply concrete part and title studies", async ({ page }) => {
+test("preparation offers no pretend part selection; naming still shows the actual title", async ({ page }) => {
   await site(page);
   const agp = await platform(page);
   agp.session("study");
@@ -137,19 +156,19 @@ test("part searches and successful naming supply concrete part and title studies
   agp.step("study", "", "", [{ tool_name: "shell", args: { command: "setup.sh" }, id: "setup" }]);
   await page.goto("/?build=study");
   const thinking = page.locator(".thinking");
-  await expect(thinking.locator(".thinking-material")).toHaveCount(6);
+  await expect(thinking.getByRole("status")).toContainText("Preparing bricks");
+  await expect(thinking.locator(".brick")).toBeVisible();
+  await expect(thinking.getByRole("button")).toHaveCount(0);
+  await expect(thinking).not.toContainText("Brick 2 x 4");
   const parts = { tool_name: "shell", args: { command: 'bricks parts "3001,3020"' }, id: "parts" };
   agp.step("study", "", "", [parts]);
   agp.result("study", parts, {
     stdout:
       "3001: Brick 2 x 4 | W=4 along x, D=2 along y | 3 plates tall\n3020: Plate 2 x 4 | W=4 along x, D=2 along y | 1 plate tall",
   });
-  await expect(thinking.locator(".thinking-material")).toHaveCount(2);
-  await thinking.getByRole("button", { name: "Plate 2 x 4", exact: true }).click();
-  await expect(thinking.getByRole("button", { name: "Plate 2 x 4", exact: true })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
+  await expect(thinking.getByRole("status")).toContainText("Preparing bricks");
+  await expect(thinking.getByRole("button")).toHaveCount(0);
+  await expect(thinking).not.toContainText("Plate 2 x 4");
   const name = { tool_name: "shell", args: { command: 'bricks name "The Last Light"' }, id: "name" };
   agp.step("study", "", "", [name]);
   await expect(thinking.locator(".thinking-name-title")).toHaveAttribute("aria-label", "A name is on its way");

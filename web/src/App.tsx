@@ -99,13 +99,24 @@ export default function App({ account }: { account: Account }) {
   /** What the user just asked for, shown as a starting build where they asked it, until its session answers. */
   const [draft, setDraft] = useState<{ at: BuildRef | null; build: Build; since: number } | null>(null);
   const drafted = draft && same(draft.at, ref) && read.build?.id !== draft.build.id ? draft.build : null;
-  const rawLive = drafted ?? read.build;
+  const rawLive = useMemo(() => {
+    if (drafted) return drafted;
+    // Session status can arrive before the initial message. Keep the request until its echo,
+    // while still showing the session's current model, activity and any failure.
+    if (draft && same(draft.at, ref) && read.build && !read.build.messages.some((m) => m.role === "user"))
+      return { ...read.build, messages: [...draft.build.messages, ...read.build.messages] };
+    return read.build;
+  }, [drafted, draft, ref, read.build]);
   const live = useMemo(
     () => (rawLive && ref && names[ref.id] ? { ...rawLive, name: names[ref.id].name } : rawLive),
     [rawLive, ref?.id, names],
   );
   const loading = read.loading && !drafted;
-  const activity = drafted ? { label: PHASES.idea, since: draft!.since, work: null } : read.activity;
+  const observed = drafted ? { label: PHASES.idea, since: draft!.since, work: null } : read.activity;
+  const activity =
+    observed && !live?.pieces.length && (observed.label === PHASES.bricks || observed.label === PHASES.checking)
+      ? { ...observed, label: PHASES.draft }
+      : observed;
   const { error, syncError, models, seed, runId, attachSession } = read;
   const edits = useEdits(live);
   const [historyOpen, setHistoryOpen] = useState(() => urlVersion() !== null);
@@ -729,7 +740,15 @@ export default function App({ account }: { account: Account }) {
               spin={spin}
               mode={mode}
               canEdit={!readOnly && edits.editable && built}
-              editHint={previewing ? "Edit Latest or Fork" : undefined}
+              editHint={
+                previewing
+                  ? "Edit Latest or Fork"
+                  : live?.status === "building"
+                    ? "Edit after Holo stops"
+                    : edits.stale > 0
+                      ? "Discard earlier edits to edit"
+                      : undefined
+              }
               built={built}
               onFrame={(next) => {
                 if (mode === "walk") setMode("view");

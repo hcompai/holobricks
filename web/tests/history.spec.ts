@@ -44,6 +44,8 @@ test("preview is read-only, survives reload, preserves the latest draft and neve
   await page.keyboard.press("Escape");
   await expect(page.getByRole("button", { name: "Edit", exact: true })).toBeDisabled();
   await expect(page.getByRole("button", { name: "Edit", exact: true })).toHaveAttribute("title", "Edit Latest or Fork");
+  await expect(page.locator(".edit-availability")).toHaveText("Edit Latest or Fork");
+  await expect(page.locator(".edit-availability")).toBeVisible();
   await page.locator(".preview-note").getByRole("button", { name: "Latest", exact: true }).click();
   await shown(page, saved[5].revision);
   await expect(page.getByRole("textbox")).toHaveValue("Keep this draft");

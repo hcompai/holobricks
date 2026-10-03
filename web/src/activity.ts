@@ -4,14 +4,13 @@ import type { HaiAgents } from "hai-agents";
 export const PHASES = {
   idea: "Reading your idea",
   message: "Reading your message",
-  setup: "Getting its bricks ready",
+  setup: "Preparing bricks",
   photos: "Finding photos",
   naming: "Naming it",
+  draft: "Building first draft",
   bricks: "Placing bricks",
   checking: "Checking every side",
 } as const;
-
-export const THINKING_PHASES: string[] = [PHASES.idea, PHASES.setup, PHASES.photos, PHASES.naming];
 
 type Phase = (typeof PHASES)[keyof typeof PHASES];
 
@@ -32,7 +31,7 @@ function host(url: unknown): string {
 }
 
 function command(line: string): Doing {
-  if (line.includes("setup.sh")) return { label: "Getting its bricks ready", phase: PHASES.setup };
+  if (line.includes("setup.sh")) return { label: PHASES.setup, phase: PHASES.setup };
   if (/\bbricks run\b/.test(line)) return { label: "Building the model", phase: PHASES.bricks };
   if (/\bbricks (parts|colors|check)\b/.test(line)) return { label: "Checking parts", phase: null };
   if (/\bbricks name\b/.test(line)) return { label: "Naming the build", phase: PHASES.naming };

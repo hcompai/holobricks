@@ -141,10 +141,10 @@ test("Holo's work shows as what it does now, then folds under its message; a rep
   agp.step("work", "", "The walls need a first course.", [run]);
   await page.goto("/?build=work");
   const live = page.locator(".msg.live");
-  await expect(live).toContainText("Placing bricks");
+  await expect(live).toContainText("Building first draft");
 
   agp.result("work", run);
-  await expect(live).toContainText("Placing bricks");
+  await expect(live).toContainText("Building first draft");
 
   agp.now += 95_000;
   agp.step("work", "\n\nBuilt a tower.", "It stands.");
@@ -274,9 +274,10 @@ test("a new build sends the toolkit and the photos; Stop makes Holo answer and t
   expect(agp.posted("/messages")[0]).toMatchObject({ message: "Add the lighthouse", files: [] });
 });
 
-test("Send shows the request and a starting build at once, before the platform answers", async ({ page }) => {
+test("Send keeps the request visible through session startup until its transcript arrives", async ({ page }) => {
   await site(page);
   const agp = await platform(page);
+  agp.hold = true;
   let answer = () => {};
   const answered = new Promise<void>((resolve) => (answer = resolve));
   await page.route("https://agp.eu.hcompany.ai/api/v2/sessions", async (route) => {
@@ -284,6 +285,8 @@ test("Send shows the request and a starting build at once, before the platform a
     await route.fallback();
   });
   await page.goto("/");
+  await page.getByLabel("Photos to attach").setInputFiles(PHOTO);
+  await expect(page.getByRole("img", { name: "Reference 1", exact: true })).toBeVisible();
   await page.getByRole("textbox").fill("A red lighthouse");
   await page.getByRole("textbox").press("Enter");
   await expect(page.locator(".msg.user")).toHaveText("A red lighthouse");
@@ -293,7 +296,53 @@ test("Send shows the request and a starting build at once, before the platform a
 
   answer();
   await expect(page).toHaveURL(/\?build=new-build$/);
+  // A model can arrive before the initial user-message event. Keep both visible.
+  const model = fixture();
+  agp.state("new-build", "running");
+  agp.share("new-build", model);
+  await shown(page, model.revision);
   await expect(page.locator(".msg.user")).toHaveText("A red lighthouse");
+  await expect(page.getByRole("img", { name: "Your reference image" })).toBeVisible();
+
+  const composer = page.getByPlaceholder("Ask for a change");
+  await composer.fill("Make it taller");
+  await composer.press("Enter");
+  await expect.poll(() => agp.posted("/messages")).toHaveLength(1);
+  await expect(page.locator(".msg.user")).toHaveText(["A red lighthouse", "Make it taller"]);
+
+  const [first] = agp.posted("/api/v2/sessions")[0].messages;
+  agp.say("new-build", first.message, first.images);
+  agp.step("new-build", "Starting the lighthouse.");
+  await expect(page.getByText("Starting the lighthouse.", { exact: true })).toBeVisible();
+  // The initial echo must not duplicate the request or consume the queued follow-up.
+  await expect(page.locator(".msg.user")).toHaveText(["A red lighthouse", "Make it taller"]);
+  await expect(page.locator(".msg.user.queued")).toHaveText("Make it taller");
+  await expect(page.getByRole("img", { name: "Your reference image" })).toHaveCount(1);
+
+  agp.say("new-build", "Make it taller");
+  await expect(page.locator(".msg.user.queued")).toHaveCount(0);
+  await expect(page.locator(".msg.user")).toHaveText(["A red lighthouse", "Make it taller"]);
+});
+
+test("a startup failure keeps the request visible without hiding recovery or leaking into a new build", async ({
+  page,
+}) => {
+  await site(page);
+  const agp = await platform(page);
+  agp.hold = true;
+  await page.goto("/");
+  await page.getByRole("textbox").fill("Space Needle Seattle");
+  await page.getByRole("textbox").press("Enter");
+  await expect(page).toHaveURL(/\?build=new-build$/);
+
+  agp.state("new-build", "failed");
+  await expect(page.getByRole("region", { name: "Build recovery" })).toBeVisible();
+  await expect(page.locator(".msg.user")).toHaveText("Space Needle Seattle");
+  await expect(page.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "New build", exact: true }).click();
+  await expect(page.locator(".msg.user")).toHaveCount(0);
+  await expect(page.getByRole("textbox")).toHaveValue("");
 });
 
 test("a suggestion starts its build in one click: Holo gets the full prompt, the user sees its label", async ({

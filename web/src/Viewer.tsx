@@ -1,10 +1,11 @@
 import { Thinking } from "./Thinking";
 import type { Activity } from "./session";
 import { PlacementSoundToggle } from "./PlacementSound";
-import { type Ref, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { type Ref, useEffect, useId, useImperativeHandle, useRef, useState } from "react";
 import {
   ArrowsClockwiseIcon,
   CrosshairSimpleIcon,
+  LockSimpleIcon,
   PauseIcon,
   PencilSimpleIcon,
   PersonSimpleWalkIcon,
@@ -61,56 +62,66 @@ export function ViewControls({
   onSpin: (spin: boolean) => void;
   onMode: (mode: Mode) => void;
 }) {
+  const hintId = useId();
+  const blocked = built && !canEdit && mode !== "edit";
   const toggle = (next: Mode) => onMode(mode === next ? "view" : next);
   return (
-    <div className="tabs">
-      {VIEWS.map((v) => (
-        <button
-          key={v.id}
-          className={framing.view === v.id ? "active" : ""}
-          aria-pressed={framing.view === v.id}
-          onClick={() => onFrame({ view: v.id })}
-        >
-          {v.label}
+    <div className="view-controls">
+      <div className="tabs">
+        {VIEWS.map((v) => (
+          <button
+            key={v.id}
+            className={framing.view === v.id ? "active" : ""}
+            aria-pressed={framing.view === v.id}
+            onClick={() => onFrame({ view: v.id })}
+          >
+            {v.label}
+          </button>
+        ))}
+        <button aria-label="Reset view" title="Reset view" onClick={() => onFrame({ view: "iso" })}>
+          <CrosshairSimpleIcon size={14} weight="bold" />
         </button>
-      ))}
-      <button aria-label="Reset view" title="Reset view" onClick={() => onFrame({ view: "iso" })}>
-        <CrosshairSimpleIcon size={14} weight="bold" />
-      </button>
-      <span className="tabs-sep" />
-      <button className={spin ? "active" : ""} aria-pressed={spin} onClick={() => onSpin(!spin)}>
-        <ArrowsClockwiseIcon size={14} weight="bold" />
-        <span className="button-label">Spin</span>
-      </button>
-      {built && (
-        <>
-          <span className="tabs-sep" />
-          <button
-            className={mode === "edit" ? "active" : ""}
-            aria-pressed={mode === "edit"}
-            disabled={!canEdit && mode !== "edit"}
-            title={
-              canEdit
-                ? "Select pieces to move, turn or delete them"
-                : (editHint ?? "Pieces can be edited once Holo is done")
-            }
-            onClick={() => toggle("edit")}
-          >
-            <PencilSimpleIcon size={14} weight="bold" />
-            <span className="button-label">Edit</span>
-          </button>
-          <button
-            className={mode === "walk" ? "needs-mouse active" : "needs-mouse"}
-            aria-pressed={mode === "walk"}
-            title="Walk through the model: WASD and the mouse"
-            onClick={() => toggle("walk")}
-          >
-            <PersonSimpleWalkIcon size={14} weight="bold" />
-            <span className="button-label">Walk</span>
-          </button>
-        </>
+        <span className="tabs-sep" />
+        <button className={spin ? "active" : ""} aria-pressed={spin} onClick={() => onSpin(!spin)}>
+          <ArrowsClockwiseIcon size={14} weight="bold" />
+          <span className="button-label">Spin</span>
+        </button>
+        {built && (
+          <>
+            <span className="tabs-sep" />
+            <button
+              className={mode === "edit" ? "active" : ""}
+              aria-pressed={mode === "edit"}
+              disabled={blocked}
+              aria-describedby={blocked && editHint ? hintId : undefined}
+              title={
+                canEdit
+                  ? "Select pieces to move, turn or delete them"
+                  : (editHint ?? "Pieces can be edited once Holo is done")
+              }
+              onClick={() => toggle("edit")}
+            >
+              {blocked ? <LockSimpleIcon size={14} weight="bold" /> : <PencilSimpleIcon size={14} weight="bold" />}
+              <span className="button-label">Edit</span>
+            </button>
+            <button
+              className={mode === "walk" ? "needs-mouse active" : "needs-mouse"}
+              aria-pressed={mode === "walk"}
+              title="Walk through the model: WASD and the mouse"
+              onClick={() => toggle("walk")}
+            >
+              <PersonSimpleWalkIcon size={14} weight="bold" />
+              <span className="button-label">Walk</span>
+            </button>
+          </>
+        )}
+        <Shortcuts />
+      </div>
+      {blocked && editHint && (
+        <p id={hintId} className="edit-availability" role="status">
+          {editHint}
+        </p>
       )}
-      <Shortcuts />
     </div>
   );
 }
@@ -159,7 +170,12 @@ export function Viewer(props: Props) {
   const placingListener = useRef(props.onPlacing);
   placingListener.current = props.onPlacing;
   const previousBuild = useRef<string | null>(null);
-  const [drawn, setDrawn] = useState<{ id: string; key: string; pieces: Build["pieces"] } | null>(null);
+  const [drawn, setDrawn] = useState<{
+    id: string;
+    key: string;
+    pieces: Build["pieces"];
+    size: THREE.Vector3;
+  } | null>(null);
   const [renderError, setRenderError] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
   const [hover, setHover] = useState<number | null>(null);
@@ -245,7 +261,13 @@ export function Viewer(props: Props) {
           s.frameView(framing.view, width, depth, same);
         }
         s.drawCurrent();
-        setDrawn({ id: build.id, key: version!, pieces: build.pieces });
+        // Measure the full model in its own axes, independent of camera, replay and placement animation.
+        // LDraw: 1 unit ≈ 0.4 mm (https://www.ldraw.org/article/218.html).
+        const size = s
+          .piecesBox(build.pieces.map((p) => p.id))
+          .getSize(new THREE.Vector3())
+          .multiplyScalar(0.04);
+        setDrawn({ id: build.id, key: version!, pieces: build.pieces, size });
       })
       .catch((error) => {
         if (current) failed(error);
@@ -488,18 +510,34 @@ export function Viewer(props: Props) {
           onLeave={() => onMode("view")}
         />
       )}
-      {shown && mode === "view" && placement?.active && (
-        <div className="placement-hud" role="status" aria-live="off">
-          <span>
-            Layer {placement.layer} · {placement.placed.toLocaleString()} / {placement.total.toLocaleString()}
-          </span>
-          <button
-            onClick={() => scene.current?.pausePlacement(!placement.paused)}
-            aria-label={placement.paused ? "Resume placement" : "Pause placement"}
-          >
-            {placement.paused ? <PlayIcon size={12} weight="fill" /> : <PauseIcon size={12} weight="fill" />}
-          </button>
-          <button onClick={() => scene.current?.finishPlacement()}>Skip</button>
+      {shown && drawn && !syncError && mode !== "walk" && (
+        <div className="viewer-info">
+          {mode === "view" && placement?.active && (
+            <div className="placement-hud" role="status" aria-live="off">
+              <span>
+                Layer {placement.layer} · {placement.placed.toLocaleString()} / {placement.total.toLocaleString()}
+              </span>
+              <button
+                onClick={() => scene.current?.pausePlacement(!placement.paused)}
+                aria-label={placement.paused ? "Resume placement" : "Pause placement"}
+              >
+                {placement.paused ? <PlayIcon size={12} weight="fill" /> : <PauseIcon size={12} weight="fill" />}
+              </button>
+              <button onClick={() => scene.current?.finishPlacement()}>Skip</button>
+            </div>
+          )}
+          <dl className="model-size" aria-label="Model size" title="Approximate size · full model">
+            {[
+              { label: "Height", value: drawn.size.y },
+              { label: "Width", value: drawn.size.x },
+              { label: "Depth", value: drawn.size.z },
+            ].map(({ label, value }) => (
+              <div key={label}>
+                <dt>{label}</dt>
+                <dd>{value.toFixed(1)} cm</dd>
+              </div>
+            ))}
+          </dl>
         </div>
       )}
       {shown && <PlacementSoundToggle />}

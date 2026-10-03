@@ -126,18 +126,18 @@ export interface Edits {
 export function useEdits(build: Build | null): Edits {
   const id = build?.id ?? null;
   const [state, setState] = useState<Saved | null>(null);
-  const [undone, setUndone] = useState<Edit[]>([]);
+  const [undone, setUndone] = useState<Saved | null>(null);
   const [edited, setEdited] = useState<Build | null>(null);
 
   useEffect(() => {
     const kept = id ? saved()[id] : undefined;
     // Edits saved before they named groups of pieces have no `ids`; they were only ever drafts.
     setState(kept ? { ...kept, edits: kept.edits.filter((e) => Array.isArray(e.ids)) } : null);
-    setUndone([]);
+    setUndone(null);
   }, [id]);
 
   const building = build?.status === "building";
-  const matches = !!build && (!state || state.revision === build.revision);
+  const matches = !!build && (!state?.edits.length || state.revision === build.revision);
   const edits = matches ? (state?.edits ?? []) : [];
   const applies = !building && edits.length > 0;
 
@@ -176,6 +176,7 @@ export function useEdits(build: Build | null): Edits {
   );
 
   const editable = !!build && !building && matches;
+  const canRedo = editable && undone?.revision === build?.revision && !!undone?.edits.length;
   return {
     // Until the edited revision is hashed, keep the last one drawn rather than clearing the viewer.
     build: applies && edited?.id === id ? edited : build,
@@ -186,22 +187,25 @@ export function useEdits(build: Build | null): Edits {
     push: (edit) => {
       if (!editable) return;
       update([...edits, edit]);
-      setUndone([]);
+      setUndone(null);
     },
     undo: () => {
-      if (!editable || !edits.length) return;
-      setUndone([...undone, edits[edits.length - 1]]);
+      if (!editable || !build || !edits.length) return;
+      setUndone({
+        revision: build.revision,
+        edits: [...(undone?.revision === build.revision ? undone.edits : []), edits[edits.length - 1]],
+      });
       update(edits.slice(0, -1));
     },
     redo: () => {
-      if (!editable || !undone.length) return;
-      update([...edits, undone[undone.length - 1]]);
-      setUndone(undone.slice(0, -1));
+      if (!canRedo || !undone) return;
+      update([...edits, undone.edits[undone.edits.length - 1]]);
+      setUndone({ ...undone, edits: undone.edits.slice(0, -1) });
     },
-    canRedo: editable && undone.length > 0,
+    canRedo,
     reset: () => {
       update([]);
-      setUndone([]);
+      setUndone(null);
     },
   };
 }

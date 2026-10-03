@@ -1,7 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import { applyEdits, pivot } from "../src/edits";
-import { fixture, site } from "./fixtures";
+import { fixture, revised, site } from "./fixtures";
+import { platform } from "./platform";
 
 async function open(page: Page) {
   const build = fixture();
@@ -15,6 +16,138 @@ const canvasCenter = async (page: Page) => {
   const box = (await page.locator(".viewer-canvas").boundingBox())!;
   return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
 };
+
+test("Edit explains active building and unlocks after a new revision when earlier edits were cleared", async ({
+  page,
+}, testInfo) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await site(page);
+  const agp = await platform(page);
+  const model = fixture();
+  agp.session("unlock", "idle");
+  agp.say("unlock", "A tower");
+  agp.share("unlock", model);
+  await page.addInitScript((revision) => {
+    localStorage.setItem(
+      "brickyard.edits",
+      JSON.stringify({
+        unlock: { revision, edits: [{ kind: "move", ids: [0], by: [20, 0, 0] }] },
+      }),
+    );
+  }, model.revision);
+  await page.goto("/?build=unlock");
+  const edit = page.getByRole("button", { name: "Edit", exact: true });
+  const hint = page.locator(".edit-availability");
+  await edit.click();
+  await page.getByRole("button", { name: "Reset", exact: true }).click();
+  await expect(page.locator(".viewer")).toHaveAttribute("data-revision", model.revision);
+
+  agp.state("unlock", "running");
+  await expect(edit).toBeDisabled();
+  await expect(edit).toHaveAccessibleDescription("Edit after Holo stops");
+  await expect(hint).toBeVisible();
+  await expect(hint).toHaveText("Edit after Holo stops");
+  await expect(page.getByRole("button", { name: "Stop", exact: true })).toBeEnabled();
+  await page.evaluate(
+    () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+  );
+  await page.screenshot({ path: testInfo.outputPath("edit-building-desktop.png") });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(hint).toBeInViewport();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  await page.screenshot({ path: testInfo.outputPath("edit-building-mobile.png") });
+
+  await page.getByRole("button", { name: "Stop", exact: true }).click();
+  await expect.poll(() => agp.posted("/force_answer")).toHaveLength(1);
+  await expect(edit).toBeDisabled();
+  agp.answer("unlock", "Stopped here.");
+  await expect(edit).toBeEnabled();
+  await expect(hint).toHaveCount(0);
+  agp.state("unlock", "running");
+  await expect(edit).toBeDisabled();
+
+  const next = revised({ ...model, pieces: model.pieces.map((p) => ({ ...p, color: 4 })) });
+  agp.share("unlock", next);
+  await expect(page.locator(".viewer")).toHaveAttribute("data-revision", next.revision);
+  await expect(edit).toBeDisabled();
+  agp.answer("unlock", "The tower is ready.");
+  await expect(edit).toBeEnabled();
+  await expect(hint).toHaveCount(0);
+  await expect(page.locator(".edit-notice")).toHaveCount(0);
+  await edit.click();
+  await expect(page.getByRole("toolbar", { name: "Edit mode" })).toBeVisible();
+});
+
+test("Edit preserves stale changes and points to the existing Discard action", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await site(page);
+  const agp = await platform(page);
+  const model = fixture();
+  const next = revised({ ...model, pieces: model.pieces.map((p) => ({ ...p, color: 4 })) });
+  agp.session("stale", "idle");
+  agp.share("stale", next);
+  await page.addInitScript((revision) => {
+    localStorage.setItem(
+      "brickyard.edits",
+      JSON.stringify({
+        stale: { revision, edits: [{ kind: "move", ids: [0], by: [20, 0, 0] }] },
+      }),
+    );
+  }, model.revision);
+  await page.goto("/?build=stale");
+  await expect(page.locator(".viewer")).toHaveAttribute("data-revision", next.revision);
+  const edit = page.getByRole("button", { name: "Edit", exact: true });
+  await expect(edit).toBeDisabled();
+  await expect(edit).toHaveAccessibleDescription("Discard earlier edits to edit");
+  await expect(page.locator(".edit-availability")).toBeVisible();
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem("brickyard.edits")!).stale.edits)).toHaveLength(1);
+  await page.getByRole("button", { name: "Discard", exact: true }).click();
+  await expect(edit).toBeEnabled();
+  await expect(page.locator(".edit-availability")).toHaveCount(0);
+  await expect(page.locator(".edit-notice")).toHaveCount(0);
+});
+
+test("undoing every edit unlocks later revisions without carrying their old redo history", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await site(page);
+  const agp = await platform(page);
+  const model = fixture();
+  agp.session("undone", "idle");
+  agp.share("undone", model);
+  await page.addInitScript((revision) => {
+    if (localStorage.getItem("brickyard.edits")) return;
+    localStorage.setItem(
+      "brickyard.edits",
+      JSON.stringify({
+        undone: { revision, edits: [{ kind: "move", ids: [0], by: [20, 0, 0] }] },
+      }),
+    );
+  }, model.revision);
+  await page.goto("/?build=undone");
+  const edit = page.getByRole("button", { name: "Edit", exact: true });
+  await edit.click();
+  await page.getByRole("button", { name: "Undo", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Redo", exact: true })).toBeEnabled();
+  await page.getByRole("button", { name: "Redo", exact: true }).click();
+  await expect(page.getByRole("toolbar", { name: "Edit mode" })).toContainText("1 change");
+  await page.getByRole("button", { name: "Undo", exact: true }).click();
+  await expect(page.locator(".viewer")).toHaveAttribute("data-revision", model.revision);
+  const next = revised({ ...model, pieces: model.pieces.map((p) => ({ ...p, color: 4 })) });
+  agp.share("undone", next);
+  await expect(page.locator(".viewer")).toHaveAttribute("data-revision", next.revision);
+  await expect(edit).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Redo", exact: true })).toBeDisabled();
+  await expect(page.locator(".edit-availability")).toHaveCount(0);
+
+  // Empty records from older saved edit formats must not lock the current model.
+  await page.evaluate(() => {
+    localStorage.setItem("brickyard.edits", JSON.stringify({ undone: { revision: "older-revision", edits: [] } }));
+  });
+  await page.reload();
+  await expect(edit).toBeEnabled();
+  await expect(page.locator(".edit-availability")).toHaveCount(0);
+});
 
 test("edits move, turn and delete pieces in order, skipping pieces already gone", () => {
   const [a, b] = fixture().pieces;
