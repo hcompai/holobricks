@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { readFile } from "node:fs/promises";
 import type { Build } from "../src/model";
 import { DROP, fall, filmFilename, frameCount, landed, planFilm, started } from "../src/filmPlan";
 import { fixture, site } from "./fixtures";
@@ -76,4 +77,27 @@ test("missing parts block exporting a misleading partial model; other builders c
   await expect(dialog.getByRole("checkbox")).toHaveCount(0);
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+});
+
+test("close-up follow camera exports a GIF and offers orbit and fixed alternatives", async ({ page }) => {
+  // Software WebGL on CI takes several minutes to render the real 160-frame export.
+  test.setTimeout(600000);
+  await mock(page);
+  await openFilm(page);
+  const dialog = page.getByRole("dialog");
+  await dialog.getByText("Options", { exact: true }).click();
+  const camera = dialog.getByRole("combobox", { name: "Camera", exact: true });
+  await expect(camera).toHaveValue("follow");
+  await expect(camera.locator("option")).toHaveText(["Follow build", "Orbit", "Fixed"]);
+  const link = dialog.getByRole("link", { name: "Download GIF", exact: true });
+  await expect(link).toBeVisible({ timeout: 540000 });
+  const pending = page.waitForEvent("download");
+  await link.click();
+  const download = await pending;
+  const bytes = await readFile(await download.path());
+  expect(bytes.subarray(0, 6).toString()).toBe("GIF89a");
+  expect(bytes.includes(Buffer.from("NETSCAPE2.0"))).toBe(true);
+  expect([bytes.readUInt16LE(6), bytes.readUInt16LE(8)]).toEqual([640, 360]);
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
 });

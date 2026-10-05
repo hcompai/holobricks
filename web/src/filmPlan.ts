@@ -1,3 +1,4 @@
+import { CAMERA_MOVE_SECONDS } from "./buildTiming";
 import type { Build, Piece } from "./model";
 
 export const HOLO_MODEL = "HOLO4";
@@ -15,7 +16,10 @@ export const FILM_SECONDS = [8, 12, 20, 30];
 export const MIN_SECONDS = 6;
 export const MAX_SECONDS = 60;
 
+export type FilmCamera = "follow" | "orbit" | "fixed";
+
 export interface FilmOptions {
+  camera?: FilmCamera;
   width: number;
   height: number;
   seconds: number;
@@ -40,6 +44,7 @@ const WAVE_COURSES = 3;
 const OVERSHOOT = 1.2;
 
 export interface FilmStep {
+  index: number;
   title: string;
   /** Its 1-based position among the steps that have pieces. */
   number: number;
@@ -104,9 +109,11 @@ export function planFilm(build: Pick<Build, "pieces" | "steps">, seconds: number
   const turntable = Math.min(Math.max(seconds * 0.25, 2.5), 6);
   const hold = seconds - HOLD_S;
   const assembled = hold - turntable;
-  const flight = Math.min(FLIGHT_S, (assembled - INTRO_S) / 4);
-  const span = assembled - INTRO_S - flight;
   const groups = filmSteps(build.pieces);
+  const available = assembled - INTRO_S;
+  const move = Math.min(CAMERA_MOVE_SECONDS, (available * 0.15) / Math.max(groups.length - 1, 1));
+  const flight = Math.min(FLIGHT_S, (available - move * (groups.length - 1)) / (groups.length * 4));
+  const span = available - move * (groups.length - 1) - flight * groups.length;
   const titles = new Map(build.steps.map((s) => [s.index, s.title]));
   const weights = groups.map((g) => Math.sqrt(g.length));
   const total = weights.reduce((a, b) => a + b, 0);
@@ -121,8 +128,8 @@ export function planFilm(build: Pick<Build, "pieces" | "steps">, seconds: number
       order.push(p);
     }
     const title = titles.get(pieces[0].step) ?? `Step ${i + 1}`;
-    steps.push({ title, number: i + 1, start: time, end: time + window });
-    time += window;
+    steps.push({ index: pieces[0].step, title, number: i + 1, start: time, end: time + window });
+    time += window + flight + (i < groups.length - 1 ? move : 0);
   });
   return { seconds, order, starts, flight, steps, assembled, hold };
 }

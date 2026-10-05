@@ -1,3 +1,6 @@
+import { BuildCameraClient } from "./buildCameraClient";
+import { cameraBounds, sampleBuildCamera, type BuildCameraPlan, type CameraPose } from "./buildCamera";
+import { CAMERA_MOVE_SECONDS } from "./buildTiming";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { PointerLockControls } from "three/examples/jsm/controls/PointerLockControls.js";
@@ -370,6 +373,7 @@ export interface PlacementProgress {
 
 export interface SceneOptions {
   onPlacement?: (progress: PlacementProgress) => void;
+  onFollowBuild?: (follow: boolean) => void;
   signal?: AbortSignal;
   /** False when the caller sizes and draws every frame: no render loop or container tracking. */
   interactive?: boolean;
@@ -428,6 +432,13 @@ export class BrickScene {
   } | null = null;
   private placementSpeed = 1;
   private placementEnabled = true;
+  private followBuild = true;
+  private buildComplete = false;
+  private cameraPlanner = new BuildCameraClient();
+  private cameraGeneration = 0;
+  private cameraPlanning = false;
+  private cameraPlan: PlacementPlan | null = null;
+  private cameraMotion: { track: BuildCameraPlan; seconds: number; approach: number; from: CameraPose } | null = null;
   private loading: Promise<void> = Promise.resolve();
   private wanted: Piece[] | null = null;
   private shown: Piece[] | null = null;
@@ -503,6 +514,8 @@ export class BrickScene {
     this.controls.enableDamping = true;
     this.controls.addEventListener("start", () => {
       this.userMoved = true;
+      this.setFollowBuild(false);
+      this.options.onFollowBuild?.(false);
       this.glide = null;
       clearTimeout(this.settling);
       this.dragging = true;
@@ -545,8 +558,10 @@ export class BrickScene {
       this.advancePlacement(seconds);
       if (this.walking) this.walk(seconds);
       else {
-        this.ease();
+        this.controls.enableDamping = !this.followingBuild;
         this.controls.update();
+        if (this.cameraMotion || this.cameraPlanning) this.advanceCamera(seconds);
+        else this.ease();
       }
       if (this.dirty && this.container.checkVisibility({ visibilityProperty: true })) this.draw();
     };
@@ -640,6 +655,7 @@ export class BrickScene {
   dispose() {
     if (this.disposed) return;
     this.disposed = true;
+    this.cameraPlanner.dispose();
     this.lifetime.abort();
     this.renderer.domElement.removeEventListener("webglcontextlost", this.contextLost);
     cancelAnimationFrame(this.frame);
@@ -683,10 +699,13 @@ export class BrickScene {
     const { clientWidth: w, clientHeight: h } = this.container;
     if (!w || !h) return;
     this.renderer.setSize(w, h);
+    const aspectChanged = this.camera.aspect !== w / h;
     this.camera.aspect = w / h;
     this.dirty = true;
     this.camera.updateProjectionMatrix();
-    if (!this.userMoved) this.frameView(this.framing.view, this.framing.width, this.framing.depth);
+    if (this.followingBuild && this.cameraPlan) {
+      if (aspectChanged) this.planCamera(this.cameraPlan);
+    } else if (!this.userMoved) this.frameView(this.framing.view, this.framing.width, this.framing.depth);
   }
 
   private contextLost = (event: Event) => {
@@ -766,6 +785,8 @@ export class BrickScene {
         if (this.wanted !== pieces) return false;
         const previous = fresh ? [] : (this.shown ?? []).filter((p) => p.step <= this.visibleStep);
         if (this.shown !== pieces && !(await this.apply(pieces, () => this.wanted === pieces))) return false;
+        this.cancelCamera();
+        if (fresh) this.userMoved = false;
         this.finishPlacement();
         this.showStep(this.visibleStep);
         if (animate) this.startPlacement(previous);
@@ -853,6 +874,7 @@ export class BrickScene {
     if (step === this.visibleStep) return;
     const previous = (this.shown ?? []).filter((p) => p.step <= this.visibleStep);
     const forward = step > this.visibleStep;
+    this.cancelCamera();
     this.finishPlacement();
     this.showStep(step);
     if (animate && forward) this.startPlacement(previous);
@@ -873,9 +895,125 @@ export class BrickScene {
       previous,
     );
     if (!plan.pieces.length) return;
-    this.placement = { plan, seconds: 0, paused: false, reported: -Infinity, sounded: 0 };
+    this.placement = { plan, seconds: -1, paused: false, reported: -Infinity, sounded: 0 };
     this.posePlacement();
     this.reportPlacement();
+    if (this.followingBuild) this.planCamera(plan);
+  }
+
+  get followingBuild() {
+    return this.followBuild && !this.walking && !this.controls.autoRotate && !this.userMoved;
+  }
+
+  private cancelCamera() {
+    this.cameraGeneration++;
+    this.cameraPlanning = false;
+    this.cameraMotion = null;
+    this.cameraPlan = null;
+  }
+
+  setFollowBuild(follow: boolean) {
+    this.followBuild = follow;
+    if (!follow) this.cancelCamera();
+    else {
+      this.userMoved = false;
+      this.controls.autoRotate = false;
+      if (this.placement) this.planCamera(this.placement.plan);
+    }
+  }
+
+  setBuildComplete(complete: boolean) {
+    this.buildComplete = complete;
+    if (this.cameraMotion) this.cameraMotion.track.revealSeconds = complete ? 1.8 : 0;
+  }
+
+  private planCamera(plan: PlacementPlan) {
+    this.cameraPlan = plan;
+    this.glide = null;
+    const generation = ++this.cameraGeneration;
+    this.cameraPlanning = true;
+    const visible = (this.shown ?? []).filter((p) => p.step <= this.visibleStep);
+    const pieces = new Float64Array(visible.length * 16);
+    const templates: number[] = [];
+    const indices = new Map<string, number>();
+    const ends = new Map(plan.steps.map((step) => [step.index, step.end]));
+    visible.forEach((piece, i) => {
+      const key = `${piece.part}:${piece.color}`;
+      let index = indices.get(key);
+      if (index === undefined) {
+        const batch = this.batches.get(key)!;
+        index = indices.size;
+        indices.set(key, index);
+        let opaque = true;
+        batch.template.traverse((object) => {
+          if (object instanceof THREE.Mesh) {
+            const materials = Array.isArray(object.material) ? object.material : [object.material];
+            if (materials.some((material) => material.transparent)) opaque = false;
+          }
+        });
+        templates.push(...cameraBounds(batch.bounds), +opaque);
+      }
+      pieces.set(
+        [
+          piece.step,
+          plan.starts.get(piece.id) ?? -Infinity,
+          ends.get(piece.step) ?? 0,
+          index,
+          ...piece.pos,
+          ...piece.rot,
+        ],
+        i * 16,
+      );
+    });
+    void this.cameraPlanner
+      .plan({
+        pieces,
+        templates: Float64Array.from(templates),
+        lens: { aspect: this.camera.aspect, fov: FOV.orbit },
+        duration: plan.duration,
+      })
+      .then((track) => {
+        if (this.disposed || generation !== this.cameraGeneration) return;
+        this.cameraPlanning = false;
+        if (!track || !this.followingBuild) return;
+        track.revealSeconds = this.buildComplete ? 1.8 : 0;
+        this.cameraMotion = {
+          track,
+          seconds: Math.max(0, this.placement?.seconds ?? plan.duration),
+          approach: 0,
+          from: {
+            position: this.camera.position.clone(),
+            target: this.controls.target.clone(),
+            distance: this.camera.position.distanceTo(this.controls.target),
+          },
+        };
+      })
+      .catch((error) => {
+        if (this.disposed || generation !== this.cameraGeneration) return;
+        this.setFollowBuild(false);
+        this.options.onFollowBuild?.(false);
+        console.error("Could not plan the build camera", error);
+      });
+  }
+
+  private advanceCamera(delta: number) {
+    const motion = this.cameraMotion;
+    if (!motion || !this.followingBuild || this.placement?.paused || document.hidden) return;
+    const end = motion.track.duration + motion.track.revealSeconds;
+    if (motion.seconds >= end) return;
+    motion.approach = Math.min(motion.approach + delta, CAMERA_MOVE_SECONDS);
+    motion.seconds = Math.max(0, this.placement?.seconds ?? Math.min(motion.seconds + delta, end));
+    const pose = sampleBuildCamera(motion.track, motion.seconds);
+    const t = motion.approach / CAMERA_MOVE_SECONDS,
+      eased = t * t * (3 - 2 * t);
+    this.camera.position.copy(motion.from.position).lerp(pose.position, eased);
+    this.controls.target.copy(motion.from.target).lerp(pose.target, eased);
+    this.camera.near = Math.max(0.1, pose.distance / 100);
+    this.camera.far = Math.max(100000, pose.distance * 100);
+    this.camera.fov = FOV.orbit;
+    this.camera.updateProjectionMatrix();
+    this.camera.lookAt(this.controls.target);
+    this.dirty = true;
   }
 
   setPlacementSpeed(speed: number) {
@@ -897,6 +1035,7 @@ export class BrickScene {
     const current = this.placement;
     if (!current) return;
     this.placement = null;
+    if (this.cameraMotion) this.cameraMotion.seconds = current.plan.duration;
     for (const batch of this.batches.values()) batch.pose(0, Infinity);
     this.dirty = this.shadowsStale = true;
     this.options.onPlacement?.({
@@ -928,8 +1067,9 @@ export class BrickScene {
 
   private advancePlacement(delta: number) {
     const current = this.placement;
-    if (!current || current.paused) return;
-    current.seconds += delta * this.placementSpeed;
+    if (!current || current.paused || this.cameraPlanning) return;
+    if (this.cameraMotion && this.cameraMotion.approach < CAMERA_MOVE_SECONDS) return;
+    current.seconds = Math.max(0, current.seconds) + delta * this.placementSpeed;
     this.posePlacement();
     const landed = placedCount(current.plan, current.seconds - SETTLE_SECONDS);
     if (landed > current.sounded) {

@@ -10,6 +10,7 @@ import {
   PencilSimpleIcon,
   PersonSimpleWalkIcon,
   PlayIcon,
+  VideoCameraIcon,
 } from "@phosphor-icons/react";
 import * as THREE from "three";
 import type { Build, Piece } from "./model";
@@ -43,6 +44,8 @@ export type Mode = "view" | "edit" | "walk";
 export function ViewControls({
   framing,
   spin,
+  followCamera = false,
+  onFollowCamera,
   mode,
   canEdit,
   editHint,
@@ -53,6 +56,8 @@ export function ViewControls({
 }: {
   framing: Framing;
   spin: boolean;
+  followCamera?: boolean;
+  onFollowCamera?: (follow: boolean) => void;
   mode: Mode;
   canEdit: boolean;
   editHint?: string;
@@ -71,8 +76,8 @@ export function ViewControls({
         {VIEWS.map((v) => (
           <button
             key={v.id}
-            className={framing.view === v.id ? "active" : ""}
-            aria-pressed={framing.view === v.id}
+            className={!followCamera && framing.view === v.id ? "active" : ""}
+            aria-pressed={!followCamera && framing.view === v.id}
             onClick={() => onFrame({ view: v.id })}
           >
             {v.label}
@@ -82,6 +87,18 @@ export function ViewControls({
           <CrosshairSimpleIcon size={14} weight="bold" />
         </button>
         <span className="tabs-sep" />
+        {onFollowCamera && (
+          <button
+            className={followCamera ? "active" : ""}
+            aria-pressed={followCamera}
+            disabled={mode !== "view"}
+            title="Frame each step during builds and replay. Drag or zoom to take control."
+            onClick={() => onFollowCamera(!followCamera)}
+          >
+            <VideoCameraIcon size={14} weight="bold" />
+            <span className="button-label">Follow build</span>
+          </button>
+        )}
         <button className={spin ? "active" : ""} aria-pressed={spin} onClick={() => onSpin(!spin)}>
           <ArrowsClockwiseIcon size={14} weight="bold" />
           <span className="button-label">Spin</span>
@@ -145,6 +162,8 @@ interface Props {
   syncError?: string | null;
   framing: Framing;
   spin: boolean;
+  followCamera?: boolean;
+  onFollowCamera?: (follow: boolean) => void;
   /** Called with a thumbnail once a finished revision is drawn; without it, the build keeps no thumbnail. */
   onThumbnail?: (png: Blob, revision: string) => void;
   /** The revision the build's saved thumbnail shows, which needs no new one. */
@@ -167,6 +186,8 @@ export function Viewer(props: Props) {
   const scene = useRef<BrickScene | null>(null);
   const framedBuild = useRef<string | null>(null);
   const [placement, setPlacement] = useState<PlacementProgress | null>(null);
+  const followListener = useRef(props.onFollowCamera);
+  followListener.current = props.onFollowCamera;
   const placingListener = useRef(props.onPlacing);
   placingListener.current = props.onPlacing;
   const previousBuild = useRef<string | null>(null);
@@ -210,6 +231,7 @@ export function Viewer(props: Props) {
         onError: failed,
         onWalkLock: setLocked,
         onFly: setFlying,
+        onFollowBuild: (follow) => followListener.current?.(follow),
         onPlacement: (next) => {
           setPlacement(next);
           placingListener.current?.(next.active);
@@ -244,6 +266,7 @@ export function Viewer(props: Props) {
     let current = true;
     setRenderError(null);
     if (!build) setDrawn(null);
+    s.setBuildComplete(build?.status === "done" && step >= (build?.steps.length ?? 0) - 1);
     s.setVisibleStep(step);
     const fresh = previousBuild.current !== (build?.id ?? null);
     previousBuild.current = build?.id ?? null;
@@ -258,7 +281,7 @@ export function Viewer(props: Props) {
           const same = framedBuild.current === build.id;
           if (!same) s.userMoved = false;
           framedBuild.current = build.id;
-          s.frameView(framing.view, width, depth, same);
+          if (!(build.status === "building" && s.followingBuild)) s.frameView(framing.view, width, depth, same);
         }
         s.drawCurrent();
         // Measure the full model in its own axes, independent of camera, replay and placement animation.
@@ -297,7 +320,14 @@ export function Viewer(props: Props) {
     };
   }, [ready, build?.status, version, thumbnailed, !onThumbnail]);
 
-  useEffect(() => scene.current?.setVisibleStep(step, mode === "view"), [step, retry]);
+  useEffect(() => {
+    scene.current?.setBuildComplete(build?.status === "done" && step >= (build?.steps.length ?? 0) - 1);
+    scene.current?.setVisibleStep(step, mode === "view");
+  }, [step, build?.status, retry]);
+  useEffect(
+    () => scene.current?.setFollowBuild((props.followCamera ?? true) && mode === "view" && !spin),
+    [props.followCamera, mode, spin, retry],
+  );
   useEffect(() => scene.current?.setPlacementSpeed(props.placementSpeed ?? 1), [props.placementSpeed, retry]);
 
   useEffect(() => {

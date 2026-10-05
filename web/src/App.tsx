@@ -1,3 +1,4 @@
+import { replayDelay } from "./buildTiming";
 import { PlusIcon, ShoppingBagIcon } from "@phosphor-icons/react";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { Account } from "./account";
@@ -48,7 +49,6 @@ const FilmExport = lazy(() => import("./FilmExport").then((m) => ({ default: m.F
 const InstructionsExport = lazy(() => import("./InstructionsExport").then((m) => ({ default: m.InstructionsExport })));
 const ShopDialog = lazy(() => import("./ShopDialog").then((m) => ({ default: m.ShopDialog })));
 
-const STEP_MS = 700;
 const TITLE = document.title;
 const NEW_BUILD = "New build";
 /** The phone breakpoint of styles.css. */
@@ -166,6 +166,7 @@ export default function App({ account }: { account: Account }) {
   const [speed, setSpeed] = useState(1);
   const [framing, setFraming] = useState<Framing>({ view: "iso" });
   const [spin, setSpin] = useState(false);
+  const [followCamera, setFollowCamera] = useState(true);
   const [exportBuild, setExportBuild] = useState<Build | null>(null);
   const [instructionsBuild, setInstructionsBuild] = useState<Build | null>(null);
   const [shopping, setShopping] = useState<{ build: Build; preview: Promise<Blob | null> } | null>(null);
@@ -175,6 +176,7 @@ export default function App({ account }: { account: Account }) {
 
   useEffect(() => {
     if ((mode === "edit" && (!edits.editable || readOnly)) || (mode !== "view" && !built)) setMode("view");
+    if (mode !== "view") setFollowCamera(false);
   }, [mode, edits.editable, built, readOnly]);
   const shoppable = !!build?.pieces.length && build.status !== "building";
   const shop = () => {
@@ -269,6 +271,8 @@ export default function App({ account }: { account: Account }) {
     setStep(Infinity);
     setFollowing(true);
     setPlaying(false);
+    setFollowCamera(true);
+    setSpin(false);
     setHistoryOpen(version !== null);
     setWantedVersion(version);
     setSelected(null);
@@ -305,7 +309,7 @@ export default function App({ account }: { account: Account }) {
       setFollowing(true);
       return;
     }
-    const timer = setTimeout(() => setStep((s) => s + 1), STEP_MS / speed);
+    const timer = setTimeout(() => setStep((s) => s + 1), replayDelay(step, speed));
     return () => clearTimeout(timer);
   }, [playing, placing, speed, step, last]);
 
@@ -738,6 +742,11 @@ export default function App({ account }: { account: Account }) {
             <ViewControls
               framing={framing}
               spin={spin}
+              followCamera={followCamera && mode === "view"}
+              onFollowCamera={(follow) => {
+                setFollowCamera(follow);
+                if (follow) setSpin(false);
+              }}
               mode={mode}
               canEdit={!readOnly && edits.editable && built}
               editHint={
@@ -752,10 +761,15 @@ export default function App({ account }: { account: Account }) {
               built={built}
               onFrame={(next) => {
                 if (mode === "walk") setMode("view");
+                setFollowCamera(false);
                 setFraming(next);
               }}
-              onSpin={setSpin}
+              onSpin={(next) => {
+                setFollowCamera(false);
+                setSpin(next);
+              }}
               onMode={(mode) => {
+                if (mode !== "view") setFollowCamera(false);
                 if (mode !== "edit" || !readOnly) setMode(mode);
               }}
             />
@@ -783,6 +797,8 @@ export default function App({ account }: { account: Account }) {
               syncError={selected ? null : syncError}
               framing={framing}
               spin={spin}
+              followCamera={followCamera}
+              onFollowCamera={setFollowCamera}
               onThumbnail={!readOnly && owned ? saveThumbnail : undefined}
               thumbnailed={!readOnly && owned && ref ? card(ref.id)?.revision : undefined}
               mode={mode}

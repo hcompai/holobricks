@@ -1,0 +1,23 @@
+.camera-preview {
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+  gap: 12px;
+}
+.camera-preview header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.camera-preview header span {
+  flex: 1;
+  color: var(--muted);
+}
+.camera-preview .viewer {
+  flex: 1;
+  min-height: 0;
+}
+.camera-preview .timeline {
+  flex-shrink: 0;
+}

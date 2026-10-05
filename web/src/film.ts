@@ -1,3 +1,4 @@
+import { cameraBounds, planBuildCamera, sampleBuildCamera, type CameraLayer } from "./buildCamera";
 import * as THREE from "three";
 import { GTAOPass } from "three/examples/jsm/postprocessing/GTAOPass.js";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
@@ -323,6 +324,7 @@ export class FilmRenderer {
     const tilt = new THREE.Matrix4();
     return (piece, matrix, size) => {
       const fallen = fall((time - starts[piece.step]) / flight);
+      if (!this.options.camera || this.options.camera === "follow") fallen.lift *= 6 / DROP;
       const turn = 2 * Math.PI * hash(piece.id);
       const angle = TILT * (0.6 + 0.4 * hash(piece.id + 1)) * fallen.tilt * Math.min(1, 60 / size);
       const [x, y, z] = matrix.elements.slice(12, 15);
@@ -348,11 +350,51 @@ export class FilmRenderer {
     return start + ORBIT_DEGREES + fading + surge * turntable * (s / 2 - Math.sin(2 * Math.PI * s) / (4 * Math.PI));
   }
 
-  /** The camera for every frame, framing what is built a moment ahead, smoothed so it glides. */
+  /** Follow shots hold each step; orbit and fixed remain available for exports. */
   private track(): Pose[] {
     const { fps, width, height } = this.options;
+    if (!this.options.camera || this.options.camera === "follow") {
+      const steps = new Map(this.plan.steps.map((step) => [step.index, step]));
+      const layers: CameraLayer[] = this.plan.order.map((piece, i) => {
+        const box = this.boxes[i].clone();
+        const solid = cameraBounds(box);
+        box.max.y += 6;
+        return {
+          step: piece.step,
+          start: this.plan.starts[i],
+          end: steps.get(piece.step)!.end + this.plan.flight,
+          bounds: cameraBounds(box),
+          solids: [solid],
+        };
+      });
+      const track = planBuildCamera(
+        layers,
+        null,
+        { aspect: width / height, fov: FOV, caption: CAPTION },
+        this.plan.assembled,
+        this.plan.hold - this.plan.assembled,
+      );
+      if (track)
+        return Array.from({ length: this.frames }, (_, i) => {
+          const pose = sampleBuildCamera(track, i / fps);
+          const direction = pose.position.clone().sub(pose.target);
+          return { ...pose, azimuth: THREE.MathUtils.radToDeg(Math.atan2(direction.x, direction.z)) };
+        });
+    }
     const tan = Math.tan(THREE.MathUtils.degToRad(FOV / 2));
     const [tanX, tanY] = [(tan * width) / height, tan * (1 - CAPTION)];
+    if (this.options.camera === "fixed") {
+      const direction = towardCamera(HERO_ANGLE, ELEVATION.end);
+      const whole = fit(this.final.points, direction, tanX, tanY);
+      const distance = whole.distance * MARGIN;
+      const pose = {
+        target: whole.target,
+        position: whole.target.clone().addScaledVector(direction, distance),
+        distance,
+        azimuth: HERO_ANGLE,
+      };
+      return Array.from({ length: this.frames }, () => pose);
+    }
     const built = new Hull();
     const drop = new THREE.Vector3(0, DROP, 0);
     let included = 0;

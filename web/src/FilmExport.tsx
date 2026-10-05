@@ -11,6 +11,7 @@ import {
   filmCaption,
   filmFilename,
   type FilmAspect,
+  type FilmCamera,
   type FilmOptions,
 } from "./filmPlan";
 
@@ -27,11 +28,17 @@ interface Props {
   onClose: () => void;
 }
 
-function browserOptions(aspect: FilmAspect, seconds: number, branded: boolean, samples: number): FilmOptions {
+function browserOptions(
+  aspect: FilmAspect,
+  seconds: number,
+  branded: boolean,
+  samples: number,
+  camera: FilmCamera,
+): FilmOptions {
   const { width, height } = FILM_ASPECTS[aspect];
   const scale = BROWSER_SIDE / Math.max(width, height);
   const even = (v: number) => 2 * Math.round((v * scale) / 2);
-  return { width: even(width), height: even(height), seconds, fps: BROWSER_FPS, samples, branded };
+  return { width: even(width), height: even(height), seconds, fps: BROWSER_FPS, samples, branded, camera };
 }
 
 const megabytes = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1)} MB`;
@@ -45,6 +52,7 @@ export function FilmExport({ build, onClose }: Props) {
   const queue = useRef(Promise.resolve());
   const [aspect, setAspect] = useState<FilmAspect>("16:9");
   const [seconds, setSeconds] = useState(8);
+  const [camera, setCamera] = useState<FilmCamera>("follow");
   const [branded, setBranded] = useState(brandable(build));
   const [ready, setReady] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -55,7 +63,7 @@ export function FilmExport({ build, onClose }: Props) {
   const [retry, setRetry] = useState(0);
   const caption = filmCaption(build, branded);
   const size = FILM_ASPECTS[aspect];
-  const made = browserOptions(aspect, seconds, branded, 1);
+  const made = browserOptions(aspect, seconds, branded, 1, camera);
   const canShare = !!file && !!navigator.canShare?.({ files: [file] });
 
   useEffect(() => {
@@ -112,7 +120,7 @@ export function FilmExport({ build, onClose }: Props) {
   const preview = () => {
     const r = renderer.current;
     if (!r) return;
-    r.configure(browserOptions(aspect, seconds, branded, PREVIEW_SAMPLES));
+    r.configure(browserOptions(aspect, seconds, branded, PREVIEW_SAMPLES, camera));
     r.render(r.frames - 1);
   };
 
@@ -124,7 +132,7 @@ export function FilmExport({ build, onClose }: Props) {
     setError("");
     setNotice("");
     try {
-      r.configure(browserOptions(aspect, seconds, branded, 1));
+      r.configure(browserOptions(aspect, seconds, branded, 1, camera));
       r.calibrate(BROWSER_BUDGET_MS, BROWSER_MOST_SAMPLES);
       const blob = await encodeGif(r, BROWSER_FPS, signal, setProgress);
       signal.throwIfAborted();
@@ -142,7 +150,7 @@ export function FilmExport({ build, onClose }: Props) {
     const controller = new AbortController();
     queue.current = queue.current.then(() => generate(controller.signal));
     return () => controller.abort();
-  }, [ready, aspect, seconds, branded]);
+  }, [ready, aspect, seconds, branded, camera]);
 
   const share = async () => {
     if (!file || !canShare) return;
@@ -218,6 +226,14 @@ export function FilmExport({ build, onClose }: Props) {
           </div>
           <details className="film-options">
             <summary>Options</summary>
+            <label>
+              Camera
+              <select value={camera} onChange={(e) => setCamera(e.target.value as FilmCamera)}>
+                <option value="follow">Follow build</option>
+                <option value="orbit">Orbit</option>
+                <option value="fixed">Fixed</option>
+              </select>
+            </label>
             <label>
               Format
               <select value={aspect} onChange={(e) => setAspect(e.target.value as FilmAspect)}>
