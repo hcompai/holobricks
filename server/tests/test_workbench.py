@@ -45,7 +45,10 @@ def test_workbench_places_valid_bricks_anywhere_from_x_and_y_0_and_explains_ever
     assert "overlaps brick 1 (3001 at x=4 y=4 z=0) of this step" in result.text
     assert "brick 3 (3001 at x=-1 y=0 z=0): x and y start at 0" in result.text
     assert "unknown part" in result.text
-    assert "brick 6 (3001 at x=10 y=10 z=6): nothing under or above it" in result.text
+    assert (
+        "brick 6 (3001 at x=10 y=10 z=6): no chain of stacked bricks from it reaches the ground or an earlier step"
+        in result.text
+    )
     placed = [grid(p) for p in bench.pieces]
     assert placed == [(4, 4, 0, 0), (200, 150, 0, 0), (10, 10, 6, 0), (4, 4, 3, 90)]
     assert (bench.workspace.build.width, bench.workspace.build.depth) == (204, 152)
@@ -117,7 +120,7 @@ def test_a_step_with_floating_bricks_is_rebuilt_and_reported_every_run(bench):
     for _ in range(2):
         result = bench.run_script(code)
         assert "kept step 1 unchanged, rebuilt and checked 1 step." in result.text, result.text
-        assert 'line 4 `brick("3005", 10, 10, 6, 4)` (3005 at x=10 y=10 z=6): nothing under' in result.text
+        assert 'line 4 `brick("3005", 10, 10, 6, 4)` (3005 at x=10 y=10 z=6): no chain of stacked' in result.text
 
 
 def test_problems_made_in_a_helper_name_each_line_that_called_it(bench):

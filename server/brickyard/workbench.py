@@ -42,6 +42,7 @@ PROBLEM_LIMIT = 12
 PARTS_SHOWN = 12
 PARTS_FOUND = 20
 FLOATING_SHOWN = 5
+LOOSE = "no chain of stacked bricks from it reaches the ground or an earlier step"
 LINES_CITED = 3
 SCRIPT_TIMEOUT_S = 40
 """Well under the agent's 60 s shell wait, so a run and the share after it see the same revision."""
@@ -279,7 +280,7 @@ class Workbench:
         floating = []
         for _, box, origin, label, _, facing in accepted:
             if id(box) not in supported:
-                floating.append((origin, f"{label}: nothing under or above it"))
+                floating.append((origin, f"{label}: {LOOSE}"))
             elif facing and not backed(box, facing):
                 floating.append((origin, f"{label}: nothing behind it"))
 
@@ -509,18 +510,20 @@ def _cite_lines(report: dict, steps: list[dict], source: list[str]) -> None:
 
 
 def _floating(flags: list[tuple[int, str, str]]) -> str:
-    """How many placed bricks float and in which steps, then the first one from each script line."""
+    """How many placed bricks float and in which steps, then the script lines with the most, each with its first."""
     first: dict[str, str] = {}
+    counts = Counter(origin for _, origin, _ in flags)
     for _, origin, note in flags:
         first.setdefault(origin, note)
     steps = sorted({n for n, _, _ in flags})
     where = f"step{'s' * (len(steps) != 1)} {', '.join(map(str, steps))}"
     header = f"Floating, placed but flagged: {len(flags)} brick{'s' * (len(flags) != 1)} in {where}."
-    more = len(first) - FLOATING_SHOWN
+    shown = [f"{n} from {first[origin]}" for origin, n in counts.most_common(FLOATING_SHOWN)]
+    more = len(counts) - FLOATING_SHOWN
     return "\n".join(
         [
-            header + " The first from each script line:",
-            *list(first.values())[:FLOATING_SHOWN],
+            header + " By script line, with the first of each:",
+            *shown,
             *([f"... and {more} more script line{'s' * (more != 1)}."] if more > 0 else []),
         ]
     )

@@ -156,13 +156,16 @@ def test_support_is_checked_on_the_complete_step_in_any_line_order(bench):
 def test_floating_bricks_are_placed_with_a_note_and_cannot_support_each_other(bench):
     result = bench.run_script('step("Floating pair")\nbrick("3001", 0, 0, 6, 4)\nbrick("3001", 0, 0, 9, 4)')
     assert result.problems == 0 and "Floating, placed but flagged: 2 bricks in step 1" in result.text
-    assert result.text.count("nothing under or above it") == 2
+    assert result.text.count("no chain of stacked bricks from it reaches the ground or an earlier step") == 2
     assert len(bench.pieces) == 2
 
 
 def test_a_later_step_cannot_retroactively_support_an_earlier_step(bench):
     result = bench.run_script('step("Top first")\nbrick("3001", 0, 0, 3, 4)\n' + CORE)
-    assert "1 brick in step 1" in result.text and "nothing under or above it" in result.text
+    assert (
+        "1 brick in step 1" in result.text
+        and "no chain of stacked bricks from it reaches the ground or an earlier step" in result.text
+    )
 
 
 def test_fixed_manual_steps_survive_script_rejection_and_script_removal(bench):
