@@ -10,12 +10,14 @@ import {
   ArrowUUpLeftIcon,
   ArrowUUpRightIcon,
   CopyIcon,
+  SwapIcon,
   TrashIcon,
   XIcon,
 } from "@phosphor-icons/react";
 import { useState } from "react";
 import type { Edits } from "./edits";
 import type { Color } from "./palette";
+import { PartPicker } from "./PartPicker";
 
 /** What the selected piece can do; moves follow the screen, snapped to the model's axes. */
 export type Action =
@@ -164,25 +166,71 @@ interface ColorProps {
   onColor: (code: number) => void;
 }
 
-/** The selection's controls: move a stud or a plate, turn a quarter about its middle, recolor or delete it. */
+export interface ReplaceProps {
+  /** The model's parts, most used first. */
+  usedParts: string[];
+  /** The model's packed parts. */
+  packs: Record<string, string>;
+  /** The selected pieces' parts. */
+  currentParts: string[];
+  onReplace: (part: string, pack: string) => void;
+}
+
+/** The selection's controls: move a stud or a plate, turn a quarter about its middle, recolor, replace or delete it. */
 export function EditPanel({
   label,
   onAction,
   onClose,
+  usedParts,
+  packs,
+  currentParts,
+  onReplace,
   ...color
 }: {
   label: string;
   onAction: (a: Action) => void;
   onClose: () => void;
-} & ColorProps) {
+} & ColorProps &
+  ReplaceProps) {
+  const [replacing, setReplacing] = useState(false);
   return (
-    <div className="edit-panel" role="dialog" aria-label="Selection">
+    <div className={replacing ? "edit-panel replacing" : "edit-panel"} role="dialog" aria-label="Selection">
       <div className="edit-panel-head">
         <b title={label}>{label}</b>
         <button className="quiet icon-button" onClick={onClose} title="Deselect (Esc)" aria-label="Deselect">
           <XIcon size={14} weight="bold" />
         </button>
       </div>
+      {replacing ? (
+        <PartPicker
+          used={usedParts}
+          packs={packs}
+          current={currentParts}
+          color={color.current[0] ?? 16}
+          onPick={(part, pack) => {
+            onReplace(part, pack);
+            setReplacing(false);
+          }}
+          onBack={() => setReplacing(false)}
+        />
+      ) : (
+        <SelectionControls onAction={onAction} onReplace={() => setReplacing(true)} color={color} />
+      )}
+    </div>
+  );
+}
+
+function SelectionControls({
+  onAction,
+  onReplace,
+  color,
+}: {
+  onAction: (a: Action) => void;
+  onReplace: () => void;
+  color: ColorProps;
+}) {
+  return (
+    <>
       <div className="edit-moves">
         {MOVES.map((m) => (
           <button
@@ -197,6 +245,10 @@ export function EditPanel({
         ))}
       </div>
       <ColorPicker {...color} />
+      <button className="edit-replace" onClick={onReplace} title="Replace with another part" aria-label="Replace part">
+        <SwapIcon size={16} weight="bold" />
+        <span>Replace part</span>
+      </button>
       <div className="edit-actions">
         <button onClick={() => onAction("turnLeft")} title="Turn left (⇧R)" aria-label="Turn left">
           <ArrowCounterClockwiseIcon size={16} weight="bold" />
@@ -211,6 +263,6 @@ export function EditPanel({
           <TrashIcon size={16} weight="bold" />
         </button>
       </div>
-    </div>
+    </>
   );
 }

@@ -1,6 +1,8 @@
-"""Put the files the web app serves in web/public: the Workstation toolkit and the LDraw palette. Run with server/.venv/bin/python."""
+"""Put the files the web app serves in web/public: the Workstation toolkit, the LDraw palette and the parts to replace pieces with. Run with server/.venv/bin/python."""
 
 import io
+import json
+import re
 import shutil
 import sys
 import tarfile
@@ -15,6 +17,7 @@ PUBLIC = ROOT / "web" / "public"
 OUT = PUBLIC / "brickyard.tgz"
 LIMIT = 2_000_000
 """User files share 7 MB per message with the user's photos."""
+PARTS = PUBLIC / "parts.json"
 
 
 def files() -> list[tuple[str, bytes]]:
@@ -32,6 +35,22 @@ def files() -> list[tuple[str, bytes]]:
     return out
 
 
+def replacements() -> dict:
+    """The parts listed in Holo's prompt, packed, for the editor's Replace picker: the same parts Holo builds with."""
+    prompt = (ROOT / "agent" / "holo.md").read_text()
+    section = prompt.split("\n## Parts (")[1].split("\n## ")[0]
+    names = dict.fromkeys(re.findall(r"\b(\d+[a-z]?(?:p\d+)?[a-z]?) \d+x\d+", section))
+    parts, packs = [], {}
+    for name in names:
+        part = ldraw.resolve(name)
+        if part is None:
+            sys.exit(f"agent/holo.md lists {name}, which is not in the LDraw library")
+        info = ldraw.info(part)
+        parts.append({"part": part, "title": info.title, "studs": list(info.footprint), "plates": info.plates})
+        packs[part] = ldraw.pack(part)
+    return {"parts": parts, "packs": packs}
+
+
 def main() -> None:
     if not catalog.SNAPSHOT.exists():
         sys.exit("Build the catalog snapshot first: server/.venv/bin/brickyard-catalog")
@@ -45,7 +64,9 @@ def main() -> None:
     if size > LIMIT:
         sys.exit(f"{OUT} is {size / 1e6:.1f} MB, over the {LIMIT / 1e6:.0f} MB budget")
     shutil.copy(ldraw.LDRAW / "LDConfig.ldr", PUBLIC / "LDConfig.ldr")
-    print(f"{OUT} ({size / 1e6:.2f} MB), {PUBLIC / 'LDConfig.ldr'}")
+    replaceable = replacements()
+    PARTS.write_text(json.dumps(replaceable, separators=(",", ":")))
+    print(f"{OUT} ({size / 1e6:.2f} MB), {PUBLIC / 'LDConfig.ldr'}, {PARTS} ({len(replaceable['parts'])} parts)")
 
 
 if __name__ == "__main__":
