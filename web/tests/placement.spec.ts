@@ -100,6 +100,10 @@ test("live revisions place individually, pause, resume and skip; backward steps 
   expect(count).toBeLessThan(100);
   await page.waitForTimeout(250);
   await expect(viewer).toHaveAttribute("data-placed", String(count));
+  // Keep the view fixed when comparing exports: follow mode changes composition between steps.
+  const follow = page.getByRole("button", { name: "Follow build", exact: true });
+  await follow.click();
+  await expect(follow).toHaveAttribute("aria-pressed", "false");
   const png = async () => {
     const download = page.waitForEvent("download");
     await page.getByRole("button", { name: "Share", exact: true }).click();

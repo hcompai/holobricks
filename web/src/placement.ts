@@ -1,4 +1,5 @@
 import type { Piece } from "./model";
+import { CAMERA_MOVE_SECONDS } from "./buildTiming";
 
 export const SETTLE_SECONDS = 0.09;
 
@@ -6,6 +7,7 @@ export interface PlacementPlan {
   pieces: Piece[];
   starts: Map<number, number>;
   duration: number;
+  steps: { index: number; start: number; end: number }[];
 }
 
 const same = (a: Piece, b: Piece) =>
@@ -24,16 +26,20 @@ export function planPlacement(pieces: Piece[], previous: Piece[]): PlacementPlan
     );
   const starts = new Map<number, number>();
   let duration = 0;
+  const steps: PlacementPlan["steps"] = [];
   for (let first = 0; first < changed.length;) {
     let end = first + 1;
     while (end < changed.length && changed[end].step === changed[first].step) end++;
+    if (first) duration += CAMERA_MOVE_SECONDS;
+    const start = duration;
     const count = end - first;
     const seconds = Math.min(2.2, Math.max(0.38, Math.sqrt(count) * 0.035));
     for (let i = first; i < end; i++) starts.set(changed[i].id, duration + ((i - first) / count) * seconds);
     duration += seconds + SETTLE_SECONDS;
+    steps.push({ index: changed[first].step, start, end: duration });
     first = end;
   }
-  return { pieces: changed, starts, duration };
+  return { pieces: changed, starts, duration, steps };
 }
 
 export function placedCount(plan: PlacementPlan, seconds: number): number {

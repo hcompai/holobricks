@@ -77,3 +77,16 @@ test("missing parts block exporting a misleading partial model; other builders c
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
 });
+
+test("close-up follow camera exports a GIF and offers orbit and fixed alternatives", async ({ page }) => {
+  await mock(page);
+  await openFilm(page);
+  const dialog = page.getByRole("dialog");
+  await dialog.getByText("Options", { exact: true }).click();
+  const camera = dialog.getByRole("combobox", { name: "Camera", exact: true });
+  await expect(camera).toHaveValue("follow");
+  await expect(camera.locator("option")).toHaveText(["Follow build", "Orbit", "Fixed"]);
+  await expect(dialog.getByRole("link", { name: "Download GIF", exact: true })).toBeVisible({ timeout: 120000 });
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+});
