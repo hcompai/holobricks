@@ -8,9 +8,9 @@ import random
 from collections import Counter
 from collections.abc import Callable
 
+from brickyard.sculpt import Color, Sculpture, circle, erode
 from brickyard.shapes import rect
 from brickyard.showcase.kit import Kit
-from brickyard.showcase.sculpt import Color, Sculpture, circle, erode
 
 W, D = 152, 124
 """The plan's frame: the crag and the lake spill past it on every side."""

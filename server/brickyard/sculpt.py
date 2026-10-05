@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 from collections import defaultdict, deque
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Hashable, Iterable
 
 from brickyard import ldraw
 from brickyard.shapes import BRICK_RUN, brick, footprint, split
@@ -12,7 +12,7 @@ from brickyard.shapes import BRICK_RUN, brick, footprint, split
 Cell = tuple[int, int]
 Voxel = tuple[int, int, int]
 Color = int | Callable[[int, int, int], int]
-Piece = tuple[float, str, dict]
+Piece = tuple[float, Hashable, dict]
 SIDES = {(0, -1): 0, (-1, 0): 90, (1, 0): 270, (0, 1): 180}
 SLOPES = {1: "3040b", 2: "60481a", 3: "4460b"}
 
@@ -38,13 +38,14 @@ def erode(cells: set[Cell], ridge: str | None = None) -> set[Cell]:
 
 
 class Sculpture:
-    """Solids unioned voxel by voxel, one stud by one brick course; course k sits at plate 1 + 3k."""
+    """Solids unioned voxel by voxel, one stud by one brick course; course k sits at plate z0 + 3k."""
 
-    def __init__(self) -> None:
-        self.solid: dict[Voxel, tuple[int, bool, str]] = {}
+    def __init__(self, z0: int = 1) -> None:
+        self.z0 = z0
+        self.solid: dict[Voxel, tuple[int, bool, Hashable]] = {}
         self.claimed: set[Voxel] = set()
         self.parts: list[Piece] = []
-        self.owner = ""
+        self.owner: Hashable = ""
         self.overhangs = 0
 
     def fill(self, cells: Iterable[Cell], k0: int, k1: int, color: Color, sloped: bool = False) -> None:
@@ -84,7 +85,7 @@ class Sculpture:
                 for c in range(k, k + courses):
                     self.solid.pop((i, j, c), None)
                     self.claimed.add((i, j, c))
-        self.parts.append((k, self.owner, brick(part, x, y, 1 + 3 * k, color, rotation)))
+        self.parts.append((k, self.owner, brick(part, x, y, self.z0 + 3 * k, color, rotation)))
 
     def clip(self, ground: Callable[[int, int], int]) -> None:
         """Drops the voxels below the ground's surface course."""
@@ -120,7 +121,7 @@ class Sculpture:
                 x, y = run[0]
                 color, _, owner = self.solid[(*c, k)]
                 along_x = run[0][1] == run[-1][1]
-                out.append((k, owner, brick(BRICK_RUN[len(run)], x, y, 1 + 3 * k, color, 0 if along_x else 90)))
+                out.append((k, owner, brick(BRICK_RUN[len(run)], x, y, self.z0 + 3 * k, color, 0 if along_x else 90)))
             rest = {c for c in shown[k] - bridged if (*c, k) not in done}
             out += self._runs(rest, k, held)
         return sorted(out + self.parts, key=lambda p: p[0])
@@ -160,7 +161,7 @@ class Sculpture:
                     continue
                 for j in range(b, k + 1):
                     done.update(((x, y, j), (wx, wy, j)))
-                out.append((b, owner, brick(SLOPES[m], min(x, wx), min(y, wy), 1 + 3 * b, color, SIDES[dx, dy])))
+                out.append((b, owner, brick(SLOPES[m], min(x, wx), min(y, wy), self.z0 + 3 * b, color, SIDES[dx, dy])))
         return out
 
     def _face(self, x: int, y: int, wx: int, wy: int, dx: int, dy: int, j: int, done: set[Voxel]) -> bool:
@@ -314,7 +315,11 @@ class Sculpture:
                 hangs = not any(held(x + dx * i, y + dy * i, k) for i in range(size))
                 self.overhangs += hangs
                 out.append(
-                    (k + 1.5 if hangs else k, owner, brick(BRICK_RUN[size], x, y, 1 + 3 * k, color, 0 if dx else 90))
+                    (
+                        k + 1.5 if hangs else k,
+                        owner,
+                        brick(BRICK_RUN[size], x, y, self.z0 + 3 * k, color, 0 if dx else 90),
+                    )
                 )
                 at += size
             free -= {(c[0] + dx * i, c[1] + dy * i) for i in range(n)}

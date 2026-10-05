@@ -95,7 +95,7 @@ Decision (agreed with the user): **build only the left part, at ~3x the scale**.
 
 Lesson: **name the buildings first** (search "which tower is in shot X"); a name unlocks plans, proportions and fan reconstructions.
 
-### 4.5 A voxel sculptor (`showcase/sculpt.py`)
+### 4.5 A voxel sculptor (`server/brickyard/sculpt.py`)
 
 Big round towers and cones don't exist as parts, and hand-placing bricks can't union buildings. So:
 
