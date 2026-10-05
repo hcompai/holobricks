@@ -148,8 +148,9 @@ class Sculpture:
             for c, run in runs[k]:
                 x, y = run[0]
                 color, _, owner = self.solid[(*c, k)]
-                along_x = run[0][1] == run[-1][1]
-                out.append((k, owner, brick(BRICK_RUN[len(run)], x, y, self.z0 + 3 * k, color, 0 if along_x else 90)))
+                along_x, along_y = run[0][1] == run[-1][1], run[0][0] == run[-1][0]
+                part = BRICK_RUN[len(run)] if along_x or along_y else "3003"
+                out.append((k, owner, brick(part, x, y, self.z0 + 3 * k, color, 90 if along_y else 0)))
             rest = {c for c in shown[k] - bridged if (*c, k) not in done}
             out += self._runs(rest, k, held)
         return sorted(out + self.parts, key=lambda p: p[0])
@@ -219,18 +220,21 @@ class Sculpture:
         axes = [(1, 0), (-1, 0), (0, 1), (0, -1)]
         if k % 2:
             axes = axes[2:] + axes[:2]
+        runs = [[(c[0] + dx * i, c[1] + dy * i) for i in range(n)] for n in (2, 3, 4) for dx, dy in axes]
+        if self.supported:
+            runs += [
+                [(c[0] + sx + i, c[1] + sy + j) for i in (0, 1) for j in (0, 1)] for sx in (0, -1) for sy in (0, -1)
+            ]
         out = []
-        for n in (2, 3, 4):
-            for dx, dy in axes:
-                cells = [(c[0] + dx * i, c[1] + dy * i) for i in range(n)]
-                if all(
-                    q in layer
-                    and q not in taken
-                    and (*q, k) not in done
-                    and not (strict and q in shown and self.solid[(*q, k)][0] != color)
-                    for q in cells
-                ) and any(held(*q, k) for q in cells[1:]):
-                    out.append(sorted(cells))
+        for cells in runs:
+            if all(
+                q in layer
+                and q not in taken
+                and (*q, k) not in done
+                and not (strict and q in shown and self.solid[(*q, k)][0] != color)
+                for q in cells
+            ) and any(held(*q, k) for q in cells if q != c):
+                out.append(sorted(cells))
         return out
 
     def _hold(self, k: int, layer, shown, runs: list[tuple[Cell, list[Cell]]], done, held) -> None:

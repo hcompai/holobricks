@@ -157,7 +157,7 @@ class Script:
         sc, k = self._grid(z, height)
         sc.carve(cells, k, k + height // 3)
 
-    def roof(self, cells: Iterable[Cell], z: int, color: Shade, pitch: int = 6, ridge: str | None = None) -> int:
+    def roof(self, cells: Iterable[Cell], z: int, color: Shade, pitch: int = 3, ridge: str | None = None) -> int:
         """A solid roof from plate z, in one stud every `pitch` plates; returns the plate above its top."""
         if pitch < 3:
             raise ValueError("a roof's pitch is 3 plates or more")

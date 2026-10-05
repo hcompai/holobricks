@@ -88,7 +88,7 @@ signed in ──GET /api/builds (pass + key)──▶ the public library
 
 ## Showcases and deploy
 
-Paris, London and Hogwarts are scripted in `server/brickyard/showcase` and pass the same checks as Holo's bricks. Bag End (`6eb28d127e`) is a Holo build: its script, `agent/showcase/bag-end.py`, is printed in full in Holo's prompt as the worked example.
+Paris, London and Hogwarts are scripted in `server/brickyard/showcase` and pass the same checks as Holo's bricks. Bag End (`6eb28d127e`) is a Holo build: its script, `agent/showcase/bag-end.py`, is one of the showcases Holo studies. Holo's prompt carries a shorter worked example on the solids `build.py` offers; a server test runs it and requires no problems and no floating brick.
 
 ```bash
 server/.venv/bin/python -m brickyard.showcase paris   # or london, hogwarts: regenerates data/builds/paris.json

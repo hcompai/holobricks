@@ -131,7 +131,7 @@ def test_solids_become_hollow_bonded_shells_that_give_way_to_placed_parts(bench)
     )
     result = bench.run_script(code)
     assert "No problems" in result.text and "Floating" not in result.text, result.text
-    assert "\n37 37" in result.text
+    assert "\n25 25" in result.text
     house = [grid(p) for p in bench.pieces if p.step == 1]
     assert (4, 2, 4, 0) in house
     assert not any(x <= 6 < x + 2 and y <= 5 < y + 2 and z < 13 for x, y, z, _ in house)
@@ -249,6 +249,16 @@ def test_the_showcase_builds_with_no_problems_against_the_real_catalog(tmp_path)
     result = bench.run_script(example)
     assert len(bench.workspace.build.pieces) > 7_000, result.text
     assert result.problems == 0 and "No problems: every brick is known, fits" in result.text, result.text
+
+
+@pytest.mark.skipif(not catalog.SNAPSHOT.exists(), reason="catalog snapshot not built")
+def test_the_prompts_example_builds_with_no_problems_and_nothing_floating(tmp_path):
+    prompt = (Path(__file__).resolve().parents[2] / "agent" / "holo.md").read_text()
+    example = prompt.split("\nExample: ")[1].split("```python\n")[1].split("```")[0]
+    bench = Workbench(Workspace.open(tmp_path))
+    result = bench.run_script(example)
+    assert result.problems == 0 and "Floating" not in result.text, result.text
+    assert len(bench.pieces) > 3_000, result.text
 
 
 def test_the_prompt_names_only_real_parts_sizes_and_colors():
