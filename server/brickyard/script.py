@@ -9,6 +9,7 @@ import random
 import sys
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Sequence
+from functools import cache
 
 from brickyard import catalog, ldraw, shapes
 from brickyard.model import IDENTITY, Brick, Placement, bounds, extent
@@ -20,6 +21,7 @@ MAX_BRICKS = 100_000
 PRINT_LIMIT = 2000
 API = ("step", "brick", "mount", "place", "top", "colors", "box", "disc", "fill", "carve", "roof", "cone", "cover")
 Shade = int | Callable[[int, int, int], int]
+RUN_LENGTH = {part: n for n, part in shapes.BRICK_RUN.items()}
 
 
 class Script:
@@ -111,8 +113,7 @@ class Script:
     @staticmethod
     def colors(part: str) -> set[int]:
         """The LDraw codes of the colors `part` comes in, empty for a part the catalog does not know."""
-        record = catalog.snapshot().parts.get(ldraw.resolve(str(part)) or "")
-        return {c["color"] for c in catalog.available_colors(record)} if record else set()
+        return set(_made_in(str(part)))
 
     @staticmethod
     def box(x: int, y: int, w: int, d: int) -> set[Cell]:
@@ -131,7 +132,7 @@ class Script:
         if z < 0:
             raise ValueError(f"z={z} is below the ground")
         if self.sculpture is None:
-            self.sculpture = Sculpture(z % 3)
+            self.sculpture = Sculpture(z % 3, supported=True)
         sc = self.sculpture
         if (z - sc.z0) % 3 or height % 3:
             raise ValueError(
@@ -173,13 +174,18 @@ class Script:
         return sc.z0 + 3 * end
 
     def cover(self, cells: Iterable[Cell], z: int, color: int | Callable[[int, int], int], tiles: bool = False) -> None:
-        """One layer of plates (or tiles) at z over the studs, largest first; skips studs already filled there."""
+        """One layer of plates (or tiles) at z over the studs, largest first in parts that come in the color; skips
+        studs already filled there."""
         groups: dict[int, set[Cell]] = defaultdict(set)
         for c in cells:
             if not any(lo <= z < hi for lo, hi in self.columns.get(c, ())):
                 groups[color(*c) if callable(color) else color].add(c)
         sizes = shapes.TILES if tiles else shapes.PLATES
-        self._add([b for shade, group in groups.items() for b in shapes.cover(group, z, shade, sizes)])
+        bricks = []
+        for shade, group in groups.items():
+            made = [s for s in sizes if shade in self.colors(s[2])]
+            bricks += shapes.cover(group, z, shade, made if any(w == d == 1 for w, d, _ in made) else sizes)
+        self._add(bricks)
 
     def _flush(self) -> None:
         """Turn the step's solids into bricks: the shell only, slopes on steps, giving way to pieces placed."""
@@ -192,7 +198,31 @@ class Script:
                     sc.solid.pop((x, y, k), None)
                     sc.claimed.add((x, y, k))
         pieces = sc.mesh(lambda x, y: 0 if sc.z0 == 0 else -1)
-        self._record([(b, *owner) for _, owner, b in pieces])  # type: ignore[misc]
+        self._record([(part, *owner) for _, owner, b in pieces for part in _in_color(b)])  # type: ignore[misc]
+
+
+@cache
+def _made_in(part: str) -> frozenset[int]:
+    """Empty without a catalog too: the run's catalog check reports that."""
+    try:
+        record = catalog.snapshot().parts.get(ldraw.resolve(part) or "")
+    except catalog.CatalogUnavailable:
+        return frozenset()
+    return frozenset(c["color"] for c in catalog.available_colors(record)) if record else frozenset()
+
+
+def _in_color(b: dict) -> list[dict]:
+    """A run of bricks in sizes that come in its color, the brick itself when it does or no size would."""
+    n = RUN_LENGTH.get(b["part"])
+    sizes = {k: v for k, v in shapes.BRICK_RUN.items() if b["color"] in _made_in(v)}
+    if n is None or b["color"] in _made_in(b["part"]) or 1 not in sizes:
+        return [b]
+    dx, dy = (1, 0) if b["rotation"] % 180 == 0 else (0, 1)
+    out, at = [], 0
+    for size in shapes.split(n, sizes, stagger=False):
+        out.append(b | {"part": sizes[size], "x": b["x"] + dx * at, "y": b["y"] + dy * at})
+        at += size
+    return out
 
 
 def _explain(error: BaseException, code: str) -> str:

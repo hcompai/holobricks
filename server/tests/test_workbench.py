@@ -123,6 +123,26 @@ def test_a_step_with_floating_bricks_is_rebuilt_and_reported_every_run(bench):
         assert 'line 4 `brick("3005", 10, 10, 6, 4)` (3005 at x=10 y=10 z=6): no chain of stacked' in result.text
 
 
+def test_solids_become_hollow_bonded_shells_that_give_way_to_placed_parts(bench):
+    code = (
+        'step("Ground")\ncover(box(0, 0, 16, 16), 0, 2)\nstep("House")\nfill(box(2, 2, 10, 8), 1, 12, 71)\n'
+        'brick("60593", 4, 2, 4, 15)\nz = roof(box(2, 2, 10, 8), 13, 272, ridge="x")\nprint(z, top(6, 5))\n'
+        'step("Plateau")\nfill(box(20, 0, 20, 20), 0, 9, 2)\nbrick("3001", 22, 2, 9, 4)\n'
+    )
+    result = bench.run_script(code)
+    assert "No problems" in result.text and "Floating" not in result.text, result.text
+    assert "\n37 37" in result.text
+    house = [grid(p) for p in bench.pieces if p.step == 1]
+    assert (4, 2, 4, 0) in house
+    assert not any(x <= 6 < x + 2 and y <= 5 < y + 2 and z < 13 for x, y, z, _ in house)
+    assert len(house) < 10 * 8 * 4
+
+
+def test_solids_in_one_step_share_one_grid_of_whole_courses(bench):
+    result = bench.run_script('step("Walls")\nfill(box(0, 0, 4, 4), 0, 3, 4)\nfill(box(0, 0, 4, 4), 4, 3, 4)\n')
+    assert "line 3" in result.text and "solids come in whole bricks" in result.text, result.text
+
+
 def test_problems_made_in_a_helper_name_each_line_that_called_it(bench):
     code = 'def column(x):\n    brick("3005", x, 0, 3, 4)\nstep("Columns")\ncolumn(0)\ncolumn(5)\n'
     result = bench.run_script(code)

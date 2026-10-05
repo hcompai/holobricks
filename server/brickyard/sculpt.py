@@ -40,10 +40,14 @@ def erode(cells: set[Cell], ridge: str | None = None) -> set[Cell]:
 class Sculpture:
     """Solids unioned voxel by voxel, one stud by one brick course; course k sits at plate z0 + 3k."""
 
-    def __init__(self, z0: int = 1) -> None:
+    def __init__(self, z0: int = 1, supported: bool = False) -> None:
+        """With `supported`, a brick nothing holds gets the hidden voxels under it as bricks, down to support."""
         self.z0 = z0
+        self.supported = supported
         self.solid: dict[Voxel, tuple[int, bool, Hashable]] = {}
         self.claimed: set[Voxel] = set()
+        self.core: set[Voxel] = set()
+        self.hanging: list[Voxel] = []
         self.parts: list[Piece] = []
         self.owner: Hashable = ""
         self.overhangs = 0
@@ -101,6 +105,30 @@ class Sculpture:
 
     def mesh(self, ground: Callable[[int, int], int]) -> list[Piece]:
         """Bricks for the shell of every course, with the course and owner of each, lowest first."""
+        pieces = self._mesh(ground)
+        while self.supported:
+            core = {v for x, y, k in self.hanging for v in self._under(x, y, k, ground)} - self.core
+            if not core:
+                break
+            self.core |= core
+            pieces = self._mesh(ground)
+        return pieces
+
+    def _under(self, x: int, y: int, k: int, ground: Callable[[int, int], int]) -> list[Voxel]:
+        """The solid voxels under a stud down to the ground, a placed part or a support; none over open space."""
+        out = []
+        while k > ground(x, y):
+            below = (x, y, k - 1)
+            if below in self.claimed or below in self.core:
+                return out
+            if below not in self.solid:
+                return []
+            out.append(below)
+            k -= 1
+        return out
+
+    def _mesh(self, ground: Callable[[int, int], int]) -> list[Piece]:
+        self.hanging, self.overhangs = [], 0
         layers: dict[int, set[Cell]] = defaultdict(set)
         for x, y, k in self.solid:
             layers[k].add((x, y))
@@ -129,7 +157,7 @@ class Sculpture:
     def _shown(self, c: Cell, k: int, cells: set[Cell]) -> bool:
         """Seen from outside or carrying something: near an empty stud of its course, or open on top."""
         x, y = c
-        if (x, y, k + 1) not in self.solid:
+        if (x, y, k + 1) not in self.solid or (x, y, k) in self.core:
             return True
         t = 2 if self.solid[x, y, k][1] else 1
         return any((x + dx, y + dy) not in cells for dx in range(-t, t + 1) for dy in range(-t, t + 1))
@@ -314,6 +342,8 @@ class Sculpture:
                 x, y = c[0] + dx * at, c[1] + dy * at
                 hangs = not any(held(x + dx * i, y + dy * i, k) for i in range(size))
                 self.overhangs += hangs
+                if hangs:
+                    self.hanging += [(x + dx * i, y + dy * i, k) for i in range(size)]
                 out.append(
                     (
                         k + 1.5 if hangs else k,
