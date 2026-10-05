@@ -45,13 +45,23 @@ test("model size uses the rendered parts, stays fixed during replay and follows 
   await page.emulateMedia({ colorScheme: "dark" });
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(size).toBeVisible();
-  const bounds = (await size.boundingBox())!;
-  const viewer = (await page.locator(".viewer").boundingBox())!;
-  const sound = (await page.locator(".viewer > .placement-sound").boundingBox())!;
-  expect(bounds.x).toBeGreaterThanOrEqual(viewer.x);
-  expect(bounds.y).toBeGreaterThanOrEqual(viewer.y);
-  expect(bounds.x + bounds.width).toBeLessThanOrEqual(sound.x);
-  expect(bounds.y + bounds.height).toBeLessThanOrEqual(viewer.y + viewer.height);
+  // Read every rectangle in the same layout, and allow the responsive resize to settle.
+  await expect
+    .poll(() =>
+      size.evaluate((element) => {
+        const viewer = element.closest(".viewer")!;
+        const bounds = element.getBoundingClientRect();
+        const frame = viewer.getBoundingClientRect();
+        const sound = viewer.querySelector(":scope > .placement-sound")!.getBoundingClientRect();
+        return (
+          bounds.left >= frame.left &&
+          bounds.top >= frame.top &&
+          bounds.right <= sound.left &&
+          bounds.bottom <= frame.bottom
+        );
+      }),
+    )
+    .toBe(true);
   await page.screenshot({ path: testInfo.outputPath("model-size-mobile.png") });
 
   agp.share("size", revised({ ...model, pieces: [], steps: [] }));
