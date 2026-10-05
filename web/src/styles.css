@@ -1996,10 +1996,9 @@ main {
 .edit-moves {
   display: grid;
   grid-template-areas:
-    ". forward up"
-    "left back right"
-    ". . down";
-  grid-template-columns: repeat(3, 1fr);
+    ". up . forward"
+    "left down right back";
+  grid-template-columns: repeat(4, 1fr);
   gap: 6px;
 }
 
