@@ -16,6 +16,35 @@ export const part = `0 FILE main.ldr
 4 16 20 0 20 20 0 -20 20 24 -20 20 24 20
 4 16 -20 0 -20 -20 0 20 -20 24 20 -20 24 -20
 0 NOFILE`;
+/** A box `w` x `d` studs and `h` LDraw units tall, its top at y 0, packed like the toolkit packs a part. */
+export const boxPart = (name: string, title: string, w: number, d: number, h: number) => {
+  const [x, z] = [w * 10, d * 10];
+  return `0 FILE main.ldr
+1 16 0 0 0 1 0 0 0 1 0 0 0 1 ${name}
+0 FILE ${name}
+0 ${title}
+0 BFC CERTIFY CCW
+4 16 -${x} 0 -${z} ${x} 0 -${z} ${x} 0 ${z} -${x} 0 ${z}
+4 16 -${x} ${h} ${z} ${x} ${h} ${z} ${x} ${h} -${z} -${x} ${h} -${z}
+4 16 -${x} 0 ${z} ${x} 0 ${z} ${x} ${h} ${z} -${x} ${h} ${z}
+4 16 ${x} 0 -${z} -${x} 0 -${z} -${x} ${h} -${z} ${x} ${h} -${z}
+4 16 ${x} 0 ${z} ${x} 0 -${z} ${x} ${h} -${z} ${x} ${h} ${z}
+4 16 -${x} 0 -${z} -${x} 0 ${z} -${x} ${h} ${z} -${x} ${h} -${z}
+0 NOFILE`;
+};
+
+/** The Replace picker's parts, as `scripts/pack-toolkit.py` writes them. */
+export const partsCatalog = {
+  parts: [
+    { part: "test-plate.dat", title: "Test Plate 2 x 2", studs: [2, 2], plates: 1 },
+    { part: "test-tile.dat", title: "Test Tile 1 x 1", studs: [1, 1], plates: 1 },
+  ],
+  packs: {
+    "test-plate.dat": boxPart("test-plate.dat", "Test Plate 2 x 2", 2, 2, 8),
+    "test-tile.dat": boxPart("test-tile.dat", "Test Tile 1 x 1", 1, 1, 8),
+  },
+};
+
 export const colors = `0 !COLOUR Red CODE 4 VALUE #C91A09 EDGE #333333
 0 !COLOUR Yellow CODE 14 VALUE #F2CD37 EDGE #333333
 0 !COLOUR Blue CODE 1 VALUE #0055BF EDGE #333333
@@ -142,6 +171,7 @@ export async function site(page: Page, showcases: Build[] = [], account: typeof 
     return route.fulfill({ status: 204 });
   });
   await page.route("**/LDConfig.ldr", (route) => route.fulfill({ body: colors }));
+  await page.route("**/parts.json", (route) => route.fulfill({ json: partsCatalog }));
   await page.route("**/brickyard.tgz", (route) => route.fulfill({ body: Buffer.from("toolkit") }));
   await page.route("**/gallery/builds.json", (route) =>
     route.fulfill({

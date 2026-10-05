@@ -2232,6 +2232,106 @@ main {
   background-image: linear-gradient(135deg, rgba(255, 255, 255, 0.5), transparent 60%) !important;
 }
 
+.edit-replace {
+  gap: 6px;
+  height: 34px;
+}
+
+/* Replace: the panel widens to a searchable grid of parts, each drawn in the selection's color. */
+.edit-panel.replacing {
+  width: 320px;
+}
+
+.part-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+}
+
+.part-picker-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.part-picker-head input {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  padding: 4px 8px;
+  font: inherit;
+  color: inherit;
+  background: var(--background-card);
+  border: 1px solid var(--stroke-default);
+  border-radius: var(--radius-button);
+}
+
+.part-results {
+  max-height: min(360px, 50vh);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-right: 2px;
+}
+
+.part-results small {
+  color: var(--text-tertiary);
+}
+
+.part-results p {
+  margin: 0;
+}
+
+.part-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(68px, 1fr));
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.part-tile {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  height: auto;
+  padding: 4px;
+  text-align: center;
+}
+
+.part-tile[aria-selected="true"] {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.part-preview {
+  display: block;
+  aspect-ratio: 1;
+}
+
+.part-preview img {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.part-tile-title {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: var(--font-small);
+  line-height: 1.25;
+  min-height: 2.5em;
+}
+
+.part-tile small {
+  color: var(--text-tertiary);
+  font-family: "Fira Code Variable", ui-monospace, monospace;
+  font-size: 11px;
+}
+
 .select-box {
   position: absolute;
   z-index: 1;
@@ -2407,7 +2507,8 @@ main {
     width: calc(100% - 24px);
   }
 
-  .edit-panel {
+  .edit-panel,
+  .edit-panel.replacing {
     left: 12px;
     right: 12px;
     width: auto;

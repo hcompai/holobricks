@@ -20,7 +20,7 @@ Setup, architecture, deploy and the toolkit's checks. The [main README](../READM
 - **Replay** the steps on the timeline, browse the Parts tab, and from **Share** download the `.ldr` or a PNG, or make a GIF of the build (8 seconds by default, up to 30).
 - **Building instructions** (Share, or the Get the bricks sheet): a PDF with a cover, then each step split into layers from the bottom up, one page each, the new pieces outlined in a render framed on the model so far and pictured in a parts callout, and the whole parts list at the end. It is drawn in the browser, so it includes your edits; large models take a while (the Grand Rex makes about 250 pages).
 - **Get the bricks**: one sheet with BrickLink carts through HoloTab (it imports the verified parts list and prepares carts for you to review and pay), a Pick a Brick list with its price, and the instructions. See [SHOPPING.md](../SHOPPING.md).
-- **Edit** by hand: choose **Edit**, click a piece (the one under the pointer is outlined), Shift-click to add more or Shift-drag a box around the pieces you see (Shift-Option-drag takes hidden ones too), then move them a stud or a plate, turn them a quarter about their middle, recolor them from the LDraw palette, duplicate them beside themselves (⌘D) or delete them; undo, redo and reset. The **?** button or key lists every shortcut. Edits are saved in this browser per build and revision, and the `.ldr` download includes them. The builder never sees them: the Parts tab counts the edited model's parts without BrickLink verification, shopping stays off while a model is edited, edits are hidden while the builder works, and a new revision leaves them to discard.
+- **Edit** by hand: choose **Edit**, click a piece (the one under the pointer is outlined), Shift-click to add more or Shift-drag a box around the pieces you see (Shift-Option-drag takes hidden ones too), then move them a stud or a plate, turn them a quarter about their middle, recolor them from the LDraw palette, replace them with another part (search the model's own parts and the ones Holo builds with, each previewed in the selection's color; the new part keeps the old one's bottom and first stud), duplicate them beside themselves (⌘D) or delete them; undo, redo and reset. The **?** button or key lists every shortcut. Edits are saved in this browser per build and revision, and the `.ldr` download includes them. The builder never sees them: the Parts tab counts the edited model's parts without BrickLink verification, shopping stays off while a model is edited, edits are hidden while the builder works, and a new revision leaves them to discard.
 - **Walk** through the model like in Minecraft: choose **Walk**, click the model, then WASD or the arrows to move and the mouse to look. You stand on the bricks and step up one brick at a time; Space jumps, W twice sprints, Space twice flies (Space up, Shift down), and arches, doors and plants let you through. Esc releases the mouse, Esc again leaves.
 - **Import a build**: the Your builds section of the home page imports a model file (what `brickyard-gallery` exports, or a session's `model.json.gz`) as your public build, after a confirmation. `/api/imports` checks every piece and part, recomputes the revision and `.ldr`, keeps the chat's text without its images, and marks the parts list unverified. Imported builds show under Your builds too.
 
@@ -46,7 +46,7 @@ python3 scripts/fetch-connectors.py           # pinned LDCad stud/socket data fo
 cd server && uv sync && cd ..
 REBRICKABLE_API_KEY=... server/.venv/bin/brickyard-catalog   # data/rebrickable.json.gz, valid 30 days
 server/.venv/bin/brickyard-prices                             # web/public/pick-a-brick.json (--locale en-US for another store)
-server/.venv/bin/python scripts/pack-toolkit.py               # web/public/brickyard.tgz and LDConfig.ldr
+server/.venv/bin/python scripts/pack-toolkit.py               # web/public/brickyard.tgz, LDConfig.ldr and parts.json
 cd web && npm install
 vercel link --yes --scope h-company --project brickyard && vercel env pull .env.local   # the server's secrets
 npm run dev                                                                            # http://127.0.0.1:5173
@@ -83,6 +83,7 @@ signed in ──GET /api/builds (pass + key)──▶ the public library
 | how Holo builds: workflow, the build script API, parts, colors | `agent/holo.md` |
 | the build script functions | `server/brickyard/script.py` (document them in `agent/holo.md`) |
 | the Workstation setup | `setup.sh`, then `scripts/pack-toolkit.py` |
+| the parts Replace offers | the Parts section of `agent/holo.md`, packed into `web/public/parts.json` by `scripts/pack-toolkit.py` |
 | the icon | `scripts/brick-icon.py`, rendered with `blender -b -P scripts/brick-icon.py -- /tmp/brick.png`, then resized (`sips -Z`) and compressed (`pngquant`) into `docs/brick.png` (128 px), `web/public/brick.png` (64 px) and `web/public/brick-touch.png` (180 px, on white) |
 
 ## Showcases and deploy

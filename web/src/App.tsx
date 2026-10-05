@@ -12,6 +12,7 @@ import { HistoryPanel } from "./HistoryPanel";
 import { design, useHistory, type Version } from "./history";
 import { startFork, forkSeed, type ForkSeed } from "./fork";
 import { provideParts } from "./scene";
+import { packTitle } from "./partCatalog";
 import { PHASES } from "./activity";
 import { useEdits } from "./edits";
 import { type Build, type BuildSummary, EMPTY_MODEL, type Piece, type Source, verified } from "./model";
@@ -82,11 +83,12 @@ const same = (a: BuildRef | null, b: BuildRef | null) => a?.id === b?.id && a?.s
 const titlesOf = (build: Build | null) =>
   new Map((build && verified(build.bom))?.lines.map((l) => [l.part, l.title]) ?? []);
 
-/** Names each piece by its verified parts-list title, else its LDraw part, and its palette color. */
+/** Names each piece by its verified parts-list title, else its LDraw title or part, and its palette color. */
 function describer(build: Build | null, palette: Color[]): (piece: Piece) => string {
   const titles = titlesOf(build);
   const colors = new Map(palette.map((c) => [c.code, c.name]));
-  return (p) => `${titles.get(p.part) ?? p.part.replace(/\.dat$/, "")} · ${colors.get(p.color) ?? `color ${p.color}`}`;
+  const title = (part: string) => titles.get(part) ?? packTitle(build?.parts[part]) ?? part.replace(/\.dat$/, "");
+  return (p) => `${title(p.part)} · ${colors.get(p.color) ?? `color ${p.color}`}`;
 }
 
 export default function App({ account }: { account: Account }) {
