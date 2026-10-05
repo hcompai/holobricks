@@ -2,11 +2,11 @@ import {
   ArrowClockwiseIcon,
   ArrowCounterClockwiseIcon,
   ArrowDownIcon,
+  ArrowDownLeftIcon,
   ArrowLeftIcon,
-  ArrowLineDownIcon,
-  ArrowLineUpIcon,
   ArrowRightIcon,
   ArrowUpIcon,
+  ArrowUpRightIcon,
   ArrowUUpLeftIcon,
   ArrowUUpRightIcon,
   CopyIcon,
@@ -23,39 +23,33 @@ import { PartPicker } from "./PartPicker";
 export type Action =
   "left" | "right" | "forward" | "back" | "up" | "down" | "turnLeft" | "turnRight" | "duplicate" | "delete";
 
-/** Keys for each action in edit mode, as `KeyboardEvent.key`. */
+/** Keys for each action in edit mode, as `KeyboardEvent.key`: arrows move across the screen, W/S into it. */
 export const ACTION_KEYS: Record<string, Action> = {
   ArrowLeft: "left",
+  a: "left",
   ArrowRight: "right",
-  ArrowUp: "forward",
-  ArrowDown: "back",
-  PageUp: "up",
+  d: "right",
+  ArrowUp: "up",
   e: "up",
-  PageDown: "down",
+  PageUp: "up",
+  ArrowDown: "down",
   q: "down",
+  PageDown: "down",
+  w: "forward",
+  s: "back",
   r: "turnRight",
   R: "turnLeft",
   Delete: "delete",
   Backspace: "delete",
 };
 
-const MOVES: { action: Action; label: string; icon: React.ReactNode; area: string }[] = [
-  { action: "forward", label: "Move forward (↑)", icon: <ArrowUpIcon size={16} weight="bold" />, area: "forward" },
-  { action: "left", label: "Move left (←)", icon: <ArrowLeftIcon size={16} weight="bold" />, area: "left" },
-  { action: "right", label: "Move right (→)", icon: <ArrowRightIcon size={16} weight="bold" />, area: "right" },
-  { action: "back", label: "Move back (↓)", icon: <ArrowDownIcon size={16} weight="bold" />, area: "back" },
-  {
-    action: "up",
-    label: "Move up a plate (E, Page Up)",
-    icon: <ArrowLineUpIcon size={16} weight="bold" />,
-    area: "up",
-  },
-  {
-    action: "down",
-    label: "Move down a plate (Q, Page Down)",
-    icon: <ArrowLineDownIcon size={16} weight="bold" />,
-    area: "down",
-  },
+const MOVES: { action: Action; label: string; icon: React.ReactNode }[] = [
+  { action: "up", label: "Move up a plate (↑, E)", icon: <ArrowUpIcon size={16} weight="bold" /> },
+  { action: "forward", label: "Move away (W)", icon: <ArrowUpRightIcon size={16} weight="bold" /> },
+  { action: "left", label: "Move left (←, A)", icon: <ArrowLeftIcon size={16} weight="bold" /> },
+  { action: "down", label: "Move down a plate (↓, Q)", icon: <ArrowDownIcon size={16} weight="bold" /> },
+  { action: "right", label: "Move right (→, D)", icon: <ArrowRightIcon size={16} weight="bold" /> },
+  { action: "back", label: "Move closer (S)", icon: <ArrowDownLeftIcon size={16} weight="bold" /> },
 ];
 
 /** The edit toolbar: how many changes, undo, redo and reset. */
@@ -235,7 +229,7 @@ function SelectionControls({
         {MOVES.map((m) => (
           <button
             key={m.action}
-            style={{ gridArea: m.area }}
+            style={{ gridArea: m.action }}
             onClick={() => onAction(m.action)}
             title={m.label}
             aria-label={m.label}
