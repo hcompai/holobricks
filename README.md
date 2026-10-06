@@ -12,7 +12,7 @@
     <td align="center"><img src="docs/gallery/paris.png" width="180" alt="" /><br />Paris · 2,135</td>
     <td align="center"><img src="docs/gallery/london.png" width="180" alt="" /><br />London · 1,534</td>
     <td align="center"><img src="docs/gallery/bag-end.png" width="180" alt="" /><br />Bag End · 7,329</td>
-    <td align="center"><img src="docs/gallery/hogwarts.png" width="180" alt="" /><br />Hogwarts · 26,987</td>
+    <td align="center"><img src="docs/gallery/hogwarts.png" width="180" alt="" /><br />Hogwarts · 45,073</td>
   </tr>
 </table>
 

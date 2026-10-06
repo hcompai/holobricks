@@ -7,16 +7,21 @@ import io
 import json
 import random
 import sys
-from collections.abc import Sequence
+from collections import defaultdict
+from collections.abc import Callable, Hashable, Iterable, Sequence
+from functools import cache
 
 from brickyard import catalog, ldraw, shapes
 from brickyard.model import IDENTITY, Brick, Placement, bounds, extent
+from brickyard.sculpt import Sculpture, circle
 from brickyard.shapes import Cell
 
 SOURCE = "<script>"
 MAX_BRICKS = 100_000
 PRINT_LIMIT = 2000
-API = ("step", "brick", "mount", "place", "top", "colors")
+API = ("step", "brick", "mount", "place", "top", "colors", "box", "disc", "fill", "carve", "roof", "cone", "cover")
+Shade = int | Callable[[int, int, int], int]
+RUN_LENGTH = {part: n for n, part in shapes.BRICK_RUN.items()}
 
 
 class Script:
@@ -26,6 +31,8 @@ class Script:
         self.steps: list[dict] = []
         self.columns: dict[Cell, list[tuple[int, int]]] = {}
         self.count = 0
+        self.sculpture: Sculpture | None = None
+        self.peak = 0
         for x, y, w, d, z, height in taken:
             self._occupy(shapes.rect(x, y, w, d), z, z + height)
 
@@ -45,13 +52,16 @@ class Script:
         return (lines[0], lines[-1]) if lines else (0, 0)
 
     def _add(self, bricks: list[dict]) -> None:
+        line, call = self._lines()
+        self._record([(b, line, call) for b in bricks])
+
+    def _record(self, made: list[tuple[dict, int, int]]) -> None:
         if not self.steps:
             self.step("Build")
-        self.count += len(bricks)
+        self.count += len(made)
         if self.count > MAX_BRICKS:
             raise ValueError(f"the script makes more than {MAX_BRICKS} bricks")
-        line, call = self._lines()
-        for b in bricks:
+        for b, line, call in made:
             self.steps[-1]["bricks"].append(b | {"line": line, "call": call})
             try:
                 brick = Brick.model_validate(b)
@@ -72,6 +82,7 @@ class Script:
 
     def step(self, title: str) -> None:
         """Start a manual step; the calls after it go into it, with `random` seeded from its title."""
+        self._flush()
         self.steps.append({"title": str(title)[:80], "bricks": []})
         random.seed(str(title))
 
@@ -90,14 +101,150 @@ class Script:
         self._add([{"part": str(part), "color": color, "pos": pos, "rot": rot}])
 
     def top(self, x: int, y: int, w: int = 1, d: int = 1) -> int:
-        """The highest plate height filled over the rectangle, 0 on bare ground."""
-        return max((b for cell in shapes.rect(x, y, w, d) for _, b in self.columns.get(cell, ())), default=0)
+        """The highest plate height filled over the rectangle, 0 on bare ground; counts this step's solids."""
+        cells = shapes.rect(x, y, w, d)
+        filled = max((b for cell in cells for _, b in self.columns.get(cell, ())), default=0)
+        sc = self.sculpture
+        if sc is None:
+            return filled
+        courses = (next((k + 1 for k in range(self.peak, -1, -1) if (*c, k) in sc.solid), 0) for c in cells)
+        return max(filled, max((sc.z0 + 3 * k for k in courses if k), default=0))
 
     @staticmethod
     def colors(part: str) -> set[int]:
         """The LDraw codes of the colors `part` comes in, empty for a part the catalog does not know."""
-        record = catalog.snapshot().parts.get(ldraw.resolve(str(part)) or "")
-        return {c["color"] for c in catalog.available_colors(record)} if record else set()
+        return set(_made_in(str(part)))
+
+    @staticmethod
+    def box(x: int, y: int, w: int, d: int) -> set[Cell]:
+        """The studs of a w by d rectangle from (x, y)."""
+        return shapes.rect(x, y, w, d)
+
+    @staticmethod
+    def disc(cx: float, cy: float, r: float) -> set[Cell]:
+        """The studs whose centers lie within r of (cx, cy)."""
+        return circle(cx, cy, r)
+
+    def _grid(self, z: int, height: int) -> tuple[Sculpture, int]:
+        """The step's sculpture and the course at plate z, which has to sit on its grid of whole bricks."""
+        if not self.steps:
+            self.step("Build")
+        if z < 0:
+            raise ValueError(f"z={z} is below the ground")
+        if self.sculpture is None:
+            self.sculpture = Sculpture(z % 3)
+        sc = self.sculpture
+        if (z - sc.z0) % 3 or height % 3:
+            raise ValueError(
+                f"solids come in whole bricks: this step's solids start at z = {sc.z0}, {sc.z0 + 3}, {sc.z0 + 6} "
+                f"and so on, and rise in 3s; got z={z}, height {height}. Start a new step for another grid"
+            )
+        sc.owner = self._lines()
+        return sc, (z - sc.z0) // 3
+
+    def _shade(self, color: Shade) -> Shade:
+        z0 = self.sculpture.z0 if self.sculpture else 0
+        return (lambda x, y, k: color(x, y, z0 + 3 * k)) if callable(color) else color
+
+    def fill(self, cells: Iterable[Cell], z: int, height: int, color: Shade, sloped: bool = False) -> None:
+        """Make the studs solid from plate z up `height` plates; the step's end turns its solids into bricks."""
+        sc, k = self._grid(z, height)
+        sc.fill(cells, k, k + height // 3, self._shade(color), sloped)
+        self.peak = max(self.peak, k + height // 3)
+
+    def carve(self, cells: Iterable[Cell], z: int, height: int) -> None:
+        """Empty the studs from plate z up `height` plates, out of this step's solids."""
+        sc, k = self._grid(z, height)
+        sc.carve(cells, k, k + height // 3)
+
+    def roof(self, cells: Iterable[Cell], z: int, color: Shade, pitch: int = 3, ridge: str | None = None) -> int:
+        """A solid roof from plate z, in one stud every `pitch` plates; returns the plate above its top."""
+        if pitch < 3:
+            raise ValueError("a roof's pitch is 3 plates or more")
+        sc, k = self._grid(z, pitch)
+        end = sc.roof(cells, k, self._shade(color), pitch // 3, ridge)
+        self.peak = max(self.peak, end)
+        return sc.z0 + 3 * end
+
+    def cone(self, cx: float, cy: float, r: float, z: int, height: int, color: Shade) -> int:
+        """A solid spire of shrinking circles from plate z; returns the plate above its tip."""
+        sc, k = self._grid(z, height)
+        end = sc.cone(cx, cy, r, k, height // 3, self._shade(color))
+        self.peak = max(self.peak, end)
+        return sc.z0 + 3 * end
+
+    def cover(self, cells: Iterable[Cell], z: int, color: int | Callable[[int, int], int], tiles: bool = False) -> None:
+        """One layer of plates (or tiles) at z over the studs, largest first in parts that come in the color; skips
+        studs already filled there."""
+        groups: dict[int, set[Cell]] = defaultdict(set)
+        for c in cells:
+            if not any(lo <= z < hi for lo, hi in self.columns.get(c, ())):
+                groups[color(*c) if callable(color) else color].add(c)
+        self._add(self._plates(groups, z, shapes.TILES if tiles else shapes.PLATES))
+
+    def _plates(self, groups: dict[int, set[Cell]], z: int, sizes=shapes.PLATES) -> list[dict]:
+        """Plates at z over each color's studs, the largest first in parts that come in the color."""
+        bricks = []
+        for shade, group in groups.items():
+            made = [s for s in sizes if shade in self.colors(s[2])]
+            bricks += shapes.cover(group, z, shade, made if any(w == d == 1 for w, d, _ in made) else sizes)
+        return bricks
+
+    def _flush(self) -> None:
+        """Turn the step's solids into bricks: the shell only, slopes on steps, giving way to pieces placed; plates
+        fill what a piece leaves free of a course it partly fills."""
+        sc, self.sculpture, self.peak = self.sculpture, None, 0
+        if sc is None:
+            return
+        courses = lambda lo, hi: range((lo - sc.z0) // 3, -((sc.z0 - hi) // 3))
+        gaps: dict[tuple[int, Hashable], dict[int, set[Cell]]] = defaultdict(lambda: defaultdict(set))
+        for x, y in {(x, y) for x, y, _ in sc.solid}:
+            taken = self.columns.get((x, y), ())
+            for lo, hi in taken:
+                for k in courses(lo, hi):
+                    sc.claimed.add((x, y, k))
+                    if (voxel := sc.solid.pop((x, y, k), None)) is None:
+                        continue
+                    for z in range(sc.z0 + 3 * k, sc.z0 + 3 * k + 3):
+                        if not any(a <= z < b for a, b in taken):
+                            gaps[z, voxel[2]][voxel[0]].add((x, y))
+        for i, b in enumerate(self.steps[-1]["bricks"]):
+            try:
+                brick = Brick.model_validate(b)
+                x, y, w, d, z, height = self._extent(brick)
+            except (ArithmeticError, KeyError, ValueError):
+                continue
+            if brick.facing is not None:
+                continue
+            for cell in shapes.rect(x, y, w, d):
+                sc.placed.update(((*cell, k), i) for k in courses(z, z + height) if (*cell, k) in sc.claimed)
+        self._record([(b, *owner) for (z, owner), groups in gaps.items() for b in self._plates(groups, z)])  # type: ignore[misc]
+        pieces = sc.mesh(lambda x, y: 0 if sc.z0 == 0 else -1)
+        self._record([(part, *owner) for _, owner, b in pieces for part in _in_color(b)])  # type: ignore[misc]
+
+
+@cache
+def _made_in(part: str) -> frozenset[int]:
+    """Empty without a catalog too: the run's catalog check reports that."""
+    try:
+        record = catalog.snapshot().parts.get(ldraw.resolve(part) or "")
+    except catalog.CatalogUnavailable:
+        return frozenset()
+    return frozenset(c["color"] for c in catalog.available_colors(record)) if record else frozenset()
+
+
+def _in_color(b: dict) -> list[dict]:
+    """A run of bricks in sizes that come in its color, the brick itself when it does or no size would."""
+    n = RUN_LENGTH.get(b["part"])
+    sizes = {k: v for k, v in shapes.BRICK_RUN.items() if b["color"] in _made_in(v)}
+    if n is None or b["color"] in _made_in(b["part"]) or 1 not in sizes:
+        return [b]
+    dx, dy = (1, 0) if b["rotation"] % 180 == 0 else (0, 1)
+    out, at = [], 0
+    for size in shapes.split(n, sizes, stagger=False):
+        out.append(b | {"part": sizes[size], "x": b["x"] + dx * at, "y": b["y"] + dy * at})
+        at += size
+    return out
 
 
 def _explain(error: BaseException, code: str) -> str:
@@ -121,6 +268,7 @@ def run(code: str, taken: list[list[int]]) -> dict:
     try:
         with contextlib.redirect_stdout(printed):
             exec(compile(code, SOURCE, "exec"), scope)  # noqa: S102
+            script._flush()
     except (Exception, SystemExit) as e:  # noqa: BLE001
         return {"error": _explain(e, code), "printed": printed.getvalue()[-PRINT_LIMIT:]}
     steps = [s for s in script.steps if s["bricks"]]

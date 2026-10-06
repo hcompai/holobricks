@@ -6,8 +6,10 @@ import { FullScreenQuad } from "three/examples/jsm/postprocessing/Pass.js";
 import { HorizontalTiltShiftShader } from "three/examples/jsm/shaders/HorizontalTiltShiftShader.js";
 import { VerticalTiltShiftShader } from "three/examples/jsm/shaders/VerticalTiltShiftShader.js";
 import type { Build, Piece } from "./model";
+import { HOLO } from "./holo";
 import {
   DROP,
+  brandable,
   fall,
   filmSteps,
   frameCount,
@@ -531,7 +533,17 @@ export class FilmRenderer {
     vignette.addColorStop(1, "rgba(20, 20, 40, 0.08)");
     ctx.fillStyle = vignette;
     ctx.fillRect(0, 0, width, height);
-    if (branded) this.mark(margin, margin, 34 * unit);
+    if (branded && brandable(this.build)) {
+      const size = Math.max(18, 34 * unit);
+      const textX = margin + (1035 / 600) * size + Math.max(10, 20 * unit);
+      const font = Math.max(12, 32 * unit);
+      this.mark(margin, margin + font * 0.25, size);
+      ctx.fillStyle = INK;
+      ctx.font = `600 ${font}px ${FONT}`;
+      this.text(`Powered by ${HOLO.name}`, textX, margin + font, width - margin - textX);
+      ctx.font = `500 ${font * 0.9}px ${FONT}`;
+      this.text("from H Company", textX, margin + font * 2.25, width - margin - textX);
+    }
 
     const total = plan.order.length;
     const done = landed(plan, time);

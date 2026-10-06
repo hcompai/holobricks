@@ -52,16 +52,16 @@ const MOVES: { action: Action; label: string; icon: React.ReactNode }[] = [
   { action: "back", label: "Move closer (S)", icon: <ArrowDownLeftIcon size={16} weight="bold" /> },
 ];
 
+const HINT = matchMedia("(any-pointer: fine)").matches
+  ? "Click a piece to select it; Shift-click or Shift-drag a box to add more"
+  : "Tap a piece to select it";
+
 /** The edit toolbar: how many changes, undo, redo and reset. */
 export function EditBar({ edits }: { edits: Edits }) {
   const count = edits.edits.length;
   return (
     <div className="edit-bar" role="toolbar" aria-label="Edit mode">
-      <span>
-        {count
-          ? `${count} change${count === 1 ? "" : "s"}`
-          : "Click a piece to select it; Shift-click or Shift-drag a box to add more"}
-      </span>
+      <span>{count ? `${count} change${count === 1 ? "" : "s"}` : HINT}</span>
       <button className="quiet icon-button" onClick={edits.undo} disabled={!count} title="Undo (⌘Z)" aria-label="Undo">
         <ArrowUUpLeftIcon size={16} weight="bold" />
       </button>
