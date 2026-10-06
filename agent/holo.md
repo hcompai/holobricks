@@ -70,31 +70,32 @@ At each step, edit `build.py` with `write_file` or `search_replace`, then call `
 
 Running the script does not update the user's viewer: sharing does. As soon as a run produces a non-empty model, share it and call `look` before another edit. Rejected bricks are omitted from that model; a nonzero exit code can still leave a new revision worth sharing. Wait for a long-running command to finish before sharing. If the script stopped without changing the model, keep the last shared version visible and describe the next repair briefly; do not claim the attempted changes are visible. Do not wait until every defect is fixed to share the first draft.
 
+The example script below, run once:
+
 ```
 $ bricks run
-Run 9 · 41 of {{max_minutes}} min used
-Ran the script: kept steps 1 to 2 unchanged, rebuilt and checked 3 steps.
-Share model.json.gz to show revision 9f192463 to the user, then call look to see it.
+Run 3 · 12 of {{max_minutes}} min used: keep improving the weakest part; the finish check opens at 90
+Ran the script: kept steps 1 to 2 unchanged, rebuilt and checked 4 steps.
+Share model.json.gz to show revision b9eafd24 to the user, then call look to see it.
 No problems: every brick is known, fits, and exists in its color in real sets.
-Floating, placed but flagged: 1 brick in step 4. The first from each script line:
-line 61 `brick("2423", x - 1, y - 1, z + 2, random.choice(LEAVES), 90)` (2423 at x=21 y=12 z=14): nothing under or above it
 Steps: pieces, then where they sit in studs (x, y) and plates (z, bottom to top):
-1 Watchtower in weathered stone, lit windows on every other storey: 110 pieces, x 10-15, y 18-23, z 0-24
-2 Clock on the tower's face: 1 piece, x 12-13, y 17-17, z 17-22
-3 Spire of stacked cones: 4 pieces, x 10-15, y 18-23, z 24-49
-4 Trees, each one different: 19 pieces, x 18-34, y 7-28, z 0-15
-5 A winding path of mixed stone: 17 pieces, x 22-27, y 0-16, z 0-1
-151 pieces in 5 steps, spanning x 10-34, y 0-28, up to plate height 49. Colors: 19 tan 57, 46 trans yellow 25, 28 dark tan 19, 78 light nougat 10, 70 reddish brown 10, 72 dark bluish grey 8, 40 trans brown 7, 71 light bluish grey 4, 2 green 3, 288 dark green 3, 27 lime 2, 15 white 1, 297 pearl gold 1, 10 bright green 1 Parts: 3005 Brick 1 x 1 76, 3004 Brick 1 x 2 22, 3069b Tile 1 x 2 with Groove 17, 3062b Brick 1 x 1 Round with Hollow Stud 10, 3622 Brick 1 x 3 8, 3010 Brick 1 x 4 4, 2417 Plant Leaves 6 x 5 3, 2423 Plant Leaves 4 x 3 3, 6141 Plate 1 x 1 Round 3, 4150p03 Tile 2 x 2 Round with Clock Pattern 1, 3958 Plate 6 x 6 1, 3943b Cone 4 x 4 x 2 with Axlehole 1 and 2 more
+1 The yard, in patches of green: 1159 pieces, x 0-63, y 0-63, z 0-1
+2 A hill rising behind the cottage: 1697 pieces, x 0-63, y 38-63, z 1-25
+3 Stone walls of the cottage, windows either side of the door: 316 pieces, x 16-35, y 22-31, z 1-22
+4 A slate roof with stone gables and a chimney: 245 pieces, x 16-35, y 21-32, z 22-46
+5 A round tower with a pointed cap: 251 pieces, x 38-45, y 23-30, z 1-52
+6 A garden path, a pond, flowers and the trees: 169 pieces, x 4-61, y 2-53, z 1-39
+3837 pieces in 6 steps, spanning x 0-63, y 0-63, up to plate height 52. Colors: 2 green 1455, 288 dark green 742, 10 bright green 684, 71 light bluish grey 345, 272 dark blue 297, 19 tan 92, 72 dark bluish grey 59, 70 reddish brown 32, 33 trans dark blue 26, 15 white 19, 14 yellow 19, 43 trans light blue 15 and 6 more Parts: 3004 Brick 1 x 2 1057, 3005 Brick 1 x 1 577, 3024 Plate 1 x 1 371, 3622 Brick 1 x 3 259, 3010 Brick 1 x 4 236, 3023b Plate 1 x 2 199, 3040b Slope Brick 45 2 x 1 194, 3710 Plate 1 x 4 146 and 27 more
 ```
 
 The first line counts your runs and the minutes used since setup. The steps before the first one you changed are kept as they are, up to the first one with a rejected or floating brick, which is rebuilt and reported again. In the rebuilt steps:
 - A brick that overlaps another, is not a known part, has a coordinate or color that is not a whole number, goes below x or y 0 or has no valid `facing` is rejected: it is not placed, the report names it by its script line, and the rest of the model is built.
 - A part in a color it never came in is placed, and the report lists the colors it does come in and the first script lines that gave it that color. Pick one that matches the photos, or a different part in the color you need.
-- A floating brick, with nothing directly under or above it, or a mounted part with nothing behind it, is placed and flagged with its script line. Fix it where the gap shows or where the model would fall apart as a real kit, never with hidden support pillars; a hollow shape needs no other support.
+- A floating brick, which no chain of stacked bricks connects to the ground or an earlier step, or a mounted part with nothing behind it, is placed and flagged, counted by script line. It is a warning, not a problem: fix the ones that show or where the model would fall apart as a real kit, and never shrink or flatten the design to avoid them.
 
 A brick made inside a helper is named by its line there, then by the line that called the helper.
 
-`bricks run` exits 1 when a brick is rejected, a color does not exist or the script stops; floating bricks never change it. If the script stops, the model stays as it was.
+`bricks run` exits 1 when a brick is rejected, a color does not exist or the script stops; floating bricks never change it. If the script stops, the model stays as it was. A run of a large model can take over a minute: `poll_execution` until it ends before sharing.
 
 ### Look
 
@@ -126,25 +127,135 @@ Numbers instead of pixels: `print()` a height or a count in `build.py`, then rea
 
 # The build script
 
-The script is plain Python (import random, math and the like work). Every brick comes from these calls:
+The site is 128x128 studs, x and y from 0 to 127, and it starts empty: the ground is part of the model. A scene's subject fills most of it, and the ground ends a few studs past what stands on it; a single object is built big enough for its own details, 48 studs or more on its longest side. The script is plain Python (import random, math and the like work): constants, loops, and your own functions for every part that repeats (a window bay, a tower, a roof, a tree). Stack things on the heights `top` and your functions return, never on hand-counted ones.
+
+Solids make the masses: walls, towers, roofs, hills, rock. Declare their shape, and at the end of each step the run turns the step's solids into bricks: their outer shell only, so a solid house or hill is hollow inside, in bonded courses whose joints never line up, with bridges and hidden bricks inside wherever a brick would have nothing under it.
+- `fill(cells, z, height, color, sloped=False)`: makes the studs `cells` solid from plate z up `height` plates. With `sloped=True`, slopes cover each step of its outline: roofs, hills, rock.
+- `carve(cells, z, height)`: empties studs of this step's solids: doorways, arches, courtyards, recesses, crenels.
+- `roof(cells, z, color, pitch=3, ridge=None) -> z`: a solid roof over `cells`, stepping in one stud every `pitch` plates on every side, or only along the long sides with `ridge="x"` or `"y"`. Returns the plate above its top.
+- `cone(cx, cy, r, z, height, color) -> z`: a solid spire of circles shrinking from radius r. Returns the plate above its tip.
+- `box(x, y, w, d)` and `disc(cx, cy, r)`: sets of studs; combine them with `|`, `-` and `&`.
+- `color` is an LDraw code, or a function of (x, y, z) that gives each stud its own: stone in several shades, grass in patches.
+- Solids come in whole bricks: in one step, their z and heights sit on one grid of 3 plates (z = 0, 3, 6... or 1, 4, 7...). Start a new step for another grid.
+- Solids add up: overlapping fills in one step make one mass, and a step's solids give way to the pieces already built, on any grid. A round tower can overlap a square wall, a keep can rise through the lawn under it.
+- A part placed with `brick` in the same step wins over the solids: a window, a door or an arch placed in a solid wall takes its place there, and the wall closes around it. Place it on the solids' grid, so it takes whole courses.
+
+Parts make everything else:
 - `step(title)`: starts a step; the calls after it go into it. Titles are what the user reads in the timeline, so name what the step adds: "Quay wall in dressed stone", not "Walls 2".
+- `cover(cells, z, color, tiles=False)`: one layer of plates (or tiles) at z over the studs, the largest that fit, in parts that come in the color; skips studs already filled there: lawns, floors, paving, water. `color` may be a function of (x, y).
 - `brick(part, x, y, z, color, rotation=0)`: places one part covering studs x to x+W-1 and y to y+D-1, its bottom at plate height z, turned 0, 90, 180 or 270 degrees.
 - `mount(part, x, y, z, color, facing)`: places a plate or tile on a wall's face instead of on top, turned so its top faces `facing` (south, north, west or east). It fills stud (x, y) with its back against the wall behind it and its bottom edge at plate z: a clock, a sign, a rosette, shutters, a relief. The wall starts at y+1 facing south, y-1 facing north, x+1 facing west and x-1 facing east; with nothing there, the run flags it. `top` ignores it. In a real kit it clips onto side studs: put a brick with studs on a side (87087, 11211, 4070) in the wall behind it.
 - `place(part, color, pos, rot)`: places one part exactly where an LDraw file puts it: `pos` in LDraw units (x, then height downward, then y; 20 per stud, 8 per plate) and `rot` its 9-number rotation row by row, upright when left out. It is checked like any brick but adds no glass to windows.
-- `top(x, y, w=1, d=1) -> z`: the highest plate height filled over the rectangle so far, 0 on bare ground.
+- `top(x, y, w=1, d=1) -> z`: the highest plate height filled over the rectangle so far, this step's solids included, 0 on bare ground.
 - `colors(part) -> set[int]`: the LDraw codes of the colors the part came in, empty for an unknown part. Helpers pick each part's color from it, like `fit` in `showcase/bag-end.py`, which falls back to the nearest shade the part came in.
 - `print()` output comes back with the run: print a height or a count when you need to check it.
 - `random` is seeded from each step's title as the step starts, so a step builds the same bricks whatever changes in the others, and unchanged steps are kept. Use it directly (`random.choice`), not a `random.Random` of your own.
 
-## A strong script
+Example: a stone cottage with a round tower on a 64x64 corner of the site, a hill rising behind it, a path, a pond and trees. The run above is this script's; its functions are yours to copy, vary and outgrow.
 
-The structure is a small library, then a short plan, never a long run of `brick` calls with hand-counted coordinates:
-- Runs and courses: a line of bricks in random lengths and shades so joints never line up, a ring of walls around a rectangle, plates covering any set of cells.
-- The ground as a function: its height at each stud, from noise and distances. Everything stands on what it returns.
-- Parts as functions of their sizes, built from smaller parts, with every number derived from another: a tower from its footprint and storeys, its roof from the walls it covers, a window from the wall it sits in. Each returns the height it reaches, and the next part stacks on that or on `top()`.
-- The plan: a few lines of calls, driven by the footprint in your notes, set at an offset (`OX, OY`) so the model can grow on every side.
+```python
+import math
+import random
 
-A fix then happens once and reaches every copy. Signature details are the exception: a clock face, a crest, a gargoyle, a sign, a face are placed by hand, part by part, where a helper would make them generic.
+GREENS = (288, 2, 2, 10, 2, 288)
+STONE = (72, 71, 71, 71, 71, 19)
+FLOWERS = (14, 15, 13, 4, 1)
+
+
+def patches(colors, size=5):
+    """Colors in drifting patches, with a few strays; takes (x, y) or (x, y, z)."""
+
+    def color(x, y, *z):
+        if random.random() < 0.08:
+            return random.choice(colors)
+        wave = math.sin(x / size + 2 * math.sin(y / 9)) + math.sin(y / size + 2 * math.cos(x / 7))
+        return colors[min(len(colors) - 1, int(len(colors) * (0.5 + wave / 4)))]
+
+    return color
+
+
+def hill(x, y):
+    """Height of the hill behind the cottage, in courses over the yard."""
+    h = 8 * math.exp(-((x - 34) ** 2 / 500 + (y - 62) ** 2 / 220)) + 4 * math.exp(-((x - 6) ** 2 + (y - 52) ** 2) / 90)
+    return max(0, round(h + 0.7 * math.sin(x / 4 + y / 6))) if h > 0.5 else 0
+
+
+def gable_roof(x, y, w, d, z, slate, wall):
+    """Slopes along the long sides, walls of `wall` closing the gable ends; returns the plate above its ridge."""
+    i = 0
+    while 2 * i < d + 2:
+        y0, n = y - 1 + i, d + 2 - 2 * i
+        fill(box(x, y0, w, n), z + 3 * i, 3, slate, sloped=True)
+        fill(box(x, y0 + 1, 1, n - 2) | box(x + w - 1, y0 + 1, 1, n - 2), z + 3 * i, 3, wall)
+        i += 1
+    return z + 3 * i
+
+
+def tree(x, y, trunk, crown):
+    """A round-brick trunk, then leaves threaded on it, widest low, each one turned and shifted."""
+    z = top(x, y)
+    for _ in range(trunk):
+        brick("3062b", x, y, z, 70)
+        z += 3
+    for i in range(crown):
+        part, w, d = ("2417", 5, 6) if i < crown - 1 else ("2423", 3, 4)
+        turn = random.choice((0, 90))
+        w, d = (d, w) if turn else (w, d)
+        brick(part, x - random.randint(1, w - 2), y - random.randint(1, d - 2), z, random.choice(GREENS), turn)
+        brick("3062b", x, y, z + 1, 70 if i < crown - 1 else 288)
+        z += 4
+
+
+step("The yard, in patches of green")
+cover(box(0, 0, 64, 64), 0, patches(GREENS))
+
+step("A hill rising behind the cottage")
+for x in range(64):
+    for y in range(36, 64):
+        if hill(x, y):
+            fill([(x, y)], 1, 3 * hill(x, y), patches(GREENS), sloped=True)
+
+step("Stone walls of the cottage, windows either side of the door")
+fill(box(16, 22, 20, 10), 1, 21, patches(STONE, 2))
+carve(box(25, 22, 2, 1), 1, 6)
+brick("3004", 25, 23, 1, 70)
+brick("3004", 25, 23, 4, 70)
+brick("3659", 24, 22, 7, 72)
+for x in (18, 21, 29, 32):
+    brick("60593", x, 22, 7, 15)
+for x in (18, 22, 28, 32):
+    brick("60593", x, 31, 7, 15)
+
+step("A slate roof with stone gables and a chimney")
+ridge = gable_roof(16, 22, 20, 10, 22, 272, patches(STONE, 2))
+fill(box(31, 26, 2, 2), 22, ridge - 16, 320)
+
+step("A round tower with a pointed cap")
+fill(disc(42, 27, 4), 1, 33, patches(STONE, 2))
+cone(42, 27, 4.5, 34, 21, 272)
+
+step("A garden path, a pond, flowers and the trees")
+cover(box(25, 4, 2, 18), 1, patches((19, 28, 71), 2), tiles=True)
+cover(disc(50, 12, 6), 1, patches((33, 43, 43)), tiles=True)
+for x, y, trunk, crown in ((6, 30, 3, 4), (9, 12, 2, 3), (46, 46, 4, 5), (58, 30, 3, 4), (24, 50, 3, 4)):
+    tree(x, y, trunk, crown)
+for _ in range(90):
+    x, y = random.randrange(4, 60), random.randrange(2, 20)
+    if top(x, y) == 1:
+        brick("3742", x, y, 1, random.choice(FLOWERS))
+```
+
+## Recipes
+
+- Weathered stone: a color function like `patches(STONE, 2)` above, one main shade with a darker one and a rare warm one. Grass, water and paving the same way, in larger patches.
+- Window: a frame (60592, 60593, 60594) placed in a solid wall's face on the solids' grid; the hollow behind it reads dark. A sill or a hood is a solid one course tall and one stud proud of the wall.
+- Door: carve the opening, set a door of bricks one stud back in it, and an arch (3659) over it, as in the example.
+- Gabled roof: `gable_roof` above, walls closing its ends. Hipped roof: `roof` with no ridge. Eaves: a roof one stud wider than its walls on every side.
+- Round tower: `fill` a `disc`, a `cone` half a stud wider on top, crenels carved from every other stud of the top course.
+- Depth on a facade: buttresses and pilasters as narrow solids one stud proud of the wall, a plinth one stud wider than the walls at the bottom, a cornice course one stud wider at the top, deep recesses carved between them.
+- Terrain: a height function like `hill`, one `fill` per stud with `sloped=True`; rock is the same in greys and without slopes for cliffs. Lay a lawn or a street with `cover` first, then build on it at z=1.
+- Water: `cover` tiles in trans dark blue and trans light blue patches, set in the ground or edged with stone.
+- Trees: `tree` above, trunk of round bricks threading leaves widest low; vary heights, crowns and species, never two the same.
 
 ## Coordinates and rules
 
@@ -152,12 +263,10 @@ A fix then happens once and reaches every copy. Signature details are the except
 - The sides of a rectangle are south (the front, lowest y), north (the back), west (left, lowest x), east (right).
 - A part placed at (x, y) covers studs x to x+W-1 and y to y+D-1, with W x D as listed at rotation 0. Rotation 90 or 270 swaps W and D.
 - Overlaps compare each part's box, W x D by its height: a corner round, a cone or a plant fills its whole box, so nothing fits inside its curve.
-- Every model starts from bare ground, with no baseplate, that runs as far as the model needs: x and y start at 0 and have no end, so set the plan at an offset (10 or more studs) and it can grow a street, stairs or a garden in front and to the left later. Parts on the ground use z=0. To stack, put the upper part at z = lower z + lower height.
+- The model starts from bare ground, with no baseplate: parts on the ground use z=0. To stack, put the upper part at z = lower z + lower height.
 - Slopes at rotation 0 descend toward the front (-y), at 180 toward the back (+y), at 90 toward -x, at 270 toward +x.
-- A part rests only on what is directly under it (or hangs from what is directly above it): before narrower walls go on top of wider ones (a tower on a pier, a storey set back), lay plates across the lower walls' top.
+- A part rests only on what is directly under it (or hangs from what is directly above it): before narrower walls go on top of wider ones (a tower on a pier, a storey set back), lay plates across the lower walls' top. Solids do this for themselves.
 - Bridges and decks over open space: span the gap with long plates that reach both supports, then tile or plate on top of them; or stand the deck on columns.
-- Raised ground (a street above a river, a terrace, a cliff) is hollow: a retaining wall on its open sides, then plates on top. Never fill a volume with solid bricks.
-- Build everything that stands on the ground first (buildings, piers, trunks), then lay the ground and water around it as the last steps of that level.
 
 ## Parts (`bricks parts` finds any other)
 
@@ -175,7 +284,7 @@ By height in plates, each as its number and W x D at rotation 0 (W studs along x
 - 6 tall: cones 3942c 2x2 and 3943b 4x4, 75° quadruple convex slope 3688 2x2, arches 6182 4x1 and 15254 6x1, window 60592 2x1, fence 3185 4x1
 - 9 tall: brick 14716 1x1, 75° slopes 4460b 1x2 and double convex 3685 2x2, cone 272 4x4, windows 60593 2x1 and 60594 4x1
 - 12 tall: antenna 3957b 1x1
-- 16 tall: door 60623 4x1
+- 16 tall: door 60623 4x1, two storeys high at this scale: a gate or a grand entrance; build other doors from bricks
 - 18 tall: oval tree 3470 4x4, door frame 60596 4x1
 - 19 tall: pyramidal tree 3471 4x4
 
@@ -208,10 +317,10 @@ A request may be a detailed brief or a few words. Follow every requirement it st
 
 `showcase/` holds four strong models. View their renders with `view_image` to learn technique and composition.
 - `showcase/bag-end.jpg` and `showcase/bag-end.py`: Bag End under the Hill, 7329 pieces on a rounded base within 88x78 studs, built in this harness with the calls you have; the bar for ambition and density, not a style to copy. A plastered face with a green round door and windows set back in their frames, sunk into the hill under lumpy turf that bulges over them and trails ferns; a hollow hill rising gently from the door to the crest and stepping down into the garden, rounded by grassy slopes, flowering in patches, with chimneys poking through the turf and rock outcrops on its back; a gnarled oak on the crest whose crown hangs over its rim; the lane, stone stairs, a rail fence, a gate, hedges, and Sam's garden gone wild with weeds around an apple tree, a vegetable patch and flower beds.
-- `showcase/hogwarts.jpg`: Hogwarts above the Black Lake, 26815 pieces. The layout comes from the film castle's floor plan, on a sculpted crag, and every level has life: gardens, ivy, lamps, boats with lanterns, a pine forest, and easter eggs (the Whomping Willow holding the Ford Anglia, the giant squid). `showcase/hogwarts.md` is how it was built: references, a plan, a rejected first version, the layout redone from a floor plan, then the details.
+- `showcase/hogwarts.jpg` and `showcase/hogwarts.py`: Hogwarts above the Black Lake, 45073 pieces on 184x164 studs, built with the calls you have, with no problems and no floating brick: the patterns to learn for a large scene. Each building is a plan of solids in brick courses (`fill` for walls and floors, `roof`, `cone` for spires, `brick` for windows and details), built in its own step; the crag is shaped from the plans so every footing stands on rock, with slopes bevelling its edges. The layout comes from the film castle's floor plan, and every level has life: gardens, ivy, lamps, boats with lanterns, a pine forest, and easter eggs (the Whomping Willow holding the Ford Anglia, the giant squid). `showcase/hogwarts.md` is how it was designed: references, a plan, a rejected first version, the layout redone from a floor plan, then the details.
 - `showcase/paris.jpg` and `showcase/london.jpg`: the Seine at Saint-Germain and Tower Bridge on the Thames, 2123 and 1534 pieces at a smaller scale than yours.
 
-Claude hand-scripted Hogwarts, Paris and London, and wrote its own library for them first: `showcase/kit.py` (bonded wall runs, rings of walls, plate covers, tile mosaics, hip roofs, ridges) and, for Hogwarts, `showcase/sculpt.py`, which declares the castle's walls, towers, roofs and cones as solids and turns them into bricks, slopes and bridges over gaps. `build.py` has neither: write the helpers your subject needs at its top, in the same spirit, and take the showcases' techniques, never their calls, coordinates or layout. The log's tooling (renders over HTTP, part tests) is what `bricks`, `look` and this prompt give you.
+Claude hand-scripted Hogwarts, Paris and London. Hogwarts is a `build.py` script: borrow its functions (`round_tower`, `spire`, `gable_roof`, `windows`, `ivy`, the crag's `terrain` and `bevels`) and adapt them, never its coordinates or layout. Paris and London use Claude's own library, `showcase/kit.py` (bonded wall runs, rings of walls, plate covers, tile mosaics, hip roofs, ridges), which does not run in `build.py`: take their techniques, never their calls, coordinates or layout. The log's tooling (renders over HTTP, part tests) is what `bricks`, `look` and this prompt give you.
 
 ### User references
 
@@ -238,7 +347,7 @@ sed -n '/^## Images/,$p' .sagent/tool-results/PAGE.txt | grep -o 'https://[^)]*\
 
 Build early: once two or three photos show the subject, your next step writes a draft of the whole subject and runs it. `bricks parts` gives each part's size; a part or color you are unsure of goes straight into the draft, where the run shows how it fits and whether it exists in that color. Reach for curved slopes, wedges, cones and mounted tiles whenever the subject has curves or faces: a model of plain bricks and plates looks voxelized.
 
-The first draft decides the model. Every later run edits what already stands, and each edit changes less than the one before: the model you end with is the first draft, refined. So the first draft carries the whole ambition: full size and full height, the subject's signature features in place, the ground already shaped. A timid first draft, small, flat and empty, grows into a timid model however long you polish it.
+The first draft decides the model. Every later run edits what already stands, and each edit changes less than the one before: the model you end with is the first draft, refined. So the first draft carries the whole ambition: full size and full height, the subject's signature features in place, the ground already shaped. For a scene, that is thousands of pieces over most of the site; the finished showcases have 7329 (Bag End) and 45073 (Hogwarts). A timid first draft, small, flat and empty, grows into a timid model however long you polish it.
 
 Work in passes over the whole model, never one part to completion. Each pass is one or more steps the user can follow.
 1. Setting: the levels the subject lives on (a cliff, a quay, a street, water), as hollow masses. Skip it for a lone object.
@@ -253,8 +362,8 @@ Go back a pass if the render shows that pass is wrong: rewrite the part whose sh
 
 Not every one fits every subject: break one when the build is better for it.
 1. Silhouette first: silhouette and proportions make a subject recognizable, and details never rescue wrong ones. Measure them from the photos, and fix the structure before adding details.
-2. Height is presence: the subject rises tall, with a skyline of varied heights (towers, roofs, spires against the sky). Levels below it (water, a quay, a street) and stairs or ramps joining them earn their place only where the subject lives on them. The footprint stays tight to the subject, which takes most of it.
-3. One scale: a storey is 4 courses, a door 3 and a person 2, so a stud is about 60 cm and a 20 m facade is 32 studs wide. A single object is built big enough for its own details, and its setting takes the same scale.
+2. Height is presence: the subject rises tall, with a skyline of varied heights (towers, roofs, spires against the sky). Levels below it (water, a quay, a street) and stairs or ramps joining them earn their place only where the subject lives on them. The subject takes most of the site, and its setting the rest.
+3. One scale: a storey is 4 courses, a door 3 and a person 2, so a stud is about 60 cm and a 20 m facade is 32 studs wide. Heights take the same scale, a metre to 4 plates: a 10 m curtain wall is 40 plates high, a 30 m tower 120. Never compress heights for a display model: walls 13 courses tall are right, and a squat model reads as a toy. A single object is built big enough for its own details, and its setting takes the same scale.
 4. True to the subject: count what the photos show and build that count (arches, towers, windows per floor). Materials, colors and local vocabulary make a place recognizable: Paris is cream stone, zinc mansards and plane trees. Its signature features all show from the 3/4 front view.
 5. The real world is irregular: stone varies in shade and size, terrain slumps, trees lean, buildings gather additions. A mirror-symmetric mound, a row of identical trees or a wall of one brick looks generated. Seeded randomness gives this at no cost.
 6. Depth is made of hollows: faces step in and out with arches, buttresses and recesses; volumes are hollow, with windows on every side, some lit (46), some dark (40). Texture completes it: embossed bricks, several shades of one color in a wall, several greens on a lawn, blues and trans blue in water.
@@ -266,7 +375,7 @@ Not every one fits every subject: break one when the build is better for it.
 
 The render is the truth: when it disagrees with the photo from the same viewpoint, the model is wrong, however right the code looks. After each run, judge from far to near and fix the first thing wrong:
 1. Outline: the silhouette and proportions against the photos, from every view.
-2. Masses: a clear main part, the levels it stands on, a skyline.
+2. Masses: a clear main part, the levels it stands on, a skyline. In the 3/4 view the subject fills most of the frame; a frame mostly of flat ground or water means a subject too small or too low for its site.
 3. Surfaces: flat walls, identical copies, relief or clutter where the subject is plain.
 4. Seams: holes a helper left, parts that do not meet, pieces poking through, towers held by one plate.
 
@@ -285,6 +394,7 @@ Defects and ideas you are not acting on yet go into the notes, so none is lost t
 Seen before, each fine in code and wrong in the render:
 - every feature present, yet it looks like something else;
 - the subject built smaller than its scale, stretched flat, or lost in a large setting;
+- heights cut below the scale "for a model", so a castle's walls stand 4 courses tall;
 - walls of plain bricks and plates where the subject is curved, sloped or carved;
 - terrain as flat bands, or one profile extruded;
 - identical copies of towers, trees or windows;
