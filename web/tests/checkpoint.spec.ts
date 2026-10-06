@@ -5,19 +5,37 @@ import { imported } from "../api/lib/imported";
 import { fixture } from "./fixtures";
 
 /** Publish the finished session "mine", whose shared model is `model`, with `edits`, against a mocked Agents API. */
-async function published(model: object, edits: unknown, fork = false) {
+async function published(model: object, edits: unknown, fork = false, photos: string[] = []) {
   const original = globalThis.fetch;
-  globalThis.fetch = async (input) => {
+  globalThis.fetch = async (input, init) => {
     const url = new URL(String(input));
+    if (url.protocol === "data:") return original(input, init);
     if (url.pathname === "/seed")
       return Response.json({ format: 1, origin: { id: "PRIVATE_ORIGIN" }, model: { name: "My fork" } });
-    if (url.pathname === "/model") return new Response(gzipSync(JSON.stringify(model)));
+    if (url.pathname === "/model" || url.pathname === "/photo") {
+      expect(new Headers(init?.headers).get("authorization")).toBe("Bearer test-key");
+      expect(init?.redirect).toBe("error");
+      expect(init?.signal).toBeDefined();
+      return new Response(url.pathname === "/model" ? gzipSync(JSON.stringify(model)) : "photo", {
+        headers: { "content-type": "image/png" },
+      });
+    }
+    if (url.origin !== "https://agp.eu.hcompany.ai") throw new Error("External URLs must not be fetched");
     if (url.pathname.endsWith("/changes"))
       return Number(url.searchParams.get("from_index")) > 0
         ? new Response(null, { status: 204 })
         : Response.json({
             status: "failed",
             new_events: [
+              {
+                timestamp: "2026-01-01T00:00:00Z",
+                type: "AgentEvent",
+                data: {
+                  kind: "message_event",
+                  caller_id: "user",
+                  content: ["A tower", ...photos.map((source) => ({ type: "url", source }))],
+                },
+              },
               ...(fork
                 ? [
                     {
@@ -27,7 +45,7 @@ async function published(model: object, edits: unknown, fork = false) {
                         origin: "user",
                         name: "brickyard-fork.json.gz",
                         path: "/workspace/brickyard-fork.json.gz",
-                        url: "https://files.test/seed",
+                        url: "https://agp.eu.hcompany.ai/seed",
                         media_type: "application/json",
                         size_bytes: 1,
                       },
@@ -41,7 +59,7 @@ async function published(model: object, edits: unknown, fork = false) {
                   origin: "agent",
                   name: "model.json.gz",
                   path: "/workspace/model.json.gz",
-                  url: "https://files.test/model",
+                  url: "https://agp.eu.hcompany.ai/model",
                   media_type: "application/json",
                   size_bytes: 1,
                 },
@@ -62,7 +80,7 @@ async function published(model: object, edits: unknown, fork = false) {
     });
   };
   try {
-    return await snapshot("mine", "test-key", edits, async () => "unused");
+    return await snapshot("mine", "test-key", edits, async (name) => `https://saved.example/${name}`);
   } finally {
     globalThis.fetch = original;
   }
@@ -102,4 +120,23 @@ test("publishing a running fork's saved model keeps its name and omits private a
   expect(build.revision).toBe(fixture().revision);
   expect(build).not.toHaveProperty("origin");
   expect(JSON.stringify(build)).not.toContain("PRIVATE_ORIGIN");
+});
+
+test("publishing copies platform images but keeps external HTTPS photos as links without fetching them", async () => {
+  const photos = [
+    "https://agp.eu.hcompany.ai/photo",
+    "data:image/png;base64,cGhvdG8=",
+    "https://images.example.org/photo.jpg",
+    "https://agp.eu.hcompany.ai.evil.example/photo.jpg",
+    "https://127.0.0.1/photo.jpg",
+    "http://169.254.169.254/photo.jpg",
+    "https://user:password@images.example.org/photo.jpg",
+    "file:///etc/passwd",
+  ];
+  const build = await published(fixture(), null, false, photos);
+  expect(build.messages[0].images).toEqual([
+    "https://saved.example/images/1.png",
+    "https://saved.example/images/2.png",
+    ...photos.slice(2, 5),
+  ]);
 });
