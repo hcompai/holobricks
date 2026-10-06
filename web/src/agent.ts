@@ -119,11 +119,11 @@ export async function initialMessage(text: string, photos: string[], attached: R
 }
 
 /** Continue an ended model with the existing ordinary chat flow. */
-export const remix = (build: Build, text: string, photos: string[]) =>
-  create(text, photos, { "remix.py": new Blob([script(build)], { type: "text/x-python" }) });
+export const remix = (build: Build, text: string, photos: string[], attached: Record<string, Blob> = {}) =>
+  create(text, photos, { ...attached, "remix.py": new Blob([script(build)], { type: "text/x-python" }) });
 
-export async function say(id: string, text: string, photos: string[]) {
-  await client.session(id).sendMessage(await message(text, photos, {}, `photo-${Date.now()}`));
+export async function say(id: string, text: string, photos: string[], attached: Record<string, Blob> = {}) {
+  await client.session(id).sendMessage(await message(text, photos, attached, `photo-${Date.now()}`));
 }
 
 /** Submit recovery inputs with session creation, so there is no empty-session/message gap. */

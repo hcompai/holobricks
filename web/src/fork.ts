@@ -37,7 +37,7 @@ export function forkOperation(group = `fork-${crypto.randomUUID()}`) {
     remember(id, { name: seed.model.name, prompt, pieces: seed.model.pieces.length });
     return id;
   };
-  return (selected: ForkSeed, text: string, photos: string[]): Promise<string> => {
+  return (selected: ForkSeed, text: string, photos: string[], attached: Record<string, Blob> = {}): Promise<string> => {
     if (accepted) return Promise.resolve(accepted);
     if (pending) return pending;
     const run = async () => {
@@ -53,6 +53,7 @@ export function forkOperation(group = `fork-${crypto.randomUUID()}`) {
       const json = new Blob([JSON.stringify(seed)], { type: "application/json" });
       const packed = await new Response(json.stream().pipeThrough(new CompressionStream("gzip"))).blob();
       const first = await initialMessage(text, photos, {
+        ...attached,
         [FORK_FILE]: packed,
         "remix.py": new Blob([script(seed.model)], { type: "text/x-python" }),
       });
@@ -86,12 +87,18 @@ export function forkOperation(group = `fork-${crypto.randomUUID()}`) {
 const starts = new Map<string, { run: ReturnType<typeof forkOperation> }>();
 
 /** The first ordinary chat message starts Holo; the saved copy keeps its identity. */
-export async function startFork(id: string, seed: ForkSeed, text: string, photos: string[]): Promise<string> {
+export async function startFork(
+  id: string,
+  seed: ForkSeed,
+  text: string,
+  photos: string[],
+  attached: Record<string, Blob> = {},
+): Promise<string> {
   if (!/^fork-[a-f0-9-]{36}$/.test(id)) throw new Error("Invalid copy.");
   let operation = starts.get(id);
   if (!operation) starts.set(id, (operation = { run: forkOperation(id) }));
   const start = async () => {
-    const session = await operation.run(seed, text, photos);
+    const session = await operation.run(seed, text, photos, attached);
     await linkFork(id, session);
     return session;
   };

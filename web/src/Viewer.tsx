@@ -176,6 +176,7 @@ interface Props {
   describe: (piece: Piece) => string;
   /** Every color a piece can take. */
   palette: Color[];
+  onAsk?: (text: string, model: Build, ids: number[]) => Promise<boolean>;
   onMode: (mode: Mode) => void;
 }
 
@@ -548,6 +549,17 @@ export function Viewer(props: Props) {
           packs={build!.parts}
           currentParts={[...new Set(selectedPieces.map((p) => p.part))]}
           onReplace={replace}
+          onAsk={
+            ready && props.onAsk
+              ? (text) =>
+                  props.onAsk!(
+                    text,
+                    build!,
+                    selectedPieces.map((p) => p.id),
+                  )
+              : undefined
+          }
+          count={selectedPieces.length}
         />
       )}
       {mode === "walk" && shown && (

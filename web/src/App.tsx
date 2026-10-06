@@ -34,7 +34,8 @@ import { useEdits } from "./edits";
 import { type Build, type BuildSummary, EMPTY_MODEL, type Piece, type Source, verified } from "./model";
 import { type Color, usePalette } from "./palette";
 import { estimate, money, usePrices } from "./pickabrick";
-import { ChatPanel } from "./ChatPanel";
+import { ChatPanel, type ChatHandle } from "./ChatPanel";
+import { selectedArea } from "./selectedArea";
 import { HomeShelves } from "./HomeShelves";
 import { ImportBuild } from "./ImportBuild";
 import { countParts, PartsPanel } from "./PartsPanel";
@@ -171,6 +172,7 @@ export default function App({ account }: { account: Account }) {
   const palette = usePalette();
   const prices = usePrices();
   const viewer = useRef<ViewerHandle>(null);
+  const chat = useRef<ChatHandle>(null);
   const [loadedBuilds, setBuilds] = useState<BuildSummary[] | null>(null);
   const builds = useMemo(
     () => loadedBuilds?.map((b) => (names[b.id] ? { ...b, name: names[b.id].name } : b)) ?? null,
@@ -341,7 +343,7 @@ export default function App({ account }: { account: Account }) {
   };
 
   /** Start a build and show it at once: a new one, or a copy of `from` that Holo changes as asked, under the same name if it is the user's. */
-  const start = async (prompt: string, images: string[], from?: Build) => {
+  const start = async (prompt: string, images: string[], from?: Build, attached: Record<string, Blob> = {}) => {
     const name = from ? (owned ? from.name : `${from.name} remix`) : (label(prompt) ?? NEW_BUILD);
     const at = opened.current;
     const since = Date.now();
@@ -355,7 +357,7 @@ export default function App({ account }: { account: Account }) {
     };
     setDraft({ at, build, since });
     try {
-      const id = await (from ? remix(from, prompt, images) : create(prompt, images));
+      const id = await (from ? remix(from, prompt, images, attached) : create(prompt, images, attached));
       started.current.add(id);
       remember(id, { name: name.slice(0, 60), prompt });
       refreshBuilds();
@@ -754,6 +756,7 @@ export default function App({ account }: { account: Account }) {
             </p>
           )}
           <ChatPanel
+            ref={chat}
             key={ref ? `${ref.source}:${ref.id}` : "new"}
             build={live}
             loading={loading}
@@ -761,11 +764,11 @@ export default function App({ account }: { account: Account }) {
             closed={closed}
             preview={preview}
             onCreate={start}
-            onSay={async (text, images) => {
+            onSay={async (text, images, attached) => {
               if (!live || readOnly || (!live.open && live.status !== "building")) return;
-              if (runId) await say(runId, text, images);
+              if (runId) await say(runId, text, images, attached);
               else if (ref?.source === "fork" && seed) {
-                const id = await startFork(ref.id, seed, text, images);
+                const id = await startFork(ref.id, seed, text, images, attached);
                 started.current.add(id);
                 attachSession(id);
                 refreshBuilds();
@@ -776,8 +779,8 @@ export default function App({ account }: { account: Account }) {
             }}
             onFork={beginFork}
             dockRef={setDock}
-            onRemix={async (text, images) => {
-              if (build && !readOnly && owned) await start(text, images, build);
+            onRemix={async (text, images, attached) => {
+              if (build && !readOnly && owned) await start(text, images, build, attached);
             }}
           />
           {forkError && (
@@ -895,6 +898,11 @@ export default function App({ account }: { account: Account }) {
               edits={readOnly ? { ...edits, editable: false, stale: 0, hidden: 0 } : edits}
               describe={describer(build, palette)}
               palette={palette}
+              onAsk={
+                !closed && !readOnly && owned
+                  ? (text, model, ids) => chat.current?.ask(text, selectedArea(model, ids)) ?? Promise.resolve(false)
+                  : undefined
+              }
               onMode={(mode) => {
                 if (mode !== "edit" || !readOnly) setMode(mode);
               }}
