@@ -7,18 +7,22 @@ const HANDLE = 22;
 const FLICK = 0.35;
 /** Movement under this many pixels is a tap. */
 const TAP = 6;
+const FULL = "calc(var(--phone-height, 100dvh) - var(--bar) - 8px)";
 const HEIGHTS: Record<Detent, (peek: number) => string> = {
-  peek: (peek) => `calc(${peek}px + env(safe-area-inset-bottom))`,
-  half: () => "52dvh",
-  full: () => "calc(100dvh - var(--bar) - 8px)",
+  peek: (peek) => `min(calc(${peek}px + env(safe-area-inset-bottom)), ${FULL})`,
+  half: (peek) =>
+    `min(max(calc(${peek}px + env(safe-area-inset-bottom)), calc(var(--phone-height, 100dvh) * 0.52)), ${FULL})`,
+  full: () => FULL,
 };
 
 /** A phone's bottom sheet: dragged or tapped on its handle between a peek that shows `dock`, half and full height. */
-export function useSheet(dock: HTMLElement | null) {
+export function useSheet(dock: HTMLElement | null, viewportHeight = innerHeight) {
   const [detent, setDetent] = useState<Detent>("peek");
   const [peek, setPeek] = useState(88);
   const [drag, setDrag] = useState<number | null>(null);
   const start = useRef<{ y: number; height: number; lastY: number; lastTime: number; velocity: number } | null>(null);
+  const full = Math.max(0, viewportHeight - 64);
+  const minimum = Math.min(peek, full);
 
   useEffect(() => {
     if (!dock) return;
@@ -41,9 +45,9 @@ export function useSheet(dock: HTMLElement | null) {
     }
     const height = from.height + moved;
     const stops: [Detent, number][] = [
-      ["peek", peek],
-      ["half", innerHeight * 0.52],
-      ["full", innerHeight - 64],
+      ["peek", minimum],
+      ["half", Math.min(full, Math.max(minimum, viewportHeight * 0.52))],
+      ["full", full],
     ];
     const nearest = stops.reduce((a, b) => (Math.abs(b[1] - height) < Math.abs(a[1] - height) ? b : a));
     const up = stops.find(([, h]) => h > height) ?? stops[stops.length - 1];
@@ -67,7 +71,7 @@ export function useSheet(dock: HTMLElement | null) {
       from.lastY = e.clientY;
       from.lastTime = e.timeStamp;
       if (Math.abs(from.y - e.clientY) < TAP) return;
-      setDrag(Math.max(peek, Math.min(innerHeight - 64, from.height + from.y - e.clientY)));
+      setDrag(Math.max(minimum, Math.min(full, from.height + from.y - e.clientY)));
     },
     onPointerUp: end,
     onPointerCancel: end,

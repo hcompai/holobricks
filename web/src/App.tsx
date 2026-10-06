@@ -60,6 +60,7 @@ import {
 } from "./library";
 import { label } from "./suggestions";
 import { type BuildRef, useBuild } from "./useBuild";
+import { useViewport } from "./useViewport";
 import { useKeeper } from "./useSession";
 import { useSheet } from "./useSheet";
 import { type Framing, type Mode, ViewControls, Viewer, type ViewerHandle } from "./Viewer";
@@ -194,7 +195,8 @@ export default function App({ account }: { account: Account }) {
   const edited = !readOnly && edits.edits.length > 0 && build !== live;
   const phone = useSyncExternalStore(onPhoneChange, () => PHONE.matches);
   const [dock, setDock] = useState<HTMLElement | null>(null);
-  const sheet = useSheet(dock);
+  const viewport = useViewport(phone);
+  const sheet = useSheet(dock, viewport?.height);
   const built = !!build?.pieces.length;
 
   useEffect(() => {
@@ -627,7 +629,12 @@ export default function App({ account }: { account: Account }) {
   return (
     <div
       className={`app${home ? " home" : ""}${historyOpen ? " has-history" : ""}`}
-      style={sheeted ? ({ "--peek": `${sheet.peek}px` } as CSSProperties) : undefined}
+      style={
+        {
+          ...(sheeted && { "--peek": `${sheet.peek}px` }),
+          ...(viewport && { "--phone-height": `${viewport.height}px`, "--phone-top": `${viewport.top}px` }),
+        } as CSSProperties
+      }
     >
       <header>
         {sheeted ? (
@@ -933,6 +940,7 @@ export default function App({ account }: { account: Account }) {
               setPlaying(p);
             }}
             onSpeed={setSpeed}
+            onLive={build?.status === "building" && !previewing && !following ? () => scrub(last) : undefined}
             spaceKey={mode !== "walk"}
           />
         )}
