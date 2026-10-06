@@ -1309,6 +1309,10 @@ main {
   align-self: auto;
 }
 
+.view-toggle {
+  display: none;
+}
+
 .edit-availability {
   margin: 0;
   padding: 0 4px;
@@ -2399,10 +2403,17 @@ main {
   }
 }
 
-@keyframes rise {
+@keyframes sheet-rise {
   from {
     opacity: 0;
     transform: translateY(24px);
+  }
+}
+
+@keyframes unfold {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.96);
   }
 }
 
@@ -2480,7 +2491,7 @@ main {
     box-shadow:
       0 0 0 100vmax rgba(0, 0, 0, 0.32),
       0 -8px 48px rgba(0, 0, 0, 0.2);
-    animation: rise 0.32s var(--spring);
+    animation: sheet-rise 0.32s var(--spring);
   }
 
   .menu-list > a,
@@ -2592,6 +2603,30 @@ main {
     text-align: right;
   }
 
+  .app:not(.home) .view-toggle {
+    display: grid;
+    place-items: center;
+    width: 46px;
+    height: 46px;
+    padding: 0;
+    border: 0.5px solid var(--glass-stroke);
+    border-radius: 50%;
+    background: var(--glass);
+    -webkit-backdrop-filter: var(--glass-blur);
+    backdrop-filter: var(--glass-blur);
+    box-shadow: var(--glass-shadow);
+    color: var(--text-default);
+  }
+
+  .app:not(.home) .view-controls:not(.open) > .tabs,
+  .app:not(.home) .view-controls:not(.open) > .edit-availability {
+    display: none;
+  }
+
+  .app:not(.home) .view-controls.open > .tabs {
+    animation: unfold 0.28s var(--spring);
+  }
+
   .app:not(.home) .view-controls > .tabs {
     flex-direction: column;
     gap: 2px;
@@ -2655,7 +2690,7 @@ main {
     -webkit-backdrop-filter: var(--glass-blur);
     backdrop-filter: var(--glass-blur);
     box-shadow: var(--glass-shadow);
-    animation: rise 0.32s var(--spring);
+    animation: sheet-rise 0.32s var(--spring);
   }
 
   .app:not(.home) .viewer-info {
@@ -2669,19 +2704,7 @@ main {
   }
 
   .app:not(.home) .model-size {
-    gap: 12px;
-    padding: 5px 10px;
-    border: 0.5px solid var(--glass-stroke);
-    border-radius: 12px;
-    background: var(--glass);
-    -webkit-backdrop-filter: var(--glass-blur);
-    backdrop-filter: var(--glass-blur);
-  }
-
-  .app:not(.home) .model-size dd {
-    margin: 0;
-    font-size: 11px;
-    line-height: 14px;
+    display: none;
   }
 
   .app:not(.home) .viewer > .placement-sound {
