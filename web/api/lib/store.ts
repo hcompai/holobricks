@@ -3,6 +3,7 @@ import { gunzipSync, gzipSync } from "node:zlib";
 import { Refusal } from "./http";
 import {
   privateDelete,
+  privateConfigured,
   privateEntry,
   privateFiles,
   privateFolder,
@@ -60,7 +61,7 @@ export async function enter(published: Published, before: string[], written: str
   await put(entry(published.id), JSON.stringify(published), { ...PUBLIC, contentType: "application/json" });
   // Publishing again takes the place of a private entry left by a moderator, so it is never both.
   await del(hidden(published.owner, published.id)).catch(() => undefined);
-  if (process.env.BRICKYARD_PRIVATE_BLOB_TOKEN) await removePrivate(published.owner, published.id);
+  if (privateConfigured()) await removePrivate(published.owner, published.id);
   const gone = before.filter((url) => !written.includes(url));
   if (gone.length) await del(gone);
 }
@@ -84,8 +85,8 @@ async function read(path: string): Promise<Published | null> {
 export const find = (id: string) => read(entry(id));
 
 /** Read private metadata only from the authenticated store. Legacy entries migrate on owner access. */
-async function ownPrivate(owner: string, id: string): Promise<Published | null> {
-  if (process.env.BRICKYARD_PRIVATE_BLOB_TOKEN) {
+async function ownPrivate(owner: string, id: string, migrateLegacy = true): Promise<Published | null> {
+  if (privateConfigured()) {
     const response = await privateRead(privateEntry(owner, id));
     if (response) {
       const found: Published & { pending?: boolean } = await response.json();
@@ -97,6 +98,7 @@ async function ownPrivate(owner: string, id: string): Promise<Published | null> 
       return found;
     }
   }
+  if (!migrateLegacy) return null;
   const legacy = await read(hidden(owner, id));
   if (!legacy) return null;
   if (legacy.owner !== owner || legacy.id !== id) throw new Error("Invalid legacy build owner");
@@ -114,7 +116,7 @@ export async function privateOf(owner: string): Promise<Published[]> {
     const published = await fetched(blob.url, blob.uploadedAt);
     if (published?.owner === owner) await setPrivate(published, true);
   }
-  if (!process.env.BRICKYARD_PRIVATE_BLOB_TOKEN) return [];
+  if (!privateConfigured()) return [];
   const entries = (await privateFiles(privatePrefix(owner))).filter(
     (b) => b.pathname.endsWith(".json") && !b.pathname.slice(privatePrefix(owner).length).includes("/"),
   );
@@ -234,7 +236,7 @@ export async function setPrivate(published: Published, value: boolean) {
 export async function privateFile(owner: string, id: string, name: string): Promise<Response> {
   if (!/^(?:build\.json\.gz|thumbnail[\w.-]*\.(?:png|jpeg|webp)|images\/\d+\.(?:png|jpg|webp))$/.test(name))
     throw new Refusal(404, "No such file.");
-  if (!(await ownPrivate(owner, id))) throw new Refusal(404, "No such private build.");
+  if (!(await ownPrivate(owner, id, false))) throw new Refusal(404, "No such private build.");
   const response = await privateRead(privateFolder(owner, id) + name);
   if (!response) throw new Refusal(404, "No such file.");
   response.headers.set("Cache-Control", "private, no-store");
@@ -268,7 +270,7 @@ export async function library(): Promise<Published[]> {
 /** Take a build out of the library, public or private, then delete its files. */
 export async function unlist(id: string, owner?: string) {
   await del(owner ? [entry(id), hidden(owner, id)] : entry(id));
-  if (owner && process.env.BRICKYARD_PRIVATE_BLOB_TOKEN) await removePrivate(owner, id);
+  if (owner && privateConfigured()) await removePrivate(owner, id);
   const urls = await files(id);
   if (urls.length) await del(urls);
 }

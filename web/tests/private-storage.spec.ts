@@ -158,3 +158,16 @@ test("the operator command runs the same migration against isolated stores", asy
   expect(blob.objects.size).toBe(0);
   expect((await GET(request(owner, "build.json.gz"))).status).toBe(200);
 });
+
+test("Vercel's generated variable works without inferring the store id from its token", async () => {
+  const token = process.env.BRICKYARD_PRIVATE_BLOB_TOKEN;
+  delete process.env.BRICKYARD_PRIVATE_BLOB_TOKEN;
+  process.env.BRICKYARD_PRIVATE_BLOB_READ_WRITE_TOKEN = token;
+  try {
+    await setPrivate(published, true);
+    expect((await GET(request(owner, "build.json.gz"))).status).toBe(200);
+  } finally {
+    process.env.BRICKYARD_PRIVATE_BLOB_TOKEN = token;
+    delete process.env.BRICKYARD_PRIVATE_BLOB_READ_WRITE_TOKEN;
+  }
+});
