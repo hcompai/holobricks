@@ -86,6 +86,7 @@ test("a fork has its own name on mobile; Escape cancels and failed saves preserv
   expect(names.has("light")).toBe(false);
   await page.reload();
   await expect(page.locator("header .title")).toHaveText("Red light");
+  await page.locator(".sheet-handle").click();
   await expect(page.getByRole("link", { name: "Lighthouse", exact: true })).toBeVisible();
   expect(agp.posted("/api/v2/sessions")).toHaveLength(0);
 });
