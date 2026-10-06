@@ -132,7 +132,7 @@ class Script:
         if z < 0:
             raise ValueError(f"z={z} is below the ground")
         if self.sculpture is None:
-            self.sculpture = Sculpture(z % 3, supported=True)
+            self.sculpture = Sculpture(z % 3)
         sc = self.sculpture
         if (z - sc.z0) % 3 or height % 3:
             raise ValueError(
@@ -192,11 +192,22 @@ class Script:
         sc, self.sculpture, self.peak = self.sculpture, None, 0
         if sc is None:
             return
+        courses = lambda lo, hi: range((lo - sc.z0) // 3, -((sc.z0 - hi) // 3))
         for x, y in {(x, y) for x, y, _ in sc.solid}:
             for lo, hi in self.columns.get((x, y), ()):
-                for k in range((lo - sc.z0) // 3, -((sc.z0 - hi) // 3)):
+                for k in courses(lo, hi):
                     sc.solid.pop((x, y, k), None)
                     sc.claimed.add((x, y, k))
+        for i, b in enumerate(self.steps[-1]["bricks"]):
+            try:
+                brick = Brick.model_validate(b)
+                x, y, w, d, z, height = self._extent(brick)
+            except (ArithmeticError, KeyError, ValueError):
+                continue
+            if brick.facing is not None:
+                continue
+            for cell in shapes.rect(x, y, w, d):
+                sc.placed.update(((*cell, k), i) for k in courses(z, z + height) if (*cell, k) in sc.claimed)
         pieces = sc.mesh(lambda x, y: 0 if sc.z0 == 0 else -1)
         self._record([(part, *owner) for _, owner, b in pieces for part in _in_color(b)])  # type: ignore[misc]
 

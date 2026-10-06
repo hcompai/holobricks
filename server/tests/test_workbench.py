@@ -261,6 +261,15 @@ def test_the_prompts_example_builds_with_no_problems_and_nothing_floating(tmp_pa
     assert len(bench.pieces) > 3_000, result.text
 
 
+@pytest.mark.skipif(not catalog.SNAPSHOT.exists(), reason="catalog snapshot not built")
+def test_hogwarts_builds_from_its_script_with_no_problems_and_nothing_floating(tmp_path):
+    showcase = (Path(__file__).resolve().parents[2] / "agent" / "showcase" / "hogwarts.py").read_text()
+    bench = Workbench(Workspace.open(tmp_path))
+    result = bench.run_script(showcase)
+    assert result.problems == 0 and "Floating" not in result.text, result.text
+    assert len(bench.pieces) > 40_000, result.text
+
+
 def test_the_prompt_names_only_real_parts_sizes_and_colors():
     prompt = (Path(__file__).resolve().parents[2] / "agent" / "holo.md").read_text()
     rows = re.findall(r"^- (\d+) tall[^:]*: (.*)$", prompt.split("\n## Parts")[1].split("\n## ")[0], re.MULTILINE)
