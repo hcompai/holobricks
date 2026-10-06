@@ -86,7 +86,8 @@ async function download(url: string, key: string): Promise<Blob> {
   if (!platformAsset(url)) throw new Error("Untrusted attachment URL");
   const response = await fetch(url, {
     headers: { Authorization: `Bearer ${key}` },
-    redirect: "error",
+    // The validated platform endpoint redirects to signed storage; fetch drops cross-origin credentials.
+    redirect: "follow",
     signal: AbortSignal.timeout(60_000),
   });
   if (!response.ok) throw new Error(`Could not download ${url} (HTTP ${response.status})`);
