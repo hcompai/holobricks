@@ -44,6 +44,9 @@ test("model size uses the rendered parts, stays fixed during replay and follows 
 
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(size).toBeHidden();
+  await page.getByRole("button", { name: "View controls" }).click();
+  await expect(size).toBeInViewport();
+  await page.getByRole("button", { name: "View controls" }).click();
 
   agp.share("size", revised({ ...model, pieces: [], steps: [] }));
   await expect(size).toHaveCount(0);

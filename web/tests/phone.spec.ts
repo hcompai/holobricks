@@ -49,3 +49,20 @@ test("on a phone the model fills the screen under a chat sheet that peeks, expan
   await expect(sheet).toHaveAttribute("data-detent", "peek");
   await expect(page.getByPlaceholder("Ask for a change")).toBeInViewport();
 });
+
+test.describe("on a short touch screen", () => {
+  test.use({ viewport: { width: 375, height: 500 }, hasTouch: true });
+
+  test("every view control stays tappable", async ({ page }) => {
+    await site(page);
+    const agp = await platform(page);
+    agp.session("short", "idle");
+    agp.say("short", "A tower");
+    agp.share("short", fixture());
+    agp.answer("short", "The tower is ready.");
+    await page.goto("/?build=short");
+    await page.getByRole("button", { name: "View controls" }).tap();
+    await page.getByRole("button", { name: "Edit", exact: true }).tap();
+    await expect(page.getByRole("button", { name: "Edit", exact: true })).toHaveAttribute("aria-pressed", "true");
+  });
+});

@@ -2580,7 +2580,13 @@ main {
     z-index: 10;
     top: calc(var(--bar) + 4px);
     right: max(12px, env(safe-area-inset-right));
+    bottom: 10px;
     margin: 0;
+    pointer-events: none;
+  }
+
+  .app:not(.home) .center-bar:has(.view-controls.open) {
+    z-index: 11;
   }
 
   .app:not(.home) .center-bar > .tabs {
@@ -2588,8 +2594,10 @@ main {
   }
 
   .app:not(.home) .view-controls {
+    max-height: 100%;
     align-items: flex-end;
     gap: 8px;
+    pointer-events: auto;
   }
 
   .app:not(.home) .edit-availability {
@@ -2631,6 +2639,8 @@ main {
     flex-direction: column;
     gap: 2px;
     width: 46px;
+    min-height: 0;
+    overflow-y: auto;
     padding: 3px;
     border: 0.5px solid var(--glass-stroke);
     border-radius: 16px;
@@ -2641,6 +2651,7 @@ main {
   }
 
   .app:not(.home) .view-controls .tabs button {
+    flex: none;
     height: 38px;
     padding: 0;
     justify-content: center;
@@ -2704,7 +2715,23 @@ main {
   }
 
   .app:not(.home) .model-size {
+    gap: 12px;
+    padding: 5px 10px;
+    border: 0.5px solid var(--glass-stroke);
+    border-radius: 12px;
+    background: var(--glass);
+    -webkit-backdrop-filter: var(--glass-blur);
+    backdrop-filter: var(--glass-blur);
+  }
+
+  .app:not(.home):not(:has(.view-controls.open)) .model-size {
     display: none;
+  }
+
+  .app:not(.home) .model-size dd {
+    margin: 0;
+    font-size: 11px;
+    line-height: 14px;
   }
 
   .app:not(.home) .viewer > .placement-sound {
