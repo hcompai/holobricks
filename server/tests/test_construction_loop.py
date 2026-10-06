@@ -222,6 +222,7 @@ def test_bricks_works_on_the_build_in_its_directory_and_exits_1_on_problems(
     plan = tmp_path / "plan.json"
     plan.write_text(json.dumps({"revision": "stale", "root": "model", "groups": []}))
     assert bricks("assembly", str(plan)) == 1
+    capsys.readouterr()
     (tmp_path / client.CLOCK).write_text(json.dumps({"started": time.time() - 20 * 60, "minutes": 180}))
     bricks("run")
     assert capsys.readouterr().out.startswith("Run 1 · 20 of 180 min used: keep improving the weakest part; the finish")
