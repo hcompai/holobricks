@@ -1,6 +1,6 @@
 import { ThinkingIcon } from "./Thinking";
 import { ArrowUpIcon, PlusIcon, ShuffleIcon, StopIcon, XIcon } from "@phosphor-icons/react";
-import { memo, type ReactNode, useEffect, useRef, useState } from "react";
+import { memo, type ReactNode, type Ref, useEffect, useImperativeHandle, useRef, useState } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Build, Message, Work } from "./model";
@@ -162,22 +162,28 @@ const Row = memo(
     a.message.images.join() === b.message.images.join(),
 );
 
+export interface ChatHandle {
+  ask: (prompt: string, attached: Record<string, Blob>) => Promise<boolean>;
+}
+
 interface Props {
+  ref?: Ref<ChatHandle>;
   build: Build | null;
   loading: boolean;
   activity: Activity | null;
   /** Why the builder takes no message here, or null when it does. */
   closed: ReactNode;
   onCreate: (prompt: string, images: string[]) => Promise<void>;
-  onSay: (text: string, images: string[]) => Promise<void>;
+  onSay: (text: string, images: string[], attached?: Record<string, Blob>) => Promise<void>;
   onStop: () => Promise<void>;
   preview?: ReactNode;
   onFork: () => void;
   /** Start a new build from a copy of this one, changed as asked: a closed build, or one whose session ended. */
-  onRemix: (text: string, images: string[]) => Promise<void>;
+  onRemix: (text: string, images: string[], attached?: Record<string, Blob>) => Promise<void>;
 }
 
 export function ChatPanel({
+  ref,
   build,
   loading,
   activity,
@@ -244,14 +250,16 @@ export function ChatPanel({
   };
 
   /** Hand `prompt` to the builder, even mid-build; whether it took it. */
-  const deliver = async (prompt: string, images: string[]) => {
+  const deliver = async (prompt: string, images: string[], attached: Record<string, Blob> = {}) => {
     const saying = !!build && !ended;
     const entry = { message: { role: "user" as const, text: prompt, images }, heard };
     if (saying) setQueued((list) => [...list, entry]);
     setSending(true);
     setError("");
     try {
-      await (ended ? onRemix : saying ? onSay : onCreate)(prompt, images);
+      if (ended) await onRemix(prompt, images, attached);
+      else if (saying) await onSay(prompt, images, attached);
+      else await onCreate(prompt, images);
       return true;
     } catch (e) {
       setQueued((list) => list.filter((q) => q !== entry));
@@ -261,6 +269,13 @@ export function ChatPanel({
       setSending(false);
     }
   };
+
+  useImperativeHandle(ref, () => ({
+    ask: (prompt, attached) => {
+      if (closed || preview || sending || !build?.id) return Promise.resolve(false);
+      return deliver(prompt, [], attached);
+    },
+  }));
 
   const typed = !!(text.trim() || attachments.length);
   const unsendable = !!preview || !!closed || !typed || sending || (changing && !build?.id);

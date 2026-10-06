@@ -179,23 +179,93 @@ export function EditPanel({
   packs,
   currentParts,
   onReplace,
+  onAsk,
+  count,
   ...color
 }: {
   label: string;
   onAction: (a: Action) => void;
   onClose: () => void;
+  onAsk?: (text: string) => Promise<boolean>;
+  count: number;
 } & ColorProps &
   ReplaceProps) {
   const [replacing, setReplacing] = useState(false);
+  const [asking, setAsking] = useState(false);
+  const [text, setText] = useState("");
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState("");
+  const send = async () => {
+    if (!onAsk || !text.trim() || sending) return;
+    setSending(true);
+    setError("");
+    try {
+      if (!(await onAsk(text.trim()))) {
+        setError("Couldn't send. Try again.");
+        return;
+      }
+      setText("");
+      setAsking(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't send. Try again.");
+    } finally {
+      setSending(false);
+    }
+  };
   return (
-    <div className={replacing ? "edit-panel replacing" : "edit-panel"} role="dialog" aria-label="Selection">
+    <div
+      className={`edit-panel${replacing ? " replacing" : asking ? " asking" : ""}`}
+      role="dialog"
+      aria-label={asking ? "Selected area" : "Selection"}
+    >
       <div className="edit-panel-head">
-        <b title={label}>{label}</b>
-        <button className="quiet icon-button" onClick={onClose} title="Deselect (Esc)" aria-label="Deselect">
+        <b title={label}>{asking ? `Selected area · ${count} ${count === 1 ? "brick" : "bricks"}` : label}</b>
+        <button
+          className="quiet icon-button"
+          disabled={sending}
+          onClick={asking ? () => setAsking(false) : onClose}
+          title={asking ? "Close prompt" : "Deselect (Esc)"}
+          aria-label={asking ? "Close prompt" : "Deselect"}
+        >
           <XIcon size={14} weight="bold" />
         </button>
       </div>
-      {replacing ? (
+      {asking ? (
+        <form
+          className="selection-prompt"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void send();
+          }}
+        >
+          <textarea
+            autoFocus
+            aria-label="Prompt for selected area"
+            placeholder="Make this taller…"
+            value={text}
+            disabled={sending}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                e.stopPropagation();
+                setAsking(false);
+              }
+              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                e.preventDefault();
+                void send();
+              }
+            }}
+          />
+          {error && (
+            <p className="error-text" role="alert">
+              {error}
+            </p>
+          )}
+          <button className="primary" type="submit" disabled={sending || !text.trim() || !onAsk}>
+            {sending ? "Sending…" : "Send to Holo"}
+          </button>
+        </form>
+      ) : replacing ? (
         <PartPicker
           used={usedParts}
           packs={packs}
@@ -208,7 +278,10 @@ export function EditPanel({
           onBack={() => setReplacing(false)}
         />
       ) : (
-        <SelectionControls onAction={onAction} onReplace={() => setReplacing(true)} color={color} />
+        <>
+          {onAsk && <button onClick={() => setAsking(true)}>Ask Holo</button>}
+          <SelectionControls onAction={onAction} onReplace={() => setReplacing(true)} color={color} />
+        </>
       )}
     </div>
   );
