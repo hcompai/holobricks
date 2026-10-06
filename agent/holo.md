@@ -137,6 +137,7 @@ Solids make the masses: walls, towers, roofs, hills, rock. Declare their shape, 
 - `box(x, y, w, d)` and `disc(cx, cy, r)`: sets of studs; combine them with `|`, `-` and `&`.
 - `color` is an LDraw code, or a function of (x, y, z) that gives each stud its own: stone in several shades, grass in patches.
 - Solids come in whole bricks: in one step, their z and heights sit on one grid of 3 plates (z = 0, 3, 6... or 1, 4, 7...). Start a new step for another grid.
+- Solids add up: overlapping fills in one step make one mass, and a step's solids give way to the pieces already built, on any grid. A round tower can overlap a square wall, a keep can rise through the lawn under it.
 - A part placed with `brick` in the same step wins over the solids: a window, a door or an arch placed in a solid wall takes its place there, and the wall closes around it. Place it on the solids' grid, so it takes whole courses.
 
 Parts make everything else:

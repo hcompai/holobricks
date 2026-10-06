@@ -138,6 +138,15 @@ def test_solids_become_hollow_bonded_shells_that_give_way_to_placed_parts(bench)
     assert len(house) < 10 * 8 * 4
 
 
+def test_solids_rise_through_earlier_pieces_on_any_grid_with_nothing_floating(bench):
+    code = (
+        'step("Ground")\ncover(box(0, 0, 40, 40), 0, 2)\nstep("Wall")\nfill(box(10, 10, 20, 3), 0, 18, 72)\n'
+        'step("Tower")\nfill(disc(10, 11, 4), 1, 24, 71)\n'
+    )
+    result = bench.run_script(code)
+    assert "No problems" in result.text and "Floating" not in result.text, result.text
+
+
 def test_solids_in_one_step_share_one_grid_of_whole_courses(bench):
     result = bench.run_script('step("Walls")\nfill(box(0, 0, 4, 4), 0, 3, 4)\nfill(box(0, 0, 4, 4), 4, 3, 4)\n')
     assert "line 3" in result.text and "solids come in whole bricks" in result.text, result.text

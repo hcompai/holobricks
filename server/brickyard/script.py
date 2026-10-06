@@ -8,7 +8,7 @@ import json
 import random
 import sys
 from collections import defaultdict
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Hashable, Iterable, Sequence
 from functools import cache
 
 from brickyard import catalog, ldraw, shapes
@@ -180,24 +180,34 @@ class Script:
         for c in cells:
             if not any(lo <= z < hi for lo, hi in self.columns.get(c, ())):
                 groups[color(*c) if callable(color) else color].add(c)
-        sizes = shapes.TILES if tiles else shapes.PLATES
+        self._add(self._plates(groups, z, shapes.TILES if tiles else shapes.PLATES))
+
+    def _plates(self, groups: dict[int, set[Cell]], z: int, sizes=shapes.PLATES) -> list[dict]:
+        """Plates at z over each color's studs, the largest first in parts that come in the color."""
         bricks = []
         for shade, group in groups.items():
             made = [s for s in sizes if shade in self.colors(s[2])]
             bricks += shapes.cover(group, z, shade, made if any(w == d == 1 for w, d, _ in made) else sizes)
-        self._add(bricks)
+        return bricks
 
     def _flush(self) -> None:
-        """Turn the step's solids into bricks: the shell only, slopes on steps, giving way to pieces placed."""
+        """Turn the step's solids into bricks: the shell only, slopes on steps, giving way to pieces placed; plates
+        fill what a piece leaves free of a course it partly fills."""
         sc, self.sculpture, self.peak = self.sculpture, None, 0
         if sc is None:
             return
         courses = lambda lo, hi: range((lo - sc.z0) // 3, -((sc.z0 - hi) // 3))
+        gaps: dict[tuple[int, Hashable], dict[int, set[Cell]]] = defaultdict(lambda: defaultdict(set))
         for x, y in {(x, y) for x, y, _ in sc.solid}:
-            for lo, hi in self.columns.get((x, y), ()):
+            taken = self.columns.get((x, y), ())
+            for lo, hi in taken:
                 for k in courses(lo, hi):
-                    sc.solid.pop((x, y, k), None)
                     sc.claimed.add((x, y, k))
+                    if (voxel := sc.solid.pop((x, y, k), None)) is None:
+                        continue
+                    for z in range(sc.z0 + 3 * k, sc.z0 + 3 * k + 3):
+                        if not any(a <= z < b for a, b in taken):
+                            gaps[z, voxel[2]][voxel[0]].add((x, y))
         for i, b in enumerate(self.steps[-1]["bricks"]):
             try:
                 brick = Brick.model_validate(b)
@@ -208,6 +218,7 @@ class Script:
                 continue
             for cell in shapes.rect(x, y, w, d):
                 sc.placed.update(((*cell, k), i) for k in courses(z, z + height) if (*cell, k) in sc.claimed)
+        self._record([(b, *owner) for (z, owner), groups in gaps.items() for b in self._plates(groups, z)])  # type: ignore[misc]
         pieces = sc.mesh(lambda x, y: 0 if sc.z0 == 0 else -1)
         self._record([(part, *owner) for _, owner, b in pieces for part in _in_color(b)])  # type: ignore[misc]
 
