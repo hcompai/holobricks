@@ -6,7 +6,7 @@ import { platformAsset, externalImage, assetBlob } from "./assetUrl";
 import type { Build } from "./model";
 import { script } from "./remix";
 import { AGENT } from "./session";
-const MODEL = "holo4-27b";
+import { HOLO } from "./holo";
 const MAX_STEPS = 300;
 const MAX_TIME_S = 3 * 3600;
 /** How long a finished build keeps its Workstation for a follow-up message. */
@@ -75,7 +75,7 @@ function agent(): HaiAgents.Agent {
   return {
     name: AGENT,
     description: "Designs brick models from real LDraw parts, step by step, in HoloBricks.",
-    model: MODEL,
+    model: HOLO.id,
     reasoningEffort: "xhigh",
     instructions,
     environments: [{ kind: "workstation", id: AGENT }],

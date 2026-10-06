@@ -8,6 +8,7 @@ import type { Activity } from "./session";
 import { Lightbox } from "./Lightbox";
 import { imageFiles, reference } from "./references";
 import { label, SUGGESTIONS } from "./suggestions";
+import { HOLO } from "./holo";
 
 const MAX_ATTACHMENTS = 2;
 const WHO = "Holo";
@@ -347,6 +348,9 @@ export function ChatPanel({
       >
         <PlusIcon size={14} weight="bold" />
       </button>
+      <span className="composer-model" aria-label={`Model: ${HOLO.name}`}>
+        {HOLO.name}
+      </span>
       {busy && build && !typed ? (
         <button
           className="round send stop"

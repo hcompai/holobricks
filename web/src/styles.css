@@ -719,6 +719,16 @@ aside {
   padding: 10px 12px 44px;
 }
 
+.composer-model {
+  position: absolute;
+  bottom: 13px;
+  left: 48px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  pointer-events: none;
+}
+
 .attachments {
   display: flex;
   flex-wrap: wrap;
