@@ -56,7 +56,7 @@ class Step(BaseModel):
     index: int
     title: str
     key: str | None = None
-    """Digest of the script step that made it, empty if that step had problems or floating bricks; None when no script made it."""
+    """Digest of the script step that made it, empty if it had rejected bricks; None when no script made it."""
 
 
 class Message(BaseModel):

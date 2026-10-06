@@ -90,10 +90,13 @@ Steps: pieces, then where they sit in studs (x, y) and plates (z, bottom to top)
 3837 pieces in 6 steps, spanning x 0-63, y 0-63, up to plate height 52. Colors: 2 green 1455, 288 dark green 742, 10 bright green 684, 71 light bluish grey 345, 272 dark blue 297, 19 tan 92, 72 dark bluish grey 59, 70 reddish brown 32, 33 trans dark blue 26, 15 white 19, 14 yellow 19, 43 trans light blue 15 and 6 more Parts: 3004 Brick 1 x 2 1057, 3005 Brick 1 x 1 577, 3024 Plate 1 x 1 371, 3622 Brick 1 x 3 259, 3010 Brick 1 x 4 236, 3023b Plate 1 x 2 199, 3040b Slope Brick 45 2 x 1 194, 3710 Plate 1 x 4 146 and 27 more
 ```
 
-The first line counts your runs and the minutes used since setup. The steps before the first one you changed are kept as they are, up to the first one with a rejected or floating brick, which is rebuilt and reported again. In the rebuilt steps:
+The first line counts your runs and the minutes used since setup. The steps before the first one you changed are kept as they are, up to the first one with a rejected brick, which is rebuilt and reported again. In the rebuilt steps:
 - A brick that overlaps another, is not a known part, has a coordinate or color that is not a whole number, goes below x or y 0 or has no valid `facing` is rejected: it is not placed, the report names it by its script line, and the rest of the model is built.
 - A part in a color it never came in is placed, and the report lists the colors it does come in and the first script lines that gave it that color. Pick one that matches the photos, or a different part in the color you need.
-- A floating brick, which no chain of stacked bricks connects to the ground or an earlier step, or a mounted part with nothing behind it, is placed and flagged, counted by script line. It is a warning, not a problem: fix the ones that show or where the model would fall apart as a real kit, and never shrink or flatten the design to avoid them.
+
+Support is checked on the complete model every run, including kept or copied steps: a contact path must reach the ground, not just an earlier step. Supports can be added in any step order. Possibly detached groups are warnings, not problems; they stay visible and do not force unchanged steps to rebuild. Each reported group has piece IDs, affected steps and its own `look box`; newly placed pieces also name their script lines. The report samples groups across steps when there are too many to list.
+
+Inspect a warned group from a low angle, then check its joins in the surrounding model. Bounding boxes can miss side/clip joins and do not prove real connections or strength. Fix visible gaps or joins that would leave a real kit unsupported; do not add filler, shrink or flatten the design just to clear a warning.
 
 A brick made inside a helper is named by its line there, then by the line that called the helper.
 
@@ -386,7 +389,7 @@ After each run, judge from far to near:
 The four small views can hide shape and connection errors. Choose `angle`, `elevation`, `zoom` and `at` to expose the feature you are judging and match its reference. Use `box` to isolate obscured pieces, then check their connections in the surrounding model. A helper repeats its bugs everywhere it is called: check one of its outputs close before reusing it.
 
 After sharing and looking at each revision, briefly describe the visible issue you will fix next. Before the first shared render, give a short progress update instead of a visual critique. Use the following checks to choose that next edit; keep the full diagnostic list in your notes:
-- problems: fix every rejected brick and missing color first, then each floating brick where the gap shows or a real kit would fall apart; each names its script line;
+- problems: fix every rejected brick and missing color first, then inspect support warnings and repair confirmed gaps or unsupported joins;
 - defects found close up: holes, joins, floating or cut parts, each with its place;
 - each signature feature: right, wrong (say what), or missing, against the reference photo;
 - the weakest part of the model now, and the change that makes it the strongest. Then make it.

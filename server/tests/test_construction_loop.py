@@ -150,22 +150,24 @@ def test_support_is_checked_on_the_complete_step_in_any_line_order(bench):
         code = 'step("Stack")\n' + "".join(f'brick("3001", 0, 0, {z}, 4)\n' for z in heights)
         result = bench.run_script(code)
         assert result.problems == 0, result.text
+        assert "Support warnings" not in result.text
         assert len(bench.pieces) == 3
 
 
-def test_floating_bricks_are_placed_with_a_note_and_cannot_support_each_other(bench):
+def test_floating_bricks_remain_visible_and_warn_without_failing_the_run(bench):
     result = bench.run_script('step("Floating pair")\nbrick("3001", 0, 0, 6, 4)\nbrick("3001", 0, 0, 9, 4)')
-    assert result.problems == 0 and "Floating, placed but flagged: 2 bricks in step 1" in result.text
-    assert result.text.count("no chain of stacked bricks from it reaches the ground or an earlier step") == 2
+    assert result.problems == 0 and "Support warnings: 2 pieces in 1 possibly detached group" in result.text
+    assert "No problems" not in result.text
     assert len(bench.pieces) == 2
 
 
-def test_a_later_step_cannot_retroactively_support_an_earlier_step(bench):
+def test_support_checks_the_final_model_not_the_drawing_order(bench):
     result = bench.run_script('step("Top first")\nbrick("3001", 0, 0, 3, 4)\n' + CORE)
-    assert (
-        "1 brick in step 1" in result.text
-        and "no chain of stacked bricks from it reaches the ground or an earlier step" in result.text
-    )
+    assert result.problems == 0 and "Support warnings" not in result.text
+    # Removing that support must also recheck the unchanged top.
+    result = bench.run_script('step("Top first")\nbrick("3001", 0, 0, 3, 4)\n')
+    assert result.problems == 0 and "Support warnings: 1 piece" in result.text
+    assert "Group 1: 1 piece; steps 1;" in result.text
 
 
 def test_fixed_manual_steps_survive_script_rejection_and_script_removal(bench):
@@ -219,15 +221,18 @@ def test_bricks_works_on_the_build_in_its_directory_and_exits_1_on_problems(
     assert bricks("assembly") == 1 and "disconnected_model" in capsys.readouterr().out
     (tmp_path / "outside.py").write_text(CORE + 'brick("3001", -1, 0, 0, 4)\n')
     assert bricks("run", "outside.py") == 1
+    (tmp_path / "floating.py").write_text(CORE + 'step("Floating")\nbrick("3001", 8, 0, 6, 4)\n')
+    capsys.readouterr()
+    assert bricks("run", "floating.py") == 0
+    output = capsys.readouterr().out
+    assert "Support warnings" in output and "No problems" not in output
+    assert f"Share {MODEL}" in output
     plan = tmp_path / "plan.json"
     plan.write_text(json.dumps({"revision": "stale", "root": "model", "groups": []}))
     assert bricks("assembly", str(plan)) == 1
-    capsys.readouterr()
-    (tmp_path / client.CLOCK).write_text(json.dumps({"started": time.time() - 20 * 60, "minutes": 180}))
+    (tmp_path / client.CLOCK).write_text(json.dumps({"started": time.time() - 150 * 60, "minutes": 180}))
     bricks("run")
-    assert capsys.readouterr().out.startswith("Run 1 · 20 of 180 min used: keep improving the weakest part; the finish")
-    clock = json.loads((tmp_path / client.CLOCK).read_text())
-    (tmp_path / client.CLOCK).write_text(json.dumps(clock | {"started": time.time() - 150 * 60}))
+    capsys.readouterr()
     bricks("run")
     assert capsys.readouterr().out.startswith("Run 2 · 150 of 180 min used: start nothing new")
 
