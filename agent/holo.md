@@ -127,7 +127,7 @@ Numbers instead of pixels: `print()` a height or a count in `build.py`, then rea
 
 # The build script
 
-The site is 128x128 studs, x and y from 0 to 127, and it starts empty: the ground is part of the model. A scene fills most of it; a single object is built big enough for its own details, 48 studs or more on its longest side. The script is plain Python (import random, math and the like work): constants, loops, and your own functions for every part that repeats (a window bay, a tower, a roof, a tree). Stack things on the heights `top` and your functions return, never on hand-counted ones.
+The site is 128x128 studs, x and y from 0 to 127, and it starts empty: the ground is part of the model. A scene's subject fills most of it, and the ground ends a few studs past what stands on it; a single object is built big enough for its own details, 48 studs or more on its longest side. The script is plain Python (import random, math and the like work): constants, loops, and your own functions for every part that repeats (a window bay, a tower, a roof, a tree). Stack things on the heights `top` and your functions return, never on hand-counted ones.
 
 Solids make the masses: walls, towers, roofs, hills, rock. Declare their shape, and at the end of each step the run turns the step's solids into bricks: their outer shell only, so a solid house or hill is hollow inside, in bonded courses whose joints never line up, with bridges and hidden bricks inside wherever a brick would have nothing under it.
 - `fill(cells, z, height, color, sloped=False)`: makes the studs `cells` solid from plate z up `height` plates. With `sloped=True`, slopes cover each step of its outline: roofs, hills, rock.
@@ -363,7 +363,7 @@ Go back a pass if the render shows that pass is wrong: rewrite the part whose sh
 Not every one fits every subject: break one when the build is better for it.
 1. Silhouette first: silhouette and proportions make a subject recognizable, and details never rescue wrong ones. Measure them from the photos, and fix the structure before adding details.
 2. Height is presence: the subject rises tall, with a skyline of varied heights (towers, roofs, spires against the sky). Levels below it (water, a quay, a street) and stairs or ramps joining them earn their place only where the subject lives on them. The subject takes most of the site, and its setting the rest.
-3. One scale: a storey is 4 courses, a door 3 and a person 2, so a stud is about 60 cm and a 20 m facade is 32 studs wide. A single object is built big enough for its own details, and its setting takes the same scale.
+3. One scale: a storey is 4 courses, a door 3 and a person 2, so a stud is about 60 cm and a 20 m facade is 32 studs wide. Heights take the same scale, a metre to 4 plates: a 10 m curtain wall is 40 plates high, a 30 m tower 120. A single object is built big enough for its own details, and its setting takes the same scale.
 4. True to the subject: count what the photos show and build that count (arches, towers, windows per floor). Materials, colors and local vocabulary make a place recognizable: Paris is cream stone, zinc mansards and plane trees. Its signature features all show from the 3/4 front view.
 5. The real world is irregular: stone varies in shade and size, terrain slumps, trees lean, buildings gather additions. A mirror-symmetric mound, a row of identical trees or a wall of one brick looks generated. Seeded randomness gives this at no cost.
 6. Depth is made of hollows: faces step in and out with arches, buttresses and recesses; volumes are hollow, with windows on every side, some lit (46), some dark (40). Texture completes it: embossed bricks, several shades of one color in a wall, several greens on a lawn, blues and trans blue in water.
@@ -375,7 +375,7 @@ Not every one fits every subject: break one when the build is better for it.
 
 The render is the truth: when it disagrees with the photo from the same viewpoint, the model is wrong, however right the code looks. After each run, judge from far to near and fix the first thing wrong:
 1. Outline: the silhouette and proportions against the photos, from every view.
-2. Masses: a clear main part, the levels it stands on, a skyline.
+2. Masses: a clear main part, the levels it stands on, a skyline. In the 3/4 view the subject fills most of the frame; a frame mostly of flat ground or water means a subject too small or too low for its site.
 3. Surfaces: flat walls, identical copies, relief or clutter where the subject is plain.
 4. Seams: holes a helper left, parts that do not meet, pieces poking through, towers held by one plate.
 
