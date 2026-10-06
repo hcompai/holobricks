@@ -10,7 +10,7 @@ import { HOLO } from "./holo";
 const MAX_STEPS = 300;
 const MAX_TIME_S = 3 * 3600;
 /** How long a finished build keeps its Workstation for a follow-up message. */
-const IDLE_TIMEOUT_S = 3600;
+const IDLE_TIMEOUT_S = 600;
 const TOOLKIT = "/brickyard.tgz";
 const DOWNLOAD_S = 60;
 
