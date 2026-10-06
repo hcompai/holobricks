@@ -2,70 +2,66 @@ import {
   ArrowClockwiseIcon,
   ArrowCounterClockwiseIcon,
   ArrowDownIcon,
+  ArrowDownLeftIcon,
   ArrowLeftIcon,
-  ArrowLineDownIcon,
-  ArrowLineUpIcon,
   ArrowRightIcon,
   ArrowUpIcon,
+  ArrowUpRightIcon,
   ArrowUUpLeftIcon,
   ArrowUUpRightIcon,
   CopyIcon,
+  SwapIcon,
   TrashIcon,
   XIcon,
 } from "@phosphor-icons/react";
 import { useState } from "react";
 import type { Edits } from "./edits";
 import type { Color } from "./palette";
+import { PartPicker } from "./PartPicker";
 
 /** What the selected piece can do; moves follow the screen, snapped to the model's axes. */
 export type Action =
   "left" | "right" | "forward" | "back" | "up" | "down" | "turnLeft" | "turnRight" | "duplicate" | "delete";
 
-/** Keys for each action in edit mode, as `KeyboardEvent.key`. */
+/** Keys for each action in edit mode, as `KeyboardEvent.key`: arrows move across the screen, W/S into it. */
 export const ACTION_KEYS: Record<string, Action> = {
   ArrowLeft: "left",
+  a: "left",
   ArrowRight: "right",
-  ArrowUp: "forward",
-  ArrowDown: "back",
-  PageUp: "up",
+  d: "right",
+  ArrowUp: "up",
   e: "up",
-  PageDown: "down",
+  PageUp: "up",
+  ArrowDown: "down",
   q: "down",
+  PageDown: "down",
+  w: "forward",
+  s: "back",
   r: "turnRight",
   R: "turnLeft",
   Delete: "delete",
   Backspace: "delete",
 };
 
-const MOVES: { action: Action; label: string; icon: React.ReactNode; area: string }[] = [
-  { action: "forward", label: "Move forward (↑)", icon: <ArrowUpIcon size={16} weight="bold" />, area: "forward" },
-  { action: "left", label: "Move left (←)", icon: <ArrowLeftIcon size={16} weight="bold" />, area: "left" },
-  { action: "right", label: "Move right (→)", icon: <ArrowRightIcon size={16} weight="bold" />, area: "right" },
-  { action: "back", label: "Move back (↓)", icon: <ArrowDownIcon size={16} weight="bold" />, area: "back" },
-  {
-    action: "up",
-    label: "Move up a plate (E, Page Up)",
-    icon: <ArrowLineUpIcon size={16} weight="bold" />,
-    area: "up",
-  },
-  {
-    action: "down",
-    label: "Move down a plate (Q, Page Down)",
-    icon: <ArrowLineDownIcon size={16} weight="bold" />,
-    area: "down",
-  },
+const MOVES: { action: Action; label: string; icon: React.ReactNode }[] = [
+  { action: "up", label: "Move up a plate (↑, E)", icon: <ArrowUpIcon size={16} weight="bold" /> },
+  { action: "forward", label: "Move away (W)", icon: <ArrowUpRightIcon size={16} weight="bold" /> },
+  { action: "left", label: "Move left (←, A)", icon: <ArrowLeftIcon size={16} weight="bold" /> },
+  { action: "down", label: "Move down a plate (↓, Q)", icon: <ArrowDownIcon size={16} weight="bold" /> },
+  { action: "right", label: "Move right (→, D)", icon: <ArrowRightIcon size={16} weight="bold" /> },
+  { action: "back", label: "Move closer (S)", icon: <ArrowDownLeftIcon size={16} weight="bold" /> },
 ];
+
+const HINT = matchMedia("(any-pointer: fine)").matches
+  ? "Click a piece to select it; Shift-click or Shift-drag a box to add more"
+  : "Tap a piece to select it";
 
 /** The edit toolbar: how many changes, undo, redo and reset. */
 export function EditBar({ edits }: { edits: Edits }) {
   const count = edits.edits.length;
   return (
     <div className="edit-bar" role="toolbar" aria-label="Edit mode">
-      <span>
-        {count
-          ? `${count} change${count === 1 ? "" : "s"}`
-          : "Click a piece to select it; Shift-click or Shift-drag a box to add more"}
-      </span>
+      <span>{count ? `${count} change${count === 1 ? "" : "s"}` : HINT}</span>
       <button className="quiet icon-button" onClick={edits.undo} disabled={!count} title="Undo (⌘Z)" aria-label="Undo">
         <ArrowUUpLeftIcon size={16} weight="bold" />
       </button>
@@ -164,30 +160,76 @@ interface ColorProps {
   onColor: (code: number) => void;
 }
 
-/** The selection's controls: move a stud or a plate, turn a quarter about its middle, recolor or delete it. */
+export interface ReplaceProps {
+  /** The model's parts, most used first. */
+  usedParts: string[];
+  /** The model's packed parts. */
+  packs: Record<string, string>;
+  /** The selected pieces' parts. */
+  currentParts: string[];
+  onReplace: (part: string, pack: string) => void;
+}
+
+/** The selection's controls: move a stud or a plate, turn a quarter about its middle, recolor, replace or delete it. */
 export function EditPanel({
   label,
   onAction,
   onClose,
+  usedParts,
+  packs,
+  currentParts,
+  onReplace,
   ...color
 }: {
   label: string;
   onAction: (a: Action) => void;
   onClose: () => void;
-} & ColorProps) {
+} & ColorProps &
+  ReplaceProps) {
+  const [replacing, setReplacing] = useState(false);
   return (
-    <div className="edit-panel" role="dialog" aria-label="Selection">
+    <div className={replacing ? "edit-panel replacing" : "edit-panel"} role="dialog" aria-label="Selection">
       <div className="edit-panel-head">
         <b title={label}>{label}</b>
         <button className="quiet icon-button" onClick={onClose} title="Deselect (Esc)" aria-label="Deselect">
           <XIcon size={14} weight="bold" />
         </button>
       </div>
+      {replacing ? (
+        <PartPicker
+          used={usedParts}
+          packs={packs}
+          current={currentParts}
+          color={color.current[0] ?? 16}
+          onPick={(part, pack) => {
+            onReplace(part, pack);
+            setReplacing(false);
+          }}
+          onBack={() => setReplacing(false)}
+        />
+      ) : (
+        <SelectionControls onAction={onAction} onReplace={() => setReplacing(true)} color={color} />
+      )}
+    </div>
+  );
+}
+
+function SelectionControls({
+  onAction,
+  onReplace,
+  color,
+}: {
+  onAction: (a: Action) => void;
+  onReplace: () => void;
+  color: ColorProps;
+}) {
+  return (
+    <>
       <div className="edit-moves">
         {MOVES.map((m) => (
           <button
             key={m.action}
-            style={{ gridArea: m.area }}
+            style={{ gridArea: m.action }}
             onClick={() => onAction(m.action)}
             title={m.label}
             aria-label={m.label}
@@ -197,6 +239,10 @@ export function EditPanel({
         ))}
       </div>
       <ColorPicker {...color} />
+      <button className="edit-replace" onClick={onReplace} title="Replace with another part" aria-label="Replace part">
+        <SwapIcon size={16} weight="bold" />
+        <span>Replace part</span>
+      </button>
       <div className="edit-actions">
         <button onClick={() => onAction("turnLeft")} title="Turn left (⇧R)" aria-label="Turn left">
           <ArrowCounterClockwiseIcon size={16} weight="bold" />
@@ -211,6 +257,6 @@ export function EditPanel({
           <TrashIcon size={16} weight="bold" />
         </button>
       </div>
-    </div>
+    </>
   );
 }

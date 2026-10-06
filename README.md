@@ -12,7 +12,7 @@
     <td align="center"><img src="docs/gallery/paris.png" width="180" alt="" /><br />Paris · 2,135</td>
     <td align="center"><img src="docs/gallery/london.png" width="180" alt="" /><br />London · 1,534</td>
     <td align="center"><img src="docs/gallery/bag-end.png" width="180" alt="" /><br />Bag End · 7,329</td>
-    <td align="center"><img src="docs/gallery/hogwarts.png" width="180" alt="" /><br />Hogwarts · 26,987</td>
+    <td align="center"><img src="docs/gallery/hogwarts.png" width="180" alt="" /><br />Hogwarts · 45,073</td>
   </tr>
 </table>
 
@@ -23,7 +23,7 @@
 | **Describe** | Type an idea or drop in a photo, and Holo builds it in 3D while you watch. |
 | **Trust** | Every brick is a real LDraw part, checked to make sure it fits and connects. |
 | **Replay** | Scrub back through the steps, or share the build as a GIF. |
-| **Tweak** | Move, turn and recolor pieces, or walk through the model. |
+| **Tweak** | Move, turn, recolor and replace pieces, or walk through the model. |
 | **Build it for real** | Get the instructions as a PDF, a Pick a Brick list, or BrickLink carts through [HoloTab](SHOPPING.md). |
 | **Share** | Publish a build so your teammates can open it and remix it into their own. |
 

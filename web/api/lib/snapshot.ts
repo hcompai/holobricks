@@ -1,6 +1,7 @@
 import { HaiAgentsClient, HaiAgentsError, type HaiAgents } from "hai-agents";
 import { buildRevision } from "../../src/buildRevision";
 import { H } from "../../src/hosts";
+import { platformAsset, externalImage, assetBlob } from "../../src/assetUrl";
 import { applyEdits, type Edit, toLdraw } from "../../src/edits";
 import { type Build, EMPTY_MODEL, type Message, type Model } from "../../src/model";
 import { AGENT, EMPTY_TRANSCRIPT, read, status, type Transcript, unpack } from "../../src/session";
@@ -82,23 +83,32 @@ async function transcript(agp: HaiAgentsClient, id: string): Promise<Transcript>
 }
 
 async function download(url: string, key: string): Promise<Blob> {
-  const response = await fetch(url, { headers: { Authorization: `Bearer ${key}` } });
+  if (!platformAsset(url)) throw new Error("Untrusted attachment URL");
+  const response = await fetch(url, {
+    headers: { Authorization: `Bearer ${key}` },
+    redirect: "error",
+    signal: AbortSignal.timeout(60_000),
+  });
   if (!response.ok) throw new Error(`Could not download ${url} (HTTP ${response.status})`);
-  return response.blob();
+  return assetBlob(response);
 }
 
 const picture = (src: string, key: string): Promise<Blob> =>
-  src.startsWith("data:") ? fetch(src).then((r) => r.blob()) : download(src, key);
+  src.startsWith("data:") ? fetch(src).then(assetBlob) : download(src, key);
 
 const extension = (image: Blob) => ({ "image/jpeg": "jpg", "image/webp": "webp" })[image.type] ?? "png";
 
-/** The chat with its images copied out of the session, as many as the cap allows, without Holo's reasoning. */
+/** Copy session images without Holo's reasoning; external HTTPS photos remain links. */
 async function copied(messages: Message[], key: string, keep: Keep): Promise<Message[]> {
   const sources = [...new Set(messages.flatMap((m) => m.images))].slice(0, MAX_IMAGES);
   const urls = new Map<string, string>();
   for (let i = 0; i < sources.length; i += PARALLEL)
     await Promise.all(
       sources.slice(i, i + PARALLEL).map(async (src, j) => {
+        if (!src.startsWith("data:") && !platformAsset(src)) {
+          if (externalImage(src)) urls.set(src, src);
+          return;
+        }
         try {
           const image = await picture(src, key);
           urls.set(src, await keep(`images/${i + j + 1}.${extension(image)}`, image));

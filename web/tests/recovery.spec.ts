@@ -135,3 +135,51 @@ test("a missing original remix model blocks retry instead of dropping the model"
   await expect(page.getByRole("alert")).toContainText("original starting model could not be retrieved");
   expect(agp.posted("/api/v2/sessions")).toHaveLength(0);
 });
+
+test("recovery fetches external reference photos without the Agents key", async ({ page }) => {
+  await site(page);
+  const agp = await platform(page);
+  const url = "https://images.example.org/reference.png";
+  const requests: { authorization?: string }[] = [];
+  await page.route(url, (route) => {
+    requests.push({ authorization: route.request().headers().authorization });
+    return route.fulfill({
+      contentType: "image/png",
+      body: Buffer.from(photo.split(",")[1], "base64"),
+      headers: { "access-control-allow-origin": "*" },
+    });
+  });
+  agp.session("external-photo", "failed");
+  agp.say("external-photo", "Build a tower", [{ type: "url", source: url }]);
+  agp.share("external-photo", model());
+  await page.goto("/?build=external-photo");
+  await page.getByRole("button", { name: "Continue from saved version" }).click();
+  await expect(page).toHaveURL(/build=new-build$/);
+  expect(requests.length).toBeGreaterThanOrEqual(1);
+  expect(requests.every((r) => !r.authorization)).toBe(true);
+  const [created] = agp.posted("/api/v2/sessions");
+  expect(created.messages[0].images).toEqual([photo]);
+});
+
+test("a platform attachment redirect is blocked before contacting another host", async ({ page }) => {
+  await site(page);
+  const agp = await platform(page);
+  agp.session("redirected", "failed");
+  agp.say("redirected", "Build a tower");
+  agp.share("redirected", model());
+  let forwarded = 0;
+  await page.route("https://external.example/redirected", (route) => {
+    forwarded++;
+    return route.fulfill({ body: "unexpected" });
+  });
+  await page.route("https://agp.eu.hcompany.ai/files/redirected/1.gz", (route) =>
+    route.fulfill({
+      status: 302,
+      headers: { location: "https://external.example/redirected" },
+    }),
+  );
+  await page.goto("/?build=redirected");
+  await expect(page.getByRole("alert")).toContainText("Couldn't load the latest model");
+  expect(forwarded).toBe(0);
+  expect(agp.posted("/api/v2/sessions")).toHaveLength(0);
+});

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { buildRevision } from "./buildRevision";
 import type { Build, Matrix, Piece } from "./model";
+import { partCatalog } from "./partCatalog";
 
 /**
  * One change made by hand in the viewer to one or more pieces, undone as one, in LDraw units:
@@ -11,6 +12,8 @@ export type Edit =
   | { kind: "move"; ids: number[]; by: [number, number, number] }
   | { kind: "rotate"; ids: number[]; turns: 1 | -1; about: [number, number] }
   | { kind: "color"; ids: number[]; color: number }
+  /** Another part in each piece's place, `ids[i]` moved `by[i]` so it keeps its bottom and first stud. */
+  | { kind: "replace"; ids: number[]; part: string; by: [number, number, number][] }
   /** Copies of the pieces, moved `by`; the copy of `ids[i]` takes id `first + i`. */
   | { kind: "duplicate"; ids: number[]; by: [number, number, number]; first: number };
 
@@ -88,6 +91,7 @@ export function applyEdits(pieces: Piece[], edits: Edit[]): Piece[] {
       if (edit.kind === "delete") byId.delete(id);
       else if (edit.kind === "move") byId.set(id, moved(piece, edit.by));
       else if (edit.kind === "color") byId.set(id, { ...piece, color: edit.color });
+      else if (edit.kind === "replace") byId.set(id, { ...moved(piece, edit.by[i] ?? [0, 0, 0]), part: edit.part });
       else if (edit.kind === "duplicate") byId.set(edit.first + i, { ...moved(piece, edit.by), id: edit.first + i });
       else byId.set(id, turn(piece, edit.turns, edit.about));
     });
@@ -103,6 +107,15 @@ export function toLdraw(build: Build, pieces: Piece[]): string {
     lines.push(`0 STEP ${step.title}`.trimEnd());
   }
   return lines.join("\n") + "\n";
+}
+
+/** The build's parts with those its replaced pieces now use, from the part catalog. */
+async function partsFor(build: Build, pieces: Piece[]): Promise<Build["parts"]> {
+  const missing = [...new Set(pieces.map((p) => p.part))].filter((part) => !build.parts[part]);
+  if (!missing.length) return build.parts;
+  const packs = (await partCatalog())?.packs ?? {};
+  const added = Object.fromEntries(missing.flatMap((part) => (packs[part] ? [[part, packs[part]]] : [])));
+  return { ...build.parts, ...added };
 }
 
 export interface Edits {
@@ -149,11 +162,12 @@ export function useEdits(build: Build | null): Edits {
   useEffect(() => {
     if (!build || !pieces) return setEdited(null);
     let current = true;
-    buildRevision(pieces).then((revision) => {
+    Promise.all([buildRevision(pieces), partsFor(build, pieces)]).then(([revision, parts]) => {
       if (!current) return;
       setEdited({
         ...build,
         pieces,
+        parts,
         revision,
         ldr: toLdraw(build, pieces),
         bom: { error: EDITED },

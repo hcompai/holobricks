@@ -20,7 +20,7 @@ Setup, architecture, deploy and the toolkit's checks. The [main README](../READM
 - **Replay** the steps on the timeline, browse the Parts tab, and from **Share** download the `.ldr` or a PNG, or make a GIF of the build (8 seconds by default, up to 30).
 - **Building instructions** (Share, or the Get the bricks sheet): a PDF with a cover, then each step split into layers from the bottom up, one page each, the new pieces outlined in a render framed on the model so far and pictured in a parts callout, and the whole parts list at the end. It is drawn in the browser, so it includes your edits; large models take a while (the Grand Rex makes about 250 pages).
 - **Get the bricks**: one sheet with BrickLink carts through HoloTab (it imports the verified parts list and prepares carts for you to review and pay), a Pick a Brick list with its price, and the instructions. See [SHOPPING.md](../SHOPPING.md).
-- **Edit** by hand: choose **Edit**, click a piece (the one under the pointer is outlined), Shift-click to add more or Shift-drag a box around the pieces you see (Shift-Option-drag takes hidden ones too), then move them a stud or a plate, turn them a quarter about their middle, recolor them from the LDraw palette, duplicate them beside themselves (⌘D) or delete them; undo, redo and reset. The **?** button or key lists every shortcut. Edits are saved in this browser per build and revision, and the `.ldr` download includes them. The builder never sees them: the Parts tab counts the edited model's parts without BrickLink verification, shopping stays off while a model is edited, edits are hidden while the builder works, and a new revision leaves them to discard.
+- **Edit** by hand: choose **Edit**, click a piece (the one under the pointer is outlined), Shift-click to add more or Shift-drag a box around the pieces you see (Shift-Option-drag takes hidden ones too), then move them a stud or a plate, turn them a quarter about their middle, recolor them from the LDraw palette, replace them with another part (search the model's own parts and the ones Holo builds with, each previewed in the selection's color; the new part keeps the old one's bottom and first stud), duplicate them beside themselves (⌘D) or delete them; undo, redo and reset. The **?** button or key lists every shortcut. Edits are saved in this browser per build and revision, and the `.ldr` download includes them. The builder never sees them: the Parts tab counts the edited model's parts without BrickLink verification, shopping stays off while a model is edited, edits are hidden while the builder works, and a new revision leaves them to discard.
 - **Walk** through the model like in Minecraft: choose **Walk**, click the model, then WASD or the arrows to move and the mouse to look. You stand on the bricks and step up one brick at a time; Space jumps, W twice sprints, Space twice flies (Space up, Shift down), and arches, doors and plants let you through. Esc releases the mouse, Esc again leaves.
 - **Import a build**: the Your builds section of the home page imports a model file (what `brickyard-gallery` exports, or a session's `model.json.gz`) as your public build, after a confirmation. `/api/imports` checks every piece and part, recomputes the revision and `.ldr`, keeps the chat's text without its images, and marks the parts list unverified. Imported builds show under Your builds too.
 
@@ -46,7 +46,7 @@ python3 scripts/fetch-connectors.py           # pinned LDCad stud/socket data fo
 cd server && uv sync && cd ..
 REBRICKABLE_API_KEY=... server/.venv/bin/brickyard-catalog   # data/rebrickable.json.gz, valid 30 days
 server/.venv/bin/brickyard-prices                             # web/public/pick-a-brick.json (--locale en-US for another store)
-server/.venv/bin/python scripts/pack-toolkit.py               # web/public/brickyard.tgz and LDConfig.ldr
+server/.venv/bin/python scripts/pack-toolkit.py               # web/public/brickyard.tgz, LDConfig.ldr and parts.json
 cd web && npm install
 vercel link --yes --scope h-company --project brickyard && vercel env pull .env.local   # the server's secrets
 npm run dev                                                                            # http://127.0.0.1:5173
@@ -72,7 +72,7 @@ signed in ──GET /api/builds (pass + key)──▶ the public library
 - Every library read needs a pass: signed out, only link previews show a build's name and cover. A session is its owner's to publish, stop and change; a teammate who opens its link sees it read only, to remix.
 - Signing in again revokes the previous key. The key lives in the browser's local storage; the pass, signed with `BRICKYARD_SECRET`, names its holder to the functions.
 - An imported build has no session, so it lives only in the library: **Make private** moves its entry to `private/<owner>/`, out of the public listing, listed (`GET /api/builds?mine=1`) and opened only for its owner. **Delete** removes its entry and files. Sessions cannot be deleted through the Agents API: deleting one (`DELETE /api/projects?id=&source=session`) unpublishes it and records it under `removed/<scope>/`, which `GET /api/projects` lists so the library leaves it out; the platform keeps its chat until the session ends. Deleting a fork removes its files and name, and removes the session it started. Deleting a build while Holo builds it cancels its session first, so Holo stops. Owners rename, publish, make private and delete their builds from the ⋯ on their cards, or from Share in the build.
-- Publishing copies the session's model, transcript and images, so a public build stands on its own, even if its session is deleted. Only its author can rename, publish, make private, unpublish or delete a build. The emails in `BRICKYARD_ADMINS` can take anyone's build out of the public library to moderate it, but never delete it: it becomes private, kept for its owner.
+- Publishing copies the session's model, transcript and platform-hosted or embedded images, so they survive its session. External HTTPS photos remain links and depend on their original host; the server does not download them. Only its author can rename, publish, make private, unpublish or delete a build. The emails in `BRICKYARD_ADMINS` can take anyone's build out of the public library to moderate it, but never delete it: it becomes private, kept for its owner.
 - Server environment: `BRICKYARD_SECRET`, `BRICKYARD_ADMINS`, and `BLOB_READ_WRITE_TOKEN` from the `brickyard-library` Blob store.
 
 ## Where to change things
@@ -83,11 +83,12 @@ signed in ──GET /api/builds (pass + key)──▶ the public library
 | how Holo builds: workflow, the build script API, parts, colors | `agent/holo.md` |
 | the build script functions | `server/brickyard/script.py` (document them in `agent/holo.md`) |
 | the Workstation setup | `setup.sh`, then `scripts/pack-toolkit.py` |
+| the parts Replace offers | the Parts section of `agent/holo.md`, packed into `web/public/parts.json` by `scripts/pack-toolkit.py` |
 | the icon | `scripts/brick-icon.py`, rendered with `blender -b -P scripts/brick-icon.py -- /tmp/brick.png`, then resized (`sips -Z`) and compressed (`pngquant`) into `docs/brick.png` (128 px), `web/public/brick.png` (64 px) and `web/public/brick-touch.png` (180 px, on white) |
 
 ## Showcases and deploy
 
-Paris, London and Hogwarts are scripted in `server/brickyard/showcase` and pass the same checks as Holo's bricks. Bag End (`6eb28d127e`) is a Holo build: its script, `agent/showcase/bag-end.py`, is printed in full in Holo's prompt as the worked example.
+Paris and London are scripted in `server/brickyard/showcase` and pass the same checks as Holo's bricks. Hogwarts is a `build.py` script, `agent/showcase/hogwarts.py`, that the workbench runs as it runs Holo's. Bag End (`6eb28d127e`) is a Holo build: its script, `agent/showcase/bag-end.py`, is one of the showcases Holo studies. Holo's prompt carries a shorter worked example on the solids `build.py` offers; server tests run it and Hogwarts and require no problems and no floating brick.
 
 ```bash
 server/.venv/bin/python -m brickyard.showcase paris   # or london, hogwarts: regenerates data/builds/paris.json

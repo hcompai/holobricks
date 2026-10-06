@@ -274,7 +274,9 @@ test("a new build sends the toolkit and the photos; Stop makes Holo answer and t
   expect(agp.posted("/messages")[0]).toMatchObject({ message: "Add the lighthouse", files: [] });
 });
 
-test("Send keeps the request visible through session startup until its transcript arrives", async ({ page }) => {
+test("Send keeps the request visible through session startup until its transcript arrives", async ({
+  page,
+}, testInfo) => {
   await site(page);
   const agp = await platform(page);
   agp.hold = true;
@@ -285,6 +287,8 @@ test("Send keeps the request visible through session startup until its transcrip
     await route.fallback();
   });
   await page.goto("/");
+  await expect(page.getByLabel("Model: Holo4 27B", { exact: true })).toBeVisible();
+  await page.locator(".composer").screenshot({ path: testInfo.outputPath("model-composer.png") });
   await page.getByLabel("Photos to attach").setInputFiles(PHOTO);
   await expect(page.getByRole("img", { name: "Reference 1", exact: true })).toBeVisible();
   await page.getByRole("textbox").fill("A red lighthouse");
@@ -296,6 +300,8 @@ test("Send keeps the request visible through session startup until its transcrip
 
   answer();
   await expect(page).toHaveURL(/\?build=new-build$/);
+  expect(agp.posted("/api/v2/sessions")[0].agent.model).toBe("holo4-27b");
+  await expect(page.getByLabel("Model: Holo4 27B", { exact: true })).toBeVisible();
   // A model can arrive before the initial user-message event. Keep both visible.
   const model = fixture();
   agp.state("new-build", "running");
@@ -322,6 +328,16 @@ test("Send keeps the request visible through session startup until its transcrip
   agp.say("new-build", "Make it taller");
   await expect(page.locator(".msg.user.queued")).toHaveCount(0);
   await expect(page.locator(".msg.user")).toHaveText(["A red lighthouse", "Make it taller"]);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.emulateMedia({ colorScheme: "dark" });
+  const modelLabel = page.getByLabel("Model: Holo4 27B", { exact: true });
+  await expect(modelLabel).toBeVisible();
+  const modelBounds = (await modelLabel.boundingBox())!;
+  const attachBounds = (await page.getByRole("button", { name: "Attach reference images" }).boundingBox())!;
+  const stopBounds = (await page.getByRole("button", { name: "Stop", exact: true }).boundingBox())!;
+  expect(modelBounds.x).toBeGreaterThanOrEqual(attachBounds.x + attachBounds.width);
+  expect(modelBounds.x + modelBounds.width).toBeLessThanOrEqual(stopBounds.x);
+  await page.locator(".composer").screenshot({ path: testInfo.outputPath("model-composer-mobile.png") });
 });
 
 test("a startup failure keeps the request visible without hiding recovery or leaking into a new build", async ({

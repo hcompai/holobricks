@@ -18,8 +18,9 @@ import { BrickLoader } from "./BrickLoader";
 import { buildRevision } from "./buildRevision";
 import { ACTION_KEYS, type Action, EditBar, EditPanel } from "./EditPanel";
 import { type Edit, type Edits, PLATE, pivot, STUD } from "./edits";
+import { replacementOffset } from "./partCatalog";
 import type { Color } from "./palette";
-import { BrickScene, typing, type View, type PlacementProgress } from "./scene";
+import { BrickScene, provideParts, typing, type View, type PlacementProgress } from "./scene";
 import { Shortcuts } from "./Shortcuts";
 import { WalkHud } from "./WalkHud";
 import { useWalkFullscreen } from "./useWalkFullscreen";
@@ -270,6 +271,8 @@ export function Viewer(props: Props) {
     s.setVisibleStep(step);
     const fresh = previousBuild.current !== (build?.id ?? null);
     previousBuild.current = build?.id ?? null;
+    // Edited builds can use parts their revision did not, put in by Replace.
+    if (build) provideParts(build.parts);
     s.setPieces(build?.pieces ?? [], { fresh, animate: mode === "view" && build?.status === "building" })
       .then(async (applied) => {
         if (!current || !build || !applied) return;
@@ -401,6 +404,18 @@ export function Viewer(props: Props) {
     push({ kind: "move", ids, by });
   };
 
+  /** Put `part` in each selected piece's place, keeping the piece's bottom and first stud. */
+  const replace = (part: string, pack: string) => {
+    const targets = selectedPieces.filter((p) => p.part !== part);
+    if (!build || !targets.length || !edits.editable) return;
+    edits.push({
+      kind: "replace",
+      ids: targets.map((p) => p.id),
+      part,
+      by: targets.map((p) => replacementOffset(p, build.parts[p.part] ?? "", pack)),
+    });
+  };
+
   useEffect(() => {
     if (!editing) return;
     const key = (event: KeyboardEvent) => {
@@ -529,6 +544,10 @@ export function Viewer(props: Props) {
             const ids = selectedPieces.filter((p) => p.color !== color).map((p) => p.id);
             if (ids.length && edits.editable) edits.push({ kind: "color", ids, color });
           }}
+          usedParts={usedParts(build!.pieces)}
+          packs={build!.parts}
+          currentParts={[...new Set(selectedPieces.map((p) => p.part))]}
+          onReplace={replace}
         />
       )}
       {mode === "walk" && shown && (
@@ -600,9 +619,17 @@ export function Viewer(props: Props) {
 
 /** The model's colors, most used first. */
 function usedColors(pieces: Piece[]): number[] {
-  const counts = new Map<number, number>();
-  for (const p of pieces) counts.set(p.color, (counts.get(p.color) ?? 0) + 1);
-  return [...counts].sort((a, b) => b[1] - a[1]).map(([code]) => code);
+  return mostUsed(pieces.map((p) => p.color));
+}
+
+function usedParts(pieces: Piece[]): string[] {
+  return mostUsed(pieces.map((p) => p.part));
+}
+
+function mostUsed<T>(values: T[]): T[] {
+  const counts = new Map<T, number>();
+  for (const v of values) counts.set(v, (counts.get(v) ?? 0) + 1);
+  return [...counts].sort((a, b) => b[1] - a[1]).map(([v]) => v);
 }
 
 /** The selection box in the viewer's own coordinates. */

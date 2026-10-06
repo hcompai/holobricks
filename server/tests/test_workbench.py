@@ -45,7 +45,10 @@ def test_workbench_places_valid_bricks_anywhere_from_x_and_y_0_and_explains_ever
     assert "overlaps brick 1 (3001 at x=4 y=4 z=0) of this step" in result.text
     assert "brick 3 (3001 at x=-1 y=0 z=0): x and y start at 0" in result.text
     assert "unknown part" in result.text
-    assert "brick 6 (3001 at x=10 y=10 z=6): nothing under or above it" in result.text
+    assert (
+        "brick 6 (3001 at x=10 y=10 z=6): no chain of stacked bricks from it reaches the ground or an earlier step"
+        in result.text
+    )
     placed = [grid(p) for p in bench.pieces]
     assert placed == [(4, 4, 0, 0), (200, 150, 0, 0), (10, 10, 6, 0), (4, 4, 3, 90)]
     assert (bench.workspace.build.width, bench.workspace.build.depth) == (204, 152)
@@ -117,7 +120,36 @@ def test_a_step_with_floating_bricks_is_rebuilt_and_reported_every_run(bench):
     for _ in range(2):
         result = bench.run_script(code)
         assert "kept step 1 unchanged, rebuilt and checked 1 step." in result.text, result.text
-        assert 'line 4 `brick("3005", 10, 10, 6, 4)` (3005 at x=10 y=10 z=6): nothing under' in result.text
+        assert 'line 4 `brick("3005", 10, 10, 6, 4)` (3005 at x=10 y=10 z=6): no chain of stacked' in result.text
+
+
+def test_solids_become_hollow_bonded_shells_that_give_way_to_placed_parts(bench):
+    code = (
+        'step("Ground")\ncover(box(0, 0, 16, 16), 0, 2)\nstep("House")\nfill(box(2, 2, 10, 8), 1, 12, 71)\n'
+        'brick("60593", 4, 2, 4, 15)\nz = roof(box(2, 2, 10, 8), 13, 272, ridge="x")\nprint(z, top(6, 5))\n'
+        'step("Plateau")\nfill(box(20, 0, 20, 20), 0, 9, 2)\nbrick("3001", 22, 2, 9, 4)\n'
+    )
+    result = bench.run_script(code)
+    assert "No problems" in result.text and "Floating" not in result.text, result.text
+    assert "\n25 25" in result.text
+    house = [grid(p) for p in bench.pieces if p.step == 1]
+    assert (4, 2, 4, 0) in house
+    assert not any(x <= 6 < x + 2 and y <= 5 < y + 2 and z < 13 for x, y, z, _ in house)
+    assert len(house) < 10 * 8 * 4
+
+
+def test_solids_rise_through_earlier_pieces_on_any_grid_with_nothing_floating(bench):
+    code = (
+        'step("Ground")\ncover(box(0, 0, 40, 40), 0, 2)\nstep("Wall")\nfill(box(10, 10, 20, 3), 0, 18, 72)\n'
+        'step("Tower")\nfill(disc(10, 11, 4), 1, 24, 71)\n'
+    )
+    result = bench.run_script(code)
+    assert "No problems" in result.text and "Floating" not in result.text, result.text
+
+
+def test_solids_in_one_step_share_one_grid_of_whole_courses(bench):
+    result = bench.run_script('step("Walls")\nfill(box(0, 0, 4, 4), 0, 3, 4)\nfill(box(0, 0, 4, 4), 4, 3, 4)\n')
+    assert "line 3" in result.text and "solids come in whole bricks" in result.text, result.text
 
 
 def test_problems_made_in_a_helper_name_each_line_that_called_it(bench):
@@ -226,6 +258,25 @@ def test_the_showcase_builds_with_no_problems_against_the_real_catalog(tmp_path)
     result = bench.run_script(example)
     assert len(bench.workspace.build.pieces) > 7_000, result.text
     assert result.problems == 0 and "No problems: every brick is known, fits" in result.text, result.text
+
+
+@pytest.mark.skipif(not catalog.SNAPSHOT.exists(), reason="catalog snapshot not built")
+def test_the_prompts_example_builds_with_no_problems_and_nothing_floating(tmp_path):
+    prompt = (Path(__file__).resolve().parents[2] / "agent" / "holo.md").read_text()
+    example = prompt.split("\nExample: ")[1].split("```python\n")[1].split("```")[0]
+    bench = Workbench(Workspace.open(tmp_path))
+    result = bench.run_script(example)
+    assert result.problems == 0 and "Floating" not in result.text, result.text
+    assert len(bench.pieces) > 3_000, result.text
+
+
+@pytest.mark.skipif(not catalog.SNAPSHOT.exists(), reason="catalog snapshot not built")
+def test_hogwarts_builds_from_its_script_with_no_problems_and_nothing_floating(tmp_path):
+    showcase = (Path(__file__).resolve().parents[2] / "agent" / "showcase" / "hogwarts.py").read_text()
+    bench = Workbench(Workspace.open(tmp_path))
+    result = bench.run_script(showcase)
+    assert result.problems == 0 and "Floating" not in result.text, result.text
+    assert len(bench.pieces) > 40_000, result.text
 
 
 def test_the_prompt_names_only_real_parts_sizes_and_colors():

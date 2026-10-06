@@ -1,7 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import { applyEdits, pivot } from "../src/edits";
-import { fixture, revised, site } from "./fixtures";
+import { extent, replacementOffset, searchParts } from "../src/partCatalog";
+import { boxPart, fixture, part, partsCatalog, revised, site } from "./fixtures";
 import { platform } from "./platform";
 
 async function open(page: Page) {
@@ -248,6 +249,36 @@ test("Shift-click selects several pieces, and one edit changes them all", async 
   await expect(panel).toBeHidden();
 });
 
+test("↑ ↓ lift and lower a piece, W and S slide it along the view, as do the panel's buttons", async ({ page }) => {
+  await open(page);
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  const center = await canvasCenter(page);
+  await page.mouse.click(center.x, center.y);
+  const panel = page.getByRole("dialog", { name: "Selection" });
+  await expect(panel).toContainText(/test-brick/);
+
+  for (const key of ["ArrowUp", "ArrowDown", "w", "s", "ArrowLeft", "d"]) await page.keyboard.press(key);
+  for (const name of ["Move up a plate", "Move away", "Move closer"]) {
+    await panel.getByRole("button", { name: new RegExp(`^${name}`) }).click();
+  }
+  await expect(page.getByRole("toolbar", { name: "Edit mode" })).toContainText("9 changes");
+  const moves = await page.evaluate(() =>
+    Object.values(JSON.parse(localStorage.getItem("brickyard.edits")!) as Record<string, { edits: { by: number[] }[] }>)
+      .flatMap((saved) => saved.edits)
+      .map((edit) => edit.by),
+  );
+  // Up and down are vertical only; every other move stays level and goes somewhere.
+  const lift = moves.map(([x, y, z]) => (!x && !z ? Math.sign(y) : 0));
+  expect(lift).toEqual([-1, 1, 0, 0, 0, 0, -1, 0, 0]);
+  for (const [x, y, z] of moves.filter((_, i) => !lift[i]))
+    expect([y, Math.abs(x) + Math.abs(z) > 0]).toEqual([0, true]);
+  // Away and closer are opposite, whether keyed or clicked.
+  const opposite = (v: number[]) => v.map((c) => -c + 0);
+  expect(moves[3]).toEqual(opposite(moves[2]));
+  expect(moves[7]).toEqual(moves[2]);
+  expect(moves[8]).toEqual(moves[3]);
+});
+
 test("the selection takes a new color, the model's own colors listed first", async ({ page }) => {
   await open(page);
   await page.getByRole("button", { name: "Edit", exact: true }).click();
@@ -337,4 +368,62 @@ test("the ? key or the Shortcuts button lists every shortcut", async ({ page }) 
   await expect(help).toBeVisible();
   await page.getByRole("button", { name: "Shortcuts" }).click();
   await expect(help).toBeHidden();
+});
+
+test("Replace searches parts, previews them in the selection's color and swaps the piece, keeping its bottom", async ({
+  page,
+}) => {
+  const build = await open(page);
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  const center = await canvasCenter(page);
+  await page.mouse.click(center.x, center.y);
+  const panel = page.getByRole("dialog", { name: "Selection" });
+  await panel.getByRole("button", { name: "Replace part" }).click();
+  const results = panel.getByRole("listbox", { name: "Parts" });
+  await expect(results.locator("section").first()).toContainText("In this model");
+  await expect(results.getByRole("option", { name: /test-brick/ })).toHaveAttribute("aria-selected", "true");
+
+  await panel.getByRole("searchbox", { name: "Search parts" }).fill("plate 2x2");
+  const plate = results.getByRole("option", { name: "Test Plate 2 x 2 (test-plate)" });
+  await expect(results.getByRole("option")).toHaveCount(1);
+  await expect(plate.locator("img")).toHaveAttribute("src", /^data:image\/png/);
+  await plate.click();
+
+  await expect(results).toBeHidden();
+  await expect(panel.locator("b")).toHaveText(/^Test Plate 2 x 2 · /);
+  await expect(page.getByRole("toolbar", { name: "Edit mode" })).toContainText("1 change");
+  await expect(page.locator(".viewer")).toHaveAttribute("data-render-state", "ready");
+
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Share", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Download model (.ldr)" }).click();
+  const ldr = await readFile(await (await download).path(), "utf8");
+  const replaced = ldr.split("\n").filter((line) => line.endsWith(" test-plate.dat"));
+  expect(replaced).toHaveLength(1);
+  // The plate sits where the brick's bottom was: 16 LDraw units lower than the brick's top.
+  const [, , x, y] = replaced[0].split(" ").map(Number);
+  expect(build.pieces.some((p) => p.pos[0] === x && p.pos[1] + 16 === y)).toBe(true);
+
+  await page.getByRole("button", { name: "Undo" }).click();
+  await expect(panel.locator("b")).toHaveText(/^test-brick · /);
+});
+
+test("a replaced piece keeps its bottom and first stud, turned with the piece", () => {
+  const brick = fixture().pieces[0];
+  const tile = boxPart("t.dat", "Tile 1 x 1", 1, 1, 8);
+  expect(extent(part)).toEqual({ lo: [-20, 0, -20], hi: [20, 24, 20] });
+  expect(replacementOffset(brick, part, tile)).toEqual([-10, 16, -10]);
+  // A quarter turn about the vertical axis: local x runs along the model's z.
+  const turned = { ...brick, rot: [0, 0, 1, 0, 1, 0, -1, 0, 0] as typeof brick.rot };
+  expect(replacementOffset(turned, part, tile)).toEqual([-10, 16, 10]);
+  const [edited] = applyEdits([brick], [{ kind: "replace", ids: [0], part: "t.dat", by: [[-10, 16, -10]] }]);
+  expect(edited).toMatchObject({ part: "t.dat", pos: [brick.pos[0] - 10, brick.pos[1] + 16, -10] });
+});
+
+test("part search matches numbers and title words, sizes written either way", () => {
+  const parts = partsCatalog.parts;
+  expect(searchParts(parts, "2 x 2").map((p) => p.part)).toEqual(["test-plate.dat"]);
+  expect(searchParts(parts, "test-t").map((p) => p.part)).toEqual(["test-tile.dat"]);
+  expect(searchParts(parts, "test")).toHaveLength(2);
+  expect(searchParts(parts, "brick")).toHaveLength(0);
 });
