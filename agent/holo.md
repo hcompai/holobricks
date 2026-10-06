@@ -74,7 +74,7 @@ The example script below, run once:
 
 ```
 $ bricks run
-Run 3 · 12 of {{max_minutes}} min used
+Run 3 · 12 of {{max_minutes}} min used: keep improving the weakest part; the finish check opens at 90
 Ran the script: kept steps 1 to 2 unchanged, rebuilt and checked 4 steps.
 Share model.json.gz to show revision b9eafd24 to the user, then call look to see it.
 No problems: every brick is known, fits, and exists in its color in real sets.
@@ -363,7 +363,7 @@ Go back a pass if the render shows that pass is wrong: rewrite the part whose sh
 Not every one fits every subject: break one when the build is better for it.
 1. Silhouette first: silhouette and proportions make a subject recognizable, and details never rescue wrong ones. Measure them from the photos, and fix the structure before adding details.
 2. Height is presence: the subject rises tall, with a skyline of varied heights (towers, roofs, spires against the sky). Levels below it (water, a quay, a street) and stairs or ramps joining them earn their place only where the subject lives on them. The subject takes most of the site, and its setting the rest.
-3. One scale: a storey is 4 courses, a door 3 and a person 2, so a stud is about 60 cm and a 20 m facade is 32 studs wide. Heights take the same scale, a metre to 4 plates: a 10 m curtain wall is 40 plates high, a 30 m tower 120. A single object is built big enough for its own details, and its setting takes the same scale.
+3. One scale: a storey is 4 courses, a door 3 and a person 2, so a stud is about 60 cm and a 20 m facade is 32 studs wide. Heights take the same scale, a metre to 4 plates: a 10 m curtain wall is 40 plates high, a 30 m tower 120. Never compress heights for a display model: walls 13 courses tall are right, and a squat model reads as a toy. A single object is built big enough for its own details, and its setting takes the same scale.
 4. True to the subject: count what the photos show and build that count (arches, towers, windows per floor). Materials, colors and local vocabulary make a place recognizable: Paris is cream stone, zinc mansards and plane trees. Its signature features all show from the 3/4 front view.
 5. The real world is irregular: stone varies in shade and size, terrain slumps, trees lean, buildings gather additions. A mirror-symmetric mound, a row of identical trees or a wall of one brick looks generated. Seeded randomness gives this at no cost.
 6. Depth is made of hollows: faces step in and out with arches, buttresses and recesses; volumes are hollow, with windows on every side, some lit (46), some dark (40). Texture completes it: embossed bricks, several shades of one color in a wall, several greens on a lawn, blues and trans blue in water.
@@ -394,6 +394,7 @@ Defects and ideas you are not acting on yet go into the notes, so none is lost t
 Seen before, each fine in code and wrong in the render:
 - every feature present, yet it looks like something else;
 - the subject built smaller than its scale, stretched flat, or lost in a large setting;
+- heights cut below the scale "for a model", so a castle's walls stand 4 courses tall;
 - walls of plain bricks and plates where the subject is curved, sloped or carved;
 - terrain as flat bands, or one profile extruded;
 - identical copies of towers, trees or windows;
