@@ -1,6 +1,22 @@
 import { replayDelay } from "./buildTiming";
-import { PlusIcon, ShoppingBagIcon } from "@phosphor-icons/react";
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import {
+  CaretLeftIcon,
+  ClockCounterClockwiseIcon,
+  PlusIcon,
+  ShoppingBagIcon,
+  ShuffleIcon,
+} from "@phosphor-icons/react";
+import {
+  type CSSProperties,
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import type { Account } from "./account";
 import { AccountMenu } from "./AccountMenu";
 import { RecoveryPanel } from "./RecoveryPanel";
@@ -45,6 +61,7 @@ import {
 import { label } from "./suggestions";
 import { type BuildRef, useBuild } from "./useBuild";
 import { useKeeper } from "./useSession";
+import { useSheet } from "./useSheet";
 import { type Framing, type Mode, ViewControls, Viewer, type ViewerHandle } from "./Viewer";
 
 const FilmExport = lazy(() => import("./FilmExport").then((m) => ({ default: m.FilmExport })));
@@ -176,6 +193,8 @@ export default function App({ account }: { account: Account }) {
   const [shopping, setShopping] = useState<{ build: Build; preview: Promise<Blob | null> } | null>(null);
   const edited = !readOnly && edits.edits.length > 0 && build !== live;
   const phone = useSyncExternalStore(onPhoneChange, () => PHONE.matches);
+  const [dock, setDock] = useState<HTMLElement | null>(null);
+  const sheet = useSheet(dock);
   const built = !!build?.pieces.length;
 
   useEffect(() => {
@@ -590,14 +609,37 @@ export default function App({ account }: { account: Account }) {
       )}
     </>
   );
+  /** On a phone, the chat is a bottom sheet over the model. */
+  const sheeted = phone && !home;
+  const versioned = !!build && (build.pieces.length > 0 || models.length > 0);
+  const historical = ref?.source === "session" || ref?.source === "fork";
+  const unforkable = !build || forking || !build.pieces.length || wantedVersion !== null;
+  const toggleHistory = () => {
+    setHistoryOpen((open) => !open);
+    if (sheeted) sheet.setDetent("peek");
+  };
+  const showParts = () => {
+    setCenter("parts");
+    setMode("view");
+    if (sheeted && sheet.detent === "peek") sheet.setDetent("half");
+  };
 
   return (
-    <div className={`app${home ? " home" : ""}${historyOpen ? " has-history" : ""}`}>
+    <div
+      className={`app${home ? " home" : ""}${historyOpen ? " has-history" : ""}`}
+      style={sheeted ? ({ "--peek": `${sheet.peek}px` } as CSSProperties) : undefined}
+    >
       <header>
-        <button className="brand" onClick={() => open(null)}>
-          <img className="brand-icon" src="/brick.png" alt="" />
-          <span className="button-label">HoloBricks</span>
-        </button>
+        {sheeted ? (
+          <button className="back" aria-label="All builds" title="All builds" onClick={() => open(null)}>
+            <CaretLeftIcon size={20} weight="bold" />
+          </button>
+        ) : (
+          <button className="brand" onClick={() => open(null)}>
+            <img className="brand-icon" src="/brick.png" alt="" />
+            <span className="button-label">HoloBricks</span>
+          </button>
+        )}
         {phone && heading && (
           <ProjectTitle
             key={`${ref?.source}:${ref?.id}`}
@@ -607,25 +649,77 @@ export default function App({ account }: { account: Account }) {
           />
         )}
         <span className="spacer" />
-        {!phone && actions}
-        <AccountMenu account={account} building={running.length > 0} />
+        {actions}
+        {!sheeted && <AccountMenu account={account} building={running.length > 0} />}
       </header>
-      <aside>
-        <div className="aside-bar">
-          <ProjectTitle
-            key={`${ref?.source}:${ref?.id}:${previewing}`}
-            className="aside-title"
-            name={previewing ? "Latest chat" : (!phone && heading?.name) || "Chat"}
-            onRename={!phone && heading ? renameTitle : undefined}
-          />
-          {ref && (
-            <button className="quiet" onClick={() => open(null)}>
-              <PlusIcon size={16} />
-              New build
-            </button>
-          )}
-        </div>
+      <aside
+        className={sheeted ? `sheet${center === "parts" ? " parts" : ""}` : undefined}
+        data-detent={sheeted ? sheet.detent : undefined}
+        style={sheeted ? sheet.style : undefined}
+        onFocus={(e) => {
+          if (sheeted && e.target instanceof HTMLTextAreaElement && sheet.detent === "peek") sheet.setDetent("half");
+        }}
+      >
+        {sheeted && (
+          <div className="sheet-handle" {...sheet.handle}>
+            <span />
+          </div>
+        )}
+        {sheeted ? (
+          <div className="aside-bar" {...sheet.handle}>
+            <div className="tabs">
+              <button className={center === "model" ? "active" : ""} onClick={() => setCenter("model")}>
+                Chat
+              </button>
+              <button className={center === "parts" ? "active" : ""} disabled={!build} onClick={showParts}>
+                Parts
+              </button>
+            </div>
+            {versioned && historical && (
+              <button
+                className="quiet icon-button"
+                aria-label="History"
+                title="History"
+                aria-expanded={historyOpen}
+                onClick={toggleHistory}
+              >
+                <ClockCounterClockwiseIcon size={18} />
+              </button>
+            )}
+            {versioned && (
+              <button
+                className="quiet icon-button"
+                aria-label="Fork"
+                title="Start your own build from a copy of this one"
+                disabled={unforkable}
+                onClick={beginFork}
+              >
+                <ShuffleIcon size={18} />
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="aside-bar">
+            <ProjectTitle
+              key={`${ref?.source}:${ref?.id}:${previewing}`}
+              className="aside-title"
+              name={previewing ? "Latest chat" : heading?.name || "Chat"}
+              onRename={heading ? renameTitle : undefined}
+            />
+            {ref && (
+              <button className="quiet" onClick={() => open(null)}>
+                <PlusIcon size={16} />
+                New build
+              </button>
+            )}
+          </div>
+        )}
         <div className="aside-body">
+          {sheeted && center === "parts" && build && (
+            <div className="sheet-parts">
+              <PartsPanel build={build} counted={edited ? countParts(build.pieces, titlesOf(live), palette) : null} />
+            </div>
+          )}
           {seed && (
             <p className="recovery-origin">
               Fork of{" "}
@@ -684,6 +778,7 @@ export default function App({ account }: { account: Account }) {
               if (runId && !readOnly) await stop(runId);
             }}
             onFork={beginFork}
+            dockRef={setDock}
             onRemix={async (text, images, attached) => {
               if (build && !readOnly && owned) await start(text, images, build, attached);
             }}
@@ -719,31 +814,24 @@ export default function App({ account }: { account: Account }) {
             <button className={center === "model" ? "active" : ""} onClick={() => setCenter("model")}>
               Model
             </button>
-            <button
-              className={center === "parts" ? "active" : ""}
-              disabled={!build}
-              onClick={() => {
-                setCenter("parts");
-                setMode("view");
-              }}
-            >
+            <button className={center === "parts" ? "active" : ""} disabled={!build} onClick={showParts}>
               Parts
             </button>
           </div>
-          {build && (build.pieces.length > 0 || models.length > 0) && (
+          {versioned && !sheeted && (
             <div className="history-tools">
               {selected && <span className="preview-badge">Preview · V{selected.number}</span>}
-              {(ref?.source === "session" || ref?.source === "fork") && (
-                <button aria-expanded={historyOpen} onClick={() => setHistoryOpen((open) => !open)}>
+              {historical && (
+                <button aria-expanded={historyOpen} onClick={toggleHistory}>
                   History
                 </button>
               )}
-              <button disabled={forking || !build.pieces.length || wantedVersion !== null} onClick={beginFork}>
+              <button disabled={unforkable} onClick={beginFork}>
                 Fork
               </button>
             </div>
           )}
-          {center === "model" && !error && (
+          {(center === "model" || sheeted) && !error && (
             <ViewControls
               framing={framing}
               spin={spin}
@@ -790,7 +878,7 @@ export default function App({ account }: { account: Account }) {
           />
         )}
         <div className="stage">
-          <div className={center === "model" ? "pane" : "pane hidden"}>
+          <div className={center === "model" || sheeted ? "pane" : "pane hidden"}>
             <Viewer
               ref={viewer}
               build={build}
@@ -820,7 +908,7 @@ export default function App({ account }: { account: Account }) {
               }}
             />
           </div>
-          {center === "parts" && build && (
+          {center === "parts" && build && !sheeted && (
             <div className="pane">
               <PartsPanel build={build} counted={edited ? countParts(build.pieces, titlesOf(live), palette) : null} />
             </div>
@@ -848,7 +936,6 @@ export default function App({ account }: { account: Account }) {
             spaceKey={mode !== "walk"}
           />
         )}
-        {phone && actions && <div className="build-actions">{actions}</div>}
       </main>
       <Suspense>{exportBuild && <FilmExport build={exportBuild} onClose={() => setExportBuild(null)} />}</Suspense>
       <Suspense>

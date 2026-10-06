@@ -57,6 +57,7 @@ test("preview is read-only, survives reload, preserves the latest draft and neve
   expect(agp.posted("/messages")).toHaveLength(0);
   await page.screenshot({ path: "test-results/history-desktop.png" });
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.locator(".sheet-handle").click();
   await expect(page.getByRole("button", { name: "History", exact: true })).toBeVisible();
   await expect(page.locator(".app")).toHaveCount(1);
   await expect(page.locator(".preview-note").getByRole("button", { name: "Latest", exact: true })).toBeInViewport();
@@ -263,7 +264,8 @@ test("Fork saves and opens the drawing before any message; reload and Library ke
   const { agp, saved } = await history(page);
   await page.getByRole("button", { name: "V4", exact: true }).click();
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.locator(".history-tools").getByRole("button", { name: "Fork", exact: true }).click();
+  await page.locator(".sheet-handle").click();
+  await page.locator(".sheet .aside-bar").getByRole("button", { name: "Fork", exact: true }).click();
   await expect(page).toHaveURL(/\?fork=fork-/);
   const url = page.url();
   await shown(page, saved[3].revision);
@@ -273,7 +275,7 @@ test("Fork saves and opens the drawing before any message; reload and Library ke
   await page.screenshot({ path: "test-results/fork-mobile.png" });
   await page.reload();
   await shown(page, saved[3].revision);
-  await page.locator(".brand").click();
+  await page.getByRole("button", { name: "All builds", exact: true }).click();
   const mine = page.getByRole("region", { name: "Your builds", exact: true });
   await expect(mine.locator(".tile")).toHaveCount(2);
   await mine.getByRole("button", { name: /Panther · Fork/ }).click();

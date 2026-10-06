@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import type { Build } from "../src/model";
-import { DROP, fall, filmFilename, frameCount, landed, planFilm, started } from "../src/filmPlan";
+import { DROP, fall, filmCaption, filmFilename, frameCount, landed, planFilm, started } from "../src/filmPlan";
 import { fixture, site } from "./fixtures";
 
 /** The fixture's tower grown to `count` pieces, two per step. */
@@ -60,6 +60,9 @@ test("film plans are deterministic and land every piece before the turntable", (
   expect(() => planFilm({ pieces: [], steps: [] }, 12)).toThrow();
   expect(() => planFilm(fixture(), 5)).toThrow();
   expect(filmFilename("a/b:c?.", "gif")).toBe("a-b-c--build.gif");
+  expect(filmCaption(fixture(), true)).toContain("Holo4 27B by H Company");
+  expect(filmCaption(fixture(), false)).not.toContain("H Company");
+  expect(filmCaption({ ...fixture(), builder: "claude" }, true)).not.toContain("H Company");
 });
 
 test("missing parts block exporting a misleading partial model; other builders carry no Holo attribution", async ({
@@ -71,7 +74,7 @@ test("missing parts block exporting a misleading partial model; other builders c
   await expect(dialog.getByRole("alert")).toContainText("Invalid render asset: test-brick");
   await expect(dialog.getByRole("button", { name: /Making the GIF/ })).toHaveCount(0);
   await expect(dialog.getByRole("link", { name: "Download GIF" })).toHaveCount(0);
-  await expect(dialog.getByLabel("Suggested caption")).not.toContainText("HOLO4");
+  await expect(dialog.getByLabel("Suggested caption")).not.toContainText("Holo4");
   await dialog.getByText("Options").click();
   await expect(dialog.getByRole("combobox", { name: "Duration", exact: true })).toBeVisible();
   await expect(dialog.getByRole("checkbox")).toHaveCount(0);
@@ -79,16 +82,30 @@ test("missing parts block exporting a misleading partial model; other builders c
   expect(await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
 });
 
-test("close-up follow camera exports a GIF and offers orbit and fixed alternatives", async ({ page }) => {
+test("close-up follow camera exports a credited GIF and offers orbit and fixed alternatives", async ({
+  page,
+}, testInfo) => {
   // Software WebGL on CI takes several minutes to render the real 160-frame export.
   test.setTimeout(600000);
+  await page.addInitScript(() => {
+    const credits: { text: string; fits: boolean; font: string }[] = [];
+    Object.assign(window, { filmCredits: credits });
+    const fill = CanvasRenderingContext2D.prototype.fillText;
+    CanvasRenderingContext2D.prototype.fillText = function (text, x, y, ...rest) {
+      if (text.startsWith("Powered by ") || text === "from H Company")
+        credits.push({ text, fits: x + this.measureText(text).width <= this.canvas.width, font: this.font });
+      return fill.call(this, text, x, y, ...rest);
+    };
+  });
   await mock(page);
   await openFilm(page);
   const dialog = page.getByRole("dialog");
+  await expect(dialog.getByLabel("Suggested caption")).toContainText("Holo4 27B by H Company");
   await dialog.getByText("Options", { exact: true }).click();
   const camera = dialog.getByRole("combobox", { name: "Camera", exact: true });
   await expect(camera).toHaveValue("follow");
   await expect(camera.locator("option")).toHaveText(["Follow build", "Orbit", "Fixed"]);
+  await expect(dialog.getByRole("checkbox", { name: "H Company credit" })).toBeChecked();
   const link = dialog.getByRole("link", { name: "Download GIF", exact: true });
   await expect(link).toBeVisible({ timeout: 540000 });
   const pending = page.waitForEvent("download");
@@ -98,6 +115,13 @@ test("close-up follow camera exports a GIF and offers orbit and fixed alternativ
   expect(bytes.subarray(0, 6).toString()).toBe("GIF89a");
   expect(bytes.includes(Buffer.from("NETSCAPE2.0"))).toBe(true);
   expect([bytes.readUInt16LE(6), bytes.readUInt16LE(8)]).toEqual([640, 360]);
+  const credits = await page.evaluate(
+    () => (window as unknown as { filmCredits: { text: string; fits: boolean }[] }).filmCredits,
+  );
+  expect(credits.filter((c) => c.text === "Powered by Holo4 27B").length).toBeGreaterThanOrEqual(160);
+  expect(credits.filter((c) => c.text === "from H Company").length).toBeGreaterThanOrEqual(160);
+  expect(credits.every((c) => c.fits)).toBe(true);
+  await dialog.locator(".film-preview img").screenshot({ path: testInfo.outputPath("credited-gif.png") });
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
 });

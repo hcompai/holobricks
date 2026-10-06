@@ -14,6 +14,7 @@ from brickyard.workspace import Workspace, write
 CLOCK = ".brickyard-clock"
 """Written by setup: when it started and the session's time limit in minutes."""
 FINISH_AT = 0.8
+CHECK_FROM = 0.5
 
 
 def tick(folder: Path) -> str:
@@ -25,8 +26,13 @@ def tick(folder: Path) -> str:
     clock["runs"] = clock.get("runs", 0) + 1
     write(path, json.dumps(clock))
     used, limit = round((time.time() - clock["started"]) / 60), clock["minutes"]
-    late = ": start nothing new; finish, update notes.md and answer" if used >= FINISH_AT * limit else ""
-    return f"Run {clock['runs']} · {used} of {limit} min used{late}\n"
+    if used >= FINISH_AT * limit:
+        note = ": start nothing new; finish, update notes.md and answer"
+    elif used < CHECK_FROM * limit:
+        note = f": keep improving the weakest part; the finish check opens at {round(CHECK_FROM * limit)}"
+    else:
+        note = ""
+    return f"Run {clock['runs']} · {used} of {limit} min used{note}\n"
 
 
 def main() -> None:

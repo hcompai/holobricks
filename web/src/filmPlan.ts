@@ -1,7 +1,6 @@
 import { CAMERA_MOVE_SECONDS } from "./buildTiming";
 import type { Build, Piece } from "./model";
-
-export const HOLO_MODEL = "HOLO4";
+import { HOLO } from "./holo";
 
 /** Only Holo builds may credit HOLO4 / H Company. */
 export const brandable = (build: Pick<Build, "builder">) => build.builder === "holo";
@@ -166,8 +165,8 @@ export function filmFilename(name: string, extension: string): string {
 }
 
 export function filmCaption(build: Build, branded: boolean): string {
-  const author = branded ? `${HOLO_MODEL} by H Company` : "HoloBricks";
+  const author = branded && brandable(build) ? `${HOLO.name} by H Company` : "HoloBricks";
   const state = build.status === "building" ? " · work in progress" : "";
-  const tags = branded ? `#${HOLO_MODEL} #HoloBricks #LEGO` : "#HoloBricks #LEGO";
+  const tags = branded && brandable(build) ? "#Holo4 #HCompany #HoloBricks #LEGO" : "#HoloBricks #LEGO";
   return `${build.name}: ${build.pieces.length.toLocaleString()} LEGO pieces, built with ${author}${state}. ${tags}`;
 }

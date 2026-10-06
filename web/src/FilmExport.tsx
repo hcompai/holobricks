@@ -256,7 +256,8 @@ export function FilmExport({ build, onClose }: Props) {
             </label>
             {brandable(build) && (
               <label className="film-branding">
-                <input type="checkbox" checked={branded} onChange={(e) => setBranded(e.target.checked)} />H Company logo
+                <input type="checkbox" checked={branded} onChange={(e) => setBranded(e.target.checked)} />H Company
+                credit
               </label>
             )}
           </details>

@@ -95,7 +95,7 @@ Decision (agreed with the user): **build only the left part, at ~3x the scale**.
 
 Lesson: **name the buildings first** (search "which tower is in shot X"); a name unlocks plans, proportions and fan reconstructions.
 
-### 4.5 A voxel sculptor (`showcase/sculpt.py`)
+### 4.5 A voxel sculptor (`server/brickyard/sculpt.py`)
 
 Big round towers and cones don't exist as parts, and hand-placing bricks can't union buildings. So:
 
@@ -212,3 +212,19 @@ Result: 36.7k pieces, 46 steps, 0 problems.
 ![top](hogwarts/top.jpg)
 
 Lesson: **a hollow shell is only as tight as its idea of "solid"**. Any part that does not fill its cell (a slope, a round, a corner) must say which of its sides it closes.
+
+### 4.12 Rewritten as a `build.py` script
+
+Holo studies the showcases but cannot run `Kit`, so Hogwarts taught techniques without the calls to make them. It is now `agent/showcase/hogwarts.py`, run by the same workbench as Holo's scripts; `python -m brickyard.showcase hogwarts` saves its build.
+
+| Before | After |
+|---|---|
+| `Kit` and a private sculptor clipped to the plans | the calls Holo has: `fill`, `roof`, `cone`, `brick`, `cover`, `place` |
+| 26,987 pieces | 45,073 pieces in 22 steps, 0 problems, no floating brick; the script runs in 7 s |
+
+- Each building is a `Plan` that records its fills, roofs, cones and parts in brick courses. The crag is shaped from every plan's feet first, then each plan builds in its own step.
+- The sculptor holds up every brick by a chain of stacked bricks: a brick no chain reaches gets the hidden voxels under it as bricks, down to support. A course with two solid courses above it is hidden, so tops are two-course slabs.
+- A part missing in a color takes the nearest color it exists in (`fit`); the white-only turret caps became small cones.
+- The piece count grew because shells are one stud thick and every top is a slab.
+
+Lesson: **a showcase teaches best in the learner's own calls**. The same script runs in the tests, in the gallery and as Holo's example.

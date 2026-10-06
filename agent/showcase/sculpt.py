@@ -1,1 +1,0 @@
-../../server/brickyard/showcase/sculpt.py

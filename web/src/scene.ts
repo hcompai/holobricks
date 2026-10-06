@@ -49,6 +49,8 @@ const PLATE = 8;
 const SHADOW_MAP = 2048;
 /** Edge opacity by how many pixels a stud covers: none where a stud's lines would pile into a dark film, crisp up close. */
 const EDGE_FADE = { opacity: 0.6, fromPixels: 3, toPixels: 30 };
+/** The builder's renders keep faint seams down to a few pixels a stud, so its bricks still read as bricks. */
+const LOOK_EDGE_FADE = { opacity: 0.6, fromPixels: 1, toPixels: 12 };
 /** Vertical fields of view, in degrees: narrow to frame the model, wide to look around inside it. */
 const FOV = { orbit: 35, walk: 70 };
 const HOVER = { color: 0x4f8cff, opacity: 0.25 };
@@ -76,7 +78,7 @@ const VIEW_LIGHT: Light = {
   environment: 0.35,
   shadow: 0.85,
 };
-/** The builder's renders: a sun behind the camera and no shadows, so every face reads clearly. */
+/** Thumbnails and instructions: a sun behind the camera and no shadows, so every face reads clearly. */
 const SHEET_LIGHT: Light = {
   sun: new THREE.Vector3(0.5, 1, 0.8).normalize(),
   intensity: 1.6,
@@ -84,6 +86,15 @@ const SHEET_LIGHT: Light = {
   environment: 0.55,
   shadow: 0,
 };
+/** The builder's renders: a sun over each camera's left shoulder casting light shadows, so depth and overhangs show. */
+const LOOK_LIGHT = { turn: -40, rise: 25, intensity: 2, sky: 0.45, environment: 0.5, shadow: 0.45 };
+
+function lookLight(direction: THREE.Vector3): Light {
+  const { turn, rise, ...light } = LOOK_LIGHT;
+  const angle = THREE.MathUtils.radToDeg(Math.atan2(direction.x, direction.z));
+  const elevation = THREE.MathUtils.radToDeg(Math.asin(direction.y));
+  return { ...light, sun: towardCamera(angle + turn, Math.min(80, elevation + rise)) };
+}
 
 /** From the model toward a camera seen from compass `angle` (0 front, 90 right) and `elevation` degrees up. */
 export function towardCamera(angle: number, elevation: number): THREE.Vector3 {
@@ -577,15 +588,15 @@ export class BrickScene {
     this.renderer.render(this.scene, this.camera);
   }
 
-  private adaptEdges(height: number) {
+  private adaptEdges(height: number, fade = EDGE_FADE) {
     const distance = this.walking ? WALK.lookDistance : this.camera.position.distanceTo(this.controls.target);
-    this.fadeEdges(distance, height);
+    this.fadeEdges(distance, height, fade);
   }
 
   /** Fade edges by how many pixels a stud covers `distance` away in a `height`-pixel frame. */
-  fadeEdges(distance: number, height: number) {
+  fadeEdges(distance: number, height: number, fade = EDGE_FADE) {
     const pixels = (STUD * height) / (2 * distance * Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)));
-    const { opacity, fromPixels, toPixels } = EDGE_FADE;
+    const { opacity, fromPixels, toPixels } = fade;
     this.edges.fade(opacity * THREE.MathUtils.smoothstep(pixels, fromPixels, toPixels));
   }
 
@@ -1401,15 +1412,16 @@ export class BrickScene {
     this.dirty = true;
   }
 
-  /** Square renders of the whole model, or only of what lies in `box`, as a JPEG, leaving the user's camera and timeline untouched. */
-  private offscreen(...args: Parameters<BrickScene["paint"]>): Promise<Blob | null> {
-    const canvas = backed(this.paint(...args));
+  /** The builder's square renders of the whole model, or only of what lies in `box`, as a JPEG, leaving the user's camera and timeline untouched. */
+  private offscreen(size: number, tiles: Parameters<BrickScene["paint"]>[1], columns: number, box: Box | null) {
+    const canvas = backed(this.paint(size, tiles, columns, box, false, true));
     return new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", RENDER_QUALITY));
   }
 
   /**
    * Square renders into a transparent 2D canvas, leaving the user's camera and timeline untouched: the whole model, or
-   * only what lies in `box`; with `page`, only the steps shown and their highlights, as an instructions page.
+   * only what lies in `box`; with `page`, only the steps shown and their highlights, as an instructions page; with
+   * `look`, lit and edged for the builder.
    */
   private paint(
     size: number,
@@ -1425,6 +1437,7 @@ export class BrickScene {
     columns = 1,
     box: Box | null = null,
     page = false,
+    look = false,
   ): HTMLCanvasElement {
     const focus = box ? worldBox(box) : undefined;
     const { position, near, far } = this.camera;
@@ -1452,11 +1465,16 @@ export class BrickScene {
       this.renderer.clippingPlanes = focus ? clippingPlanes(focus) : [];
       this.renderer.setPixelRatio(1);
       this.renderer.setSize(size * 2, size * 2, false);
+      if (look && this.shadowsStale) this.fitShadows();
       this.light(SHEET_LIGHT);
       this.camera.aspect = 1;
       for (const tile of tiles) {
         this.aim(tile.direction, 32, 32, tile.zoom, tile.at, tile.focus ?? focus);
-        this.adaptEdges(size);
+        if (look) {
+          this.light(lookLight(tile.direction));
+          this.renderer.shadowMap.needsUpdate = true;
+        }
+        this.adaptEdges(size, look ? LOOK_EDGE_FADE : EDGE_FADE);
         this.renderer.render(this.scene, this.camera);
         ctx.drawImage(this.renderer.domElement, tile.x, tile.y, size, size);
         if (tile.label) {
@@ -1480,6 +1498,7 @@ export class BrickScene {
       this.controls.update();
       if (this.walking) this.camera.quaternion.copy(saved.quaternion);
       this.overlay.visible = true;
+      if (look) this.renderer.shadowMap.needsUpdate = true;
       this.draw();
     }
     return canvas;
@@ -1517,7 +1536,7 @@ export class BrickScene {
   }
 
   /** The four labelled views a builder looks at to check its work, of the model or only of `box`. */
-  sheet(box: Box | null = null, size = 384): Promise<Blob | null> {
+  sheet(box: Box | null = null, size = 448): Promise<Blob | null> {
     const tiles = SHEET.map((s, i) => ({
       direction: VIEW_DIRECTIONS[s.view],
       label: s.label,
@@ -1528,7 +1547,7 @@ export class BrickScene {
   }
 
   /** The one view a builder asks for, with the build's x and y in studs and z in plates. */
-  view(camera: Camera, box: Box | null = null, size = 768): Promise<Blob | null> {
+  view(camera: Camera, box: Box | null = null, size = 896): Promise<Blob | null> {
     const at = camera.at
       ? new THREE.Vector3(camera.at[0] * STUD, camera.at[2] * PLATE, -camera.at[1] * STUD)
       : undefined;

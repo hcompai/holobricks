@@ -8,6 +8,7 @@ import type { Activity } from "./session";
 import { Lightbox } from "./Lightbox";
 import { imageFiles, reference } from "./references";
 import { label, SUGGESTIONS } from "./suggestions";
+import { HOLO } from "./holo";
 
 const MAX_ATTACHMENTS = 2;
 const WHO = "Holo";
@@ -178,6 +179,8 @@ interface Props {
   onStop: () => Promise<void>;
   preview?: ReactNode;
   onFork: () => void;
+  /** Receives the notes and composer under the chat log, which a phone's sheet keeps in view. */
+  dockRef?: (dock: HTMLDivElement | null) => void;
   /** Start a new build from a copy of this one, changed as asked: a closed build, or one whose session ended. */
   onRemix: (text: string, images: string[], attached?: Record<string, Blob>) => Promise<void>;
 }
@@ -194,6 +197,7 @@ export function ChatPanel({
   onRemix,
   preview,
   onFork,
+  dockRef,
 }: Props) {
   const [text, setText] = useState("");
   const [attachments, setAttachments] = useState<string[]>([]);
@@ -235,6 +239,16 @@ export function ChatPanel({
   }, [build?.id, build?.messages.length, busy, waiting.length]);
 
   const home = !build && !loading;
+
+  useEffect(() => {
+    const el = log.current;
+    if (!el) return;
+    const observer = new ResizeObserver(() => {
+      if (pinned.current) el.scrollTop = el.scrollHeight;
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [home]);
   useEffect(() => {
     if (home) input.current?.focus();
   }, [home]);
@@ -362,6 +376,9 @@ export function ChatPanel({
       >
         <PlusIcon size={14} weight="bold" />
       </button>
+      <span className="composer-model" aria-label={`Model: ${HOLO.name}`}>
+        {HOLO.name}
+      </span>
       {busy && build && !typed ? (
         <button
           className="round send stop"
@@ -428,19 +445,21 @@ export function ChatPanel({
           <Row key={`queued-${i}`} message={q.message} entering queued onOpen={setOpened} />
         ))}
       </div>
-      {preview && <div className="preview-note">{preview}</div>}
-      {closed && !preview && (
-        <div className="gallery-note">
-          <div>{closed}</div>
-          {!!build?.pieces.length && (
-            <button onClick={onFork} title="Start your own build from a copy of this one">
-              <ShuffleIcon size={14} weight="bold" /> Fork
-            </button>
-          )}
-        </div>
-      )}
-      {composer}
-      {failure}
+      <div className="chat-dock" ref={dockRef}>
+        {preview && <div className="preview-note">{preview}</div>}
+        {closed && !preview && (
+          <div className="gallery-note">
+            <div>{closed}</div>
+            {!!build?.pieces.length && (
+              <button onClick={onFork} title="Start your own build from a copy of this one">
+                <ShuffleIcon size={14} weight="bold" /> Fork
+              </button>
+            )}
+          </div>
+        )}
+        {composer}
+        {failure}
+      </div>
       <Lightbox src={opened} onClose={() => setOpened(null)} />
     </div>
   );

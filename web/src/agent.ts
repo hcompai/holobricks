@@ -2,10 +2,11 @@ import { assertRequestUnderLimit, fileFromBlob, HaiAgentsClient, type HaiAgents 
 import prompt from "../../agent/holo.md?raw";
 import { expired, key } from "./account";
 import { H } from "./hosts";
+import { platformAsset, externalImage, assetBlob } from "./assetUrl";
 import type { Build } from "./model";
 import { script } from "./remix";
 import { AGENT } from "./session";
-const MODEL = "holo4-27b";
+import { HOLO } from "./holo";
 const MAX_STEPS = 300;
 const MAX_TIME_S = 3 * 3600;
 /** How long a finished build keeps its Workstation for a follow-up message. */
@@ -74,7 +75,7 @@ function agent(): HaiAgents.Agent {
   return {
     name: AGENT,
     description: "Designs brick models from real LDraw parts, step by step, in HoloBricks.",
-    model: MODEL,
+    model: HOLO.id,
     reasoningEffort: "xhigh",
     instructions,
     environments: [{ kind: "workstation", id: AGENT }],
@@ -172,15 +173,19 @@ export async function sessions(): Promise<HaiAgents.SessionSummary[]> {
   }
 }
 
-/** An attachment or image the platform serves behind the API key. */
+/** Platform attachments use the API key; external HTTPS references are fetched anonymously. */
 export async function download(url: string, signal?: AbortSignal): Promise<Blob> {
+  const authenticated = platformAsset(url);
+  if (!authenticated && !externalImage(url)) throw new Error("Unsupported download URL");
   const timeout = AbortSignal.timeout(DOWNLOAD_S * 1000);
-  const response = await call(url, {
-    headers: { Authorization: `Bearer ${key()}` },
+  const response = await (authenticated ? call : fetch)(url, {
+    headers: authenticated ? { Authorization: `Bearer ${key()}` } : undefined,
+    credentials: "omit",
+    redirect: "error",
     signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
   });
   if (!response.ok) throw new Error(`Could not download ${url} (HTTP ${response.status})`);
-  return response.blob();
+  return assetBlob(response);
 }
 
 export async function answer(id: string, call: HaiAgents.ToolRequest, result: unknown) {
