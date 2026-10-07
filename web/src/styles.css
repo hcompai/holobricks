@@ -2916,8 +2916,13 @@ main {
     line-height: 22px;
   }
 
-  /* The compact composer has no footer: the model badge would overlap the text. */
   .sheet .composer-model {
+    right: 48px;
+    bottom: 14px;
+    left: auto;
+  }
+
+  .sheet .composer:has(textarea:not(:placeholder-shown)) .composer-model {
     display: none;
   }
 
