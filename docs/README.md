@@ -53,7 +53,7 @@ npm run dev                                                                     
 ```
 
 HoloBricks is open to H Company: everything sits behind a sign-in with an `@hcompany.ai` Google account on the H portal. Export the showcases for local use with
-`BRICKYARD_DATA=<data dir> server/.venv/bin/brickyard-gallery web/public hogwarts 6eb28d127e london paris`.
+`BRICKYARD_DATA=<data dir> server/.venv/bin/brickyard-gallery web/public 6eb28d127e`.
 
 Try the toolkit by hand: in a folder with a `build.py`, run `<repo>/server/.venv/bin/bricks run` (`--help` lists the tools).
 
@@ -100,7 +100,7 @@ Verify both stores in staging before production, using synthetic builds or an is
 
 ## Showcases and deploy
 
-Paris and London are scripted in `server/brickyard/showcase` and pass the same checks as Holo's bricks. Hogwarts is a `build.py` script, `agent/showcase/hogwarts.py`, that the workbench runs as it runs Holo's. Bag End (`6eb28d127e`) is a Holo build: its script, `agent/showcase/bag-end.py`, is one of the showcases Holo studies. Holo's prompt carries a shorter worked example on the solids `build.py` offers; server tests run it and Hogwarts and require no problems and no floating brick.
+Paris and London are scripted in `server/brickyard/showcase` and pass the same checks as Holo's bricks. Hogwarts is a `build.py` script, `agent/showcase/hogwarts.py`, that the workbench runs as it runs Holo's. Bag End (`6eb28d127e`) is a Holo build: its script, `agent/showcase/bag-end.py`, is one of the showcases Holo studies. Holo's prompt carries a shorter worked example on the solids `build.py` offers; server tests run it and Hogwarts and require no problems and no floating brick. The public gallery shows Bag End only: Claude made the other three, so they stay in the toolkit for Holo and out of the app.
 
 ```bash
 server/.venv/bin/python -m brickyard.showcase paris   # or london, hogwarts: regenerates data/builds/paris.json
@@ -109,7 +109,7 @@ scripts/deploy.sh --preview                           # or --prod
 
 Every push to master that passes CI deploys to production (the `deploy` job in `.github/workflows/ci.yml`, secrets `VERCEL_TOKEN` and `REBRICKABLE_API_KEY`); run CI by hand on master from the Actions tab, or deploy from a laptop as above.
 
-`deploy.sh` exports the showcases into `web/public/gallery`, rebuilds the catalog snapshot once it is 20 days old (that needs `REBRICKABLE_API_KEY`), packs the toolkit, builds the app and its functions, and deploys them to the Vercel project `brickyard`. It keeps both on the GitHub release `deploy-data`: a laptop deploy uploads them, and CI, which has no showcase data, downloads them. `bricks run` and shopping packages refuse a snapshot after 30 days, so each deploy stays valid for at least 10: redeploy within that.
+`deploy.sh` exports Holo's showcases into `web/public/gallery`, rebuilds the catalog snapshot once it is 20 days old (that needs `REBRICKABLE_API_KEY`), packs the toolkit, builds the app and its functions, and deploys them to the Vercel project `brickyard`. It keeps both on the GitHub release `deploy-data`: a laptop deploy uploads them, and CI, which has no showcase data, downloads them. `bricks run` and shopping packages refuse a snapshot after 30 days, so each deploy stays valid for at least 10: redeploy within that.
 
 ## Tests
 
