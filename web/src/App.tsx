@@ -6,17 +6,7 @@ import {
   ShoppingBagIcon,
   ShuffleIcon,
 } from "@phosphor-icons/react";
-import {
-  type CSSProperties,
-  lazy,
-  Suspense,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from "react";
+import { type CSSProperties, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Account } from "./account";
 import { AccountMenu } from "./AccountMenu";
 import { RecoveryPanel } from "./RecoveryPanel";
@@ -63,6 +53,7 @@ import { type BuildRef, useBuild } from "./useBuild";
 import { useViewport } from "./useViewport";
 import { useKeeper } from "./useSession";
 import { useSheet } from "./useSheet";
+import { usePhone } from "./usePhone";
 import { type Framing, type Mode, ViewControls, Viewer, type ViewerHandle } from "./Viewer";
 
 const FilmExport = lazy(() => import("./FilmExport").then((m) => ({ default: m.FilmExport })));
@@ -71,12 +62,6 @@ const ShopDialog = lazy(() => import("./ShopDialog").then((m) => ({ default: m.S
 
 const TITLE = document.title;
 const NEW_BUILD = "New build";
-/** The phone breakpoint of styles.css. */
-const PHONE = window.matchMedia("(max-width: 760px)");
-const onPhoneChange = (change: () => void) => {
-  PHONE.addEventListener("change", change);
-  return () => PHONE.removeEventListener("change", change);
-};
 /** The URL parameter naming the open build, by where it is read from. */
 const PARAMS: Record<Source, string> = { session: "build", public: "public", showcase: "showcase", fork: "fork" };
 
@@ -193,7 +178,7 @@ export default function App({ account }: { account: Account }) {
   const [instructionsBuild, setInstructionsBuild] = useState<Build | null>(null);
   const [shopping, setShopping] = useState<{ build: Build; preview: Promise<Blob | null> } | null>(null);
   const edited = !readOnly && edits.edits.length > 0 && build !== live;
-  const phone = useSyncExternalStore(onPhoneChange, () => PHONE.matches);
+  const phone = usePhone();
   const [dock, setDock] = useState<HTMLElement | null>(null);
   const viewport = useViewport(phone);
   const sheet = useSheet(dock, viewport?.height);
