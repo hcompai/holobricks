@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from brickyard import catalog, ldraw, script
+from brickyard import catalog, ldraw, script, support
 from brickyard.model import Build, grid
 from brickyard.workbench import Workbench
 from brickyard.workspace import BUILD, MODEL, Workspace
@@ -45,10 +45,8 @@ def test_workbench_places_valid_bricks_anywhere_from_x_and_y_0_and_explains_ever
     assert "overlaps brick 1 (3001 at x=4 y=4 z=0) of this step" in result.text
     assert "brick 3 (3001 at x=-1 y=0 z=0): x and y start at 0" in result.text
     assert "unknown part" in result.text
-    assert (
-        "brick 6 (3001 at x=10 y=10 z=6): no chain of stacked bricks from it reaches the ground or an earlier step"
-        in result.text
-    )
+    assert "Support warnings: 1 piece in 1 possibly detached group" in result.text
+    assert "brick 6 (3001 at x=10 y=10 z=6)" in result.text
     placed = [grid(p) for p in bench.pieces]
     assert placed == [(4, 4, 0, 0), (200, 150, 0, 0), (10, 10, 6, 0), (4, 4, 3, 90)]
     assert (bench.workspace.build.width, bench.workspace.build.depth) == (204, 152)
@@ -114,13 +112,15 @@ def test_a_script_rebuilds_from_its_first_changed_step_and_names_the_lines_of_it
     assert Build.model_validate_json((bench.workspace.folder / BUILD).read_text()).script == code
 
 
-def test_a_step_with_floating_bricks_is_rebuilt_and_reported_every_run(bench):
+def test_a_step_with_support_warnings_is_kept_but_reported_every_run(bench):
     code = 'step("Base")\nbrick("3001", 0, 0, 0, 4)\nstep("Lantern")\nbrick("3005", 10, 10, 6, 4)\n'
-    bench.run_script(code)
+    first = bench.run_script(code)
+    assert 'line 4 `brick("3005", 10, 10, 6, 4)`' in first.text
     for _ in range(2):
         result = bench.run_script(code)
-        assert "kept step 1 unchanged, rebuilt and checked 1 step." in result.text, result.text
-        assert 'line 4 `brick("3005", 10, 10, 6, 4)` (3005 at x=10 y=10 z=6): no chain of stacked' in result.text
+        assert "kept steps 1 to 2 unchanged, rebuilt and checked 0 steps." in result.text, result.text
+        assert "Support warnings: 1 piece" in result.text and "#2 3005 at x=10 y=10 z=6" in result.text
+        assert result.problems == 0 and "No problems" not in result.text
 
 
 def test_solids_become_hollow_bonded_shells_that_give_way_to_placed_parts(bench):
@@ -130,7 +130,7 @@ def test_solids_become_hollow_bonded_shells_that_give_way_to_placed_parts(bench)
         'step("Plateau")\nfill(box(20, 0, 20, 20), 0, 9, 2)\nbrick("3001", 22, 2, 9, 4)\n'
     )
     result = bench.run_script(code)
-    assert "No problems" in result.text and "Floating" not in result.text, result.text
+    assert "No problems" in result.text and "Support warnings" not in result.text, result.text
     assert "\n25 25" in result.text
     house = [grid(p) for p in bench.pieces if p.step == 1]
     assert (4, 2, 4, 0) in house
@@ -144,7 +144,7 @@ def test_solids_rise_through_earlier_pieces_on_any_grid_with_nothing_floating(be
         'step("Tower")\nfill(disc(10, 11, 4), 1, 24, 71)\n'
     )
     result = bench.run_script(code)
-    assert "No problems" in result.text and "Floating" not in result.text, result.text
+    assert "No problems" in result.text and "Support warnings" not in result.text, result.text
 
 
 def test_solids_in_one_step_share_one_grid_of_whole_courses(bench):
@@ -156,7 +156,7 @@ def test_problems_made_in_a_helper_name_each_line_that_called_it(bench):
     code = 'def column(x):\n    brick("3005", x, 0, 3, 4)\nstep("Columns")\ncolumn(0)\ncolumn(5)\n'
     result = bench.run_script(code)
     for line, x in ((4, 0), (5, 5)):
-        cited = f'line 2 `brick("3005", x, 0, 3, 4)` from line {line} `column({x})` (3005 at x={x} y=0 z=3)'
+        cited = f'line 2 `brick("3005", x, 0, 3, 4)` from line {line} `column({x})`'
         assert cited in result.text, result.text
 
 
@@ -190,7 +190,7 @@ def test_a_part_mounted_on_a_wall_face_hangs_there_without_raising_the_wall(benc
         'mount("3070b", 4, 3, 1, 15, "up")\n'
     )
     result = bench.run_script(code)
-    assert "top 0 12" in result.text and "Floating" not in result.text, result.text
+    assert "top 0 12" in result.text and "Support warnings" not in result.text, result.text
     assert "2 Clock: 1 piece, x 4-5, y 3-3, z 4-9" in result.text
     assert result.problems == 1 and "facing must be south, north, west or east" in result.text
     walls = {"south": ((4, 3), (4, 2)), "north": ((4, 6), (4, 7)), "west": ((3, 4), (2, 4)), "east": ((6, 4), (7, 4))}
@@ -198,7 +198,7 @@ def test_a_part_mounted_on_a_wall_face_hangs_there_without_raising_the_wall(benc
         for (x, y), floats in ((backed, False), (away, True)):
             moved = bench.run_script(code.replace('4, 3, 4, 15, "south"', f'{x}, {y}, 4, 15, "{facing}"'))
             assert moved.problems == 1 and "2 Clock: 1 piece" in moved.text, moved.text
-            assert ("nothing behind it" in moved.text) == floats, (facing, x, y)
+            assert ("Support warnings" in moved.text) == floats, (facing, x, y)
 
 
 def test_a_model_copied_as_exact_placements_rebuilds_the_same_pieces_and_takes_edits(bench, tmp_path):
@@ -207,7 +207,7 @@ def test_a_model_copied_as_exact_placements_rebuilds_the_same_pieces_and_takes_e
         'step("Window and finial")\nbrick("60592", 10, 10, 3, 15)\n'
         'place("3024", 15, (260.5, -32, 230.25), (0.707107, 0, 0.707107, 0, 1, 0, -0.707107, 0, 0.707107))\n'
     )
-    assert built.problems == 0 and "Floating" not in built.text, built.text
+    assert built.problems == 0 and "Support warnings" not in built.text, built.text
     tinted = [p.model_copy(update={"color": 40}) if p.part == "60601.dat" else p for p in bench.pieces]
     copied = "".join(
         f"step({json.dumps(s.title)})\n"
@@ -217,7 +217,7 @@ def test_a_model_copied_as_exact_placements_rebuilds_the_same_pieces_and_takes_e
     (tmp_path / "copy").mkdir()
     copy = Workbench(Workspace.open(tmp_path / "copy"))
     result = copy.run_script(copied)
-    assert result.problems == 0 and "Floating" not in result.text, result.text
+    assert result.problems == 0 and "Support warnings" not in result.text, result.text
     assert copy.pieces == tinted and [p.part for p in copy.pieces].count("60601.dat") == 1
     assert [s.title for s in copy.workspace.build.steps] == ["Base", "Window and finial"]
 
@@ -252,12 +252,19 @@ def test_a_step_builds_the_same_bricks_whatever_randomness_the_steps_before_it_u
 
 
 @pytest.mark.skipif(not catalog.SNAPSHOT.exists(), reason="catalog snapshot not built")
-def test_the_showcase_builds_with_no_problems_against_the_real_catalog(tmp_path):
+def test_the_showcase_has_valid_catalog_parts_but_does_not_hide_detached_terrain(tmp_path):
     example = (Path(__file__).resolve().parents[2] / "agent" / "showcase" / "bag-end.py").read_text()
     bench = Workbench(Workspace.open(tmp_path))
     result = bench.run_script(example)
     assert len(bench.workspace.build.pieces) > 7_000, result.text
-    assert result.problems == 0 and "No problems: every brick is known, fits" in result.text, result.text
+    assert catalog.validate(bench.pieces)["valid"]
+    # The legacy showcase contains a three-part stack beginning at plate 3
+    # with empty ground below it. Catalog validity never proved support.
+    groups = support.detached(bench.pieces)
+    stack = next(g for g in groups if any(p.part == "3003.dat" and grid(p) == (12, 10, 3, 0) for p in g))
+    assert len(stack) == 3 and min(grid(p)[2] for p in stack) == 3
+    assert result.problems == 0 and "No problems" not in result.text
+    assert "Support warnings" in result.text
 
 
 @pytest.mark.skipif(not catalog.SNAPSHOT.exists(), reason="catalog snapshot not built")
@@ -266,7 +273,7 @@ def test_the_prompts_example_builds_with_no_problems_and_nothing_floating(tmp_pa
     example = prompt.split("\nExample: ")[1].split("```python\n")[1].split("```")[0]
     bench = Workbench(Workspace.open(tmp_path))
     result = bench.run_script(example)
-    assert result.problems == 0 and "Floating" not in result.text, result.text
+    assert result.problems == 0 and "Support warnings" not in result.text, result.text
     assert len(bench.pieces) > 3_000, result.text
 
 
@@ -275,7 +282,7 @@ def test_hogwarts_builds_from_its_script_with_no_problems_and_nothing_floating(t
     showcase = (Path(__file__).resolve().parents[2] / "agent" / "showcase" / "hogwarts.py").read_text()
     bench = Workbench(Workspace.open(tmp_path))
     result = bench.run_script(showcase)
-    assert result.problems == 0 and "Floating" not in result.text, result.text
+    assert result.problems == 0 and "Support warnings" not in result.text, result.text
     assert len(bench.pieces) > 40_000, result.text
 
 

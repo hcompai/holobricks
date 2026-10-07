@@ -136,10 +136,13 @@ async function community(): Promise<BuildSummary[]> {
 
 /** The signed-in user's private library builds, newest first. */
 async function hidden(): Promise<BuildSummary[]> {
-  return (await read<Published[]>({ mine: "1" })).map((p) => ({
-    ...summary(p),
-    private: true,
-  }));
+  return Promise.all(
+    (await read<Published[]>({ mine: "1" })).map(async (p) => ({
+      ...summary(p),
+      thumbnail: p.thumbnail ? await privateImage(p.thumbnail, p.id) : null,
+      private: true,
+    })),
+  );
 }
 
 const summary = (p: Published): BuildSummary => ({
@@ -157,9 +160,38 @@ const summary = (p: Published): BuildSummary => ({
 
 export async function publicBuild(id: string): Promise<Build> {
   const published = newest(await read<Published>({ id }));
-  const response = await fetch(published.build);
+  const response = await fetch(published.build, privateAsset(published.build, id) ? { headers: signed() } : {});
   if (!response.ok) throw new Error(`No public build ${id}`);
-  return { ...(await unpack<Build>(await response.blob())), id, name: published.name, open: false };
+  const build = await unpack<Build>(await response.blob());
+  for (const message of build.messages)
+    message.images = await Promise.all(message.images.map((url) => privateImage(url, id)));
+  return { ...build, id, name: published.name, open: false };
+}
+
+/** Hydrate private images individually, keeping credentials out of img URLs and library-list responses small. */
+async function privateImage(url: string, id: string): Promise<string> {
+  if (!privateAsset(url, id)) return url;
+  const response = await fetch(url, { headers: signed() });
+  if (!response.ok) throw new LibraryError("A private image could not be loaded.");
+  const blob = await response.blob();
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new LibraryError("A private image could not be loaded."));
+    reader.readAsDataURL(blob);
+  });
+}
+
+/** Send credentials only to this app's owner-authenticated file route. */
+function privateAsset(url: string, id: string): boolean {
+  if (!url.startsWith(`${API}?`)) return false;
+  const parsed = new URL(url, location.origin);
+  return (
+    parsed.origin === location.origin &&
+    parsed.pathname === API &&
+    parsed.searchParams.get("id") === id &&
+    parsed.searchParams.has("file")
+  );
 }
 
 const signed = () => ({ Authorization: `Bearer ${current()?.pass}`, "X-Agents-Key": key() });

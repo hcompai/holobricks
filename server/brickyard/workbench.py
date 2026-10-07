@@ -10,10 +10,11 @@ import sys
 import tempfile
 from collections import Counter, defaultdict
 from dataclasses import dataclass
+from itertools import zip_longest
 
 from pydantic import ValidationError
 
-from brickyard import assembly, catalog, ldraw
+from brickyard import assembly, catalog, ldraw, support
 from brickyard.model import (
     ACCESSORIES,
     FACINGS,
@@ -31,6 +32,7 @@ from brickyard.model import (
     top,
     with_accessories,
 )
+from brickyard.support import overlap as _overlap
 from brickyard.workspace import MODEL, Workspace
 
 STUD_HEIGHT = 4
@@ -41,14 +43,10 @@ CELL = 4 * ldraw.STUD
 PROBLEM_LIMIT = 12
 PARTS_SHOWN = 12
 PARTS_FOUND = 20
-FLOATING_SHOWN = 5
-LOOSE = "no chain of stacked bricks from it reaches the ground or an earlier step"
 LINES_CITED = 3
 SCRIPT_TIMEOUT_S = 40
 """Well under the agent's 60 s shell wait, so a run and the share after it see the same revision."""
 BASEPLATE = "3811.dat"
-BACKS = {"south": (2, 1), "north": (2, -1), "west": (0, 1), "east": (0, -1)}
-"""For each facing, the LDU axis and direction from a mounted part to the wall behind it."""
 
 
 @dataclass
@@ -57,29 +55,9 @@ class Result:
     problems: int = 0
 
 
-def _overlap(a: tuple, b: tuple) -> tuple[float, float, float]:
-    return tuple(min(a[1][k], b[1][k]) - max(a[0][k], b[0][k]) for k in range(3))  # type: ignore[return-value]
-
-
 def _collides(a: tuple, b: tuple) -> bool:
     dx, dy, dz = _overlap(a, b)
     return dx > EPS and dz > EPS and dy > STUD_HEIGHT + EPS
-
-
-def _touches(a: tuple, b: tuple) -> bool:
-    """Stacked with no gap: one's bottom meets the other's top surface or stud tops."""
-    dx, _, dz = _overlap(a, b)
-    if dx <= EPS or dz <= EPS:
-        return False
-    return any(abs(lower[0][1] + s - upper[1][1]) < 1 for upper, lower in ((a, b), (b, a)) for s in (0, STUD_HEIGHT))
-
-
-def _behind(box: tuple, facing: str) -> tuple:
-    """A mounted part's box grown 1 LDU toward the wall it hangs on."""
-    axis, sign = BACKS[facing]
-    lo, hi = list(box[0]), list(box[1])
-    (hi if sign > 0 else lo)[axis] += sign
-    return tuple(lo), tuple(hi)
 
 
 def _turns(rot: Matrix) -> bool:
@@ -173,12 +151,9 @@ class Workbench:
         return self._indexed
 
     def _check(
-        self, bricks: list[dict], mounted: list[Placement] = ()
-    ) -> tuple[list[Placement], list[str], list[tuple[str, str]]]:
-        """Placements that fit, rejection lines, and (script line, note) per floating brick, for a batch.
-
-        Mounted placements hang on a wall, so they only have to stay at x, y >= 0 and clear of other pieces.
-        """
+        self, bricks: list[dict], mounted: list[Placement] = (), origins: list[str] | None = None
+    ) -> tuple[list[Placement], list[str]]:
+        """Placements that fit and rejection lines; support is checked on the complete model."""
         indexed = self._index()
         batch: dict[tuple[int, int], list[tuple[tuple, str]]] = {}
 
@@ -190,7 +165,7 @@ class Workbench:
         def name(what: int | str) -> str:
             return what if isinstance(what, str) else f"#{what} {_where(indexed[what][0])}"
 
-        accepted: list[tuple[Placement, tuple, str, str, bool, str | None]] = []
+        accepted: list[tuple[Placement, str]] = []
         rejected = []
         parsed: list[tuple[int, Brick]] = []
         for n, raw in enumerate(bricks, 1):
@@ -198,7 +173,7 @@ class Workbench:
                 parsed.append((n, Brick.model_validate(raw)))
             except ValidationError as e:
                 rejected.append(f"{raw.get('label') or f'brick {n}'}: {_invalid(e)}")
-        candidates: list[tuple[str, str, Placement, bool, str | None]] = []
+        candidates: list[tuple[str, str, Placement]] = []
         exact: set[int] = set()
         frames = {
             (ACCESSORIES[frame][0], b.pos, b.rot)
@@ -223,9 +198,7 @@ class Workbench:
                     inserts[part, brick.pos, brick.rot].append(placement)
                 else:
                     exact.add(id(placement))
-                    facing = next((f for f, m in FACINGS.items() if m == brick.rot), None)
-                    raised = facing is None and bounds(placement)[1][1] < -EPS
-                    candidates.append((origin, label, placement, raised, facing))
+                    candidates.append((origin, label, placement))
             elif brick.rotation not in ROTATIONS:
                 rejected.append(f"{label}: rotation must be 0, 90, 180 or 270")
             elif brick.z < 0:
@@ -233,19 +206,19 @@ class Workbench:
             elif brick.facing is not None:
                 if brick.facing in FACINGS:
                     placement = mount(part, brick.x, brick.y, brick.z, brick.color, brick.facing)
-                    candidates.append((origin, label, placement, False, brick.facing))
+                    candidates.append((origin, label, placement))
                 else:
                     rejected.append(f"{label}: facing must be south, north, west or east")
             else:
                 placement = place(part, brick.x, brick.y, brick.z, brick.color, brick.rotation)
-                candidates.append((origin, label, placement, brick.z > 0, None))
+                candidates.append((origin, label, placement))
         for p in mounted:
             label = f"mounted {p.part.removesuffix('.dat')}"
             if ldraw.resolve(p.part) is None:
                 rejected.append(f"{label}: unknown part")
             else:
-                candidates.append((label, label, p, False, None))
-        for origin, label, placement, needs_support, facing in candidates:
+                candidates.append((label, label, p))
+        for origin, label, placement in candidates:
             box = bounds(placement)
             if box[0][0] < -EPS or box[0][2] < -EPS:
                 rejected.append(f"{label}: x and y start at 0; to make room, add an offset to the whole plan")
@@ -255,34 +228,9 @@ class Workbench:
             if hit:
                 rejected.append(f"{label}: overlaps {name(hit[1])}, which fills up to z={top(hit[0])}")
                 continue
-            accepted.append((placement, box, origin, label, needs_support, facing))
+            accepted.append((placement, origin))
             for cell in _cells(box):
                 batch.setdefault(cell, []).append((box, f"{label} of this step"))
-
-        # A step is a batch: later lines may support earlier ones. Seed contact paths at the ground or
-        # earlier steps, so two touching bricks floating together cannot validate each other.
-        supported, pending = set(), []
-        for _, box, _, _, needs_support, _ in accepted:
-            if not needs_support or any(isinstance(who, int) and _touches(box, other) for other, who in near(box)):
-                supported.add(id(box))
-                pending.append(box)
-        while pending:
-            box = pending.pop()
-            for other, who in near(box):
-                if isinstance(who, str) and id(other) not in supported and _touches(box, other):
-                    supported.add(id(other))
-                    pending.append(other)
-
-        def backed(box: tuple, facing: str) -> bool:
-            wall = _behind(box, facing)
-            return any(other is not box and min(_overlap(wall, other)) > EPS for other, _ in near(wall))
-
-        floating = []
-        for _, box, origin, label, _, facing in accepted:
-            if id(box) not in supported:
-                floating.append((origin, f"{label}: {LOOSE}"))
-            elif facing and not backed(box, facing):
-                floating.append((origin, f"{label}: nothing behind it"))
 
         def fitted(p: Placement) -> list[Placement]:
             """The placement and its inserts: those placed exactly with it, else the usual ones."""
@@ -290,13 +238,21 @@ class Workbench:
                 return with_accessories(p)
             return [p, *inserts.pop((ACCESSORIES.get(p.part, ("",))[0], p.pos, p.rot), [])]
 
-        return [p for placement, *_ in accepted for p in fitted(placement)], rejected, floating
+        placements = []
+        for placement, origin in accepted:
+            parts = fitted(placement)
+            placements.extend(parts)
+            if origins is not None:
+                origins.extend([origin] * len(parts))
+        return placements, rejected
 
     def add(self, title: str, bricks: list[dict], mounted: list[Placement] = ()) -> Result:
-        """Check the bricks and place the ones that fit as one step, if the whole model stays verified."""
+        """Place the bricks that fit with verified colors, then warn about model-wide support."""
         if not bricks and not mounted:
             return Result("No bricks given.")
-        placements, rejected, floating = self._check(bricks, list(mounted))
+        labels = []
+        placements, rejected = self._check(bricks, list(mounted), origins=labels)
+        origins = {}
         lines = []
         if placements:
             candidate = self.workspace.build.model_copy(deep=True)
@@ -310,12 +266,14 @@ class Workbench:
                 )
             self.workspace.commit(candidate)
             new = [p for p in self.pieces if p.step == step.index]
+            origins.update(zip((p.id for p in new), labels, strict=True))
             lines.append(f"Step {step.index + 1} '{title}': placed {len(new)} pieces as #{new[0].id}-#{new[-1].id}.")
         if rejected:
             lines.append(f"Rejected {len(rejected)}, not placed:\n" + _first(rejected))
+        floating = support.detached(self.pieces)
         if floating:
-            lines.append("Placed but floating:\n" + _first([note for _, note in floating]))
-        return Result("\n".join(lines), problems=len(rejected) + len(floating))
+            lines.append(_floating(floating, origins))
+        return Result("\n".join(lines), problems=len(rejected))
 
     def run_script(self, code: str) -> Result:
         """Rebuild the model from `code`: steps up to the first changed one stay, the rest are rebuilt and checked."""
@@ -343,15 +301,19 @@ class Workbench:
         candidate.width, candidate.depth = footprint(candidate.pieces)
         draft = Workbench(Workspace(candidate))
         source = code.splitlines()
-        reports, floating = [], []
+        reports, origins = [], {}
         for n, (s, key) in enumerate(zip(steps[same:], keys[same:], strict=True), kept_steps + 1):
             bricks = [b | {"label": _cite(source, b["line"], b["call"])} for b in s["bricks"]]
-            placements, rejected, flags = draft._check(bricks)
+            labels = []
+            placements, rejected = draft._check(bricks, origins=labels)
             if placements:
-                candidate.add_step(s["title"], placements, "" if rejected or flags else key)
+                candidate.add_step(s["title"], placements, "" if rejected else key)
+                origins.update(zip((p.id for p in candidate.pieces[-len(placements) :]), labels, strict=True))
             if rejected:
                 reports.append((n, s["title"], rejected))
-            floating += [(n, *flag) for flag in flags]
+        # Earlier steps are not anchors: check the final geometry, including kept/manual
+        # pieces and supports added in later steps. A floating group cannot support itself.
+        floating = support.detached(candidate.pieces)
         self.workspace.commit(candidate)
         parts = catalog.validate(self.pieces) if self.pieces else None
         problems = len(reports) + (len(parts["issues"]) if parts else 0)
@@ -374,9 +336,13 @@ class Workbench:
             _cite_lines(parts, steps, source)
             lines.append(_catalog_issues(parts))
         if not problems:
-            lines.append("No problems: every brick is known, fits, and exists in its color in real sets.")
+            lines.append(
+                "Placement and catalog checks passed; inspect the support warnings below."
+                if floating
+                else "No problems: every brick is known, fits, and exists in its color in real sets."
+            )
         if floating:
-            lines.append(_floating(floating))
+            lines.append(_floating(floating, origins))
         lines.append("Steps: pieces, then where they sit in studs (x, y) and plates (z, bottom to top):")
         lines.append(self.describe())
         lines.append(self.summary() + self.colors() + self.parts())
@@ -509,24 +475,40 @@ def _cite_lines(report: dict, steps: list[dict], source: list[str]) -> None:
         issue["lines"] = [where for line, call in found[:LINES_CITED] if (where := _cite(source, line, call))]
 
 
-def _floating(flags: list[tuple[int, str, str]]) -> str:
-    """How many placed bricks float and in which steps, then the script lines with the most, each with its first."""
-    first: dict[str, str] = {}
-    counts = Counter(origin for _, origin, _ in flags)
-    for _, origin, note in flags:
-        first.setdefault(origin, note)
-    steps = sorted({n for n, _, _ in flags})
-    where = f"step{'s' * (len(steps) != 1)} {', '.join(map(str, steps))}"
-    header = f"Floating, placed but flagged: {len(flags)} brick{'s' * (len(flags) != 1)} in {where}."
-    shown = [f"{n} from {first[origin]}" for origin, n in counts.most_common(FLOATING_SHOWN)]
-    more = len(counts) - FLOATING_SHOWN
-    return "\n".join(
-        [
-            header + " By script line, with the first of each:",
-            *shown,
-            *([f"... and {more} more script line{'s' * (more != 1)}."] if more > 0 else []),
-        ]
-    )
+def _floating(groups: list[list[Piece]], origins: dict[int, str]) -> str:
+    """One inspection box per group, spread across steps so repeated parts do not hide other gaps."""
+    by_step = defaultdict(list)
+    for n, group in enumerate(groups, 1):
+        by_step[min(p.step for p in group)].append((n, group))
+    ordered = [item for row in zip_longest(*by_step.values()) for item in row if item is not None]
+    count = sum(map(len, groups))
+    lines = [
+        (
+            f"Support warnings: {count} piece{'s' if count != 1 else ''} "
+            f"in {len(groups)} possibly detached group{'s' if len(groups) != 1 else ''}."
+        ),
+        "No ground contact path found by the approximate check. Inspect the joins; warnings do not block the run.",
+    ]
+    for n, pieces in ordered[:PROBLEM_LIMIT]:
+        boxes = [bounds(p) for p in pieces]
+        x0, y0 = (math.floor(min(b[0][k] for b in boxes) / ldraw.STUD) for k in (0, 2))
+        x1, y1 = (math.ceil(max(b[1][k] for b in boxes) / ldraw.STUD) for k in (0, 2))
+        z1 = max(map(top, boxes))
+        # Include the ground and neighboring supports: cropping to just the
+        # detached pieces would hide the gap the agent needs to inspect.
+        box = [max(0, x0 - 1), max(0, y0 - 1), 0, x1 + 1, y1 + 1, z1 + 1]
+        steps = ", ".join(map(str, sorted({p.step + 1 for p in pieces})))
+        lines.append(f"Group {n}: {len(pieces)} piece{'s' if len(pieces) != 1 else ''}; steps {steps}; look box {box}.")
+        seen = set()
+        for p in pieces:
+            origin = origins.get(p.id, "")
+            if origin not in seen and len(seen) < LINES_CITED:
+                lines.append(f"  #{p.id} {_where(p)}" + (f"; {origin}" if origin else ""))
+                seen.add(origin)
+    if len(groups) > PROBLEM_LIMIT:
+        lines.append(f"... and {len(groups) - PROBLEM_LIMIT} more groups not shown.")
+    lines.append("Bounding-box contact can miss side/clip joins; it is not a stud/socket or strength proof.")
+    return "\n".join(lines)
 
 
 def _line(source: list[str], n: int) -> str | None:

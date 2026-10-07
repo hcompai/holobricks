@@ -59,6 +59,7 @@ test.beforeAll(async () => {
 });
 test.beforeEach(async () => {
   blob.objects.clear();
+  blob.privateObjects.clear();
   const upload = new Request("http://bricks.test/api/imports", {
     method: "POST",
     headers: headers(OWNER),
@@ -155,7 +156,9 @@ test("only the owner unpublishes; another user is refused and an admin only hide
   expect((await unpublish(ADMIN, imported)).status).toBe(204);
   expect(await find(imported)).toBeNull();
   expect(await findOwn(OWNER.id, imported)).toMatchObject({ owner: OWNER.id });
-  expect(files()).toEqual(before);
+  expect(before.length).toBeGreaterThan(0);
+  expect(files()).toEqual([]);
+  expect(blob.privateObjects.size).toBeGreaterThan(0);
   const mine = await buildsGET(as(OWNER, "GET", "http://bricks.test/api/builds?mine=1"));
   expect((await mine.json()).map((p: { id: string }) => p.id)).toEqual([imported]);
   // Nothing more an admin can do to it: it is private.
