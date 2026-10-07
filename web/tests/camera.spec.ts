@@ -216,7 +216,7 @@ test("LEGO replay uses the close-up worker camera and dragging returns control",
   const viewer = page.locator(".viewer");
   await expect(viewer).toHaveAttribute("data-revision", build.revision);
   const speed = page.getByRole("button", { name: /^Playback speed:/ });
-  for (let i = 0; i < 3; i++) await speed.click({ timeout: 5000 });
+  for (let i = 0; i < 3; i++) await speed.click();
   await expect(speed).toHaveAttribute("aria-label", "Playback speed: 0.5×");
   await page.getByRole("button", { name: "First step", exact: true }).click();
   await page.getByRole("slider", { name: "Step", exact: true }).fill("1");
