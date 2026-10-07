@@ -14,7 +14,7 @@ async function published(model: object, edits: unknown, fork = false, photos: st
       return Response.json({ format: 1, origin: { id: "PRIVATE_ORIGIN" }, model: { name: "My fork" } });
     if (url.pathname === "/model" || url.pathname === "/photo") {
       expect(new Headers(init?.headers).get("authorization")).toBe("Bearer test-key");
-      expect(init?.redirect).toBe("error");
+      expect(init?.redirect).toBe("follow");
       expect(init?.signal).toBeDefined();
       return new Response(url.pathname === "/model" ? gzipSync(JSON.stringify(model)) : "photo", {
         headers: { "content-type": "image/png" },
