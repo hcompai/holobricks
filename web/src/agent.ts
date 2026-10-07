@@ -181,7 +181,8 @@ export async function download(url: string, signal?: AbortSignal): Promise<Blob>
   const response = await (authenticated ? call : fetch)(url, {
     headers: authenticated ? { Authorization: `Bearer ${key()}` } : undefined,
     credentials: "omit",
-    redirect: "error",
+    // Session resources redirect to signed storage URLs; fetch strips Authorization across origins.
+    redirect: authenticated ? "follow" : "error",
     signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
   });
   if (!response.ok) throw new Error(`Could not download ${url} (HTTP ${response.status})`);
