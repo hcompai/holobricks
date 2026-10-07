@@ -916,6 +916,11 @@ export class BrickScene {
     return this.followBuild && !this.walking && !this.controls.autoRotate && !this.userMoved;
   }
 
+  /** Follow can be enabled without a camera plan when Reduce Motion skips placement. */
+  get hasBuildCamera() {
+    return this.followingBuild && this.cameraPlan !== null;
+  }
+
   private cancelCamera() {
     this.cameraGeneration++;
     this.cameraPlanning = false;
