@@ -71,9 +71,21 @@ signed in ──GET /api/builds (pass + key)──▶ the public library
 - The portal's cookie never reaches a local dev server, so there the portal sends a one-time code instead (PKCE, RFC 8252); it only redirects to `127.0.0.1`, where `localhost` forwards.
 - Every library read needs a pass: signed out, only link previews show a build's name and cover. A session is its owner's to publish, stop and change; a teammate who opens its link sees it read only, to remix.
 - Signing in again revokes the previous key. The key lives in the browser's local storage; the pass, signed with `BRICKYARD_SECRET`, names its holder to the functions.
-- An imported build has no session, so it lives only in the library: **Make private** moves its entry to `private/<owner>/`, out of the public listing, listed (`GET /api/builds?mine=1`) and opened only for its owner. **Delete** removes its entry and files. Sessions cannot be deleted through the Agents API: deleting one (`DELETE /api/projects?id=&source=session`) unpublishes it and records it under `removed/<scope>/`, which `GET /api/projects` lists so the library leaves it out; the platform keeps its chat until the session ends. Deleting a fork removes its files and name, and removes the session it started. Deleting a build while Holo builds it cancels its session first, so Holo stops. Owners rename, publish, make private and delete their builds from the ⋯ on their cards, or from Share in the build.
+- An imported build has no session, so it lives only in the library: **Make private** copies its metadata, model and images into a separate private Blob store, then deletes the public copies. It stays listed (`GET /api/builds?mine=1`) and opens through an owner-authenticated file route. Private file responses are never cached by the app. **Delete** removes its entry and files. Sessions cannot be deleted through the Agents API: deleting one (`DELETE /api/projects?id=&source=session`) unpublishes it and records it under `removed/<scope>/`, which `GET /api/projects` lists so the library leaves it out; the platform keeps its chat until the session ends. Deleting a fork removes its files and name, and removes the session it started. Deleting a build while Holo builds it cancels its session first, so Holo stops. Owners rename, publish, make private and delete their builds from the ⋯ on their cards, or from Share in the build.
 - Publishing copies the session's model, transcript and platform-hosted or embedded images, so they survive its session. External HTTPS photos remain links and depend on their original host; the server does not download them. Only its author can rename, publish, make private, unpublish or delete a build. The emails in `BRICKYARD_ADMINS` can take anyone's build out of the public library to moderate it, but never delete it: it becomes private, kept for its owner.
-- Server environment: `BRICKYARD_SECRET`, `BRICKYARD_ADMINS`, and `BLOB_READ_WRITE_TOKEN` from the `brickyard-library` Blob store.
+- Server environment: `BRICKYARD_SECRET`, `BRICKYARD_ADMINS`, `BLOB_READ_WRITE_TOKEN` from the public `brickyard-library` Blob store, and `BRICKYARD_PRIVATE_BLOB_READ_WRITE_TOKEN` from a **separate private** Blob store (the shorter `BRICKYARD_PRIVATE_BLOB_TOKEN` is also accepted). Never reuse the public token. Without private storage, making private returns 503 and preserves the source.
+
+### Migrating existing private builds
+
+Create a private Blob store in Vercel and connect it with the environment-variable prefix `BRICKYARD_PRIVATE_BLOB`. This creates `BRICKYARD_PRIVATE_BLOB_READ_WRITE_TOKEN` on the server. Keep the existing public store and token. After the updated API is deployed, configure both tokens in an operator shell and run from `web/`:
+
+```bash
+node scripts/migrate-private.mjs
+```
+
+The migration copies legacy hidden library entries and their files before deleting public copies. It stops on failure; rerun it to finish. It logs only the migrated count, never model contents or tokens. Owner access also migrates a legacy entry when needed. This command targets hidden library entries; saved forks and their separate storage are unchanged.
+
+Verify both stores in staging before production, using synthetic builds or an isolated public store. Deploy the updated API before migrating production entries: the previous API cannot read the new private store. Run the migration immediately after deployment, before treating existing private library builds as protected. Public Blob CDN caches can retain a previously public file briefly after deletion; copies already downloaded cannot be revoked. External reference photos remain their original third-party links.
 
 ## Where to change things
 

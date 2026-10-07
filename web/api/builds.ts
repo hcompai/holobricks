@@ -12,6 +12,7 @@ import {
   ID,
   library,
   privateOf,
+  privateFile,
   type Published,
   save,
   setPrivate,
@@ -51,12 +52,14 @@ export const GET = route(async (request) => {
   if (params.has("mine")) return Response.json(await privateOf(user.id), { headers: PRIVATE });
   const id = params.get("id");
   if (!id) return Response.json(await library(), { headers: PRIVATE });
+  const file = params.get("file");
+  if (file) return privateFile(user.id, buildId(id), file);
   const found = (await find(buildId(id))) ?? (await findOwn(user.id, buildId(id)));
   if (!found) throw new Refusal(404, "This build is not public.");
   return Response.json(found, { headers: PRIVATE });
 });
 
-/** Make one of the caller's imported builds private or public again: `{ id, private }`. Its files and link stay the same. */
+/** Make one of the caller's imported builds private or public again: `{ id, private }`. Its app link stays the same; files move between public and private stores. */
 export const PATCH = route(async (request) => {
   const { user } = holder(request);
   const given = await body<{ id?: unknown; private?: unknown }>(request);

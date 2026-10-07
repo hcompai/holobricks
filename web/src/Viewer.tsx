@@ -285,7 +285,7 @@ export function Viewer(props: Props) {
           const same = framedBuild.current === build.id;
           if (!same) s.userMoved = false;
           framedBuild.current = build.id;
-          if (!(build.status === "building" && s.followingBuild)) s.frameView(framing.view, width, depth, same);
+          if (!(build.status === "building" && s.hasBuildCamera)) s.frameView(framing.view, width, depth, same);
         }
         s.drawCurrent();
         // Measure the full model in its own axes, independent of camera, replay and placement animation.

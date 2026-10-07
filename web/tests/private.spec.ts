@@ -4,6 +4,10 @@ import type { Build } from "../src/model";
 import { ACCOUNT, fixture, site } from "./fixtures";
 
 const BLOB = "https://blob.test";
+const PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a6RkAAAAASUVORK5CYII=",
+  "base64",
+);
 
 interface Entry {
   id: string;
@@ -14,7 +18,7 @@ interface Entry {
   author: string;
   owner: string;
   published: number;
-  thumbnail: null;
+  thumbnail: string | null;
   build: string;
   private?: boolean;
 }
@@ -53,7 +57,10 @@ async function library(page: import("@playwright/test").Page, build: Build) {
     });
     if (method === "PATCH") {
       const { id, private: hidden } = request.postDataJSON();
-      entries.find((e) => e.id === id)!.private = hidden;
+      const entry = entries.find((e) => e.id === id)!;
+      entry.private = hidden;
+      entry.thumbnail = hidden ? `/api/builds?id=${id}&file=thumbnail.png` : null;
+      entry.build = hidden ? `/api/builds?id=${id}&file=build.json.gz` : `${BLOB}/builds/${id}/build.json.gz`;
       return route.fulfill({ status: 204 });
     }
     if (method === "DELETE") {
@@ -61,6 +68,16 @@ async function library(page: import("@playwright/test").Page, build: Build) {
       return route.fulfill({ status: 204 });
     }
     const id = url.searchParams.get("id");
+    if (url.searchParams.has("file")) {
+      if (!request.headers().authorization || !request.headers()["x-agents-key"]) return route.fulfill({ status: 401 });
+      if (["images/1.png", "thumbnail.png"].includes(url.searchParams.get("file") ?? ""))
+        return route.fulfill({ contentType: "image/png", body: PNG });
+      const privateBuild = {
+        ...build,
+        messages: [{ role: "user", text: "My reference", images: [`/api/builds?id=${build.id}&file=images%2F1.png`] }],
+      };
+      return route.fulfill({ body: gzipSync(JSON.stringify(privateBuild)) });
+    }
     if (url.searchParams.has("mine")) return route.fulfill({ json: entries.filter((e) => e.private) });
     if (id) {
       const entry = entries.find((e) => e.id === id && (!e.private || request.headers().authorization));
@@ -115,9 +132,13 @@ test("an imported build goes private and stays under the user's builds, goes pub
   await page.getByRole("button", { name: "HoloBricks", exact: true }).click();
   await expect(page.getByRole("region", { name: "Your builds" }).locator(".tile")).toContainText("private");
   await expect(page.getByRole("region", { name: "Public builds" }).locator(".tile")).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Your builds" }).locator('img[src^="data:image/png"]')).toBeVisible();
   await page.getByRole("region", { name: "Your builds" }).locator(".tile").click();
   await expect(page.locator(".viewer")).toHaveAttribute("data-revision", build.revision);
 
+  expect(calls.find((c) => c.search.includes("file=build.json.gz"))?.auth).toBe(`Bearer ${ACCOUNT.pass}`);
+  expect(calls.find((c) => c.search.includes("file=images%2F1.png"))?.auth).toBe(`Bearer ${ACCOUNT.pass}`);
+  await expect(page.locator('.chat img[src^="data:image/png"]')).toBeVisible();
   await share.click();
   await page.getByRole("menuitem", { name: "Publish to the library…" }).click();
   await page.getByRole("dialog", { name: "Publish" }).getByRole("button", { name: "Publish" }).click();
