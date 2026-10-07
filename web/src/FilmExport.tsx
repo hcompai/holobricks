@@ -4,6 +4,7 @@ import { BrickLoader } from "./BrickLoader";
 import type { Build } from "./model";
 import { FilmRenderer } from "./film";
 import { encodeGif } from "./filmGif";
+import { PHONE } from "./usePhone";
 import {
   brandable,
   FILM_ASPECTS,
@@ -50,7 +51,7 @@ export function FilmExport({ build, onClose }: Props) {
   const renderer = useRef<FilmRenderer | null>(null);
   /** The GIF being made; the next waits for it to stop, since both draw with the one renderer. */
   const queue = useRef(Promise.resolve());
-  const [aspect, setAspect] = useState<FilmAspect>("16:9");
+  const [aspect, setAspect] = useState<FilmAspect>(() => (PHONE.matches ? "1:1" : "16:9"));
   const [seconds, setSeconds] = useState(8);
   const [camera, setCamera] = useState<FilmCamera>("follow");
   const [branded, setBranded] = useState(brandable(build));
@@ -64,7 +65,7 @@ export function FilmExport({ build, onClose }: Props) {
   const caption = filmCaption(build, branded);
   const size = FILM_ASPECTS[aspect];
   const made = browserOptions(aspect, seconds, branded, 1, camera);
-  const canShare = !!file && !!navigator.canShare?.({ files: [file] });
+  const canShare = !!file && !!navigator.share && !!navigator.canShare?.({ files: [file] });
 
   useEffect(() => {
     dialog.current?.showModal();
@@ -154,6 +155,7 @@ export function FilmExport({ build, onClose }: Props) {
 
   const share = async () => {
     if (!file || !canShare) return;
+    setNotice("");
     try {
       await navigator.share({ files: [file], title: build.name, text: caption });
     } catch (e) {
@@ -197,14 +199,14 @@ export function FilmExport({ build, onClose }: Props) {
             {file && url ? (
               <>
                 <div className="dialog-actions">
-                  <a className="button primary" href={url} download={file.name}>
-                    <DownloadSimpleIcon size={16} /> Download GIF
-                  </a>
                   {canShare && (
-                    <button onClick={share}>
+                    <button className="primary" onClick={share}>
                       <ShareNetworkIcon size={16} /> Share…
                     </button>
                   )}
+                  <a className={`button${canShare ? "" : " primary"}`} href={url} download={file.name}>
+                    <DownloadSimpleIcon size={16} /> Download GIF
+                  </a>
                 </div>
                 <p className="small muted">
                   {made.width} × {made.height} · {seconds}s · {megabytes(file.size)}
