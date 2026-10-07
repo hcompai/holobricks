@@ -13,12 +13,14 @@ interface Props {
   onStep: (step: number) => void;
   onPlay: (playing: boolean) => void;
   onSpeed: (speed: number) => void;
+  /** Return to the newest step and follow incoming revisions after scrubbing. */
+  onLive?: () => void;
   /** Whether Space plays and pauses; walking takes Space to jump and fly. */
   spaceKey: boolean;
 }
 
 export function Timeline(props: Props) {
-  const { build, loading, step, playing, speed, onStep, onPlay, onSpeed, spaceKey } = props;
+  const { build, loading, step, playing, speed, onStep, onPlay, onSpeed, onLive, spaceKey } = props;
   const steps = build?.steps ?? [];
   const last = steps.length - 1;
   const current = Math.min(step, last);
@@ -99,6 +101,11 @@ export function Timeline(props: Props) {
           style={{ "--fill": `${steps.length ? ((current + 1) / steps.length) * 100 : 0}%` } as CSSProperties}
         />
       </div>
+      {onLive && (
+        <button className="timeline-live" onClick={onLive}>
+          Live
+        </button>
+      )}
       <button
         className="quiet speed"
         onClick={() => onSpeed(SPEEDS[(SPEEDS.indexOf(speed) + 1) % SPEEDS.length])}

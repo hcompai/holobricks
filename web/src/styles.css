@@ -1571,6 +1571,18 @@ main {
   font-variant-numeric: tabular-nums;
 }
 
+.timeline-live {
+  flex: none;
+  min-height: 40px;
+  color: var(--accent);
+}
+
+@media (max-width: 760px) {
+  .timeline:has(.timeline-live) .speed {
+    display: none;
+  }
+}
+
 /* One dialog surface for exports and shopping. */
 .dialog {
   width: min(520px, calc(100vw - 32px));
@@ -2439,7 +2451,9 @@ main {
     --glass-blur: blur(20px) saturate(1.8);
     --spring: cubic-bezier(0.32, 0.72, 0, 1);
     grid-template-columns: minmax(0, 1fr);
-    height: 100dvh;
+    position: fixed;
+    inset: var(--phone-top, 0px) 0 auto;
+    height: var(--phone-height, 100dvh);
   }
 
   .app.home {
@@ -2515,10 +2529,7 @@ main {
   }
 
   .app:not(.home) {
-    position: fixed;
-    inset: 0;
     display: block;
-    height: auto;
     overflow: hidden;
     background: var(--background-viewer);
   }
@@ -2903,6 +2914,16 @@ main {
     padding: 11px 48px 11px 46px;
     font-size: 16px;
     line-height: 22px;
+  }
+
+  .sheet .composer-model {
+    right: 48px;
+    bottom: 14px;
+    left: auto;
+  }
+
+  .sheet .composer:has(textarea:not(:placeholder-shown)) .composer-model {
+    display: none;
   }
 
   .sheet .round {
