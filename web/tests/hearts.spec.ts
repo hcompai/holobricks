@@ -54,7 +54,7 @@ test("public cards show their hearts; a signed-in user gives and takes one back,
   const boat = card(page, "Boat").getByRole("button", { name: "Heart this build" });
   await expect(hut).toHaveText("2");
   await expect(boat).toHaveText("");
-  await expect(card(page, "Hut").locator(".tile-title")).toHaveText("Hut");
+  await expect(card(page, "Hut").locator(".tile-caption b")).toHaveText("Hut");
 
   await hut.click();
   const given = card(page, "Hut").getByRole("button", { name: "Remove your heart" });

@@ -48,7 +48,6 @@ function meta(b: BuildSummary, published = false): string {
     published ? "public" : null,
     b.id.startsWith("import-") ? "imported" : null,
     b.private ? "private" : null,
-    b.pieces === null ? null : `${b.pieces.toLocaleString()} pieces`,
     b.status === "building" ? "building…" : b.status === "error" ? "stopped" : null,
     b.source === "showcase" || !b.created ? null : ago(b.created),
   ]
@@ -67,7 +66,7 @@ function mine(builds: BuildSummary[], me: string | null): BuildSummary[] {
   );
 }
 
-/** A build as a card: its name over the thumbnail, what to know about it below, the owner's menu and the hearts in its corners. */
+/** A build as a card: its thumbnail, captioned with its name and author, the owner's menu and the hearts in its top corner. */
 function Tile({
   build,
   published,
@@ -119,9 +118,9 @@ function Card({ build: b, published, onOpen }: { build: BuildSummary; published:
       ) : (
         <div className="tile-thumb">{b.name.slice(0, 1).toUpperCase()}</div>
       )}
-      <b className="tile-title">{b.name}</b>
-      <div className="tile-body">
-        <span className="muted small">{meta(b, published)}</span>
+      <div className="tile-caption">
+        <b>{b.name}</b>
+        <span>{meta(b, published)}</span>
       </div>
     </button>
   );
@@ -182,7 +181,8 @@ export function HomeShelves({ builds, failed, me, onRetry, onOpen, mineActions, 
           {Array.from({ length: columns }, (_, i) => (
             <div key={i} className="skeleton">
               <div className="tile-thumb" />
-              <div className="tile-body">
+              <div className="tile-caption">
+                <div className="bar wide" />
                 <div className="bar" />
               </div>
             </div>
