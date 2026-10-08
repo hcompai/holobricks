@@ -18,7 +18,7 @@ correctness, and the HoloTab prompt does not perform ID translation.
    id, and its set inventories list the colors each part came in. Ambiguous mappings are
    left out of the snapshot, so they fail validation. There is no guess from a similar part
    number and no RGB approximation.
-3. A pair passes only if the part came in that color in a LEGO set. Every source lot must
+3. A pair passes only if the part came in that color in an official set. Every source lot must
    pass; only then are lots aggregated by BrickLink part/color into XML with ITEMTYPE P,
    ITEMID, COLOR, MINQTY and CONDITION N. No omitted lots, partial exports or substitutions.
 

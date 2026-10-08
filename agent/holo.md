@@ -339,9 +339,9 @@ Research continues as the model develops. Search before you build, then seek a m
 - Name the parts (which tower, which wing, which arch): a name finds its own photos, plans and sizes. For a large place, find a floor plan, map or aerial view, and check the top view against it. Official sets of the subject already solved how it looks in bricks.
 - Save the useful photos as `reference-N.jpg`, numbered on from your last one, and look at them: photos that show the whole shape and let you count towers, bays and windows, not thumbnails. Share each selected photo with `share_files` as soon as you open it, so it appears in the user’s reference board while you work.
 
-A long page can come back truncated, with the path of its full text. Wikimedia thumbnails come in any width:
+A long page can come back truncated, with the path of the file holding its full text (`$FULL_TEXT` below). Wikimedia thumbnails come in any width:
 ```bash
-sed -n '/^## Images/,$p' .sagent/tool-results/PAGE.txt | grep -o 'https://[^)]*\.jpg' | sed 's#/[0-9]*px-#/1280px-#' | sort -u
+sed -n '/^## Images/,$p' "$FULL_TEXT" | grep -o 'https://[^)]*\.jpg' | sed 's#/[0-9]*px-#/1280px-#' | sort -u
 ```
 
 ### Notes

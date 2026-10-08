@@ -19,9 +19,9 @@ Setup, architecture, deploy and the toolkit's checks. The [main README](../READM
 - **Every brick is checked**: a run places the bricks that fit and names each one that does not by its script line. Checks use bounding boxes and supported stud connections; they do not certify strength or stability.
 - **Replay** the steps on the timeline, browse the Parts tab, and from **Share** download the `.ldr` or a PNG, or make a GIF of the build (8 seconds by default, up to 30).
 - **Building instructions** (Share, or the Get the bricks sheet): a PDF with a cover, then each step split into layers from the bottom up, one page each, the new pieces outlined in a render framed on the model so far and pictured in a parts callout, and the whole parts list at the end. It is drawn in the browser, so it includes your edits; large models take a while (the Grand Rex makes about 250 pages).
-- **Get the bricks**: one sheet with BrickLink carts through HoloTab (it imports the verified parts list and prepares carts for you to review and pay), a Pick a Brick list with its price, and the instructions. See [SHOPPING.md](../SHOPPING.md).
+- **Get the bricks**: one sheet with BrickLink carts through HoloTab (it imports the verified parts list and prepares carts for you to review and pay), an official parts store list with its price, and the instructions. See [SHOPPING.md](../SHOPPING.md).
 - **Edit** by hand: choose **Edit**, click a piece (the one under the pointer is outlined), Shift-click to add more or Shift-drag a box around the pieces you see (Shift-Option-drag takes hidden ones too), then move them a stud or a plate, turn them a quarter about their middle, recolor them from the LDraw palette, replace them with another part (search the model's own parts and the ones Holo builds with, each previewed in the selection's color; the new part keeps the old one's bottom and first stud), duplicate them beside themselves (⌘D) or delete them; undo, redo and reset. The **?** button or key lists every shortcut. Edits are saved in this browser per build and revision, and the `.ldr` download includes them. The builder never sees them: the Parts tab counts the edited model's parts without BrickLink verification, shopping stays off while a model is edited, edits are hidden while the builder works, and a new revision leaves them to discard.
-- **Walk** through the model like in Minecraft: choose **Walk**, click the model, then WASD or the arrows to move and the mouse to look. You stand on the bricks and step up one brick at a time; Space jumps, W twice sprints, Space twice flies (Space up, Shift down), and arches, doors and plants let you through. Esc releases the mouse, Esc again leaves.
+- **Walk** through the model in first person: choose **Walk**, click the model, then WASD or the arrows to move and the mouse to look. You stand on the bricks and step up one brick at a time; Space jumps, W twice sprints, Space twice flies (Space up, Shift down), and arches, doors and plants let you through. Esc releases the mouse, Esc again leaves.
 - **Import a build**: the Your builds section of the home page imports a model file (what `brickyard-gallery` exports, or a session's `model.json.gz`) as your public build, after a confirmation. `/api/imports` checks every piece and part, recomputes the revision and `.ldr`, keeps the chat's text without its images, and marks the parts list unverified. Imported builds show under Your builds too.
 
 ## How it works
@@ -48,7 +48,7 @@ REBRICKABLE_API_KEY=... server/.venv/bin/brickyard-catalog   # data/rebrickable.
 server/.venv/bin/brickyard-prices                             # web/public/pick-a-brick.json (--locale en-US for another store)
 server/.venv/bin/python scripts/pack-toolkit.py               # web/public/brickyard.tgz, LDConfig.ldr and parts.json
 cd web && npm install
-vercel link --yes --scope h-company --project brickyard && vercel env pull .env.local   # the server's secrets
+vercel link --yes --scope <team> --project <project> && vercel env pull .env.local     # the server's secrets
 npm run dev                                                                            # http://127.0.0.1:5173
 ```
 
@@ -119,9 +119,9 @@ server/.venv/bin/python -m brickyard.showcase paris   # or london, hogwarts: reg
 scripts/deploy.sh --preview                           # or --prod
 ```
 
-Every push to master that passes CI deploys to production (the `deploy` job in `.github/workflows/ci.yml`, secrets `VERCEL_TOKEN` and `REBRICKABLE_API_KEY`); run CI by hand on master from the Actions tab, or deploy from a laptop as above.
+Every push to master that passes CI deploys to production (the `deploy` job in `.github/workflows/ci.yml`, secrets `VERCEL_TOKEN` and `REBRICKABLE_API_KEY`, variables `VERCEL_ORG_ID` and `VERCEL_PROJECT_ID`); run CI by hand on master from the Actions tab, or deploy from a laptop as above.
 
-`deploy.sh` exports Holo's showcases into `web/public/gallery`, rebuilds the catalog snapshot once it is 20 days old (that needs `REBRICKABLE_API_KEY`), packs the toolkit, builds the app and its functions, and deploys them to the Vercel project `brickyard`. It keeps both on the GitHub release `deploy-data`: a laptop deploy uploads them, and CI, which has no showcase data, downloads them. `bricks run` and shopping packages refuse a snapshot after 30 days, so each deploy stays valid for at least 10: redeploy within that.
+`deploy.sh` exports Holo's showcases into `web/public/gallery`, rebuilds the catalog snapshot once it is 20 days old (that needs `REBRICKABLE_API_KEY`), packs the toolkit, builds the app and its functions, and deploys them to the Vercel project linked in `web/.vercel/project.json`, else the one `VERCEL_SCOPE` and `VERCEL_PROJECT` name. It keeps both on the GitHub release `deploy-data`: a laptop deploy uploads them, and CI, which has no showcase data, downloads them. `bricks run` and shopping packages refuse a snapshot after 30 days, so each deploy stays valid for at least 10: redeploy within that.
 
 ## Tests
 
