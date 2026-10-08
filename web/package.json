@@ -1,0 +1,43 @@
+{
+  "name": "brickyard-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b . api && vite build",
+    "typecheck": "tsc -b . api",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "playwright test"
+  },
+  "dependencies": {
+    "@fontsource-variable/fira-code": "^5.3.0",
+    "@fontsource-variable/plus-jakarta-sans": "^5.3.0",
+    "@phosphor-icons/react": "^2.1.10",
+    "@vercel/blob": "^2.8.0",
+    "gifenc": "^1.0.3",
+    "hai-agents": "1.2.0",
+    "jspdf": "^4.2.1",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
+    "three": "^0.186.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^24.19.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@types/three": "^0.186.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "prettier": "^3.9.9",
+    "rolldown": "^1.2.11",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.1"
+  },
+  "prettier": {
+    "printWidth": 120
+  }
+}

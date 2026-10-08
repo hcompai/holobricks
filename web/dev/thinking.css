@@ -1,0 +1,102 @@
+.thinking-preview .aside-body {
+  flex: 1;
+  min-height: 0;
+}
+
+.preview-note {
+  margin: 0 0 12px;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  line-height: 18px;
+}
+
+.preview-credit {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: 10px;
+  line-height: 16px;
+}
+
+.preview-credit a {
+  color: inherit;
+}
+
+.preview-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+}
+
+.preview-phases,
+.preview-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.preview-subject {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.preview-subject input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--stroke-strong);
+  border-radius: var(--radius-button);
+  background: var(--background-card);
+  color: var(--text-default);
+  font: inherit;
+}
+
+.preview-actions label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  font-size: 12px;
+}
+
+.preview-actions select {
+  padding: 5px;
+  border: 1px solid var(--stroke-default);
+  border-radius: 6px;
+  background: var(--background-card);
+  color: var(--text-default);
+}
+
+.preview-phases button,
+.preview-actions button {
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.preview-phases button.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--background-muted);
+}
+
+.preview-actions {
+  padding-top: 12px;
+  border-top: 1px solid var(--stroke-default);
+}
+
+@media (max-width: 760px) {
+  .thinking-preview {
+    grid-template-columns: 1fr;
+  }
+
+  .thinking-preview aside {
+    display: none;
+  }
+
+  .thinking-preview .brand {
+    margin-right: 0;
+  }
+}

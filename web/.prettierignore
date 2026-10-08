@@ -1,0 +1,7 @@
+.vercel
+dist
+package-lock.json
+test-results
+playwright-report
+public/gallery
+public/parts.json
