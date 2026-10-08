@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { gzipSync } from "node:zlib";
 import { snapshot } from "../api/lib/snapshot";
 import { imported } from "../api/lib/imported";
+import { EMPTY_MODEL } from "../src/model";
 import { fixture } from "./fixtures";
 
 /** Publish the finished session "mine", whose shared model is `model`, with `edits`, against a mocked Agents API. */
@@ -115,7 +116,7 @@ test("publishing applies every kind of hand edit the viewer makes, and refuses m
 });
 
 test("publishing a running fork's saved model keeps its name and omits private ancestry", async () => {
-  const build = await published(fixture(), null, true);
+  const build = await published({ ...fixture(), name: EMPTY_MODEL.name }, null, true);
   expect(build.name).toBe("My fork");
   expect(build.revision).toBe(fixture().revision);
   expect(build).not.toHaveProperty("origin");
