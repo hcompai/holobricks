@@ -7,7 +7,7 @@ import io
 import json
 import random
 import sys
-from collections import defaultdict
+from collections import defaultdict, deque
 from collections.abc import Callable, Hashable, Iterable, Sequence
 from functools import cache
 
@@ -22,6 +22,10 @@ PRINT_LIMIT = 2000
 API = ("step", "brick", "mount", "place", "top", "colors", "box", "disc", "fill", "carve", "roof", "cone", "cover")
 Shade = int | Callable[[int, int, int], int]
 RUN_LENGTH = {part: n for n, part in shapes.BRICK_RUN.items()}
+KINDS = {"brick": shapes.BRICKS, "plate": shapes.PLATES, "tile": shapes.TILES}
+SIZES = {kind: {(w, d): part for w, d, part in sizes} for kind, sizes in KINDS.items()}
+"""Each kind's rectangular parts by their long and short sides."""
+KIND = {part: kind for kind, sizes in KINDS.items() for _, _, part in sizes}
 
 
 class Script:
@@ -247,6 +251,54 @@ def _in_color(b: dict) -> list[dict]:
     return out
 
 
+def _joins(i: int, rects: dict[int, list[int]], at: dict[Cell, int]) -> Iterable[tuple[int, list[int]]]:
+    """The pieces right of and below rectangle i that share a whole side with it, each with their union."""
+    x, y, w, d = rects[i]
+    right, below = at.get((x + w, y)), at.get((x, y + d))
+    if right is not None and rects[right][1] == y and rects[right][3] == d:
+        yield right, [x, y, w + rects[right][2], d]
+    if below is not None and rects[below][0] == x and rects[below][2] == w:
+        yield below, [x, y, w, d + rects[below][3]]
+
+
+def _merged(bricks: list[dict]) -> list[dict]:
+    """The step's bricks with neighbours of one kind, height and color joined wherever together they make exactly one
+    bigger part that comes in the color: two 1x1 bricks a 1x2, a 1x2 and a 1x1 plate a 1x3. Never re-cut, so no new
+    joint appears and bonded courses stay bonded; the joined piece keeps the place and lines of its first part."""
+    groups: dict[tuple, list[int]] = defaultdict(list)
+    rects: dict[int, list[int]] = {}
+    for i, b in enumerate(bricks):
+        kind = KIND.get(str(b["part"]).removesuffix(".dat"))
+        whole = all(type(b.get(k)) is int for k in ("x", "y", "z", "color", "rotation"))
+        if kind is None or "pos" in b or "facing" in b or not whole:
+            continue
+        w, d = shapes.footprint(b["part"], b["rotation"])
+        rects[i] = [b["x"], b["y"], w, d]
+        groups[kind, b["z"], b["color"]].append(i)
+    gone: set[int] = set()
+    for (kind, _, color), members in groups.items():
+        at = {cell: i for i in members for cell in shapes.rect(*rects[i])}
+        queue = deque(members)
+        while queue:
+            i = queue.popleft()
+            if i in gone:
+                continue
+            for j, union in _joins(i, rects, at):
+                part = SIZES[kind].get((max(union[2:]), min(union[2:])))
+                if part is None or color not in _made_in(part):
+                    continue
+                rects[i] = union
+                at.update((cell, i) for cell in shapes.rect(*union))
+                gone.add(j)
+                turned = shapes.footprint(part, 0) != (union[2], union[3])
+                bricks[i] = bricks[i] | {"part": part, "x": union[0], "y": union[1], "rotation": 90 if turned else 0}
+                # It may now fit the piece left of or above it, and grow again itself.
+                queue.extend(at[c] for c in ((union[0] - 1, union[1]), (union[0], union[1] - 1)) if c in at)
+                queue.append(i)
+                break
+    return [b for i, b in enumerate(bricks) if i not in gone]
+
+
 def _explain(error: BaseException, code: str) -> str:
     line = error.lineno if isinstance(error, SyntaxError) and error.filename == SOURCE else None
     tb = error.__traceback__
@@ -271,7 +323,7 @@ def run(code: str, taken: list[list[int]]) -> dict:
             script._flush()
     except (Exception, SystemExit) as e:  # noqa: BLE001
         return {"error": _explain(e, code), "printed": printed.getvalue()[-PRINT_LIMIT:]}
-    steps = [s for s in script.steps if s["bricks"]]
+    steps = [s | {"bricks": _merged(s["bricks"])} for s in script.steps if s["bricks"]]
     return {"steps": steps, "printed": printed.getvalue()[-PRINT_LIMIT:]}
 
 
