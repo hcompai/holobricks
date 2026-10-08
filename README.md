@@ -25,7 +25,7 @@
 | **Replay** | Scrub back through the steps, or share the build as a GIF. |
 | **Tweak** | Move, turn, recolor and replace pieces, or walk through the model. |
 | **Build it for real** | Get the instructions as a PDF, a Pick a Brick list, or BrickLink carts through [HoloTab](SHOPPING.md). |
-| **Share** | Publish a build so your teammates can open it and remix it into their own. |
+| **Share** | Publish a build so anyone can open it, and builders can remix it into their own. |
 
 ## How it works
 
@@ -39,4 +39,4 @@ Your browser renders every revision and shows it to Holo, so keep the tab open w
 
 ## Run it
 
-Anyone at H Company can sign in with their `@hcompany.ai` account. Setup, deploy, tests and the toolkit's checks are in [docs/README.md](docs/README.md).
+Anyone can browse and open the public builds and showcases, no account needed. Building with Holo takes a sign-in with an `@hcompany.ai` account. Setup, deploy, tests and the toolkit's checks are in [docs/README.md](docs/README.md).
