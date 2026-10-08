@@ -47,6 +47,8 @@ export interface SavedFork {
   pieces: number;
   created: number;
   sessionId: string | null;
+  /** Ended sessions it carried on from, oldest first. */
+  runs?: string[];
   seed: ForkSeed;
 }
 export type ForkSummary = Omit<SavedFork, "seed">;

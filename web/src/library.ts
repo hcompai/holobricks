@@ -340,8 +340,8 @@ export async function library(): Promise<{ builds: BuildSummary[]; failed: Listi
     });
   // A build is public or private, never both: the public listing wins if a stale private entry lingers.
   const privately = own.filter((p) => !listed.has(p.id));
-  // A copy stands for the runs behind it: the one it links to, and the ended session a build was carried on from.
-  const forkRuns = new Set(forks.flatMap((f) => [f.id, ...(f.sessionId ? [f.sessionId] : [])]));
+  // A copy stands for the runs behind it: the one it links to and every ended session it carried on from.
+  const forkRuns = new Set(forks.flatMap((f) => [f.id, ...(f.runs ?? []), ...(f.sessionId ? [f.sessionId] : [])]));
   const copies: BuildSummary[] = forks
     .filter((f) => !removed.has(f.id))
     .map((f) => {

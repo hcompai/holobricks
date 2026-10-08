@@ -835,7 +835,8 @@ aside {
     box-shadow 0.15s;
 }
 
-.tile:hover {
+.tile:hover,
+.tile-frame:hover > .tile {
   border-color: var(--stroke-strong);
   transform: translateY(-2px);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
@@ -881,10 +882,6 @@ aside {
     color-mix(in srgb, var(--background-card) 70%, transparent) 50%,
     transparent 100%
   );
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
-  -webkit-mask-image: linear-gradient(to top, black 50%, transparent 100%);
-  mask-image: linear-gradient(to top, black 50%, transparent 100%);
   pointer-events: none;
 }
 
@@ -1237,8 +1234,6 @@ aside {
 
 .skeleton .tile-caption {
   gap: 8px;
-  mask-image: none;
-  -webkit-mask-image: none;
 }
 
 .skeleton .bar {
@@ -1490,7 +1485,8 @@ aside {
     transform: rotateX(-28deg) rotateY(-45deg);
   }
 
-  .tile:hover {
+  .tile:hover,
+  .tile-frame:hover > .tile {
     transform: none;
   }
 }
