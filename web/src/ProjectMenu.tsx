@@ -62,8 +62,8 @@ export function ProjectMenu(actions: ProjectActions) {
         name: "Publish",
         question: `Publish ${name}?`,
         note: imported
-          ? "Everyone at H Company can open it from the library."
-          : "Everyone at H Company can open it: Holo's latest model and the chat. Open the build to publish it with your hand edits.",
+          ? "Anyone can open it from the library."
+          : "Anyone can open it: Holo's latest model and the chat. Open the build to publish it with your hand edits.",
         doing: "Publishing…",
         icon: <GlobeIcon size={16} />,
         action: () => onVisibility(true),

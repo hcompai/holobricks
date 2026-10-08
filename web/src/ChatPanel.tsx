@@ -1,5 +1,5 @@
 import { ThinkingIcon } from "./Thinking";
-import { ArrowUpIcon, PlusIcon, ShuffleIcon, StopIcon, XIcon } from "@phosphor-icons/react";
+import { ArrowUpIcon, PlusIcon, ShuffleIcon, SignInIcon, StopIcon, XIcon } from "@phosphor-icons/react";
 import { memo, type ReactNode, type Ref, useEffect, useImperativeHandle, useRef, useState } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -11,6 +11,8 @@ import { label, SUGGESTIONS } from "./suggestions";
 import { HOLO } from "./holo";
 
 const MAX_ATTACHMENTS = 2;
+/** The home prompt a signed-out visitor typed, kept in this tab through the sign-in round trip. */
+const KEPT = "brickyard.prompt";
 const WHO = "Holo";
 const PINNED_PX = 80;
 /** How long a live label stays before the next one replaces it, so quick steps never flicker. */
@@ -183,6 +185,8 @@ interface Props {
   dockRef?: (dock: HTMLDivElement | null) => void;
   /** Start a new build from a copy of this one, changed as asked: a closed build, or one whose session ended. */
   onRemix: (text: string, images: string[], attached?: Record<string, Blob>) => Promise<void>;
+  /** Signed out: Holo takes no message, and sending asks to sign in instead. */
+  onSignIn?: () => void;
 }
 
 export function ChatPanel({
@@ -198,8 +202,9 @@ export function ChatPanel({
   preview,
   onFork,
   dockRef,
+  onSignIn,
 }: Props) {
-  const [text, setText] = useState("");
+  const [text, setText] = useState(() => (build || loading ? "" : (sessionStorage.getItem(KEPT) ?? "")));
   const [attachments, setAttachments] = useState<string[]>([]);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
@@ -252,6 +257,11 @@ export function ChatPanel({
   useEffect(() => {
     if (home) input.current?.focus();
   }, [home]);
+  useEffect(() => {
+    if (!home) return;
+    if (onSignIn) sessionStorage.setItem(KEPT, text);
+    else sessionStorage.removeItem(KEPT);
+  }, [home, !onSignIn, text]);
 
   const attach = async (files: File[]) => {
     if (!files.length) return;
@@ -296,6 +306,7 @@ export function ChatPanel({
   /** The composer empties at once, and gets its text and images back if the builder does not take them. */
   const send = async () => {
     if (unsendable) return;
+    if (onSignIn) return onSignIn();
     const prompt = text.trim();
     const images = attachments;
     setText("");
@@ -413,7 +424,15 @@ export function ChatPanel({
         {failure}
         <div className="chips">
           {SUGGESTIONS.map((s) => (
-            <button key={s.label} disabled={sending} onClick={() => deliver(s.prompt, [])}>
+            <button
+              key={s.label}
+              disabled={sending}
+              onClick={() => {
+                if (!onSignIn) return void deliver(s.prompt, []);
+                setText(s.prompt);
+                onSignIn();
+              }}
+            >
               {s.label}
             </button>
           ))}
@@ -450,11 +469,16 @@ export function ChatPanel({
         {closed && !preview && (
           <div className="gallery-note">
             <div>{closed}</div>
-            {!!build?.pieces.length && (
-              <button onClick={onFork} title="Start your own build from a copy of this one">
-                <ShuffleIcon size={14} weight="bold" /> Fork
-              </button>
-            )}
+            {!!build?.pieces.length &&
+              (onSignIn ? (
+                <button onClick={onSignIn}>
+                  <SignInIcon size={14} weight="bold" /> Sign in
+                </button>
+              ) : (
+                <button onClick={onFork} title="Start your own build from a copy of this one">
+                  <ShuffleIcon size={14} weight="bold" /> Fork
+                </button>
+              ))}
           </div>
         )}
         {composer}

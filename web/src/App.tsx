@@ -5,10 +5,12 @@ import {
   PlusIcon,
   ShoppingBagIcon,
   ShuffleIcon,
+  SignInIcon,
 } from "@phosphor-icons/react";
 import { type CSSProperties, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Account } from "./account";
+import { type Account, signInError } from "./account";
 import { AccountMenu } from "./AccountMenu";
+import { SignInDialog } from "./SignInDialog";
 import { RecoveryPanel } from "./RecoveryPanel";
 import { cancel, create, remix, say, stop } from "./agent";
 import type { ProjectActions } from "./ProjectMenu";
@@ -95,13 +97,19 @@ function describer(build: Build | null, palette: Color[]): (piece: Piece) => str
   return (p) => `${title(p.part)} · ${colors.get(p.color) ?? `color ${p.color}`}`;
 }
 
-export default function App({ account }: { account: Account }) {
+/** The whole app; signed out, every public build opens read only, and building asks to sign in. */
+export default function App({ account }: { account: Account | null }) {
   const [ref, setRef] = useState<BuildRef | null>(urlBuild);
   const opened = useRef(ref);
   opened.current = ref;
   const buildId = ref?.id ?? null;
-  const read = useBuild(ref);
-  const { names, rename } = useProjectNames(account.user.id);
+  const me = account?.user.id ?? null;
+  /** A session or a fork lives in its owner's account: signed out, it does not open. */
+  const locked = !account && (ref?.source === "session" || ref?.source === "fork");
+  const read = useBuild(locked ? null : ref);
+  const { names, rename } = useProjectNames(me);
+  const [signingIn, setSigningIn] = useState(() => !account && signInError !== null);
+  const askSignIn = account ? undefined : () => setSigningIn(true);
   /** What the user just asked for, shown as a starting build where they asked it, until its session answers. */
   const [draft, setDraft] = useState<{ at: BuildRef | null; build: Build; since: number } | null>(null);
   const drafted = draft && same(draft.at, ref) && read.build?.id !== draft.build.id ? draft.build : null;
@@ -123,7 +131,8 @@ export default function App({ account }: { account: Account }) {
     observed && !live?.pieces.length && (observed.label === PHASES.bricks || observed.label === PHASES.checking)
       ? { ...observed, label: PHASES.draft }
       : observed;
-  const { error, syncError, models, seed, runId, attachSession } = read;
+  const { syncError, models, seed, runId, attachSession } = read;
+  const error = locked ? "Sign in to open this build." : read.error;
   const edits = useEdits(live);
   const [historyOpen, setHistoryOpen] = useState(() => urlVersion() !== null);
   const [wantedVersion, setWantedVersion] = useState<number | null>(urlVersion);
@@ -132,7 +141,7 @@ export default function App({ account }: { account: Account }) {
   const [forkError, setForkError] = useState("");
   const copyAttempt = useRef<{ key: string; id: string; seed: ForkSeed } | null>(null);
   const history = useHistory(
-    ref && (ref.source === "session" || ref.source === "fork") ? ref.id : null,
+    ref && !locked && (ref.source === "session" || ref.source === "fork") ? ref.id : null,
     models,
     seed?.model ?? null,
     historyOpen || wantedVersion !== null,
@@ -231,7 +240,7 @@ export default function App({ account }: { account: Account }) {
   }, []);
 
   const home = !ref && !drafted;
-  useEffect(() => void refreshBuilds(), [refreshBuilds, account.user.id, home]);
+  useEffect(() => void refreshBuilds(), [refreshBuilds, me, home]);
   /** Sessions this tab started, before the library lists them. */
   const started = useRef(new Set<string>());
   const mine = (id: string) =>
@@ -396,11 +405,12 @@ export default function App({ account }: { account: Account }) {
 
   /** The signed-in user's build, from their session or as they published it. */
   const owned =
-    ref?.source === "fork"
+    !!account &&
+    (ref?.source === "fork"
       ? !!read.build
       : ref?.source === "session"
         ? mine(ref.id)
-        : ref?.source === "public" && summary?.owner === account.user.id;
+        : ref?.source === "public" && summary?.owner === account.user.id);
   /** An imported build of theirs: it lives only in the library, with no session to fall back to. */
   const imported = owned && ref?.source === "public" && ref.id.startsWith("import-");
   const renameTitle = ref && owned && !previewing ? (name: string) => rename(ref, name) : undefined;
@@ -424,7 +434,7 @@ export default function App({ account }: { account: Account }) {
 
   /** A card's actions for one of the user's own builds: sessions, forks and imported builds. */
   const manage = (b: BuildSummary, published: boolean): ProjectActions | null => {
-    const kind: Source | null = b.source === "public" ? (b.owner === account.user.id ? "public" : null) : b.source;
+    const kind: Source | null = b.source === "public" ? (me && b.owner === me ? "public" : null) : b.source;
     if (kind !== "session" && kind !== "fork" && kind !== "public") return null;
     const target: BuildRef = { id: b.id, source: kind };
     const imported = kind === "public";
@@ -466,12 +476,13 @@ export default function App({ account }: { account: Account }) {
     await refreshBuilds();
   };
 
+  const toEdit = account ? "Fork to edit" : "Sign in to fork";
   const closed =
     ref?.source === "showcase" ? (
-      "Showcase · Fork to edit"
+      `Showcase · ${toEdit}`
     ) : ref?.source === "public" ? (
-      `By ${summary?.author ?? "an H builder"} · Fork to edit`
-    ) : ref?.source === "session" && builds && !buildsFailed.includes("mine") && !owned ? (
+      `${summary?.author ? `By ${summary.author}` : "Public build"} · ${toEdit}`
+    ) : ref?.source === "session" && account && builds && !buildsFailed.includes("mine") && !owned ? (
       "Teammate’s build · Fork to edit"
     ) : build?.status === "error" ? (
       <RecoveryPanel
@@ -502,6 +513,7 @@ export default function App({ account }: { account: Account }) {
     setPlaying(false);
   };
   const beginFork = async () => {
+    if (!account) return setSigningIn(true);
     if (!build?.pieces.length || !ref || wantedVersion !== null || forking) return;
     const key = `${ref.source}:${ref.id}:${design(build)}`;
     if (copyAttempt.current?.key !== key) {
@@ -561,7 +573,7 @@ export default function App({ account }: { account: Account }) {
         link={!readOnly && shared ? linkTo(shared) : null}
         loading={loading}
         publishing={
-          owned && !readOnly
+          account && owned && !readOnly
             ? {
                 published: imported ? !summary?.private : ref?.source === "public" || !!listed,
                 imported,
@@ -642,7 +654,14 @@ export default function App({ account }: { account: Account }) {
         )}
         <span className="spacer" />
         {actions}
-        {!sheeted && <AccountMenu account={account} building={running.length > 0} />}
+        {!account ? (
+          <button className="sign-in-button" onClick={() => setSigningIn(true)}>
+            <SignInIcon size={16} weight="bold" />
+            Sign in
+          </button>
+        ) : (
+          !sheeted && <AccountMenu account={account} building={running.length > 0} />
+        )}
       </header>
       <aside
         className={sheeted ? `sheet${center === "parts" ? " parts" : ""}` : undefined}
@@ -770,6 +789,7 @@ export default function App({ account }: { account: Account }) {
               if (runId && !readOnly) await stop(runId);
             }}
             onFork={beginFork}
+            onSignIn={askSignIn}
             dockRef={setDock}
             onRemix={async (text, images, attached) => {
               if (build && !readOnly && owned) await start(text, images, build, attached);
@@ -784,7 +804,7 @@ export default function App({ account }: { account: Account }) {
             <HomeShelves
               builds={builds}
               failed={buildsFailed}
-              me={account.user.id}
+              me={me}
               onRetry={refreshBuilds}
               onOpen={openListed}
               manage={manage}
@@ -908,6 +928,11 @@ export default function App({ account }: { account: Account }) {
           {error && (
             <div className="pane notice" role="alert">
               <b>{error}</b>
+              {locked && (
+                <button className="primary" onClick={() => setSigningIn(true)}>
+                  Sign in
+                </button>
+              )}
               <button onClick={() => open(null)}>Back to the start</button>
             </div>
           )}
@@ -953,6 +978,7 @@ export default function App({ account }: { account: Account }) {
           />
         )}
       </Suspense>
+      {signingIn && <SignInDialog onClose={() => setSigningIn(false)} />}
     </div>
   );
 }

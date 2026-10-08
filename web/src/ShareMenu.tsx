@@ -65,8 +65,8 @@ function publishAsk({ published, imported, author, onPublish, onUnpublish }: Pub
         name: "Publish",
         question: "Publish this build?",
         note: imported
-          ? `Everyone at H Company can open it from the library, as ${author}'s.`
-          : `Everyone at H Company can open it, as ${author}'s: the model, the chat, and the photos you attached.`,
+          ? `Anyone can open it from the library, as ${author}'s.`
+          : `Anyone can open it, as ${author}'s: the model, the chat, and the photos you attached.`,
         doing: "Publishing…",
         icon: <GlobeIcon size={16} />,
         action: onPublish,
@@ -173,7 +173,7 @@ export function ShareMenu({
                 <p className="menu-state">
                   {publishing.published ? <GlobeIcon size={16} /> : <LockSimpleIcon size={16} />}
                   {publishing.published
-                    ? "In the public library: anyone at H can open it"
+                    ? "In the public library: anyone can open it"
                     : "Private: not in the public library"}
                 </p>
                 <button

@@ -4,10 +4,11 @@ import type { BuildRef } from "./useBuild";
 
 type Names = Record<string, ProjectName>;
 
-/** Keep an acknowledged rename while the Blob CDN catches up; the server remains the durable source. */
-export function useProjectNames(owner: string) {
-  const storage = `brickyard.names.${owner}`;
+/** Keep an acknowledged rename while the Blob CDN catches up; the server remains the durable source. Signed out, there are none. */
+export function useProjectNames(owner: string | null) {
+  const storage = owner && `brickyard.names.${owner}`;
   const [names, setNames] = useState<Names>(() => {
+    if (!storage) return {};
     try {
       const saved = JSON.parse(localStorage.getItem(storage) ?? "{}");
       return saved && typeof saved === "object" && !Array.isArray(saved) ? saved : {};
@@ -22,12 +23,13 @@ export function useProjectNames(owner: string) {
     latest.current = next;
     setNames(next);
     try {
-      localStorage.setItem(storage, JSON.stringify(next));
+      if (storage) localStorage.setItem(storage, JSON.stringify(next));
     } catch {
       /* The server has the name. */
     }
   };
   useEffect(() => {
+    if (!owner) return;
     let active = true;
     void projectNames().then(
       (entries) => {

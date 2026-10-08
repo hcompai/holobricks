@@ -115,10 +115,11 @@ async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   return body as T;
 }
 
-/** Read the library API as the signed-in user. */
-function read<T>(params: Record<string, string> = {}): Promise<T> {
+/** The library API's URL; signed-in users can change the library, so they skip the shared cache. */
+function read(params: Record<string, string> = {}): string {
   const query = new URLSearchParams(params);
-  return api<T>(query.size ? `${API}?${query}` : API, { headers: signed() });
+  if (current()) query.set("t", String(Date.now()));
+  return query.size ? `${API}?${query}` : API;
 }
 
 /** What this browser published: the library's Blob reads can lag a publication by a minute. */
@@ -131,13 +132,13 @@ const newest = (p: Published) => {
 
 /** Everyone's public builds, newest first. */
 async function community(): Promise<BuildSummary[]> {
-  return (await read<Published[]>()).map(newest).map(summary);
+  return (await api<Published[]>(read())).map(newest).map(summary);
 }
 
 /** The signed-in user's private library builds, newest first. */
 async function hidden(): Promise<BuildSummary[]> {
   return Promise.all(
-    (await read<Published[]>({ mine: "1" })).map(async (p) => ({
+    (await api<Published[]>(read({ mine: "1" }), { headers: signed() })).map(async (p) => ({
       ...summary(p),
       thumbnail: p.thumbnail ? await privateImage(p.thumbnail, p.id) : null,
       private: true,
@@ -159,7 +160,7 @@ const summary = (p: Published): BuildSummary => ({
 });
 
 export async function publicBuild(id: string): Promise<Build> {
-  const published = newest(await read<Published>({ id }));
+  const published = newest(await api<Published>(read({ id }), current() ? { headers: signed() } : {}));
   const response = await fetch(published.build, privateAsset(published.build, id) ? { headers: signed() } : {});
   if (!response.ok) throw new Error(`No public build ${id}`);
   const build = await unpack<Build>(await response.blob());
@@ -280,19 +281,19 @@ export const SHELF: Record<Listing, Shelf> = {
   showcase: "public",
 };
 
-/** The signed-in user's builds, newest first, then everyone's public builds, then the showcases; with the listings that failed to load. */
 /** Delete one of the user's projects; a session, which cannot be deleted, leaves their library instead. */
 export async function deleteProject(ref: { id: string; source: string }) {
   const query = new URLSearchParams({ id: ref.id, source: ref.source });
   await api(`/api/projects?${query}`, { method: "DELETE", headers: signed() });
 }
 
+/** The signed-in user's builds, newest first, then everyone's public builds, then the showcases; with the listings that failed to load. */
 export async function library(): Promise<{ builds: BuildSummary[]; failed: Listing[] }> {
   const [sessionsLoaded, sharedLoaded, hiddenLoaded, shownLoaded, forksLoaded, removedLoaded] =
     await Promise.allSettled([
-      sessions(),
+      current() ? sessions() : Promise.resolve([]),
       community(),
-      hidden(),
+      current() ? hidden() : Promise.resolve([]),
       showcases(),
       current() ? api<ForkSummary[]>("/api/forks", { headers: signed() }) : Promise.resolve([]),
       current() ? api<string[]>("/api/projects", { headers: signed() }) : Promise.resolve([]),

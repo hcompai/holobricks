@@ -42,27 +42,11 @@ test("model size uses the rendered parts, stays fixed during replay and follows 
   await expect(page.locator(".viewer")).toHaveAttribute("data-revision", changed.revision);
   await expect(size.locator("dd")).toHaveText(["11.4 cm", "8.0 cm", "5.0 cm"]);
 
-  await page.emulateMedia({ colorScheme: "dark" });
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(size).toBeVisible();
-  // Read every rectangle in the same layout, and allow the responsive resize to settle.
-  await expect
-    .poll(() =>
-      size.evaluate((element) => {
-        const viewer = element.closest(".viewer")!;
-        const bounds = element.getBoundingClientRect();
-        const frame = viewer.getBoundingClientRect();
-        const sound = viewer.querySelector(":scope > .placement-sound")!.getBoundingClientRect();
-        return (
-          bounds.left >= frame.left &&
-          bounds.top >= frame.top &&
-          bounds.right <= sound.left &&
-          bounds.bottom <= frame.bottom
-        );
-      }),
-    )
-    .toBe(true);
-  await page.screenshot({ path: testInfo.outputPath("model-size-mobile.png") });
+  await expect(size).toBeHidden();
+  await page.getByRole("button", { name: "View controls" }).click();
+  await expect(size).toBeInViewport();
+  await page.getByRole("button", { name: "View controls" }).click();
 
   agp.share("size", revised({ ...model, pieces: [], steps: [] }));
   await expect(size).toHaveCount(0);

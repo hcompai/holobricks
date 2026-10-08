@@ -880,105 +880,24 @@ aside {
   text-align: center;
 }
 
-.sign-in-page {
-  min-height: 100dvh;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  padding: 24px;
-  text-align: center;
-  background: radial-gradient(60% 50% at 50% 38%, var(--background-muted), transparent 70%), var(--background-card);
-  animation: fade-in 0.4s ease-out both;
-}
-
-.sign-in-brick {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  margin-bottom: 18px;
-}
-
-.brick-float {
-  padding-top: 12px;
-  perspective: 500px;
-  animation: float 3.2s ease-in-out infinite;
-}
-
-.sign-in-brick .brick {
-  --w: 76px;
-  animation: turn 18s linear infinite;
-}
-
-.sign-in-brick .brick-shadow {
-  width: 92px;
-  height: 12px;
-  margin: 26px 0 0;
-  animation: float-shadow 3.2s ease-in-out infinite;
-}
-
-.sign-in-cover {
-  width: min(320px, 80vw);
-  aspect-ratio: 1;
-  object-fit: contain;
-  margin-bottom: var(--space-4);
-  border-radius: var(--radius-dialog);
-  background: var(--background-viewer);
-  border: 1px solid var(--stroke-default);
-}
-
-.sign-in-kicker {
-  margin: 0;
-  color: var(--text-secondary);
+.sign-in-button {
+  flex: none;
+  border-color: transparent;
+  background: var(--background-primary);
+  color: var(--text-on-primary);
   font-weight: 600;
 }
 
-.sign-in-page h1 {
-  margin: 0;
-  font-size: var(--font-display);
-  line-height: 34px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-}
-
-.sign-in-lead {
-  margin: 0 0 var(--space-4);
-  color: var(--text-secondary);
-  font-size: var(--font-title);
+.sign-in-dialog {
+  width: min(400px, calc(100vw - 32px));
 }
 
 .sign-in-method {
   justify-content: center;
   gap: 10px;
-  min-width: 240px;
   height: 44px;
   padding: 0 20px;
   border-radius: 999px;
-}
-
-.sign-in-error {
-  margin: var(--space-1) 0 0;
-  max-width: 320px;
-}
-
-.sign-in-fine {
-  margin: 6px 0 0;
-  color: var(--text-tertiary);
-  font-size: var(--font-small);
-}
-
-@keyframes float {
-  50% {
-    transform: translateY(-12px);
-  }
-}
-
-@keyframes float-shadow {
-  50% {
-    transform: scale(0.75);
-    opacity: 0.55;
-  }
 }
 
 .menu-list.confirm {
@@ -1307,6 +1226,10 @@ main {
 .view-controls > .tabs {
   max-width: 100%;
   align-self: auto;
+}
+
+.view-toggle {
+  display: none;
 }
 
 .edit-availability {
@@ -2435,10 +2358,17 @@ main {
   }
 }
 
-@keyframes rise {
+@keyframes sheet-rise {
   from {
     opacity: 0;
     transform: translateY(24px);
+  }
+}
+
+@keyframes unfold {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.96);
   }
 }
 
@@ -2518,7 +2448,7 @@ main {
     box-shadow:
       0 0 0 100vmax rgba(0, 0, 0, 0.32),
       0 -8px 48px rgba(0, 0, 0, 0.2);
-    animation: rise 0.32s var(--spring);
+    animation: sheet-rise 0.32s var(--spring);
   }
 
   .menu-list > a,
@@ -2571,6 +2501,12 @@ main {
     color: #fff;
   }
 
+  .app:not(.home) > header > .sign-in-button {
+    width: auto;
+    padding: 0 14px;
+    border-radius: 999px;
+  }
+
   .app:not(.home) > header > .title {
     flex: 1;
     margin: 0;
@@ -2604,7 +2540,13 @@ main {
     z-index: 10;
     top: calc(var(--bar) + 4px);
     right: max(12px, env(safe-area-inset-right));
+    bottom: 10px;
     margin: 0;
+    pointer-events: none;
+  }
+
+  .app:not(.home) .center-bar:has(.view-controls.open) {
+    z-index: 11;
   }
 
   .app:not(.home) .center-bar > .tabs {
@@ -2612,8 +2554,10 @@ main {
   }
 
   .app:not(.home) .view-controls {
+    max-height: 100%;
     align-items: flex-end;
     gap: 8px;
+    pointer-events: auto;
   }
 
   .app:not(.home) .edit-availability {
@@ -2627,10 +2571,36 @@ main {
     text-align: right;
   }
 
+  .app:not(.home) .view-toggle {
+    display: grid;
+    place-items: center;
+    width: 46px;
+    height: 46px;
+    padding: 0;
+    border: 0.5px solid var(--glass-stroke);
+    border-radius: 50%;
+    background: var(--glass);
+    -webkit-backdrop-filter: var(--glass-blur);
+    backdrop-filter: var(--glass-blur);
+    box-shadow: var(--glass-shadow);
+    color: var(--text-default);
+  }
+
+  .app:not(.home) .view-controls:not(.open) > .tabs,
+  .app:not(.home) .view-controls:not(.open) > .edit-availability {
+    display: none;
+  }
+
+  .app:not(.home) .view-controls.open > .tabs {
+    animation: unfold 0.28s var(--spring);
+  }
+
   .app:not(.home) .view-controls > .tabs {
     flex-direction: column;
     gap: 2px;
     width: 46px;
+    min-height: 0;
+    overflow-y: auto;
     padding: 3px;
     border: 0.5px solid var(--glass-stroke);
     border-radius: 16px;
@@ -2641,6 +2611,7 @@ main {
   }
 
   .app:not(.home) .view-controls .tabs button {
+    flex: none;
     height: 38px;
     padding: 0;
     justify-content: center;
@@ -2690,7 +2661,7 @@ main {
     -webkit-backdrop-filter: var(--glass-blur);
     backdrop-filter: var(--glass-blur);
     box-shadow: var(--glass-shadow);
-    animation: rise 0.32s var(--spring);
+    animation: sheet-rise 0.32s var(--spring);
   }
 
   .app:not(.home) .viewer-info {
@@ -2711,6 +2682,10 @@ main {
     background: var(--glass);
     -webkit-backdrop-filter: var(--glass-blur);
     backdrop-filter: var(--glass-blur);
+  }
+
+  .app:not(.home):not(:has(.view-controls.open)) .model-size {
+    display: none;
   }
 
   .app:not(.home) .model-size dd {

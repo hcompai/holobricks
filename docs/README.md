@@ -52,7 +52,7 @@ vercel link --yes --scope h-company --project brickyard && vercel env pull .env.
 npm run dev                                                                            # http://127.0.0.1:5173
 ```
 
-HoloBricks is open to H Company: everything sits behind a sign-in with an `@hcompany.ai` Google account on the H portal. Export the showcases for local use with
+Anyone can open the home page, the public builds and the showcases, read only. Building, and owning builds (publish, rename, fork, import, delete), takes a sign-in with an `@hcompany.ai` account on the H portal, which mints the user's Agents API key. Export the showcases for local use with
 `BRICKYARD_DATA=<data dir> server/.venv/bin/brickyard-gallery web/public 6eb28d127e`.
 
 Try the toolkit by hand: in a folder with a `build.py`, run `<repo>/server/.venv/bin/bricks run` (`--help` lists the tools).
@@ -64,12 +64,13 @@ browser ──same tab──▶ portal ──Google──▶ portal sets its acc
 portal ──redirect──▶ GET /api/session: who is it? mint a 30-day "HoloBricks <email> <time>" key ──▶ back where the user was
 browser ──key──▶ Agents API (Holo builds, sessions listed per user)
 browser ──POST /api/builds (pass + key)──▶ snapshot of the session ──▶ Vercel Blob (public)
-signed in ──GET /api/builds (pass + key)──▶ the public library
+anyone ──GET /api/builds, ?id=──▶ the public library (shared cache)
+signed in ──GET /api/builds?mine=1, ?id=&file= (pass + key)──▶ their private builds
 ```
 
 - `web/api/` holds the Vercel functions; `web/scripts/build-api.mjs` bundles them, and `npm run dev` serves them too. Deployed, `/?public=<id>` and `/?showcase=<id>` go to `/api/preview`: the app's page, with that build's name, piece count, author and cover in its link preview.
 - The portal's cookie never reaches a local dev server, so there the portal sends a one-time code instead (PKCE, RFC 8252); it only redirects to `127.0.0.1`, where `localhost` forwards.
-- Every library read needs a pass: signed out, only link previews show a build's name and cover. A session is its owner's to publish, stop and change; a teammate who opens its link sees it read only, to remix.
+- The public library reads need no pass: signed out, the home page lists the public builds and showcases and opens them read only, and every export works. Sending Holo a message, forking, importing and managing builds ask to sign in first; a prompt typed on the home page survives the sign-in. Private builds, forks and sessions need the owner's pass and key. A session is its owner's to publish, stop and change; a teammate who opens its link sees it read only, to remix.
 - Signing in again revokes the previous key. The key lives in the browser's local storage; the pass, signed with `BRICKYARD_SECRET`, names its holder to the functions.
 - An imported build has no session, so it lives only in the library: **Make private** copies its metadata, model and images into a separate private Blob store, then deletes the public copies. It stays listed (`GET /api/builds?mine=1`) and opens through an owner-authenticated file route. Private file responses are never cached by the app. **Delete** removes its entry and files. Sessions cannot be deleted through the Agents API: deleting one (`DELETE /api/projects?id=&source=session`) unpublishes it and records it under `removed/<scope>/`, which `GET /api/projects` lists so the library leaves it out; the platform keeps its chat until the session ends. Deleting a fork removes its files and name, and removes the session it started. Deleting a build while Holo builds it cancels its session first, so Holo stops. Owners rename, publish, make private and delete their builds from the ⋯ on their cards, or from Share in the build.
 - Publishing copies the session's model, transcript and platform-hosted or embedded images, so they survive its session. External HTTPS photos remain links and depend on their original host; the server does not download them. Only its author can rename, publish, make private, unpublish or delete a build. The emails in `BRICKYARD_ADMINS` can take anyone's build out of the public library to moderate it, but never delete it: it becomes private, kept for its owner.
