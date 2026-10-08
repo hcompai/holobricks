@@ -85,8 +85,8 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-      VERCEL_ORG_ID: team_IU7YWZ6TFEyn6wR3s7Dd7uEH
-      VERCEL_PROJECT_ID: prj_a9IYs8z6ipF73bXymbfzJ98gTSZJ
+      VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
       REBRICKABLE_API_KEY: ${{ secrets.REBRICKABLE_API_KEY }}
     steps:
       - uses: actions/checkout@v4

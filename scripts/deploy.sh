@@ -18,6 +18,10 @@ case "${1:-}" in
 esac
 vercel=()
 [[ -n "${VERCEL_TOKEN:-}" ]] && vercel=(--token "$VERCEL_TOKEN")
+if [[ ! -f web/.vercel/project.json && -z "${VERCEL_PROJECT_ID:-}" && ( -z "${VERCEL_SCOPE:-}" || -z "${VERCEL_PROJECT:-}" ) ]]; then
+  echo "name the Vercel project: set VERCEL_SCOPE and VERCEL_PROJECT, or run vercel link in web/" >&2
+  exit 2
+fi
 
 mkdir -p data
 if [[ -n "${CI:-}" ]]; then
@@ -47,7 +51,9 @@ else
   gh release download "$release" --pattern pick-a-brick.json --dir web/public --clobber
 fi
 # A project token cannot link; CI names the project with VERCEL_ORG_ID and VERCEL_PROJECT_ID instead.
-[[ -f web/.vercel/project.json || -n "${VERCEL_PROJECT_ID:-}" ]] || (cd web && vercel link --yes --scope h-company --project brickyard ${vercel[@]+"${vercel[@]}"})
+if [[ ! -f web/.vercel/project.json && -z "${VERCEL_PROJECT_ID:-}" ]]; then
+  (cd web && vercel link --yes --scope "$VERCEL_SCOPE" --project "$VERCEL_PROJECT" ${vercel[@]+"${vercel[@]}"})
+fi
 (cd web && npm run build)
 rm -rf web/.vercel/output && mkdir -p web/.vercel/output
 cp -R web/dist web/.vercel/output/static
