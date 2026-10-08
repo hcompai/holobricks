@@ -278,6 +278,15 @@ def test_a_layer_of_one_color_joins_into_the_largest_parts_it_makes(monkeypatch)
     assert [b["part"] for b in script.run(code, [])["steps"][0]["bricks"]] == ["3020"]
 
 
+def test_joining_runs_in_rounds_where_each_piece_joins_once(monkeypatch):
+    monkeypatch.setattr(script, "_made_in", lambda part: frozenset({4}))
+    row = [brick("3005", x, 0, 0) for x in range(8)]
+    assert [b["part"] for b in script._merged([dict(b) for b in row])] == ["3008"]  # 1x2s, 1x4s, then a 1x8
+    assert [b["part"] for b in script._merged([dict(b) for b in row], rounds=2)] == ["3010", "3010"]
+    plates = [brick("3035", 0, 0, 0, rotation=90), brick("3035", 4, 0, 0, rotation=90)]  # two 4x8 plates: an 8x8
+    assert [(b["part"], b["x"]) for b in script._merged(plates)] == [("41539", 0)]
+
+
 @pytest.mark.skipif(not catalog.SNAPSHOT.exists(), reason="catalog snapshot not built")
 def test_the_showcase_has_valid_catalog_parts_but_does_not_hide_detached_terrain(tmp_path):
     example = (Path(__file__).resolve().parents[2] / "agent" / "showcase" / "bag-end.py").read_text()
