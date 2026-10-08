@@ -59,6 +59,9 @@ class Step(BaseModel):
     """Digest of the script step that made it, empty if it had rejected bricks; None when no script made it."""
 
 
+UNNAMED = "Untitled build"
+
+
 class Message(BaseModel):
     role: Literal["user", "assistant", "system", "tool"]
     text: str
@@ -68,7 +71,7 @@ class Message(BaseModel):
 
 class Build(BaseModel):
     id: str = Field(default_factory=lambda: uuid.uuid4().hex[:10])
-    name: str = "Untitled build"
+    name: str = UNNAMED
     prompt: str = ""
     builder: str = "demo"
     width: int = 0

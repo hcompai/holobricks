@@ -211,10 +211,11 @@ def test_bricks_works_on_the_build_in_its_directory_and_exits_1_on_problems(
         return exit.value.code
 
     (tmp_path / "build.py").write_text(CORE)
+    assert bricks("run") == 1 and "Name the build first" in capsys.readouterr().err
+    assert bricks("name", "Red brick") == 0 and saved(Workbench(Workspace.open(tmp_path))).name == "Red brick"
     assert bricks("run") == 0
     assert f"Share {MODEL}" in capsys.readouterr().out
     assert json.loads(gzip.decompress((tmp_path / MODEL).read_bytes()))["parts"].keys() == {"3001.dat"}
-    assert bricks("name", "Red brick") == 0 and saved(Workbench(Workspace.open(tmp_path))).name == "Red brick"
     (tmp_path / "loose.py").write_text(CORE + 'step("Loose")\nbrick("3001", 8, 0, 0, 4)\n')
     assert bricks("run", "loose.py") == 0
     assert "disconnected_model" not in capsys.readouterr().out

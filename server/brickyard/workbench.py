@@ -19,6 +19,7 @@ from brickyard.model import (
     ACCESSORIES,
     FACINGS,
     ROTATIONS,
+    UNNAMED,
     Brick,
     Matrix,
     Piece,
@@ -407,7 +408,7 @@ class Workbench:
         return Result(catalog.describe(report), problems=len(report["issues"]))
 
     def rename(self, name: str) -> Result:
-        self.workspace.save(self.workspace.build.model_copy(update={"name": name.strip()[:60] or "Untitled build"}))
+        self.workspace.save(self.workspace.build.model_copy(update={"name": name.strip()[:60] or UNNAMED}))
         return Result(f"Build is now called '{self.workspace.build.name}'.")
 
     def colors(self) -> str:
