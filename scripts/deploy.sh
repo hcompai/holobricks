@@ -5,7 +5,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-builds=(hogwarts 6eb28d127e london paris)
+# The gallery shows Holo's builds only; Claude's showcases stay in the toolkit for Holo to study.
+builds=(6eb28d127e)
 data=${BRICKYARD_DATA:-data}
 # The GitHub release holding what a deploy needs beyond git: the exported showcases and the catalog snapshot.
 release=deploy-data
