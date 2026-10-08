@@ -5,27 +5,27 @@
 
 <p align="center"><b>Tell Holo what you'd like to build, watch it come together brick by brick, then order the real parts and build it yourself.</b></p>
 
-![HoloBricks showing the Paris diorama](docs/holobricks.jpg)
+![HoloBricks showing the Parthenon, built by Holo](docs/holobricks.jpg)
 
 <table align="center">
   <tr>
-    <td align="center"><img src="docs/gallery/paris.png" width="180" alt="" /><br />Paris · 2,135</td>
-    <td align="center"><img src="docs/gallery/london.png" width="180" alt="" /><br />London · 1,534</td>
-    <td align="center"><img src="docs/gallery/bag-end.png" width="180" alt="" /><br />Bag End · 7,329</td>
-    <td align="center"><img src="docs/gallery/hogwarts.png" width="180" alt="" /><br />Hogwarts · 45,073</td>
+    <td align="center"><a href="https://bricks.hcompany.ai/?public=c98043c8-6f9d-403a-98d0-4b998d543d81"><img src="docs/gallery/parthenon.png" width="180" alt="" /></a><br />The Parthenon · 3,578</td>
+    <td align="center"><a href="https://bricks.hcompany.ai/?public=fa3ab409-798d-42d5-84f0-37dc1056f025"><img src="docs/gallery/jaguar-temple.png" width="180" alt="" /></a><br />Temple of the Great Jaguar · 3,501</td>
+    <td align="center"><a href="https://bricks.hcompany.ai/?public=9716814d-cf3c-4d20-8886-5ee345d91f61"><img src="docs/gallery/chenonceau.png" width="180" alt="" /></a><br />Château de Chenonceau · 2,775</td>
+    <td align="center"><a href="https://bricks.hcompany.ai/?public=babd4b24-2655-4fcf-b57a-aa46087d8f5b"><img src="docs/gallery/evergreen-terrace.png" width="180" alt="" /></a><br />742 Evergreen Terrace · 2,187</td>
   </tr>
 </table>
 
 ## What you can do
 
-|                       |                                                                                                                                                    |
-| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Describe**          | Type an idea or drop in a photo, and Holo builds it in 3D while you watch.                                                                         |
-| **Trust**             | Every brick is a real LDraw part, checked to make sure it fits and connects.                                                                       |
-| **Replay**            | Scrub back through the steps, or share the build as a GIF.                                                                                         |
-| **Tweak**             | Move, turn, recolor and replace pieces, or walk through the model.                                                                                 |
+|                       |                                                                                                                 |
+| --------------------- | --------------------------------------------------------------------------------------------------------------- |
+| **Describe**          | Type an idea or drop in a photo, and Holo builds it in 3D while you watch.                                      |
+| **Trust**             | Every brick is a real LDraw part, checked to make sure it fits and connects.                                    |
+| **Replay**            | Scrub back through the steps, or share the build as a GIF.                                                      |
+| **Tweak**             | Move, turn, recolor and replace pieces, or walk through the model.                                              |
 | **Build it for real** | Get the instructions as a PDF, an official parts store list, or BrickLink carts through [HoloTab](SHOPPING.md). |
-| **Share**             | Publish a build so anyone can open it, and builders can remix it into their own.                                                                   |
+| **Share**             | Publish a build so anyone can open it, and builders can remix it into their own.                                |
 
 ## How it works
 
@@ -37,9 +37,7 @@
 
 Your browser renders every revision and shows it to Holo, so keep the tab open while it builds.
 
-## Run it
-
-Anyone can browse and open the public builds and showcases, no account needed. Anyone can sign in, with Google or an email, to build with Holo. Setup, deploy, tests and the toolkit's checks are in [docs/README.md](docs/README.md).
+Every build above was made by Holo from a sentence. Live at [bricks.hcompany.ai](https://bricks.hcompany.ai): browse the public builds without an account, sign in with Google or an email to build.
 
 ## Run it yourself
 
