@@ -42,10 +42,20 @@ test("no brand name shows on the home page, the credits, the sign-in, a public b
   await page.goto("/");
   await expect(page.locator(".tile", { hasText: tower.name })).toBeVisible();
   await unbranded(page.locator("body"));
-  const footer = page.locator("footer.legal");
-  await expect(footer).toHaveText(/^Terms\s*·\s*Privacy\s*·\s*Credits$/);
-  await expect(footer.getByRole("link", { name: "Terms" })).toHaveAttribute("href", /hcompany\.ai\/terms-of-use$/);
-  await expect(footer.getByRole("link", { name: "Privacy" })).toHaveAttribute("href", /hcompany\.ai\/privacy-policy$/);
+  const footer = page.locator("footer.site-footer");
+  await expect(footer.getByRole("link", { name: "Docs" })).toHaveAttribute("href", "https://hub.hcompany.ai/");
+  await expect(footer.getByRole("link", { name: "H Platform" })).toHaveAttribute(
+    "href",
+    "https://platform.hcompany.ai",
+  );
+  await expect(footer.getByRole("link", { name: "Terms of Service" })).toHaveAttribute(
+    "href",
+    /hcompany\.ai\/terms-of-use$/,
+  );
+  await expect(footer.getByRole("link", { name: "Privacy Policy" })).toHaveAttribute(
+    "href",
+    /hcompany\.ai\/privacy-policy$/,
+  );
   await footer.getByRole("button", { name: "Credits" }).click();
   const credits = page.getByRole("dialog", { name: "Credits" });
   await expect(credits).toContainText("LDraw");

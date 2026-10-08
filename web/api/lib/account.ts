@@ -13,19 +13,16 @@ export const isStaff = (email: string) => email.toLowerCase().endsWith(DOMAIN);
 
 const capital = (word: string) => word[0].toUpperCase() + word.slice(1);
 
-/** The default public name: "Jane Doe" for jane.doe@hcompany.ai, "Jane D." for jane.doe@gmail.com, else none. */
-export function nameOf(email: string): string {
-  const local = email.split("@")[0];
-  if (isStaff(email))
-    return local
-      .split(/[._-]+/)
-      .filter(Boolean)
-      .map(capital)
-      .join(" ");
-  const words = local.toLowerCase().split(/[._-]/);
-  if (words.length < 2 || !words.every((w) => /^\p{L}+$/u.test(w))) return "";
-  return `${capital(words[0])} ${words.at(-1)![0].toUpperCase()}.`;
-}
+/** The default public name: an employee's name from their H Company address, else none. */
+export const nameOf = (email: string) =>
+  isStaff(email)
+    ? email
+        .split("@")[0]
+        .split(/[._-]+/)
+        .filter(Boolean)
+        .map(capital)
+        .join(" ")
+    : "";
 
 export const admit = (user: { id: string; email: string }): User => ({ ...user, name: nameOf(user.email) });
 

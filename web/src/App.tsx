@@ -30,7 +30,7 @@ import { ChatPanel, type ChatHandle } from "./ChatPanel";
 import { selectedArea } from "./selectedArea";
 import { HomeShelves } from "./HomeShelves";
 import { ImportBuild } from "./ImportBuild";
-import { LegalFooter } from "./Legal";
+import { SiteFooter } from "./Legal";
 import { countParts, PartsPanel } from "./PartsPanel";
 import { SESSION_DELETE_NOTE, ShareMenu } from "./ShareMenu";
 import { Timeline } from "./Timeline";
@@ -831,8 +831,8 @@ export default function App({ account }: { account: Account | null }) {
               }
             />
           )}
-          {home && <LegalFooter />}
         </div>
+        {home && <SiteFooter />}
       </aside>
       <main>
         <div className="center-bar">

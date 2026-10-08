@@ -5,7 +5,6 @@ import type { BuildSummary } from "./model";
 import { type ProjectActions, ProjectMenu } from "./ProjectMenu";
 
 const PUBLIC_ROWS = 10;
-const PLACEHOLDERS = 4;
 const GAP = 16;
 
 interface Props {
@@ -132,7 +131,7 @@ export function HomeShelves({ builds, failed, me, onRetry, onOpen, mineActions, 
       )}
       {builds === null ? (
         <div className="home-grid" style={grid} aria-busy="true">
-          {Array.from({ length: Math.min(PLACEHOLDERS, columns) }, (_, i) => (
+          {Array.from({ length: columns }, (_, i) => (
             <div key={i} className="skeleton">
               <div className="tile-thumb" />
               <div className="tile-body">

@@ -19,7 +19,14 @@ async function storedName(owner: string): Promise<string | null> {
 }
 
 /** The name the user's public builds carry: the one they chose, else the default from their email. */
-export const authorOf = async (user: User) => (await storedName(user.id)) ?? nameOf(user.email);
+export async function authorOf(user: User): Promise<string> {
+  try {
+    return (await storedName(user.id)) ?? nameOf(user.email);
+  } catch (e) {
+    console.warn("Display name unavailable, using the default", e);
+    return nameOf(user.email);
+  }
+}
 
 /** A display name as given, tidied and checked; "" resets to the default. */
 export function checkedName(given: unknown, user: User): string {

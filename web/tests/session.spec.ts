@@ -52,7 +52,7 @@ async function comeBack(cookies: Record<string, string>, url = "https://bricks.t
 test("anyone gets in, under a public name that never shows their email", () => {
   const named = (email: string) => admit({ id: "u", email }).name;
   expect(named("jane.doe@hcompany.ai")).toBe("Jane Doe");
-  expect(named("jane.doe@gmail.com")).toBe("Jane D.");
+  expect(named("jane.doe@gmail.com")).toBe("");
   expect(named("jd1987@gmail.com")).toBe("");
 });
 
