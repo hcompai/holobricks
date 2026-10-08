@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { gzipSync } from "node:zlib";
 import { holder, isAdmin } from "./lib/account";
-import { body, Refusal, route } from "./lib/http";
+import { body, Refusal, route, SHARED } from "./lib/http";
 import { snapshot } from "./lib/snapshot";
 import { projectName } from "./lib/names";
 import {
@@ -45,18 +45,19 @@ function thumbnail(value: unknown): { data: Buffer; type: string } | null {
 
 const PRIVATE = { "Cache-Control": "private, no-store" };
 
-/** For signed-in users: the public library, or one build with `?id=` (public or the caller's); `?mine=1` lists the caller's private builds. */
+/** The public library, or build `?id=`; signed in, own private builds too: `?mine=1`, `?id=`, `?id=&file=`. */
 export const GET = route(async (request) => {
-  const { user } = holder(request);
   const params = new URL(request.url).searchParams;
-  if (params.has("mine")) return Response.json(await privateOf(user.id), { headers: PRIVATE });
+  if (params.has("mine")) return Response.json(await privateOf(holder(request).user.id), { headers: PRIVATE });
   const id = params.get("id");
-  if (!id) return Response.json(await library(), { headers: PRIVATE });
+  if (!id) return Response.json(await library(), { headers: SHARED });
   const file = params.get("file");
-  if (file) return privateFile(user.id, buildId(id), file);
-  const found = (await find(buildId(id))) ?? (await findOwn(user.id, buildId(id)));
-  if (!found) throw new Refusal(404, "This build is not public.");
-  return Response.json(found, { headers: PRIVATE });
+  if (file) return privateFile(holder(request).user.id, buildId(id), file);
+  const shared = await find(buildId(id));
+  if (shared) return Response.json(shared, { headers: SHARED });
+  const own = request.headers.has("authorization") ? await findOwn(holder(request).user.id, buildId(id)) : null;
+  if (!own) throw new Refusal(404, "This build is not public.");
+  return Response.json(own, { headers: PRIVATE });
 });
 
 /** Make one of the caller's imported builds private or public again: `{ id, private }`. Its app link stays the same; files move between public and private stores. */

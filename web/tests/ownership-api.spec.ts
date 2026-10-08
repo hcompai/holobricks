@@ -100,6 +100,38 @@ test.afterAll(async () => {
   await blob.stop();
 });
 
+test("signed out, the public library and its builds read from the shared cache; private builds and every change need the owner", async () => {
+  const builds = { GET: buildsGET, POST: buildsPOST, PATCH: buildsPATCH, DELETE: buildsDELETE };
+  const anyone = (method: keyof typeof builds, search: string, body?: unknown) =>
+    builds[method](
+      new Request(`http://bricks.test/api/builds${search}`, { method, body: body && JSON.stringify(body) }),
+    );
+
+  const listed = await anyone("GET", "");
+  expect(listed.headers.get("cache-control")).toMatch(/^public/);
+  expect((await listed.json()).map((p: { id: string }) => p.id).sort()).toEqual([imported, RUN].sort());
+  const shared = await anyone("GET", `?id=${RUN}`);
+  expect(shared.headers.get("cache-control")).toMatch(/^public/);
+  expect(await shared.json()).toMatchObject({ id: RUN, author: OWNER.name });
+
+  expect((await buildsPATCH(json(OWNER, "PATCH", { id: imported, private: true }))).status).toBe(204);
+  expect((await anyone("GET", `?id=${imported}`)).status).toBe(404);
+  expect((await buildsGET(as(OTHER, "GET", `http://bricks.test/api/builds?id=${imported}`))).status).toBe(404);
+  const own = await buildsGET(as(OWNER, "GET", `http://bricks.test/api/builds?id=${imported}`));
+  expect(own.status).toBe(200);
+  expect(own.headers.get("cache-control")).toBe("private, no-store");
+
+  for (const [method, search, body] of [
+    ["GET", "?mine=1"],
+    ["GET", `?id=${imported}&file=build.json.gz`],
+    ["POST", "", { id: RUN, thumbnail: null, edits: null }],
+    ["PATCH", "", { id: imported, private: false }],
+    ["DELETE", `?id=${RUN}`],
+  ] as [keyof typeof builds, string, unknown?][])
+    expect((await anyone(method, search, body)).status, `${method} ${search}`).toBe(401);
+  expect(await find(RUN)).not.toBeNull();
+});
+
 for (const intruder of [OTHER, ADMIN])
   test(`${intruder.name} cannot rename, publish, change the visibility of or delete Olive's builds`, async () => {
     const untouched = blob.objects.size;
