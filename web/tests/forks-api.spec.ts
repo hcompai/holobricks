@@ -162,15 +162,7 @@ test("publishing a saved copy includes its model and hand edits without private 
     },
   };
   await POST(request("POST", { id: copy, seed: given }));
-  const published = await snapshot(
-    copy,
-    "test-key",
-    null,
-    async () => {
-      throw new Error("No images expected");
-    },
-    ACCOUNT.user.id,
-  );
+  const published = await snapshot(copy, "test-key", null, ACCOUNT.user.id);
   expect(published).toMatchObject({
     id: copy,
     name: "Tower · Fork",
@@ -183,12 +175,11 @@ test("publishing a saved copy includes its model and hand edits without private 
     copy,
     "test-key",
     { revision: original.revision, edits: [{ kind: "delete", ids: [0] }] },
-    async () => "",
     ACCOUNT.user.id,
   );
   expect(edited.pieces).toHaveLength(original.pieces.length - 1);
   expect(edited.revision).not.toBe(original.revision);
-  await expect(snapshot(copy, "test-key", null, async () => "", "another-user")).rejects.toMatchObject({ status: 404 });
+  await expect(snapshot(copy, "test-key", null, "another-user")).rejects.toMatchObject({ status: 404 });
   expect(agentCalls).toEqual([]);
 });
 

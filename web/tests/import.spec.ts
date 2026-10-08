@@ -15,14 +15,14 @@ const exported = (): Build => ({
   messages: [{ role: "user", text: "A diorama of the Grand Rex", images: ["/gallery/images/1.png"] }],
 });
 
-test("an import is checked and rebuilt: new id, recomputed revision and .ldr, unverified parts, no images", async () => {
+test("an import is checked and rebuilt: new id, recomputed revision and .ldr, unverified parts, no chat", async () => {
   const model = exported();
   const build = await imported({ ...model, revision: "forged", ldr: "forged" }, "import-1");
   expect(build.id).toBe("import-1");
   expect(build.revision).toBe(revision(model.pieces));
   expect(build.ldr.split("\n").filter((l) => l.startsWith("1 "))).toHaveLength(model.pieces.length);
   expect(build.bom).toEqual({ error: expect.stringContaining("not verified") });
-  expect(build.messages).toEqual([{ role: "user", text: "A diorama of the Grand Rex", images: [] }]);
+  expect(build.messages).toEqual([]);
   expect(build.steps.map((s) => s.title)).toEqual(model.steps.map((s) => s.title));
   expect(build).toMatchObject({ status: "done", open: false, parts: model.parts });
 });
