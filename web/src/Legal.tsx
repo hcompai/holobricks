@@ -11,6 +11,8 @@ const out = (href: string, text: ReactNode) => (
 );
 
 /** Third-party assets, with the attribution their licenses ask for. */
+const REPO = "https://github.com/hcompai/holobricks";
+
 const CREDITS: { what: string; credit: ReactNode }[] = [
   {
     what: "Part geometry",
@@ -41,6 +43,7 @@ const CREDITS: { what: string; credit: ReactNode }[] = [
       </>
     ),
   },
+  { what: "Source", credit: <>HoloBricks is open source: {out(REPO, "hcompai/holobricks")} on GitHub.</> },
 ];
 
 function CreditsDialog({ onClose }: { onClose: () => void }) {
@@ -67,8 +70,6 @@ function CreditsDialog({ onClose }: { onClose: () => void }) {
     </dialog>
   );
 }
-
-const REPO = "https://github.com/hcompai/holobricks";
 
 const COLUMNS: { title: string; links: [string, string][] }[] = [
   {
