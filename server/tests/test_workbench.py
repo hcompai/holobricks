@@ -320,6 +320,27 @@ def test_a_patch_of_plates_or_tiles_is_laid_again_in_fewer_pieces_but_bricks_kee
     assert [b["part"] for b in lay([brick("3023b", 0, 0, 0), brick("3024", 2, 0, 0)])] == ["3623"]
 
 
+def test_slopes_turned_alike_join_across_their_width_only(monkeypatch):
+    monkeypatch.setattr(script, "_made_in", lambda part: frozenset({4}))
+    joined = lambda pieces: sorted((b["part"], b["x"], b["y"], b["rotation"]) for b in script._merged(pieces))
+    assert joined([brick("60481a", x, 0, 0) for x in range(2)]) == [("3678b", 0, 0, 0)]  # two 2x1 65s: a 2x2
+    assert joined([brick("3040b", x, 0, 0, rotation=180) for x in range(4)]) == [("3037", 0, 0, 180)]
+    assert joined([brick("3040b", 0, y, 0, rotation=90) for y in range(3)]) == [("3038", 0, 0, 90)]  # across y
+    assert len(script._merged([brick("3040b", 0, 0, 0), brick("3040b", 1, 0, 0, rotation=180)])) == 2  # facing apart
+    assert len(script._merged([brick("3040b", 0, 0, 0), brick("3040b", 0, 2, 0)])) == 2  # one behind the other
+
+
+def test_a_course_of_bricks_is_laid_again_only_as_one_brick_and_plates_only_in_plates(monkeypatch):
+    monkeypatch.setattr(script, "_made_in", lambda part: frozenset({4}))
+    lay = lambda pieces: script._relaid(script._merged([dict(p) for p in pieces]))
+    # A pier course in two 1x2 bricks one way and a 1x1 pair the other fills a 2x2: one 2x2 brick.
+    course = [brick("3004", 0, 0, 0, rotation=90), brick("3005", 1, 0, 0), brick("3005", 1, 1, 0)]
+    assert [b["part"] for b in lay(course)] == ["3003"]
+    # A 1x16 strip of plates in running bond is laid as plates: no 1x16 plate, and the 1x16 brick is too tall.
+    strip = [brick("3023b", x, 0, 0) for x in range(1, 15, 2)] + [brick("3024", 0, 0, 0), brick("3024", 15, 0, 0)]
+    assert all(script.HEIGHT[b["part"]] == 1 for b in lay(strip))
+
+
 @pytest.mark.skipif(not catalog.SNAPSHOT.exists(), reason="catalog snapshot not built")
 def test_the_showcase_has_valid_catalog_parts_but_does_not_hide_detached_terrain(tmp_path):
     example = (Path(__file__).resolve().parents[2] / "agent" / "showcase" / "bag-end.py").read_text()
