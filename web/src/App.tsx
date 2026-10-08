@@ -13,6 +13,7 @@ import { type Account, signInError } from "./account";
 import { AccountMenu } from "./AccountMenu";
 import { SignInDialog } from "./SignInDialog";
 import { FinishedCard } from "./FinishedCard";
+import { useHearts } from "./hearts";
 import { RecoveryPanel } from "./RecoveryPanel";
 import { cancel, create, say, stop } from "./agent";
 import type { ProjectActions } from "./ProjectMenu";
@@ -116,6 +117,7 @@ export default function App({ account }: { account: Account | null }) {
   const { names, rename } = useProjectNames(me);
   const [signingIn, setSigningIn] = useState(() => !account && signInError !== null);
   const askSignIn = account ? undefined : () => setSigningIn(true);
+  const { hearts, toggle: heartBuild } = useHearts(me, askSignIn);
   /** What the user just asked for, shown as a starting build where they asked it, until its session answers. */
   const [draft, setDraft] = useState<{ at: BuildRef | null; build: Build; since: number } | null>(null);
   const drafted = draft && same(draft.at, ref) && read.build?.id !== draft.build.id ? draft.build : null;
@@ -861,6 +863,8 @@ export default function App({ account }: { account: Account | null }) {
               onRetry={refreshBuilds}
               onOpen={openListed}
               manage={manage}
+              hearts={hearts}
+              onHeart={heartBuild}
               mineActions={
                 <ImportBuild
                   onImported={(id) => {
