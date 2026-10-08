@@ -113,7 +113,7 @@ test("an imported build goes private and stays under the user's builds, goes pub
   const menu = page.getByRole("menu");
   const copyLink = page.getByRole("menuitem", { name: "Copy link" });
   await share.click();
-  await expect(menu).toContainText("In the public library: anyone at H can open it");
+  await expect(menu).toContainText("In the public library: anyone can open it");
   await page.getByRole("menuitem", { name: "Make private…" }).click();
   const confirm = page.getByRole("dialog", { name: "Make private" });
   await expect(confirm).toContainText("stays under Your builds for you alone");

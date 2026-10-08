@@ -880,105 +880,16 @@ aside {
   text-align: center;
 }
 
-.sign-in-page {
-  min-height: 100dvh;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  padding: 24px;
-  text-align: center;
-  background: radial-gradient(60% 50% at 50% 38%, var(--background-muted), transparent 70%), var(--background-card);
-  animation: fade-in 0.4s ease-out both;
-}
-
-.sign-in-brick {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  margin-bottom: 18px;
-}
-
-.brick-float {
-  padding-top: 12px;
-  perspective: 500px;
-  animation: float 3.2s ease-in-out infinite;
-}
-
-.sign-in-brick .brick {
-  --w: 76px;
-  animation: turn 18s linear infinite;
-}
-
-.sign-in-brick .brick-shadow {
-  width: 92px;
-  height: 12px;
-  margin: 26px 0 0;
-  animation: float-shadow 3.2s ease-in-out infinite;
-}
-
-.sign-in-cover {
-  width: min(320px, 80vw);
-  aspect-ratio: 1;
-  object-fit: contain;
-  margin-bottom: var(--space-4);
-  border-radius: var(--radius-dialog);
-  background: var(--background-viewer);
-  border: 1px solid var(--stroke-default);
-}
-
-.sign-in-kicker {
-  margin: 0;
-  color: var(--text-secondary);
-  font-weight: 600;
-}
-
-.sign-in-page h1 {
-  margin: 0;
-  font-size: var(--font-display);
-  line-height: 34px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-}
-
-.sign-in-lead {
-  margin: 0 0 var(--space-4);
-  color: var(--text-secondary);
-  font-size: var(--font-title);
+.sign-in-dialog {
+  width: min(400px, calc(100vw - 32px));
 }
 
 .sign-in-method {
   justify-content: center;
   gap: 10px;
-  min-width: 240px;
   height: 44px;
   padding: 0 20px;
   border-radius: 999px;
-}
-
-.sign-in-error {
-  margin: var(--space-1) 0 0;
-  max-width: 320px;
-}
-
-.sign-in-fine {
-  margin: 6px 0 0;
-  color: var(--text-tertiary);
-  font-size: var(--font-small);
-}
-
-@keyframes float {
-  50% {
-    transform: translateY(-12px);
-  }
-}
-
-@keyframes float-shadow {
-  50% {
-    transform: scale(0.75);
-    opacity: 0.55;
-  }
 }
 
 .menu-list.confirm {
@@ -2569,6 +2480,12 @@ main {
     border-color: transparent;
     background: var(--accent);
     color: #fff;
+  }
+
+  .app:not(.home) > header > button.sign-in {
+    width: auto;
+    padding: 0 14px;
+    border-radius: 999px;
   }
 
   .app:not(.home) > header > .title {

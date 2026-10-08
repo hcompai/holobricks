@@ -1,7 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { createHash } from "node:crypto";
 import { gzipSync } from "node:zlib";
-import { GET } from "../api/builds";
 import type { Build } from "../src/model";
 import { cookie, HANDOFF, PENDING, setCookie } from "../src/signin";
 import { ACCOUNT, fixture, site } from "./fixtures";
@@ -194,7 +193,7 @@ test("the author publishes a build after a confirmation, stays on it, then makes
   await expect(publishing).toBeHidden();
   await expect(page).toHaveURL(/\?build=mine$/);
   await share.click();
-  await expect(menu).toContainText("In the public library: anyone at H can open it");
+  await expect(menu).toContainText("In the public library: anyone can open it");
   await expect(copyLink).toBeEnabled();
   await share.click();
   const post = calls.find((c) => c.method === "POST")!;
@@ -234,21 +233,6 @@ test("the author publishes a build after a confirmation, stays on it, then makes
   await expect(mine).not.toContainText("public");
 });
 
-test("the library answers only signed-in users, and the app signs every read", async ({ page }) => {
-  for (const url of ["https://bricks.test/api/builds", "https://bricks.test/api/builds?id=tower"])
-    expect((await GET(new Request(url))).status).toBe(401);
-
-  const tower = { ...fixture(), id: "tower", name: "Ada's tower" };
-  await site(page);
-  const calls = await library(page, [entry(tower, "Ada Lovelace", "u-ada")], [tower]);
-  await page.goto("/?public=tower");
-  await shown(page, tower.revision);
-  const reads = calls.filter((c) => c.method === "GET");
-  expect(reads.map((c) => c.search)).toEqual(expect.arrayContaining(["", "?mine=1", "?id=tower"]));
-  for (const read of reads)
-    expect(read.headers).toMatchObject({ authorization: `Bearer ${ACCOUNT.pass}`, "x-agents-key": ACCOUNT.key });
-});
-
 test("a teammate's build link opens read only, to remix", async ({ page }) => {
   const model = fixture();
   await site(page);
@@ -270,7 +254,7 @@ test("a teammate's build link opens read only, to remix", async ({ page }) => {
   await expect(page.getByPlaceholder("Ask for a change")).toBeVisible();
 });
 
-test("signed out, only the sign-in page shows; Google brings the user back signed in where they left", async ({
+test("signed out, the build opens and the sign-in waits in a dialog; Google brings the user back signed in where they left", async ({
   page,
   context,
 }) => {
@@ -296,13 +280,17 @@ test("signed out, only the sign-in page shows; Google brings the user back signe
       headers: { location: back.back, "set-cookie": setCookie(HANDOFF, JSON.stringify(handoff), 60) },
     });
   });
-  const google = page.getByRole("button", { name: "Continue with Google" });
+  const dialog = page.getByRole("dialog", { name: "Sign in to build" });
+  const google = dialog.getByRole("button", { name: "Continue with Google" });
+  const signIn = page.locator("header").getByRole("button", { name: "Sign in" });
 
   await page.goto(`/?showcase=${tower.id}`);
-  await expect(page.getByRole("heading", { name: "HoloBricks" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "HoloBricks", exact: true })).toHaveCount(0);
+  await shown(page, tower.revision);
+  await expect(dialog).toHaveCount(0);
+  await signIn.click();
   await google.click();
-  await expect(page.getByRole("alert")).toHaveText("HoloBricks is open to H Company accounts.");
+  await expect(dialog.getByRole("alert")).toHaveText("HoloBricks is open to H Company accounts.");
+  await shown(page, tower.revision);
 
   handoff = ACCOUNT;
   await google.click();
@@ -312,6 +300,7 @@ test("signed out, only the sign-in page shows; Google brings the user back signe
 
   await page.getByRole("button", { name: "Account" }).click();
   await page.getByRole("menuitem", { name: "Sign out" }).click();
+  await signIn.click();
   await google.click();
   await expect(page.getByRole("button", { name: "Account" })).toBeVisible();
   const verifier = expect.stringMatching(/^[\w-]{43}$/);

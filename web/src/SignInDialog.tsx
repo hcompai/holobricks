@@ -1,94 +1,68 @@
-import { EnvelopeSimpleIcon, GoogleLogoIcon } from "@phosphor-icons/react";
-import { useEffect, useState } from "react";
+import { EnvelopeSimpleIcon, GoogleLogoIcon, XIcon } from "@phosphor-icons/react";
+import { useEffect, useRef, useState } from "react";
 import { signIn, signInError, signInOnPlatform } from "./account";
-import { Brick } from "./BrickLoader";
 
-/** The build a shared link opens, read back from the link preview tags api/preview.ts wrote; null on any other page. */
-function sharedBuild(): { name: string; author: string | null; cover: string | null } | null {
-  const params = new URLSearchParams(window.location.search);
-  if (!params.has("public") && !params.has("showcase")) return null;
-  const tag = (key: string) => document.querySelector(`meta[property="${key}"]`)?.getAttribute("content") ?? "";
-  const name = tag("og:title").match(/^(.+) · HoloBricks$/)?.[1];
-  if (!name) return null;
-  return {
-    name,
-    author: tag("og:description").match(/, shared by (.+)$/)?.[1] ?? null,
-    cover: tag("og:image:alt") === name ? tag("og:image") : null,
-  };
-}
-
-/** All a signed-out visitor sees: the build a colleague shared, if any, and the ways in with an H account. */
-export function SignInPage() {
+/** The ways in with an H account, asked for when a signed-out visitor wants to build. */
+export function SignInDialog({ onClose }: { onClose: () => void }) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  const google = useRef<HTMLButtonElement>(null);
   const [leaving, setLeaving] = useState(false);
   const [onPlatform, setOnPlatform] = useState(false);
   const [blocked, setBlocked] = useState(false);
-  const [shared] = useState(sharedBuild);
-  const [coverFailed, setCoverFailed] = useState(false);
   useEffect(() => {
+    dialog.current?.showModal();
+    google.current?.focus();
     const back = (event: PageTransitionEvent) => event.persisted && setLeaving(false);
     window.addEventListener("pageshow", back);
     return () => window.removeEventListener("pageshow", back);
   }, []);
   return (
-    <main className="sign-in-page">
-      {shared?.cover && !coverFailed ? (
-        <img className="sign-in-cover" src={shared.cover} alt={shared.name} onError={() => setCoverFailed(true)} />
-      ) : (
-        <div className="sign-in-brick">
-          <div className="brick-float">
-            <Brick />
-          </div>
-          <div className="brick-shadow" />
+    <dialog ref={dialog} className="dialog sign-in-dialog" aria-labelledby="sign-in-title" onCancel={onClose}>
+      <div className="dialog-head">
+        <div>
+          <h2 id="sign-in-title">Sign in to build</h2>
+          <p>Holo builds with your own key. Sign in to get one.</p>
         </div>
-      )}
-      {shared ? (
-        <>
-          <p className="sign-in-kicker">
-            {shared.author ? `${shared.author} shared with you` : "From the HoloBricks gallery"}
+        <button className="quiet icon-button" aria-label="Close" onClick={onClose}>
+          <XIcon size={16} />
+        </button>
+      </div>
+      <div className="dialog-generation">
+        <button
+          ref={google}
+          className="primary sign-in-method"
+          disabled={leaving}
+          onClick={() => {
+            setLeaving(true);
+            void signIn();
+          }}
+        >
+          <GoogleLogoIcon size={18} weight="bold" />
+          {leaving ? "Opening Google…" : "Continue with Google"}
+        </button>
+        <button
+          className="sign-in-method"
+          disabled={leaving || onPlatform}
+          onClick={() => {
+            setOnPlatform(true);
+            setBlocked(false);
+            void signInOnPlatform().then((opened) => {
+              setOnPlatform(false);
+              setBlocked(!opened);
+            });
+          }}
+        >
+          <EnvelopeSimpleIcon size={18} weight="bold" />
+          {onPlatform ? "Finish signing in in the popup…" : "Sign in with email"}
+        </button>
+        {(blocked || signInError) && (
+          <p className="error-text" role="alert">
+            {blocked
+              ? "Your browser blocked the sign-in popup: allow popups for this site and try again."
+              : signInError}
           </p>
-          <h1>{shared.name}</h1>
-          <p className="sign-in-lead">Sign in to open it in HoloBricks.</p>
-        </>
-      ) : (
-        <>
-          <h1>HoloBricks</h1>
-          <p className="sign-in-lead">
-            Tell Holo what you'd like to build and watch it come together, one brick at a time.
-          </p>
-        </>
-      )}
-      <button
-        className="primary sign-in-method"
-        disabled={leaving}
-        onClick={() => {
-          setLeaving(true);
-          void signIn();
-        }}
-      >
-        <GoogleLogoIcon size={18} weight="bold" />
-        {leaving ? "Opening Google…" : "Continue with Google"}
-      </button>
-      <button
-        className="sign-in-method"
-        disabled={leaving || onPlatform}
-        onClick={() => {
-          setOnPlatform(true);
-          setBlocked(false);
-          void signInOnPlatform().then((opened) => {
-            setOnPlatform(false);
-            setBlocked(!opened);
-          });
-        }}
-      >
-        <EnvelopeSimpleIcon size={18} weight="bold" />
-        {onPlatform ? "Finish signing in in the popup…" : "Sign in with email"}
-      </button>
-      {(blocked || signInError) && (
-        <p className="error-text sign-in-error" role="alert">
-          {blocked ? "Your browser blocked the sign-in popup: allow popups for this site and try again." : signInError}
-        </p>
-      )}
-      <p className="sign-in-fine">HoloBricks is open to everyone at H Company.</p>
-    </main>
+        )}
+      </div>
+    </dialog>
   );
 }
