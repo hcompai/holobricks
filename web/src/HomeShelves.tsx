@@ -131,11 +131,12 @@ function useColumns() {
   const root = useRef<HTMLDivElement>(null);
   const [columns, setColumns] = useState(4);
   useLayoutEffect(() => {
-    const observer = new ResizeObserver(([entry]) => {
-      const width = entry.contentRect.width;
+    const fit = (width: number) => {
       const tile = width < 600 ? 150 : 220;
       setColumns(Math.max(1, Math.floor((width + GAP) / (tile + GAP))));
-    });
+    };
+    fit(root.current!.clientWidth);
+    const observer = new ResizeObserver(([entry]) => fit(entry.contentRect.width));
     observer.observe(root.current!);
     return () => observer.disconnect();
   }, []);
