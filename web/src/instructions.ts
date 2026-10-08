@@ -5,6 +5,8 @@ import { BrickScene } from "./scene";
 
 /** A page never adds less than this many pieces while the next layer of its step is within one brick's height. */
 const MIN_PIECES = 12;
+/** A page adds fewer than 100 pieces: a wider layer is split into strips across the model. */
+const MAX_PIECES = 99;
 /** Plates a page may span when it gathers small layers: one brick. */
 const SPAN = 3;
 const PLATE = 8;
@@ -29,7 +31,15 @@ export interface Progress {
   label: string;
 }
 
-/** The pages of `build`: each builder step split by height, bottom up, small neighbouring layers gathered. */
+/** `pieces` in strips front to back, each under MAX_PIECES, as even as they go. */
+function strips(pieces: Piece[]): Piece[][] {
+  if (pieces.length <= MAX_PIECES) return [pieces];
+  const sorted = [...pieces].sort((a, b) => a.pos[2] - b.pos[2] || a.pos[0] - b.pos[0]);
+  const size = Math.ceil(sorted.length / Math.ceil(sorted.length / MAX_PIECES));
+  return Array.from({ length: Math.ceil(sorted.length / size) }, (_, i) => sorted.slice(i * size, (i + 1) * size));
+}
+
+/** The pages of `build`: each builder step split by height, bottom up, small neighbouring layers gathered, none over MAX_PIECES. */
 export function planPages(build: Build): Page[] {
   const pages: Page[] = [];
   const steps = [...new Set(build.pieces.map((p) => p.step))].sort((a, b) => a - b);
@@ -43,9 +53,15 @@ export function planPages(build: Build): Page[] {
     // LDraw's y points down, so the bottom layer has the largest level.
     let open: { bottom: number; page: Page } | null = null;
     for (const level of [...layers.keys()].sort((a, b) => b - a)) {
-      const pieces = layers.get(level)!;
-      if (open && open.page.pieces.length < MIN_PIECES && open.bottom - level < SPAN) open.page.pieces.push(...pieces);
-      else pages.push((open = { bottom: level, page: { step, pieces: [...pieces] } }).page);
+      for (const pieces of strips(layers.get(level)!)) {
+        const gather =
+          open &&
+          open.page.pieces.length < MIN_PIECES &&
+          open.bottom - level < SPAN &&
+          open.page.pieces.length + pieces.length <= MAX_PIECES;
+        if (gather) open!.page.pieces.push(...pieces);
+        else pages.push((open = { bottom: level, page: { step, pieces: [...pieces] } }).page);
+      }
     }
   }
   return pages;
