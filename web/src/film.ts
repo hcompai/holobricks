@@ -533,6 +533,11 @@ export class FilmRenderer {
     vignette.addColorStop(1, "rgba(20, 20, 40, 0.08)");
     ctx.fillStyle = vignette;
     ctx.fillRect(0, 0, width, height);
+    ctx.fillStyle = INK;
+    ctx.font = `500 ${Math.max(12, 26 * unit)}px ${FONT}`;
+    ctx.textAlign = "center";
+    ctx.fillText("bricks.hcompany.ai", width / 2, height - Math.max(10, 24 * unit));
+    ctx.textAlign = "left";
     if (branded && brandable(this.build)) {
       const size = Math.max(18, 34 * unit);
       const textX = margin + (1035 / 600) * size + Math.max(10, 20 * unit);

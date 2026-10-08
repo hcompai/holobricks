@@ -34,7 +34,7 @@ test("a valid phase start shows a human-readable duration", async ({ page }) => 
 test("home offers the correct public GitHub repository without leaving the app", async ({ page }, testInfo) => {
   await site(page);
   await page.goto("/");
-  const star = page.getByRole("link", { name: "Star on GitHub", exact: true });
+  const star = page.getByRole("link", { name: "Star", exact: true });
   await expect(star).toHaveAttribute("href", "https://github.com/hcompai/holobricks");
   await expect(star).toHaveAttribute("target", "_blank");
   await expect(star).toHaveAttribute("rel", "noopener noreferrer");
