@@ -271,6 +271,7 @@ test("Fork saves and opens the drawing before any message; reload and Library ke
   await shown(page, saved[3].revision);
   await expect(page.getByRole("textbox")).toHaveValue("");
   await expect(page.getByRole("button", { name: "Cancel", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "View controls" }).click();
   await expect(page.getByRole("button", { name: "Edit", exact: true })).toBeEnabled();
   await page.screenshot({ path: "test-results/fork-mobile.png" });
   await page.reload();

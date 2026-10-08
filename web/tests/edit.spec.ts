@@ -55,6 +55,8 @@ test("Edit explains active building and unlocks after a new revision when earlie
   await page.screenshot({ path: testInfo.outputPath("edit-building-desktop.png") });
 
   await page.setViewportSize({ width: 390, height: 844 });
+  await expect(hint).toBeHidden();
+  await page.getByRole("button", { name: "View controls" }).click();
   await expect(hint).toBeInViewport();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   await page.screenshot({ path: testInfo.outputPath("edit-building-mobile.png") });
