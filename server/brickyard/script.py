@@ -371,6 +371,78 @@ def _merged(bricks: list[dict], rounds: int = ROUNDS) -> list[dict]:
     return [b for i, b in enumerate(bricks) if i not in gone]
 
 
+def _laid(cells: set[Cell], sizes: list[tuple[int, int, str]], columns: bool, anywhere: bool) -> list[tuple]:
+    """One way to lay `cells` with `sizes`, largest first: each at the first free stud in turn, or the largest
+    everywhere it fits before the next; scanning rows, or columns. Each piece is (x, y, w, d, part)."""
+    order = sorted(cells, key=lambda c: (c[0], c[1]) if columns else (c[1], c[0]))
+    turns = [(w, d, part) for pw, pd, part in sizes for w, d in {(pw, pd), (pd, pw)}]
+    free, out = set(cells), []
+
+    def fits(x: int, y: int, w: int, d: int) -> bool:
+        return all((i, j) in free for i in range(x, x + w) for j in range(y, y + d))
+
+    def lay(x: int, y: int, w: int, d: int, part: str) -> None:
+        free.difference_update(shapes.rect(x, y, w, d))
+        out.append((x, y, w, d, part))
+
+    if anywhere:
+        for w, d, part in turns:
+            for x, y in order:
+                if (x, y) in free and fits(x, y, w, d):
+                    lay(x, y, w, d, part)
+    else:
+        for x, y in order:
+            if (x, y) in free:
+                lay(x, y, *next(t for t in turns if fits(x, y, t[0], t[1])))
+    return out
+
+
+def _relaid(bricks: list[dict]) -> list[dict]:
+    """The step's bricks with each patch of plates or tiles of one color and height laid again in fewer pieces when
+    some way does: joining leaves a patch in the pieces it was cut in, and a stagger of small ones can take a few
+    large ones. It tries four ways and keeps the fewest pieces. Bricks keep theirs, as their courses are bonded. A new piece takes the lines of the old one at its
+    first stud."""
+    patches: dict[tuple, dict[Cell, int]] = defaultdict(dict)
+    for i, b in enumerate(bricks):
+        part = str(b["part"]).removesuffix(".dat")
+        whole = all(type(b.get(k)) is int for k in ("x", "y", "z", "color", "rotation"))
+        if HEIGHT.get(part) != 1 or "pos" in b or "facing" in b or not whole:
+            continue
+        w, d = shapes.footprint(part, b["rotation"])
+        patches[KIND[part], b["z"], b["color"]].update((cell, i) for cell in shapes.rect(b["x"], b["y"], w, d))
+    out: dict[int, list[dict]] = {}
+    for (kind, z, color), owner in patches.items():
+        sizes = sorted(
+            ((w, d, part) for (w, d, _), part in SIZES[kind].items() if color in _made_in(part)),
+            key=lambda s: -s[0] * s[1],
+        )
+        if not any(w == d == 1 for w, d, _ in sizes):
+            continue
+        left = set(owner)
+        while left:
+            patch, edge = set(), [left.pop()]
+            while edge:
+                x, y = edge.pop()
+                patch.add((x, y))
+                for c in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
+                    if c in left:
+                        left.discard(c)
+                        edge.append(c)
+            pieces = {owner[c] for c in patch}
+            ways = [_laid(patch, sizes, columns, anywhere) for columns in (False, True) for anywhere in (False, True)]
+            best = min(ways, key=len)
+            if len(best) >= len(pieces):
+                continue
+            first = min(pieces)
+            out[first] = [
+                bricks[owner[x, y]]
+                | {"part": part, "x": x, "y": y, "rotation": 0 if shapes.footprint(part, 0) == (w, d) else 90}
+                for x, y, w, d, part in best
+            ]
+            out.update((i, []) for i in pieces - {first})
+    return [new for i, b in enumerate(bricks) for new in out.get(i, [b])]
+
+
 def _explain(error: BaseException, code: str) -> str:
     line = error.lineno if isinstance(error, SyntaxError) and error.filename == SOURCE else None
     tb = error.__traceback__
@@ -395,7 +467,7 @@ def run(code: str, taken: list[list[int]]) -> dict:
             script._flush()
     except (Exception, SystemExit) as e:  # noqa: BLE001
         return {"error": _explain(e, code), "printed": printed.getvalue()[-PRINT_LIMIT:]}
-    steps = [s | {"bricks": _merged(s["bricks"])} for s in script.steps if s["bricks"]]
+    steps = [s | {"bricks": _relaid(_merged(s["bricks"]))} for s in script.steps if s["bricks"]]
     return {"steps": steps, "printed": printed.getvalue()[-PRINT_LIMIT:]}
 
 

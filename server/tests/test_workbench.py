@@ -302,6 +302,24 @@ def test_stacks_of_one_footprint_join_into_a_brick_or_a_taller_one(monkeypatch):
     ]  # footprints differ
 
 
+def test_a_patch_of_plates_or_tiles_is_laid_again_in_fewer_pieces_but_bricks_keep_their_bond(monkeypatch):
+    monkeypatch.setattr(script, "_made_in", lambda part: frozenset({4}))
+    lay = lambda pieces: script._relaid(script._merged([dict(p) for p in pieces]))
+    # A pinwheel of four 1x3s round a 2x2: no two share a whole side, so nothing joins, but it is one 4x4.
+    pinwheel = lambda long, square, z: [
+        brick(long, 0, 0, z),
+        brick(long, 3, 0, z, rotation=90),
+        brick(long, 1, 3, z),
+        brick(long, 0, 1, z, rotation=90),
+        brick(square, 1, 1, z),
+    ]
+    assert len(script._merged(pinwheel("63864", "3068b", 1))) == 5
+    assert [b["part"] for b in lay(pinwheel("63864", "3068b", 1))] == ["1751"]  # tiles: a 4x4 tile
+    assert [b["part"] for b in lay(pinwheel("3623", "3022", 1))] == ["3031"]  # plates: a 4x4 plate
+    assert len(lay(pinwheel("3622", "3003", 0))) == 5  # bricks keep their bond
+    assert [b["part"] for b in lay([brick("3023b", 0, 0, 0), brick("3024", 2, 0, 0)])] == ["3623"]
+
+
 @pytest.mark.skipif(not catalog.SNAPSHOT.exists(), reason="catalog snapshot not built")
 def test_the_showcase_has_valid_catalog_parts_but_does_not_hide_detached_terrain(tmp_path):
     example = (Path(__file__).resolve().parents[2] / "agent" / "showcase" / "bag-end.py").read_text()
