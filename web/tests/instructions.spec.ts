@@ -32,6 +32,25 @@ test("pages split each step by height, bottom up, gathering small layers within 
   ]);
 });
 
+test("no page adds 100 pieces or more: a wide layer splits into even strips, never gathered past the cap", () => {
+  const many = (step: number, plates: number, count: number, from: number) =>
+    Array.from({ length: count }, (_, i) => brick(from + i, step, plates));
+  const pieces = [
+    ...many(0, 0, 250, 0), // a wide layer: three strips of under 100
+    ...many(1, 0, 5, 1000), // a small layer...
+    ...many(1, 1, 98, 2000), // ...not gathered with a layer that would take it to 100
+  ];
+  const pages = planPages({ ...fixture(), pieces });
+  expect(pages.map((p) => [p.step, p.pieces.length])).toEqual([
+    [0, 84],
+    [0, 84],
+    [0, 82],
+    [1, 5],
+    [1, 98],
+  ]);
+  expect(new Set(pages.flatMap((p) => p.pieces.map((q) => q.id))).size).toBe(pieces.length);
+});
+
 test("the PDF starts on open and downloads in one click: a cover, a page per layer, then the parts list", async ({
   page,
 }) => {
