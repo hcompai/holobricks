@@ -1,4 +1,4 @@
-import { CopyIcon, DownloadSimpleIcon, ShareNetworkIcon, XIcon } from "@phosphor-icons/react";
+import { CopyIcon, DownloadSimpleIcon, ShareNetworkIcon, XIcon, XLogoIcon } from "@phosphor-icons/react";
 import { type CSSProperties, useEffect, useRef, useState } from "react";
 import { BrickLoader } from "./BrickLoader";
 import type { Build } from "./model";
@@ -165,6 +165,17 @@ export function FilmExport({ build, onClose }: Props) {
     }
   };
 
+  const postOnX = () => {
+    if (!file || !url) return;
+    Object.assign(document.createElement("a"), { href: url, download: file.name }).click();
+    window.open(
+      `https://x.com/intent/tweet?${new URLSearchParams({ text: caption })}`,
+      "_blank",
+      "noopener,noreferrer",
+    );
+    setNotice("Attach the downloaded GIF to your post.");
+  };
+
   const percent = Math.round(progress * 100);
 
   return (
@@ -199,15 +210,19 @@ export function FilmExport({ build, onClose }: Props) {
             {file && url ? (
               <>
                 <div className="dialog-actions">
+                  <button className="primary" onClick={postOnX}>
+                    <XLogoIcon size={16} /> Post on X
+                  </button>
                   {canShare && (
-                    <button className="primary" onClick={share}>
+                    <button onClick={share}>
                       <ShareNetworkIcon size={16} /> Share…
                     </button>
                   )}
-                  <a className={`button${canShare ? "" : " primary"}`} href={url} download={file.name}>
+                  <a className="button" href={url} download={file.name}>
                     <DownloadSimpleIcon size={16} /> Download GIF
                   </a>
                 </div>
+                <p className="small muted">Attach the downloaded GIF on X.</p>
                 <p className="small muted">
                   {made.width} × {made.height} · {seconds}s · {megabytes(file.size)}
                 </p>
