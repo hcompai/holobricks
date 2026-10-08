@@ -34,6 +34,16 @@ async function openFilm(page: Page) {
   await page.getByRole("menuitem", { name: "Share a GIF…" }).click();
 }
 
+test("the GIF call to action appears only for a completed, nonempty build", async ({ page }) => {
+  for (const status of ["building", "error", "done"] as const) {
+    await mock(page, { ...fixture(), status });
+    await expect(page.getByRole("button", { name: "Share a GIF", exact: true })).toHaveCount(status === "done" ? 1 : 0);
+  }
+  await site(page, [{ ...fixture(), pieces: [], steps: [] }]);
+  await page.goto(`/?showcase=${fixture().id}`);
+  await expect(page.getByRole("button", { name: "Share a GIF", exact: true })).toHaveCount(0);
+});
+
 test("film plans are deterministic and land every piece before the turntable", () => {
   for (const count of [1, 2, 24, 5000])
     for (const seconds of [6, 8, 20, 60]) {
@@ -98,7 +108,7 @@ test("close-up follow camera exports a credited GIF and offers orbit and fixed a
     };
   });
   await mock(page);
-  await openFilm(page);
+  await page.getByRole("button", { name: "Share a GIF", exact: true }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByLabel("Suggested caption")).toContainText("Holo4 27B by H Company");
   await dialog.getByText("Options", { exact: true }).click();
@@ -108,6 +118,24 @@ test("close-up follow camera exports a credited GIF and offers orbit and fixed a
   await expect(dialog.getByRole("checkbox", { name: "H Company credit" })).toBeChecked();
   const link = dialog.getByRole("link", { name: "Download GIF", exact: true });
   await expect(link).toBeVisible({ timeout: 540000 });
+  await expect(dialog.getByRole("button", { name: "Post on X", exact: true })).toBeVisible();
+  await expect(dialog.getByText("Attach the downloaded GIF on X.", { exact: true })).toBeVisible();
+  await page.evaluate(() => {
+    window.open = (url, target, features) => {
+      Object.assign(window, { xPost: { url: String(url), target, features } });
+      return null;
+    };
+  });
+  const xDownload = page.waitForEvent("download");
+  await dialog.getByRole("button", { name: "Post on X", exact: true }).click();
+  expect((await xDownload).suggestedFilename()).toMatch(/\.gif$/);
+  const post = await page.evaluate(() => (window as unknown as { xPost: { url: string; features: string } }).xPost);
+  const intent = new URL(post.url);
+  expect(intent.origin).toBe("https://x.com");
+  expect(intent.pathname).toBe("/intent/tweet");
+  expect(intent.searchParams.get("text")).toBe(filmCaption(fixture(), true));
+  expect(intent.searchParams.has("url")).toBe(false);
+  expect(post.features).toBe("noopener,noreferrer");
   const pending = page.waitForEvent("download");
   await link.click();
   const download = await pending;
@@ -124,4 +152,11 @@ test("close-up follow camera exports a credited GIF and offers orbit and fixed a
   await dialog.locator(".film-preview img").screenshot({ path: testInfo.outputPath("credited-gif.png") });
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
+  await page.setViewportSize({ width: 390, height: 844 });
+  const cta = page.getByRole("button", { name: "Share a GIF", exact: true });
+  await expect(cta).toBeVisible();
+  await cta.click();
+  await expect(dialog).toBeVisible();
+  expect(await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  await page.keyboard.press("Escape");
 });

@@ -2,6 +2,7 @@ import { replayDelay } from "./buildTiming";
 import {
   CaretLeftIcon,
   ClockCounterClockwiseIcon,
+  FilmStripIcon,
   PlusIcon,
   ShoppingBagIcon,
   ShuffleIcon,
@@ -569,6 +570,12 @@ export default function App({ account }: { account: Account | null }) {
 
   const actions = actionable && (
     <>
+      {actionable.status === "done" && actionable.pieces.length > 0 && !loading && (
+        <button className="primary" onClick={exportReplay}>
+          <FilmStripIcon size={16} />
+          <span className="button-label">Share a GIF</span>
+        </button>
+      )}
       <ShareMenu
         build={actionable}
         link={!readOnly && shared ? linkTo(shared) : null}

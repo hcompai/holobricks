@@ -386,7 +386,7 @@ test("a change to my ended build continues it as a copy under the same name", as
   agp.sessions.get("ended")!.status = "completed";
   await page.goto("/?build=ended");
   await shown(page, model.revision);
-  await page.getByRole("button", { name: "Share" }).click();
+  await page.getByRole("button", { name: "Share", exact: true }).click();
   await expect(page.getByRole("menuitem", { name: "Publish to the library…" })).toBeVisible();
   await page.keyboard.press("Escape");
   await page.getByPlaceholder("Ask for a change").fill("Make it blue");

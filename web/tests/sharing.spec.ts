@@ -78,7 +78,8 @@ test("phone GIF uses a square frame and the native sheet with a save fallback", 
   await dialog.getByText("Options", { exact: true }).click();
   const share = dialog.getByRole("button", { name: "Share…", exact: true });
   await expect(share).toBeVisible({ timeout: 540000 });
-  await expect(share).toHaveClass("primary");
+  await expect(dialog.getByRole("button", { name: "Post on X", exact: true })).toHaveClass("primary");
+  await expect(share).not.toHaveClass("primary");
   await share.click();
   expect(await page.evaluate(() => (window as any).gifShare)).toMatchObject({
     type: "image/gif",
