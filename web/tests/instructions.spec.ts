@@ -64,5 +64,5 @@ test("the PDF starts on open and downloads in one click: a cover, a page per lay
   const pdf = await readFile(await (await download).path(), "latin1");
   expect(pdf.startsWith("%PDF-")).toBe(true);
   expect(pdf.match(/\/Type \/Page\b/g)).toHaveLength(1 + 4 + 1);
-  expect(pdf).toContain("A little LEGO tower: building instructions");
+  expect(pdf).toContain("A little brick tower: building instructions");
 });

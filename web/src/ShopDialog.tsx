@@ -183,28 +183,28 @@ function PickABrick({ build, table, edited }: { build: Build; table: PriceTable;
       const part = files.length > 1 ? ` ${i + 1} of ${files.length}` : "";
       Object.assign(document.createElement("a"), {
         href: url,
-        download: `${build.name} Pick a Brick${part}.csv`,
+        download: `${build.name} parts store list${part}.csv`,
       }).click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     });
   };
 
   return (
-    <section className="shop-option" aria-label="Pick a Brick">
+    <section className="shop-option" aria-label="Official parts store">
       <button className="shop-wide" onClick={download}>
         <DownloadSimpleIcon size={16} />
-        {files.length > 1 ? `Download ${files.length} Pick a Brick lists` : "Download Pick a Brick list"}
+        {files.length > 1 ? `Download ${files.length} parts store lists` : "Download parts store list"}
       </button>
       <p className="shop-note">
-        <b>≈ {money(found.cents, table)}</b> on Pick a Brick for {count(found.priced)} of {count(build.pieces.length)}{" "}
-        pieces
+        <b>≈ {money(found.cents, table)}</b> at the official parts store for {count(found.priced)} of{" "}
+        {count(build.pieces.length)} pieces
         {found.missing > 0 && `; ${count(found.missing)} are not sold there in their color`}.
         {found.outOfStock > 0 && ` ${count(found.outOfStock)} are out of stock.`}
         {edited && " Includes your edits."}
         {files.length > 1 && ` Each list holds up to ${UPLOAD_LIMIT} kinds of bricks: upload them one by one.`} Prices
         from {date}, shipping not included.{" "}
         <a href={storeUrl(table)} target="_blank" rel="noreferrer">
-          Open Pick a Brick <ArrowUpRightIcon size={13} />
+          Open the official parts store <ArrowUpRightIcon size={13} />
         </a>
       </p>
     </section>

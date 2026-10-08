@@ -77,7 +77,7 @@ export function fixture(): Build {
   }));
   return {
     id: "export-test",
-    name: "A little LEGO tower",
+    name: "A little brick tower",
     builder: "holo",
     status: "done",
     open: false,
