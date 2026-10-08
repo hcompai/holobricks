@@ -5,6 +5,7 @@ import {
   PlusIcon,
   ShoppingBagIcon,
   ShuffleIcon,
+  SignInIcon,
 } from "@phosphor-icons/react";
 import { type CSSProperties, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type Account, signInError } from "./account";
@@ -654,7 +655,8 @@ export default function App({ account }: { account: Account | null }) {
         <span className="spacer" />
         {actions}
         {!account ? (
-          <button className="sign-in" onClick={() => setSigningIn(true)}>
+          <button className="sign-in-button" onClick={() => setSigningIn(true)}>
+            <SignInIcon size={16} weight="bold" />
             Sign in
           </button>
         ) : (
