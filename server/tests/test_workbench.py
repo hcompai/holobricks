@@ -251,6 +251,42 @@ def test_a_step_builds_the_same_bricks_whatever_randomness_the_steps_before_it_u
     assert trees_after(1) == trees_after(50)
 
 
+def test_neighbours_of_one_kind_and_color_join_into_one_bigger_part_that_comes_in_it(monkeypatch):
+    monkeypatch.setattr(script, "_made_in", lambda part: frozenset({4, 15} if part != "3010" else {15}))
+    code = (
+        'step("Joined")\n'
+        'brick("3005", 0, 0, 0, 4)\nbrick("3005", 1, 0, 0, 4)\n'  # two 1x1 bricks: a 1x2
+        'for x in range(2):\n    for y in range(2):\n        brick("3024", 10 + x, y, 0, 4)\n'  # four 1x1 plates: a 2x2
+        'brick("3004", 0, 5, 0, 4, 90)\nbrick("3005", 0, 7, 0, 4)\n'  # a turned 1x2 and a 1x1: a 1x3 along y
+        'step("Kept")\n'
+        'brick("3005", 20, 0, 0, 4)\nbrick("3005", 21, 0, 0, 15)\n'  # two colors
+        'brick("3005", 20, 2, 0, 4)\nbrick("3024", 21, 2, 0, 4)\n'  # a brick and a plate
+        'brick("3005", 20, 4, 0, 4)\nbrick("3005", 21, 4, 3, 4)\n'  # two heights
+        'brick("3004", 20, 6, 0, 4)\nbrick("3004", 22, 6, 0, 4)\n'  # a 1x4 that is not made in red
+        'brick("3005", 30, 0, 0, 4)\nstep("Next")\nbrick("3005", 31, 0, 0, 4)\n'  # two steps
+    )
+    joined, kept, after = (
+        sorted((b["part"], b["x"], b["y"], b["rotation"]) for b in s["bricks"]) for s in script.run(code, [])["steps"]
+    )
+    assert joined == [("3004", 0, 0, 0), ("3022", 10, 0, 0), ("3622", 0, 5, 90)]
+    assert len(kept) == 9 and after == [("3005", 31, 0, 0)]
+
+
+def test_a_layer_of_one_color_joins_into_the_largest_parts_it_makes(monkeypatch):
+    monkeypatch.setattr(script, "_made_in", lambda part: frozenset({4}))
+    code = 'step("Floor")\nfor x in range(4):\n    for y in range(2):\n        brick("3024", x, y, 0, 4)\n'
+    assert [b["part"] for b in script.run(code, [])["steps"][0]["bricks"]] == ["3020"]
+
+
+def test_joining_runs_in_rounds_where_each_piece_joins_once(monkeypatch):
+    monkeypatch.setattr(script, "_made_in", lambda part: frozenset({4}))
+    row = [brick("3005", x, 0, 0) for x in range(8)]
+    assert [b["part"] for b in script._merged([dict(b) for b in row])] == ["3008"]  # 1x2s, 1x4s, then a 1x8
+    assert [b["part"] for b in script._merged([dict(b) for b in row], rounds=2)] == ["3010", "3010"]
+    plates = [brick("3035", 0, 0, 0, rotation=90), brick("3035", 4, 0, 0, rotation=90)]  # two 4x8 plates: an 8x8
+    assert [(b["part"], b["x"]) for b in script._merged(plates)] == [("41539", 0)]
+
+
 @pytest.mark.skipif(not catalog.SNAPSHOT.exists(), reason="catalog snapshot not built")
 def test_the_showcase_has_valid_catalog_parts_but_does_not_hide_detached_terrain(tmp_path):
     example = (Path(__file__).resolve().parents[2] / "agent" / "showcase" / "bag-end.py").read_text()

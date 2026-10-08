@@ -22,6 +22,44 @@ PRINT_LIMIT = 2000
 API = ("step", "brick", "mount", "place", "top", "colors", "box", "disc", "fill", "carve", "roof", "cone", "cover")
 Shade = int | Callable[[int, int, int], int]
 RUN_LENGTH = {part: n for n, part in shapes.BRICK_RUN.items()}
+ROUNDS = 3
+"""Rounds of joining at the end of a run: in each, a piece joins at most one neighbour, so eight 1x1s in a row make a
+1x8 in three."""
+LARGER = {
+    "brick": [(10, 1, "6111"), (12, 1, "6112"), (16, 1, "2465"), (10, 2, "3006")],
+    "plate": [
+        (16, 16, "91405"),
+        (24, 6, "3026"),
+        (16, 6, "3027"),
+        (14, 6, "3456"),
+        (8, 8, "41539"),
+        (6, 6, "3958"),
+        (12, 4, "3029"),
+        (10, 4, "3030"),
+        (16, 2, "4282"),
+        (12, 2, "2445"),
+        (10, 2, "3832"),
+        (12, 1, "60479"),
+        (10, 1, "4477"),
+    ],
+    "tile": [
+        (16, 8, "90498"),
+        (6, 6, "10202"),
+        (6, 3, "6934"),
+        (4, 4, "1751"),
+        (6, 2, "69729"),
+        (3, 2, "26603"),
+        (3, 1, "63864"),
+    ],
+}
+"""Bigger parts that pieces join into, beyond the sizes that fills and covers are cut in."""
+KINDS = {
+    kind: [*sizes, *LARGER[kind]]
+    for kind, sizes in (("brick", shapes.BRICKS), ("plate", shapes.PLATES), ("tile", shapes.TILES))
+}
+SIZES = {kind: {(w, d): part for w, d, part in sizes} for kind, sizes in KINDS.items()}
+"""Each kind's rectangular parts by their long and short sides."""
+KIND = {part: kind for kind, sizes in KINDS.items() for _, _, part in sizes}
 
 
 class Script:
@@ -247,6 +285,59 @@ def _in_color(b: dict) -> list[dict]:
     return out
 
 
+def _joins(i: int, rects: dict[int, list[int]], at: dict[Cell, int]) -> Iterable[tuple[int, list[int]]]:
+    """The pieces right of and below rectangle i that share a whole side with it, each with their union."""
+    x, y, w, d = rects[i]
+    right, below = at.get((x + w, y)), at.get((x, y + d))
+    if right is not None and rects[right][1] == y and rects[right][3] == d:
+        yield right, [x, y, w + rects[right][2], d]
+    if below is not None and rects[below][0] == x and rects[below][2] == w:
+        yield below, [x, y, w, d + rects[below][3]]
+
+
+def _merged(bricks: list[dict], rounds: int = ROUNDS) -> list[dict]:
+    """The step's bricks with neighbours of one kind, height and color joined wherever together they make exactly one
+    bigger part that comes in the color: two 1x1 bricks a 1x2, a 1x2 and a 1x1 plate a 1x3. Never re-cut, so no new
+    joint appears and bonded courses stay bonded; the joined piece keeps the place and lines of its first part."""
+    groups: dict[tuple, list[int]] = defaultdict(list)
+    rects: dict[int, list[int]] = {}
+    for i, b in enumerate(bricks):
+        kind = KIND.get(str(b["part"]).removesuffix(".dat"))
+        whole = all(type(b.get(k)) is int for k in ("x", "y", "z", "color", "rotation"))
+        if kind is None or "pos" in b or "facing" in b or not whole:
+            continue
+        w, d = shapes.footprint(b["part"], b["rotation"])
+        rects[i] = [b["x"], b["y"], w, d]
+        groups[kind, b["z"], b["color"]].append(i)
+    gone: set[int] = set()
+    for (kind, _, color), members in groups.items():
+        at = {cell: i for i in members for cell in shapes.rect(*rects[i])}
+        for _ in range(rounds):
+            joined: set[int] = set()
+            for i in members:
+                if i in gone or i in joined:
+                    continue
+                for j, union in _joins(i, rects, at):
+                    part = SIZES[kind].get((max(union[2:]), min(union[2:])))
+                    if j in joined or part is None or color not in _made_in(part):
+                        continue
+                    rects[i] = union
+                    at.update((cell, i) for cell in shapes.rect(*union))
+                    gone.add(j)
+                    joined.add(i)
+                    turned = shapes.footprint(part, 0) != (union[2], union[3])
+                    bricks[i] = bricks[i] | {
+                        "part": part,
+                        "x": union[0],
+                        "y": union[1],
+                        "rotation": 90 if turned else 0,
+                    }
+                    break
+            if not joined:
+                break
+    return [b for i, b in enumerate(bricks) if i not in gone]
+
+
 def _explain(error: BaseException, code: str) -> str:
     line = error.lineno if isinstance(error, SyntaxError) and error.filename == SOURCE else None
     tb = error.__traceback__
@@ -271,7 +362,7 @@ def run(code: str, taken: list[list[int]]) -> dict:
             script._flush()
     except (Exception, SystemExit) as e:  # noqa: BLE001
         return {"error": _explain(e, code), "printed": printed.getvalue()[-PRINT_LIMIT:]}
-    steps = [s for s in script.steps if s["bricks"]]
+    steps = [s | {"bricks": _merged(s["bricks"])} for s in script.steps if s["bricks"]]
     return {"steps": steps, "printed": printed.getvalue()[-PRINT_LIMIT:]}
 
 
