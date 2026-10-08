@@ -21,6 +21,23 @@ interface Props {
   manage?: (build: BuildSummary, published: boolean) => ProjectActions | null;
 }
 
+const AGES: [Intl.RelativeTimeFormatUnit, number][] = [
+  ["year", 365 * 86400],
+  ["month", 30 * 86400],
+  ["week", 7 * 86400],
+  ["day", 86400],
+  ["hour", 3600],
+  ["minute", 60],
+];
+const relative = new Intl.RelativeTimeFormat("en");
+
+/** How long ago `seconds` was: "just now", "5 minutes ago", "1 month ago". */
+function ago(seconds: number): string {
+  const elapsed = Date.now() / 1000 - seconds;
+  const unit = AGES.find(([, size]) => elapsed >= size);
+  return unit ? relative.format(-Math.floor(elapsed / unit[1]), unit[0]) : "just now";
+}
+
 function meta(b: BuildSummary, published = false): string {
   return [
     b.source === "showcase" ? "Showcase" : b.author ? `by ${b.author}` : null,
@@ -29,6 +46,7 @@ function meta(b: BuildSummary, published = false): string {
     b.private ? "private" : null,
     b.pieces === null ? null : `${b.pieces.toLocaleString()} pieces`,
     b.status === "building" ? "building…" : b.status === "error" ? "stopped" : null,
+    b.source === "showcase" || !b.created ? null : ago(b.created),
   ]
     .filter(Boolean)
     .join(" · ");
