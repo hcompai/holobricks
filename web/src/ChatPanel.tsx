@@ -1,5 +1,5 @@
 import { ThinkingIcon } from "./Thinking";
-import { ArrowUpIcon, PlusIcon, ShuffleIcon, SignInIcon, StopIcon, XIcon } from "@phosphor-icons/react";
+import { ArrowUpIcon, PlusIcon, ShuffleIcon, StopIcon, XIcon } from "@phosphor-icons/react";
 import { memo, type ReactNode, type Ref, useEffect, useImperativeHandle, useRef, useState } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -471,9 +471,7 @@ export function ChatPanel({
             <div>{closed}</div>
             {!!build?.pieces.length &&
               (onSignIn ? (
-                <button onClick={onSignIn}>
-                  <SignInIcon size={14} weight="bold" /> Sign in
-                </button>
+                <button onClick={onSignIn}>Sign in</button>
               ) : (
                 <button onClick={onFork} title="Start your own build from a copy of this one">
                   <ShuffleIcon size={14} weight="bold" /> Fork

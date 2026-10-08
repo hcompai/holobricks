@@ -236,6 +236,7 @@ hr {
 
 .app.home .aside-body {
   flex: none;
+  min-height: 100vh;
   gap: var(--space-5);
   width: min(1600px, 100%);
   margin: 0 auto;
@@ -878,8 +879,8 @@ aside {
   color: var(--text-default);
   background: linear-gradient(
     to top,
-    color-mix(in srgb, var(--background-card) 94%, transparent) 0%,
-    color-mix(in srgb, var(--background-card) 70%, transparent) 50%,
+    color-mix(in srgb, var(--background-card) 78%, transparent) 0%,
+    color-mix(in srgb, var(--background-card) 45%, transparent) 50%,
     transparent 100%
   );
   pointer-events: none;
