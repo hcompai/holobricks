@@ -1,4 +1,4 @@
-import { DiscordLogoIcon, LinkedinLogoIcon, XIcon, XLogoIcon } from "@phosphor-icons/react";
+import { DiscordLogoIcon, GithubLogoIcon, LinkedinLogoIcon, XIcon, XLogoIcon } from "@phosphor-icons/react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 
 export const TERMS = "https://www.hcompany.ai/terms-of-use";
@@ -68,6 +68,8 @@ function CreditsDialog({ onClose }: { onClose: () => void }) {
   );
 }
 
+const REPO = "https://github.com/hcompai/holobricks";
+
 const COLUMNS: { title: string; links: [string, string][] }[] = [
   {
     title: "Demos",
@@ -75,6 +77,7 @@ const COLUMNS: { title: string; links: [string, string][] }[] = [
       ["HoloBricks", "https://bricks.hcompany.ai"],
       ["HoloBlocks", "https://blocks.hcompany.ai"],
       ["All demos", "https://build.hcompany.ai"],
+      ["Source on GitHub", REPO],
     ],
   },
   {
@@ -102,6 +105,7 @@ const SOCIAL = [
   { name: "X", href: "https://x.com/hcompany_ai", Icon: XLogoIcon },
   { name: "LinkedIn", href: "https://www.linkedin.com/company/h-company-ai", Icon: LinkedinLogoIcon },
   { name: "Discord", href: "https://discord.gg/gAWcDZgx4s", Icon: DiscordLogoIcon },
+  { name: "GitHub", href: REPO, Icon: GithubLogoIcon },
 ];
 
 const HLogo = () => (

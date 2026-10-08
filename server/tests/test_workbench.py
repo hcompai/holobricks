@@ -274,7 +274,7 @@ def test_the_prompts_example_builds_with_no_problems_and_nothing_floating(tmp_pa
     bench = Workbench(Workspace.open(tmp_path))
     result = bench.run_script(example)
     assert result.problems == 0 and "Support warnings" not in result.text, result.text
-    assert len(bench.pieces) > 3_000, result.text
+    assert len(bench.pieces) > 1_500, result.text
 
 
 @pytest.mark.skipif(not catalog.SNAPSHOT.exists(), reason="catalog snapshot not built")

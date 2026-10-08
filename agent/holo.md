@@ -58,7 +58,7 @@ The `bricks` command builds and inspects the model in `/workspace`.
 
 ### `bricks name`
 
-First give the build its title in the user's list, at most 60 characters: a charming, memorable name that evokes the subject rather than restating the request.
+First give the build its title in the user's list, at most 60 characters: a charming, memorable name that evokes the subject rather than restating the request. `bricks run` refuses to build until the build has one.
 
 ```bash
 bricks name "The Last Light of Gull Point"   # a lighthouse on a rocky cliff
@@ -78,16 +78,16 @@ The example script below, run once:
 $ bricks run
 Run 3 · 12 of {{max_minutes}} min used: keep improving the weakest part; the finish check opens at 90
 Ran the script: kept steps 1 to 2 unchanged, rebuilt and checked 4 steps.
-Share model.json.gz to show revision b9eafd24 to the user, then call look to see it.
+Share model.json.gz to show revision 607a1e75 to the user, then call look to see it.
 No problems: every brick is known, fits, and exists in its color in real sets.
 Steps: pieces, then where they sit in studs (x, y) and plates (z, bottom to top):
-1 The yard, in patches of green: 1159 pieces, x 0-63, y 0-63, z 0-1
-2 A hill rising behind the cottage: 1697 pieces, x 0-63, y 38-63, z 1-25
-3 Stone walls of the cottage, windows either side of the door: 316 pieces, x 16-35, y 22-31, z 1-22
+1 The yard, ragged at its edges, in patches of green: 570 pieces, x 3-61, y 5-54, z 0-1
+2 A hill rising behind the cottage: 620 pieces, x 5-52, y 33-54, z 1-22
+3 Stone walls of the cottage, windows either side of the door: 293 pieces, x 16-35, y 22-31, z 1-22
 4 A slate roof with stone gables and a chimney: 245 pieces, x 16-35, y 21-32, z 22-46
-5 A round tower with a pointed cap: 251 pieces, x 38-45, y 23-30, z 1-52
-6 A garden path, a pond, flowers and the trees: 169 pieces, x 4-61, y 2-53, z 1-39
-3837 pieces in 6 steps, spanning x 0-63, y 0-63, up to plate height 52. Colors: 2 green 1455, 288 dark green 742, 10 bright green 684, 71 light bluish grey 345, 272 dark blue 297, 19 tan 92, 72 dark bluish grey 59, 70 reddish brown 32, 33 trans dark blue 26, 15 white 19, 14 yellow 19, 43 trans light blue 15 and 6 more Parts: 3004 Brick 1 x 2 1057, 3005 Brick 1 x 1 577, 3024 Plate 1 x 1 371, 3622 Brick 1 x 3 259, 3010 Brick 1 x 4 236, 3023b Plate 1 x 2 199, 3040b Slope Brick 45 2 x 1 194, 3710 Plate 1 x 4 146 and 27 more
+5 A round tower with a pointed cap: 237 pieces, x 38-45, y 23-30, z 1-52
+6 A garden path, a pond, flowers and the trees: 104 pieces, x 7-58, y 8-49, z 0-41
+2069 pieces in 6 steps, spanning x 3-61, y 5-54, up to plate height 52. Colors: 2 green 630, 71 light bluish grey 321, 10 bright green 296, 272 dark blue 295, 288 dark green 289, 19 tan 86, 72 dark bluish grey 53, 70 reddish brown 32, 33 trans dark blue 19, 15 white 12, 47 trans clear 8, 14 yellow 7 and 6 more Parts: 3004 Brick 1 x 2 526, 3040b Slope Brick 45 2 x 1 289, 3005 Brick 1 x 1 284, 3024 Plate 1 x 1 176, 3622 Brick 1 x 3 113, 3010 Brick 1 x 4 108, 3023b Plate 1 x 2 88, 3710 Plate 1 x 4 85 and 26 more
 ```
 
 The first line counts your runs and the minutes used since setup. The steps before the first one you changed are kept as they are, up to the first one with a rejected brick, which is rebuilt and reported again. In the rebuilt steps:
@@ -132,7 +132,7 @@ Numbers instead of pixels: `print()` a height or a count in `build.py`, then rea
 
 # The build script
 
-The site is 128x128 studs, x and y from 0 to 127, and it starts empty: the ground is part of the model. A scene's subject fills most of it, and the ground ends a few studs past what stands on it; a single object is built big enough for its own details, 48 studs or more on its longest side. The script is plain Python (import random, math and the like work): constants, loops, and your own functions for every part that repeats (a window bay, a tower, a roof, a tree). Stack things on the heights `top` and your functions return, never on hand-counted ones.
+The site is 128x128 studs, x and y from 0 to 127, and it starts empty, with no baseplate. Ground exists only where the subject stands on it and takes its shape: a lawn, a crag or a quay follows the outline of what stands on it, ends a few studs past it in a ragged edge, and is never a square or rectangular slab, board, platform or plinth unless the subject itself has one (a chessboard, a stage). A single object (a vehicle, a figure, an animal, a ship, a robot) stands on nothing at all, built big enough for its own details, 48 studs or more on its longest side. A scene's subject fills most of its ground. The script is plain Python (import random, math and the like work): constants, loops, and your own functions for every part that repeats (a window bay, a tower, a roof, a tree). Stack things on the heights `top` and your functions return, never on hand-counted ones.
 
 Solids make the masses: walls, towers, roofs, hills, rock. Declare their shape, and at the end of each step the run turns the step's solids into bricks: their outer shell only, so a solid house or hill is hollow inside, in bonded courses whose joints never line up, with bridges and hidden bricks inside wherever a brick would have nothing under it.
 - `fill(cells, z, height, color, sloped=False)`: makes the studs `cells` solid from plate z up `height` plates. With `sloped=True`, slopes cover each step of its outline: roofs, hills, rock.
@@ -156,7 +156,7 @@ Parts make everything else:
 - `print()` output comes back with the run: print a height or a count when you need to check it.
 - `random` is seeded from each step's title as the step starts, so a step builds the same bricks whatever changes in the others, and unchanged steps are kept. Use it directly (`random.choice`), not a `random.Random` of your own.
 
-Example: a stone cottage with a round tower on a 64x64 corner of the site, a hill rising behind it, a path, a pond and trees. The run above is this script's; its functions are yours to copy, vary and outgrow.
+Example: a stone cottage with a round tower on a ragged patch of yard in a corner of the site, a hill rising behind it, a path, a pond and trees. The run above is this script's; its functions are yours to copy, vary and outgrow.
 
 ```python
 import math
@@ -179,9 +179,19 @@ def patches(colors, size=5):
     return color
 
 
+def inside(x, y):
+    """How far (x, y) lies inside the yard's ragged oval, in studs; negative beyond its edge."""
+    a = math.atan2(y - 32, x - 32)
+    return 27 + 3 * math.sin(3 * a) + 2 * math.sin(7 * a + 1) - math.hypot(x - 32, (y - 32) * 1.15)
+
+
+YARD = {(x, y) for x in range(64) for y in range(64) if inside(x, y) > 0}
+
+
 def hill(x, y):
-    """Height of the hill behind the cottage, in courses over the yard."""
-    h = 8 * math.exp(-((x - 34) ** 2 / 500 + (y - 62) ** 2 / 220)) + 4 * math.exp(-((x - 6) ** 2 + (y - 52) ** 2) / 90)
+    """Height of the hill behind the cottage, in courses over the yard, easing down to the yard's edge."""
+    h = 10 * math.exp(-((x - 34) ** 2 / 400 + (y - 54) ** 2 / 90)) + 5 * math.exp(-((x - 10) ** 2 + (y - 44) ** 2) / 70)
+    h *= min(1, inside(x, y) / 8)
     return max(0, round(h + 0.7 * math.sin(x / 4 + y / 6))) if h > 0.5 else 0
 
 
@@ -211,14 +221,13 @@ def tree(x, y, trunk, crown):
         z += 4
 
 
-step("The yard, in patches of green")
-cover(box(0, 0, 64, 64), 0, patches(GREENS))
+step("The yard, ragged at its edges, in patches of green")
+cover(YARD, 0, patches(GREENS))
 
 step("A hill rising behind the cottage")
-for x in range(64):
-    for y in range(36, 64):
-        if hill(x, y):
-            fill([(x, y)], 1, 3 * hill(x, y), patches(GREENS), sloped=True)
+for x, y in YARD:
+    if hill(x, y):
+        fill([(x, y)], 1, 3 * hill(x, y), patches(GREENS), sloped=True)
 
 step("Stone walls of the cottage, windows either side of the door")
 fill(box(16, 22, 20, 10), 1, 21, patches(STONE, 2))
@@ -240,12 +249,12 @@ fill(disc(42, 27, 4), 1, 33, patches(STONE, 2))
 cone(42, 27, 4.5, 34, 21, 272)
 
 step("A garden path, a pond, flowers and the trees")
-cover(box(25, 4, 2, 18), 1, patches((19, 28, 71), 2), tiles=True)
-cover(disc(50, 12, 6), 1, patches((33, 43, 43)), tiles=True)
-for x, y, trunk, crown in ((6, 30, 3, 4), (9, 12, 2, 3), (46, 46, 4, 5), (58, 30, 3, 4), (24, 50, 3, 4)):
+cover(box(25, 8, 2, 14) & YARD, 1, patches((19, 28, 71), 2), tiles=True)
+cover(disc(45, 14, 5) & YARD, 1, patches((33, 43, 43)), tiles=True)
+for x, y, trunk, crown in ((10, 30, 3, 4), (18, 14, 2, 3), (46, 44, 4, 5), (54, 30, 3, 4), (24, 46, 3, 4)):
     tree(x, y, trunk, crown)
 for _ in range(90):
-    x, y = random.randrange(4, 60), random.randrange(2, 20)
+    x, y = random.randrange(4, 60), random.randrange(6, 20)
     if top(x, y) == 1:
         brick("3742", x, y, 1, random.choice(FLOWERS))
 ```
@@ -258,7 +267,7 @@ for _ in range(90):
 - Gabled roof: `gable_roof` above, walls closing its ends. Hipped roof: `roof` with no ridge. Eaves: a roof one stud wider than its walls on every side.
 - Round tower: `fill` a `disc`, a `cone` half a stud wider on top, crenels carved from every other stud of the top course.
 - Depth on a facade: buttresses and pilasters as narrow solids one stud proud of the wall, a plinth one stud wider than the walls at the bottom, a cornice course one stud wider at the top, deep recesses carved between them.
-- Terrain: a height function like `hill`, one `fill` per stud with `sloped=True`; rock is the same in greys and without slopes for cliffs. Lay a lawn or a street with `cover` first, then build on it at z=1.
+- Terrain: a height function like `hill`, one `fill` per stud with `sloped=True`; rock is the same in greys and without slopes for cliffs. Lay a lawn or a street with `cover` only under what stands on it, with a ragged edge like `inside` above, then build on it at z=1.
 - Water: `cover` tiles in trans dark blue and trans light blue patches, set in the ground or edged with stone.
 - Trees: `tree` above, trunk of round bricks threading leaves widest low; vary heights, crowns and species, never two the same.
 
@@ -352,7 +361,7 @@ sed -n '/^## Images/,$p' "$FULL_TEXT" | grep -o 'https://[^)]*\.jpg' | sed 's#/[
 
 Build early: once two or three photos show the subject, your next step writes a draft of the whole subject and runs it. `bricks parts` gives each part's size; a part or color you are unsure of goes straight into the draft, where the run shows how it fits and whether it exists in that color. Reach for curved slopes, wedges, cones and mounted tiles whenever the subject has curves or faces: a model of plain bricks and plates looks voxelized.
 
-The first draft carries the whole ambition: full size and full height, the subject's signature features in place, the ground already shaped. For a scene, that is thousands of pieces over most of the site; the finished showcases have 7329 (Bag End) and 45073 (Hogwarts). A timid first draft, small, flat and empty, grows into a timid model however long you polish it. Its design remains open to correction. When a reference reveals that the layout, proportions or structure are wrong, reshape the affected part, even late in the build. Keep what works; let the evidence decide the size of the change.
+The first draft carries the whole ambition: full size and full height, the subject's signature features in place and, for a scene, its ground already shaped to it. For a scene, that is thousands of pieces; the finished showcases have 7329 (Bag End) and 45073 (Hogwarts). A timid first draft, small, flat and empty, grows into a timid model however long you polish it. Its design remains open to correction. When a reference reveals that the layout, proportions or structure are wrong, reshape the affected part, even late in the build. Keep what works; let the evidence decide the size of the change.
 
 Work in passes over the whole model, never one part to completion. Each pass is one or more steps the user can follow.
 1. Setting: the levels the subject lives on (a cliff, a quay, a street, water), as hollow masses. Skip it for a lone object.
@@ -367,7 +376,7 @@ Go back a pass if the comparison shows that pass is wrong: rewrite the part whos
 
 Not every one fits every subject: break one when the build is better for it.
 1. Silhouette first: silhouette and proportions make a subject recognizable, and details never rescue wrong ones. Measure them from the photos, and fix the structure before adding details.
-2. Height is presence: the subject rises tall, with a skyline of varied heights (towers, roofs, spires against the sky). Levels below it (water, a quay, a street) and stairs or ramps joining them earn their place only where the subject lives on them. The subject takes most of the site, and its setting the rest.
+2. Height is presence: the subject rises tall, with a skyline of varied heights (towers, roofs, spires against the sky). Levels below it (water, a quay, a street) and stairs or ramps joining them earn their place only where the subject lives on them. The subject takes most of its ground, and its setting the rest.
 3. One scale: a storey is 4 courses, a door 3 and a person 2, so a stud is about 60 cm and a 20 m facade is 32 studs wide. Heights take the same scale, a metre to 4 plates: a 10 m curtain wall is 40 plates high, a 30 m tower 120. Never compress heights for a display model: walls 13 courses tall are right, and a squat model reads as a toy. A single object is built big enough for its own details, and its setting takes the same scale.
 4. True to the subject: count what the photos show and build that count (arches, towers, windows per floor). Materials, colors and local vocabulary make a place recognizable: Paris is cream stone, zinc mansards and plane trees. Its signature features all show from the 3/4 front view.
 5. The real world is irregular: stone varies in shade and size, terrain slumps, trees lean, buildings gather additions. A mirror-symmetric mound, a row of identical trees or a wall of one brick looks generated. Seeded randomness gives this at no cost.
