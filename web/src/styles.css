@@ -1923,23 +1923,6 @@ main {
   padding: 9px var(--space-4);
 }
 
-/* The parts store list and the print plates, side by side, stacking on a phone. */
-.shop-downloads {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-}
-
-.shop-downloads > * {
-  flex: 1 1 200px;
-}
-
-.shop-print {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
 .shop-dialog :is(.shop-feedback, .shop-note, .shop-links) {
   font-size: var(--font-small);
   line-height: 18px;
