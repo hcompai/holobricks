@@ -24,7 +24,7 @@
 | **Trust**             | Every brick is a real LDraw part, checked to make sure it fits and connects.                                                                       |
 | **Replay**            | Scrub back through the steps, or share the build as a GIF.                                                                                         |
 | **Tweak**             | Move, turn, recolor and replace pieces, or walk through the model.                                                                                 |
-| **Build it for real** | Get the instructions as a PDF, an official parts store list, BrickLink carts through [HoloTab](SHOPPING.md), or 3MF plates to 3D print the bricks. |
+| **Build it for real** | Get the instructions as a PDF, an official parts store list, or BrickLink carts through [HoloTab](SHOPPING.md). |
 | **Share**             | Publish a build so anyone can open it, and builders can remix it into their own.                                                                   |
 
 ## How it works

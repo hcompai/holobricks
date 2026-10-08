@@ -2,7 +2,6 @@ import {
   ArrowUpRightIcon,
   CheckIcon,
   CubeIcon,
-  CubeTransparentIcon,
   DownloadSimpleIcon,
   ShoppingCartIcon,
   XIcon,
@@ -11,7 +10,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { PdfButton } from "./InstructionsExport";
 import type { Build, Piece, ShoppingPackage } from "./model";
 import { type Estimate, estimate, money, type PriceTable, storeUrl, UPLOAD_LIMIT, uploadLists } from "./pickabrick";
-import { BED, printPlates } from "./printPlates";
 import { HOLOTAB_INSTALL, prepareShopping, shoppingPrompt } from "./shopping";
 
 interface Props {
@@ -163,13 +161,7 @@ export function ShopDialog({ build, preview, table, edited, describe, onReset, o
         </p>
       </section>
 
-      {table && found?.priced ? (
-        <PickABrick build={build} table={table} found={found} edited={edited} />
-      ) : (
-        <section className="shop-option" aria-label="3D printing">
-          <PrintButton build={build} />
-        </section>
-      )}
+      {table && found?.priced ? <PickABrick build={build} table={table} found={found} edited={edited} /> : null}
 
       <section className="shop-option" aria-label="Instructions">
         <PdfButton build={build} describe={describe} className="shop-wide" />
@@ -185,7 +177,7 @@ interface PickABrickProps {
   edited: boolean;
 }
 
-/** The pieces as lists to upload to LEGO Pick a Brick, with what they would cost there, beside their print plates. */
+/** The pieces as lists to upload to LEGO Pick a Brick, with what they would cost there. */
 function PickABrick({ build, table, found, edited }: PickABrickProps) {
   const files = uploadLists(found.lines);
   const date = new Date(table.fetched_at * 1000).toLocaleDateString(table.locale, { dateStyle: "medium" });
@@ -205,13 +197,10 @@ function PickABrick({ build, table, found, edited }: PickABrickProps) {
 
   return (
     <section className="shop-option" aria-label="Official parts store">
-      <div className="shop-downloads">
-        <button className="shop-wide" onClick={download}>
-          <DownloadSimpleIcon size={16} />
-          {files.length > 1 ? `Download ${files.length} parts store lists` : "Download parts store list"}
-        </button>
-        <PrintButton build={build} />
-      </div>
+      <button className="shop-wide" onClick={download}>
+        <DownloadSimpleIcon size={16} />
+        {files.length > 1 ? `Download ${files.length} parts store lists` : "Download parts store list"}
+      </button>
       <p className="shop-note">
         <b>≈ {money(found.cents, table)}</b> at the official parts store for {count(found.priced)} of{" "}
         {count(build.pieces.length)} pieces
@@ -225,44 +214,5 @@ function PickABrick({ build, table, found, edited }: PickABrickProps) {
         </a>
       </p>
     </section>
-  );
-}
-
-/** Downloads the pieces as 3MF print plates, one color a plate, at real size from their LDraw geometry. */
-function PrintButton({ build }: { build: Build }) {
-  const [state, setState] = useState<{ busy: boolean; note: string; error: boolean }>({
-    busy: false,
-    note: "",
-    error: false,
-  });
-  const download = async () => {
-    setState({ busy: true, note: "", error: false });
-    try {
-      const made = await printPlates(build);
-      const url = URL.createObjectURL(made.file);
-      Object.assign(document.createElement("a"), { href: url, download: `${build.name} print plates.3mf` }).click();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-      const skipped = made.skipped ? `; ${plural(made.skipped, "piece has", "pieces have")} no geometry` : "";
-      setState({
-        busy: false,
-        note: `${plural(made.plates, "plate", "plates")} of ${BED} × ${BED} mm, one color each${skipped}.`,
-        error: false,
-      });
-    } catch (e) {
-      setState({ busy: false, note: e instanceof Error ? e.message : "The plates could not be made.", error: true });
-    }
-  };
-  return (
-    <div className="shop-print">
-      <button className="shop-wide" disabled={state.busy} onClick={download}>
-        <CubeTransparentIcon size={16} />
-        {state.busy ? "Preparing 3MF plates…" : "Download 3MF plates"}
-      </button>
-      {state.note && (
-        <p className={state.error ? "shop-note error-text" : "shop-note"} role="status">
-          {state.note}
-        </p>
-      )}
-    </div>
   );
 }
