@@ -49,28 +49,6 @@ interface Props {
 
 type Ask = Omit<ComponentProps<typeof Confirm>, "onClose">;
 
-function publishAsk({ published, imported, author, onPublish, onUnpublish }: Publishing): Ask {
-  return published
-    ? {
-        name: "Make private",
-        question: "Make this build private?",
-        note: imported
-          ? "It leaves the public library and stays under Your builds for you alone: its link only opens it for you. You can publish it again."
-          : "It leaves the public library and its link stops working. You can publish it again.",
-        doing: "Making private…",
-        icon: <LockSimpleIcon size={16} />,
-        action: onUnpublish,
-      }
-    : {
-        name: "Publish",
-        question: "Publish this build?",
-        note: `Anyone can open the model from the library${author ? `, as ${author}'s` : ""}.${imported ? "" : " Your chat and photos stay private."}`,
-        doing: "Publishing…",
-        icon: <GlobeIcon size={16} />,
-        action: onPublish,
-      };
-}
-
 export const DELETE_NOTE =
   "It leaves your library and the public one, and its link stops working. This cannot be undone.";
 /** A session cannot be deleted from the platform: it leaves the library, and the platform ends it in its time. */
@@ -174,14 +152,6 @@ export function ShareMenu({
                     ? "In the public library: anyone can open it"
                     : "Private: not in the public library"}
                 </p>
-                <button
-                  role="menuitem"
-                  disabled={!publishing.published && publishing.blocked !== null}
-                  onClick={() => setAsk(publishAsk(publishing))}
-                >
-                  {publishing.published ? <LockSimpleIcon size={16} /> : <GlobeIcon size={16} />}
-                  {publishing.published ? "Make private…" : (publishing.blocked ?? "Publish to the library…")}
-                </button>
               </>
             )}
             {(link || publishing) && (

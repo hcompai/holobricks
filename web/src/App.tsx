@@ -33,7 +33,8 @@ import { HomeShelves } from "./HomeShelves";
 import { ImportBuild } from "./ImportBuild";
 import { SiteFooter } from "./Legal";
 import { countParts, PartsPanel } from "./PartsPanel";
-import { SESSION_DELETE_NOTE, ShareMenu } from "./ShareMenu";
+import { SESSION_DELETE_NOTE, ShareMenu, type Publishing } from "./ShareMenu";
+import { VisibilityToggle } from "./VisibilityToggle";
 import { Timeline } from "./Timeline";
 import {
   card,
@@ -579,6 +580,23 @@ export default function App({ account }: { account: Account | null }) {
   /** The open build, once it is more than a request on its way. */
   const actionable = drafted ? null : build;
 
+  const publishing: Publishing | null =
+    account && actionable && owned && !readOnly
+      ? {
+          published: imported ? !summary?.private : ref?.source === "public" || !!listed,
+          imported,
+          blocked:
+            actionable.status === "building"
+              ? "Publish once Holo answers"
+              : !actionable.pieces.length
+                ? "Nothing is built yet"
+                : null,
+          author: account.user.name,
+          onPublish: imported ? republish : publishBuild,
+          onUnpublish: unpublishBuild,
+        }
+      : null;
+
   const actions = actionable && (
     <>
       {actionable.status === "done" && actionable.pieces.length > 0 && !loading && (
@@ -587,27 +605,12 @@ export default function App({ account }: { account: Account | null }) {
           <span className="button-label">Share a GIF</span>
         </button>
       )}
+      {publishing && <VisibilityToggle key={`${ref?.source}:${ref?.id}`} publishing={publishing} />}
       <ShareMenu
         build={actionable}
         link={!readOnly && shared ? linkTo(shared) : null}
         loading={loading}
-        publishing={
-          account && owned && !readOnly
-            ? {
-                published: imported ? !summary?.private : ref?.source === "public" || !!listed,
-                imported,
-                blocked:
-                  actionable.status === "building"
-                    ? "Publish once Holo answers"
-                    : !actionable.pieces.length
-                      ? "Nothing is built yet"
-                      : null,
-                author: account.user.name,
-                onPublish: imported ? republish : publishBuild,
-                onUnpublish: unpublishBuild,
-              }
-            : null
-        }
+        publishing={publishing}
         onDelete={owned && !readOnly && ref?.source !== "showcase" ? deleteBuild : null}
         deleteNote={project?.source === "session" ? SESSION_DELETE_NOTE : undefined}
         image={() => viewer.current?.image() ?? Promise.resolve(null)}
