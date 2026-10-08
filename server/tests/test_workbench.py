@@ -287,6 +287,60 @@ def test_joining_runs_in_rounds_where_each_piece_joins_once(monkeypatch):
     assert [(b["part"], b["x"]) for b in script._merged(plates)] == [("41539", 0)]
 
 
+def test_stacks_of_one_footprint_join_into_a_brick_or_a_taller_one(monkeypatch):
+    monkeypatch.setattr(script, "_made_in", lambda part: frozenset({4, 15}))
+    joined = lambda pieces: sorted((b["part"], b["x"], b["z"]) for b in script._merged([dict(p) for p in pieces]))
+    assert joined([brick("3023b", 0, 0, z) for z in range(3)]) == [("3004", 0, 0)]  # three 1x2 plates: a 1x2 brick
+    assert joined([brick("3005", 0, 0, z) for z in (0, 3, 6)]) == [("14716", 0, 0)]  # three 1x1 bricks: a 1x1x3
+    assert joined([brick("3004", 0, 0, z) for z in (0, 3)]) == [("3245c", 0, 0)]  # two 1x2 bricks: a 1x2x2
+    assert joined([brick("3024", 0, 0, z) for z in range(2)]) == [("3024", 0, 0), ("3024", 0, 1)]  # no 2-plate part
+    kept = [brick("3005", 0, 0, 0), brick("3005", 0, 0, 3, color=15), brick("3070b", 2, 0, 0), brick("3070b", 2, 0, 1)]
+    assert len(script._merged([dict(p) for p in kept])) == 4  # two colors, and tiles never stack
+    assert joined([brick("3004", 0, 0, 0), brick("3005", 0, 0, 3)]) == [
+        ("3004", 0, 0),
+        ("3005", 0, 3),
+    ]  # footprints differ
+
+
+def test_a_patch_of_plates_or_tiles_is_laid_again_in_fewer_pieces_but_bricks_keep_their_bond(monkeypatch):
+    monkeypatch.setattr(script, "_made_in", lambda part: frozenset({4}))
+    lay = lambda pieces: script._relaid(script._merged([dict(p) for p in pieces]))
+    # A pinwheel of four 1x3s round a 2x2: no two share a whole side, so nothing joins, but it is one 4x4.
+    pinwheel = lambda long, square, z: [
+        brick(long, 0, 0, z),
+        brick(long, 3, 0, z, rotation=90),
+        brick(long, 1, 3, z),
+        brick(long, 0, 1, z, rotation=90),
+        brick(square, 1, 1, z),
+    ]
+    assert len(script._merged(pinwheel("63864", "3068b", 1))) == 5
+    assert [b["part"] for b in lay(pinwheel("63864", "3068b", 1))] == ["1751"]  # tiles: a 4x4 tile
+    assert [b["part"] for b in lay(pinwheel("3623", "3022", 1))] == ["3031"]  # plates: a 4x4 plate
+    assert len(lay(pinwheel("3622", "3003", 0))) == 5  # bricks keep their bond
+    assert [b["part"] for b in lay([brick("3023b", 0, 0, 0), brick("3024", 2, 0, 0)])] == ["3623"]
+
+
+def test_slopes_turned_alike_join_across_their_width_only(monkeypatch):
+    monkeypatch.setattr(script, "_made_in", lambda part: frozenset({4}))
+    joined = lambda pieces: sorted((b["part"], b["x"], b["y"], b["rotation"]) for b in script._merged(pieces))
+    assert joined([brick("60481a", x, 0, 0) for x in range(2)]) == [("3678b", 0, 0, 0)]  # two 2x1 65s: a 2x2
+    assert joined([brick("3040b", x, 0, 0, rotation=180) for x in range(4)]) == [("3037", 0, 0, 180)]
+    assert joined([brick("3040b", 0, y, 0, rotation=90) for y in range(3)]) == [("3038", 0, 0, 90)]  # across y
+    assert len(script._merged([brick("3040b", 0, 0, 0), brick("3040b", 1, 0, 0, rotation=180)])) == 2  # facing apart
+    assert len(script._merged([brick("3040b", 0, 0, 0), brick("3040b", 0, 2, 0)])) == 2  # one behind the other
+
+
+def test_a_course_of_bricks_is_laid_again_only_as_one_brick_and_plates_only_in_plates(monkeypatch):
+    monkeypatch.setattr(script, "_made_in", lambda part: frozenset({4}))
+    lay = lambda pieces: script._relaid(script._merged([dict(p) for p in pieces]))
+    # A pier course in two 1x2 bricks one way and a 1x1 pair the other fills a 2x2: one 2x2 brick.
+    course = [brick("3004", 0, 0, 0, rotation=90), brick("3005", 1, 0, 0), brick("3005", 1, 1, 0)]
+    assert [b["part"] for b in lay(course)] == ["3003"]
+    # A 1x16 strip of plates in running bond is laid as plates: no 1x16 plate, and the 1x16 brick is too tall.
+    strip = [brick("3023b", x, 0, 0) for x in range(1, 15, 2)] + [brick("3024", 0, 0, 0), brick("3024", 15, 0, 0)]
+    assert all(script.HEIGHT[b["part"]] == 1 for b in lay(strip))
+
+
 @pytest.mark.skipif(not catalog.SNAPSHOT.exists(), reason="catalog snapshot not built")
 def test_the_showcase_has_valid_catalog_parts_but_does_not_hide_detached_terrain(tmp_path):
     example = (Path(__file__).resolve().parents[2] / "agent" / "showcase" / "bag-end.py").read_text()
