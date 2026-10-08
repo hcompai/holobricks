@@ -302,3 +302,20 @@ test("concurrent links cannot replace the winning session and legacy links still
     sessionId: "legacy",
   });
 });
+
+test("a build carries on under its session id: only its owner may, and its runs sit in groups of their own", async () => {
+  const carried = { id: "own-run", seed: seed() };
+  own = false;
+  expect((await POST(request("POST", carried))).status).toBe(403);
+  expect(objects.size).toBe(0);
+  own = true;
+  expect((await POST(request("POST", carried))).status).toBe(201);
+  group = "own-run+own-run";
+  expect((await PATCH(request("PATCH", { id: "own-run", sessionId: "own-run" }))).status).toBe(204);
+  group = "someone-else+own-run";
+  expect((await PATCH(request("PATCH", { id: "own-run", sessionId: "own-run" }))).status).toBe(400);
+  expect(await (await GET(request("GET", undefined, ACCOUNT.user, `?id=own-run`))).json()).toMatchObject({
+    id: "own-run",
+    sessionId: "own-run",
+  });
+});

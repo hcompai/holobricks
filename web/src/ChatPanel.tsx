@@ -183,7 +183,7 @@ interface Props {
   onFork: () => void;
   /** Receives the notes and composer under the chat log, which a phone's sheet keeps in view. */
   dockRef?: (dock: HTMLDivElement | null) => void;
-  /** Start a new build from a copy of this one, changed as asked: a closed build, or one whose session ended. */
+  /** Change a build whose session ended: the owner's carries on under its id, anyone else's starts a copy. */
   onRemix: (text: string, images: string[], attached?: Record<string, Blob>) => Promise<void>;
   /** Signed out: Holo takes no message, and sending asks to sign in instead. */
   onSignIn?: () => void;
@@ -219,7 +219,7 @@ export function ChatPanel({
   /** Whether the log sits at its end, so new lines scroll it and reading earlier ones is left alone. */
   const pinned = useRef(true);
   const busy = build?.status === "building";
-  /** The builder no longer takes messages here: a change starts a copy of the build. */
+  /** The builder no longer takes messages here: a change goes through `onRemix`. */
   const ended = !!build && !build.open && !busy;
   const changing = Boolean(build || loading);
   /** How many messages the build had when it opened: only later ones animate in. */

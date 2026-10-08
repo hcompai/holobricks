@@ -377,8 +377,10 @@ test("a suggestion starts its build in one click: Holo gets the full prompt, the
   await expect(page.locator(".aside-title")).toHaveText("A red-and-white lighthouse");
 });
 
-test("a change to my ended build continues it as a copy under the same name", async ({ page }) => {
-  await site(page);
+test("a change to my ended build carries it on under the same id: one card, one link, a fresh run behind it", async ({
+  page,
+}) => {
+  const { copies } = await site(page);
   const agp = await platform(page);
   const model = fixture();
   agp.session("ended");
@@ -388,28 +390,36 @@ test("a change to my ended build continues it as a copy under the same name", as
   agp.sessions.get("ended")!.status = "completed";
   await page.goto("/?build=ended");
   await shown(page, model.revision);
-  await page.getByRole("button", { name: "Share", exact: true }).click();
-  await expect(page.getByRole("switch", { name: "Public", exact: true })).toBeEnabled();
-  await page.keyboard.press("Escape");
   await page.getByPlaceholder("Ask for a change").fill("Make it blue");
   await page.getByRole("button", { name: "Send", exact: true }).click();
-  await expect(page).toHaveURL(/\?build=new-build$/);
+  await expect(page).toHaveURL(/\?fork=ended$/);
   await expect(page.locator(".aside-title")).toHaveText(model.name);
-  const [first] = agp.posted("/api/v2/sessions")[0].messages;
+  await expect.poll(() => copies.get("ended")?.sessionId).toBe("new-build");
+
+  const [post] = agp.posted("/api/v2/sessions");
+  expect(post.group_id).toBe("ended+ended");
+  const [first] = post.messages;
   expect(first.message).toBe("Make it blue");
   const seedFile = first.files.find((f: { name: string }) => f.name === "brickyard-fork.json.gz");
-  expect(seedFile).toBeDefined();
   const seed = JSON.parse(gunzipSync(Buffer.from(seedFile.source, "base64")).toString());
   expect(seed.model.name).toBe(model.name);
   expect(seed.origin).toMatchObject({ id: "ended", source: "session", name: model.name });
-  expect(first.files.some((f: { name: string }) => f.name === "remix.py")).toBe(true);
   expect(agp.posted("/messages")).toHaveLength(0);
-  agp.share("new-build", { ...model, name: EMPTY_MODEL.name });
+
+  const changed = revised({ ...model, pieces: model.pieces.map((p) => ({ ...p, color: 1 })) });
+  agp.share("new-build", { ...changed, name: EMPTY_MODEL.name });
   agp.answer("new-build", "Changed.");
-  await page.evaluate(() => localStorage.removeItem("brickyard.library"));
-  await page.reload();
-  await shown(page, model.revision);
+  await shown(page, changed.revision);
   await expect(page.locator(".aside-title")).toHaveText(model.name);
+
+  await page.evaluate(() => localStorage.removeItem("brickyard.library"));
+  await page.goto("/?build=ended");
+  await expect(page).toHaveURL(/\?fork=ended$/);
+  await shown(page, changed.revision);
+  await page.getByRole("button", { name: "HoloBricks", exact: true }).click();
+  const yours = page.getByRole("region", { name: "Your builds" }).locator(".tile");
+  await expect(yours).toHaveCount(1);
+  await expect(yours).toContainText(model.name);
 });
 
 test("home shows my builds by the names Holo gave them; showcases under Public builds", async ({ page }) => {

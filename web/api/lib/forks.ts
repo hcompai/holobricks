@@ -4,6 +4,11 @@ import { readSeed, type ForkSeed, type ForkSummary, type SavedFork } from "../..
 import { privateScope } from "./account";
 import { Refusal } from "./http";
 
+export const isFork = (id: string) => /^fork-[a-f0-9-]{36}$/.test(id);
+/** A continuation's sessions sit in groups of their own, one per session they carry on from. */
+export const inGroupOf = (id: string, group: string | null | undefined) =>
+  group === id || !!group?.startsWith(`${id}+`);
+
 const options = { access: "public", addRandomSuffix: false, allowOverwrite: true, cacheControlMaxAge: 60 } as const;
 const prefix = (owner: string) => `models/${privateScope(owner)}/`;
 const path = (owner: string, id: string) => `${prefix(owner)}${id}.json`;

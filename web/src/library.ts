@@ -340,17 +340,20 @@ export async function library(): Promise<{ builds: BuildSummary[]; failed: Listi
     });
   // A build is public or private, never both: the public listing wins if a stale private entry lingers.
   const privately = own.filter((p) => !listed.has(p.id));
-  const forkRuns = new Set(forks.flatMap((f) => (f.sessionId ? [f.sessionId] : [])));
+  // A copy stands for the runs behind it: the one it links to, and the ended session a build was carried on from.
+  const forkRuns = new Set(forks.flatMap((f) => [f.id, ...(f.sessionId ? [f.sessionId] : [])]));
   const copies: BuildSummary[] = forks
     .filter((f) => !removed.has(f.id))
     .map((f) => {
       const run = builds.find((b) => b.id === f.sessionId);
+      const origin = builds.find((b) => b.id === f.id);
       const saved = known[f.id];
       const rendered = f.sessionId ? known[f.sessionId] : null;
       return {
         ...f,
+        created: origin?.created ?? f.created,
         name: f.name,
-        prompt: run?.prompt ?? "",
+        prompt: run?.prompt ?? origin?.prompt ?? "",
         pieces: run?.pieces ?? f.pieces,
         status: run?.status ?? "done",
         thumbnail:

@@ -1,6 +1,6 @@
 import { holder } from "./lib/account";
 import { Refusal, route } from "./lib/http";
-import { deleteFork, readFork } from "./lib/forks";
+import { deleteFork, isFork, readFork } from "./lib/forks";
 import { deleteProjectName } from "./lib/names";
 import { markRemoved, removedIds } from "./lib/removed";
 import { ownedSession } from "./lib/snapshot";
@@ -26,8 +26,8 @@ export const DELETE = route(async (request) => {
   const source = params.get("source") ?? "";
   if (!ID.test(id) || !SOURCES.has(source)) throw new Refusal(400, "Invalid project.");
 
-  // Only sessions need hiding, since the Agents API keeps them; a fork's or an import's files are simply deleted.
-  const removed = source === "session" ? [id] : [];
+  // Sessions need hiding, since the Agents API keeps them, including one carried on as a fork; a fork's or an import's files are simply deleted.
+  const removed = source === "session" || (source === "fork" && !isFork(id)) ? [id] : [];
   if (source === "fork") {
     if (!(await readFork(user.id, id))) throw new Refusal(404, "No such project of yours.");
   } else if (source === "session") {

@@ -329,6 +329,12 @@ export default function App({ account }: { account: Account | null }) {
     if (url.href !== window.location.href) window.history.pushState(null, "", url);
   };
 
+  // A build carried on past its session lists as a copy under its own id: its old link follows it there.
+  useEffect(() => {
+    if (ref?.source === "session" && builds?.some((b) => b.source === "fork" && b.id === ref.id))
+      open({ id: ref.id, source: "fork" });
+  });
+
   useEffect(() => {
     const sync = () => {
       const next = urlBuild();
@@ -397,6 +403,18 @@ export default function App({ account }: { account: Account | null }) {
       setDraft((current) => (current?.build === build ? null : current));
       throw e;
     }
+  };
+
+  /** Carry the open build on past its ended session: a fresh run seeded with the model as it stands, under the same id. */
+  const carryOn = async (text: string, images: string[], attached: Record<string, Blob> = {}) => {
+    if (!live || !ref || (ref.source !== "session" && ref.source !== "fork")) return;
+    const seed = forkSeed(live, { ...ref, name: live.name, version: null, revision: live.revision }, live.name);
+    if (ref.source === "session") await copyModel(ref.id, seed);
+    const id = await startFork(ref.id, seed, text, images, attached, runId ?? undefined);
+    started.current.add(id);
+    if (ref.source === "fork") attachSession(id);
+    else if (same(ref, opened.current)) open({ id: ref.id, source: "fork" });
+    refreshBuilds();
   };
 
   /** Open a listed build: the user's public builds as their session, when they have one. */
@@ -847,7 +865,9 @@ export default function App({ account }: { account: Account | null }) {
             onSignIn={askSignIn}
             dockRef={setDock}
             onRemix={async (text, images, attached) => {
-              if (build && !readOnly && owned) await start(text, images, build, attached);
+              if (!build || readOnly || !owned) return;
+              if (ref?.source === "public") await start(text, images, build, attached);
+              else await carryOn(text, images, attached);
             }}
           />
           {forkError && (
