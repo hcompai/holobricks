@@ -70,6 +70,11 @@ export function key(): string {
   return account.key;
 }
 
+/** Show the signed-in user under the display name they just chose. */
+export function renamed(name: string) {
+  if (account) set({ ...account, user: { ...account.user, name } });
+}
+
 export function signOut() {
   if (account) localStorage.setItem(PREVIOUS, account.keyId);
   set(null);

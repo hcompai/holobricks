@@ -892,6 +892,91 @@ aside {
   width: min(400px, calc(100vw - 32px));
 }
 
+.legal {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: var(--space-2);
+  padding-top: var(--space-5);
+  font-size: var(--font-small);
+  color: var(--text-tertiary);
+}
+
+.legal :is(a, button),
+.legal-note a,
+.credits a {
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 2px;
+}
+
+.legal :is(a, button):where(:hover),
+.legal-note a:hover,
+.credits a:hover {
+  background: none;
+  color: var(--text-secondary);
+  text-decoration-color: currentColor;
+}
+
+.legal-note {
+  font-size: var(--font-small);
+  line-height: 16px;
+  color: var(--text-tertiary);
+  text-align: center;
+}
+
+.legal-note a,
+.credits a {
+  text-decoration-color: currentColor;
+}
+
+.credits-dialog,
+.name-dialog {
+  width: min(400px, calc(100vw - 32px));
+}
+
+.credits {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  font-size: var(--font-compact);
+  color: var(--text-secondary);
+}
+
+.credits dt {
+  font-weight: 600;
+  color: var(--text-default);
+}
+
+.credits dd {
+  margin: 0;
+}
+
+.name-input {
+  height: 36px;
+  padding: 0 10px;
+  font: inherit;
+  font-size: var(--font-title);
+  color: inherit;
+  background: var(--background-card);
+  border: 1px solid var(--stroke-default);
+  border-radius: var(--radius-button);
+}
+
+.menu-value {
+  margin-left: auto;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-left: var(--space-3);
+}
+
 .sign-in-method {
   justify-content: center;
   gap: 10px;

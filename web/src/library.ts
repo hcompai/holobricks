@@ -77,7 +77,6 @@ interface ShowcaseSummary {
 interface Published {
   id: string;
   name: string;
-  prompt: string;
   pieces: number;
   author: string;
   owner: string;
@@ -149,7 +148,7 @@ async function hidden(): Promise<BuildSummary[]> {
 const summary = (p: Published): BuildSummary => ({
   id: p.id,
   name: p.name,
-  prompt: p.prompt,
+  prompt: "",
   status: "done",
   created: p.published,
   pieces: p.pieces,
@@ -164,9 +163,7 @@ export async function publicBuild(id: string): Promise<Build> {
   const response = await fetch(published.build, privateAsset(published.build, id) ? { headers: signed() } : {});
   if (!response.ok) throw new Error(`No public build ${id}`);
   const build = await unpack<Build>(await response.blob());
-  for (const message of build.messages)
-    message.images = await Promise.all(message.images.map((url) => privateImage(url, id)));
-  return { ...build, id, name: published.name, open: false };
+  return { ...build, id, name: published.name, open: false, messages: [] };
 }
 
 /** Hydrate private images individually, keeping credentials out of img URLs and library-list responses small. */
@@ -319,7 +316,7 @@ export async function library(): Promise<{ builds: BuildSummary[]; failed: Listi
     .map((s): BuildSummary => {
       const saved = known[s.id];
       const published = listed.get(s.id);
-      const prompt = saved?.prompt || s.firstMessage?.message || published?.prompt || "";
+      const prompt = saved?.prompt || s.firstMessage?.message || "";
       return {
         id: s.id,
         name:
@@ -407,6 +404,16 @@ export interface ProjectName {
   name: string;
   updated: number;
 }
+/** Set the name the signed-in user's public builds carry; "" resets it. Returns the name they now carry. */
+export const saveDisplayName = async (name: string) =>
+  (
+    await api<{ name: string }>("/api/profile", {
+      method: "PUT",
+      headers: { ...signed(), "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    })
+  ).name;
+
 export const projectNames = () => api<ProjectName[]>("/api/names", { headers: signed() });
 export const renameProject = (ref: { id: string; source: string }, name: string) =>
   api<ProjectName>("/api/names", {

@@ -58,7 +58,6 @@ test("deleting a session removes it from its owner's library and unpublishes it;
     {
       id: "own-run",
       name: "Tower",
-      prompt: "",
       pieces: 8,
       steps: 4,
       author: ACCOUNT.user.name,

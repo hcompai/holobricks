@@ -1,16 +1,13 @@
 import { HaiAgentsClient, HaiAgentsError, type HaiAgents } from "hai-agents";
 import { buildRevision } from "../../src/buildRevision";
 import { H } from "../../src/hosts";
-import { platformAsset, externalImage, assetBlob } from "../../src/assetUrl";
+import { platformAsset, assetBlob } from "../../src/assetUrl";
 import { applyEdits, type Edit, toLdraw } from "../../src/edits";
-import { type Build, EMPTY_MODEL, type Message, type Model } from "../../src/model";
+import { type Build, EMPTY_MODEL, type Model } from "../../src/model";
 import { AGENT, EMPTY_TRANSCRIPT, read, status, type Transcript, unpack } from "../../src/session";
 import { readFork } from "./forks";
 import { Refusal } from "./http";
 
-/** Chat images kept with a public build; past this, the chat keeps its text only. */
-const MAX_IMAGES = 80;
-const PARALLEL = 8;
 const EDITED = "Edited by hand after Holo built it: the parts list is not verified.";
 
 const numbers = (value: unknown, n: number) =>
@@ -40,9 +37,6 @@ export interface Edited {
   revision: string;
   edits: Edit[];
 }
-
-/** Store one image of the chat under `name`, and return its public URL. */
-export type Keep = (name: string, image: Blob) => Promise<string>;
 
 const platform = (key: string) =>
   new HaiAgentsClient({
@@ -94,33 +88,6 @@ async function download(url: string, key: string): Promise<Blob> {
   return assetBlob(response);
 }
 
-const picture = (src: string, key: string): Promise<Blob> =>
-  src.startsWith("data:") ? fetch(src).then(assetBlob) : download(src, key);
-
-const extension = (image: Blob) => ({ "image/jpeg": "jpg", "image/webp": "webp" })[image.type] ?? "png";
-
-/** Copy session images without Holo's reasoning; external HTTPS photos remain links. */
-async function copied(messages: Message[], key: string, keep: Keep): Promise<Message[]> {
-  const sources = [...new Set(messages.flatMap((m) => m.images))].slice(0, MAX_IMAGES);
-  const urls = new Map<string, string>();
-  for (let i = 0; i < sources.length; i += PARALLEL)
-    await Promise.all(
-      sources.slice(i, i + PARALLEL).map(async (src, j) => {
-        if (!src.startsWith("data:") && !platformAsset(src)) {
-          if (externalImage(src)) urls.set(src, src);
-          return;
-        }
-        try {
-          const image = await picture(src, key);
-          urls.set(src, await keep(`images/${i + j + 1}.${extension(image)}`, image));
-        } catch (e) {
-          console.warn("Left an image out of the public build", e);
-        }
-      }),
-    );
-  return messages.map(({ work, ...m }) => ({ ...m, images: m.images.flatMap((src) => urls.get(src) ?? []) }));
-}
-
 function checked(edited: unknown): Edited | null {
   if (edited == null) return null;
   const { revision, edits } = edited as Edited;
@@ -144,12 +111,12 @@ async function withEdits(build: Build, edited: Edited | null): Promise<Build> {
   };
 }
 
-/** The caller's finished build as the public sees it: its latest model with any hand edits, and its chat. */
-export async function snapshot(id: string, key: string, edited: unknown, keep: Keep, owner?: string): Promise<Build> {
+/** The caller's finished build as the public sees it: its latest model with any hand edits, and no chat. */
+export async function snapshot(id: string, key: string, edited: unknown, owner?: string): Promise<Build> {
   if (id.startsWith("fork-")) {
     const fork = owner ? await readFork(owner, id) : null;
     if (!fork) throw new Refusal(404, "No such build.");
-    if (fork.sessionId) return { ...(await snapshot(fork.sessionId, key, edited, keep)), id };
+    if (fork.sessionId) return { ...(await snapshot(fork.sessionId, key, edited)), id };
     return withEdits({ ...fork.seed.model, id, status: "done", open: false, messages: [] }, checked(edited));
   }
   const agp = platform(key);
@@ -176,5 +143,5 @@ export async function snapshot(id: string, key: string, edited: unknown, keep: K
     open: false,
     messages: [],
   };
-  return { ...(await withEdits(build, checked(edited))), messages: await copied(t.messages, key, keep) };
+  return withEdits(build, checked(edited));
 }

@@ -18,7 +18,6 @@ import {
 export interface Published {
   id: string;
   name: string;
-  prompt: string;
   pieces: number;
   steps: number;
   author: string;
@@ -256,6 +255,63 @@ export async function migratePrivate(): Promise<number> {
     count++;
   }
   return count;
+}
+
+const download = async (blob: { url: string; uploadedAt: Date }) => {
+  const response = await fetch(`${blob.url}?v=${blob.uploadedAt.getTime()}`, { signal: AbortSignal.timeout(60_000) });
+  if (!response.ok) throw new Error("Published file unavailable");
+  return Buffer.from(await response.arrayBuffer());
+};
+
+/** Operator migration: public builds keep no chat. Each changed build's original files go to `backup` first. */
+export async function stripPublicChats(apply: boolean, backup: (path: string, data: Buffer) => Promise<void>) {
+  const counts = { builds: 0, chats: 0, prompts: 0, images: 0 };
+  for (const blob of await listed("library/")) {
+    const original = await download(blob);
+    const published: Published & { prompt?: string } = JSON.parse(original.toString());
+    const id = published.id;
+    if (!ID.test(id) || blob.pathname !== entry(id)) throw new Error("Invalid library entry");
+    const kept = await listed(folder(id));
+    const model = kept.find((b) => b.pathname === `${folder(id)}build.json.gz`);
+    const images = kept.filter((b) => b.pathname.startsWith(`${folder(id)}images/`));
+    const data = model ? await download(model) : null;
+    const build = data ? JSON.parse(gunzipSync(data, { maxOutputLength: 100 * 1024 * 1024 }).toString()) : null;
+    const chat = !!build?.messages?.length;
+    const prompt = "prompt" in published;
+    if (!chat && !prompt && !images.length) continue;
+    counts.builds++;
+    counts.chats += Number(chat);
+    counts.prompts += Number(prompt);
+    counts.images += images.length;
+    if (!apply) continue;
+    await backup(`${id}/entry.json`, original);
+    if (data) await backup(`${id}/build.json.gz`, data);
+    for (const image of images) await backup(`${id}/${image.pathname.slice(folder(id).length)}`, await download(image));
+    if (chat) await save(id, "build.json.gz", gzipSync(JSON.stringify({ ...build, messages: [] })), "application/gzip");
+    if (prompt) {
+      delete published.prompt;
+      await put(entry(id), JSON.stringify(published), { ...PUBLIC, contentType: "application/json" });
+    }
+    if (images.length) await del(images.map((b) => b.url));
+  }
+  return counts;
+}
+
+/** Sign every library build of `owner`'s, public or private, with `author`. */
+export async function reauthor(owner: string, author: string) {
+  for (const published of await library())
+    if (published.owner === owner && published.author !== author)
+      await put(entry(published.id), JSON.stringify({ ...published, author }), {
+        ...PUBLIC,
+        contentType: "application/json",
+      });
+  for (const published of await privateOf(owner))
+    if (published.author !== author)
+      await privateWrite(
+        privateEntry(owner, published.id),
+        JSON.stringify({ ...published, author }),
+        "application/json",
+      );
 }
 
 /** Every public build, newest first. */

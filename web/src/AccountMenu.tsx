@@ -1,11 +1,22 @@
-import { SignOutIcon } from "@phosphor-icons/react";
-import { type Account, signOut } from "./account";
+import { IdentificationCardIcon, SignOutIcon } from "@phosphor-icons/react";
+import { useState } from "react";
+import { type Account, renamed, signOut } from "./account";
+import { NameDialog } from "./NameDialog";
 import { ThemeToggle } from "./ThemeToggle";
 import { useMenu } from "./useMenu";
 
-/** The signed-in user, with a menu for the theme and to sign out. */
-export function AccountMenu({ account, building = false }: { account: Account; building?: boolean }) {
+/** The signed-in user, with a menu for their display name, the theme and to sign out. */
+export function AccountMenu({
+  account,
+  building = false,
+  onRenamed,
+}: {
+  account: Account;
+  building?: boolean;
+  onRenamed?: (name: string) => void;
+}) {
   const { open, setOpen, root } = useMenu();
+  const [naming, setNaming] = useState(false);
   const { name, email } = account.user;
   return (
     <div className="menu" ref={root}>
@@ -17,14 +28,24 @@ export function AccountMenu({ account, building = false }: { account: Account; b
         aria-haspopup="menu"
         aria-expanded={open}
       >
-        {name.slice(0, 1)}
+        {(name || email).slice(0, 1).toUpperCase()}
       </button>
       {open && (
         <div className="menu-list" role="menu">
           <div className="menu-head">
-            <b>{name}</b>
+            {name && <b>{name}</b>}
             <span className="muted small">{email}</span>
           </div>
+          <button
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              setNaming(true);
+            }}
+          >
+            <IdentificationCardIcon size={16} /> Display name
+            <span className="menu-value muted">{name || "None"}</span>
+          </button>
           <ThemeToggle />
           <hr />
           <button
@@ -44,6 +65,16 @@ export function AccountMenu({ account, building = false }: { account: Account; b
             <SignOutIcon size={16} /> Sign out
           </button>
         </div>
+      )}
+      {naming && (
+        <NameDialog
+          name={name}
+          onSaved={(next) => {
+            renamed(next);
+            onRenamed?.(next);
+          }}
+          onClose={() => setNaming(false)}
+        />
       )}
     </div>
   );

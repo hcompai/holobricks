@@ -9,19 +9,25 @@ export interface User {
   name: string;
 }
 
-/** "jane.doe@hcompany.ai" as "Jane Doe". */
-export const nameOf = (email: string) =>
-  email
-    .split("@")[0]
-    .split(/[._-]+/)
-    .filter(Boolean)
-    .map((w) => w[0].toUpperCase() + w.slice(1))
-    .join(" ");
+export const isStaff = (email: string) => email.toLowerCase().endsWith(DOMAIN);
 
-export function admit(user: { id: string; email: string }): User {
-  if (!user.email.toLowerCase().endsWith(DOMAIN)) throw new Refusal(403, "HoloBricks is open to H Company accounts.");
-  return { ...user, name: nameOf(user.email) };
+const capital = (word: string) => word[0].toUpperCase() + word.slice(1);
+
+/** The default public name: "Jane Doe" for jane.doe@hcompany.ai, "Jane D." for jane.doe@gmail.com, else none. */
+export function nameOf(email: string): string {
+  const local = email.split("@")[0];
+  if (isStaff(email))
+    return local
+      .split(/[._-]+/)
+      .filter(Boolean)
+      .map(capital)
+      .join(" ");
+  const words = local.toLowerCase().split(/[._-]/);
+  if (words.length < 2 || !words.every((w) => /^\p{L}+$/u.test(w))) return "";
+  return `${capital(words[0])} ${words.at(-1)![0].toUpperCase()}.`;
 }
+
+export const admit = (user: { id: string; email: string }): User => ({ ...user, name: nameOf(user.email) });
 
 export const isAdmin = (user: User) =>
   (process.env.BRICKYARD_ADMINS ?? "")

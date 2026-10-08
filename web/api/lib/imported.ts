@@ -4,7 +4,7 @@ import type { Build, Message, Piece, Step } from "../../src/model";
 import { Refusal } from "./http";
 
 /** What one import may hold; the largest Holo builds are about 17,000 pieces and 3 MB. */
-export const LIMITS = { pieces: 50_000, steps: 2_000, parts: 2_000, geometry: 30_000_000, messages: 500, text: 20_000 };
+export const LIMITS = { pieces: 50_000, steps: 2_000, parts: 2_000, geometry: 30_000_000 };
 const UNVERIFIED = "Imported from a file: the parts list was not verified against BrickLink.";
 const PART = /^[\w.-]{1,64}$/;
 
@@ -62,16 +62,6 @@ function parts(value: unknown, pieces: Piece[]): Record<string, string> {
   return kept;
 }
 
-function messages(value: unknown): Message[] {
-  const given = Array.isArray(value) ? value.slice(0, LIMITS.messages) : [];
-  // Images stay behind: they point at wherever the file came from.
-  return given.flatMap((m): Message[] =>
-    m && ["user", "assistant", "system", "tool"].includes(m.role) && typeof m.text === "string"
-      ? [{ role: m.role, text: text(m.text, LIMITS.text), images: [] }]
-      : [],
-  );
-}
-
 /** A model file (a `brickyard-gallery` export or a session's model.json), checked and made into a library build. */
 export async function imported(input: unknown, id: string): Promise<Build> {
   const given = input as Record<string, unknown> | null;
@@ -91,7 +81,7 @@ export async function imported(input: unknown, id: string): Promise<Build> {
     pieces,
     steps: steps(given!.steps, pieces),
     parts: parts(given!.parts, pieces),
-    messages: messages(given!.messages),
+    messages: [] as Message[],
     status: "done" as const,
     open: false,
     bom: { error: UNVERIFIED },

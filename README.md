@@ -39,4 +39,4 @@ Your browser renders every revision and shows it to Holo, so keep the tab open w
 
 ## Run it
 
-Anyone can browse and open the public builds and showcases, no account needed. Building with Holo takes a sign-in with an `@hcompany.ai` account. Setup, deploy, tests and the toolkit's checks are in [docs/README.md](docs/README.md).
+Anyone can browse and open the public builds and showcases, no account needed. Anyone can sign in, with Google or an email, to build with Holo. Setup, deploy, tests and the toolkit's checks are in [docs/README.md](docs/README.md).

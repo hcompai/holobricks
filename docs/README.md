@@ -52,7 +52,7 @@ vercel link --yes --scope h-company --project brickyard && vercel env pull .env.
 npm run dev                                                                            # http://127.0.0.1:5173
 ```
 
-Anyone can open the home page, the public builds and the showcases, read only. Building, and owning builds (publish, rename, fork, import, delete), takes a sign-in with an `@hcompany.ai` account on the H portal, which mints the user's Agents API key. Export the showcases for local use with
+Anyone can open the home page, the public builds and the showcases, read only. Building, and owning builds (publish, rename, fork, import, delete), takes a sign-in on the H portal, open to everyone, which mints the user's Agents API key. Export the showcases for local use with
 `BRICKYARD_DATA=<data dir> server/.venv/bin/brickyard-gallery web/public 6eb28d127e`.
 
 Try the toolkit by hand: in a folder with a `build.py`, run `<repo>/server/.venv/bin/bricks run` (`--help` lists the tools).
@@ -73,8 +73,19 @@ signed in ──GET /api/builds?mine=1, ?id=&file= (pass + key)──▶ their p
 - The public library reads need no pass: signed out, the home page lists the public builds and showcases and opens them read only, and every export works. Sending Holo a message, forking, importing and managing builds ask to sign in first; a prompt typed on the home page survives the sign-in. Private builds, forks and sessions need the owner's pass and key. A session is its owner's to publish, stop and change; a teammate who opens its link sees it read only, to remix.
 - Signing in again revokes the previous key. The key lives in the browser's local storage; the pass, signed with `BRICKYARD_SECRET`, names its holder to the functions.
 - An imported build has no session, so it lives only in the library: **Make private** copies its metadata, model and images into a separate private Blob store, then deletes the public copies. It stays listed (`GET /api/builds?mine=1`) and opens through an owner-authenticated file route. Private file responses are never cached by the app. **Delete** removes its entry and files. Sessions cannot be deleted through the Agents API: deleting one (`DELETE /api/projects?id=&source=session`) unpublishes it and records it under `removed/<scope>/`, which `GET /api/projects` lists so the library leaves it out; the platform keeps its chat until the session ends. Deleting a fork removes its files and name, and removes the session it started. Deleting a build while Holo builds it cancels its session first, so Holo stops. Owners rename, publish, make private and delete their builds from the ⋯ on their cards, or from Share in the build.
-- Publishing copies the session's model, transcript and platform-hosted or embedded images, so they survive its session. External HTTPS photos remain links and depend on their original host; the server does not download them. Only its author can rename, publish, make private, unpublish or delete a build. The emails in `BRICKYARD_ADMINS` can take anyone's build out of the public library to moderate it, but never delete it: it becomes private, kept for its owner.
+- Publishing copies the session's model and its name, never its chat, prompt or photos: anyone else opening a public build sees the model and a read-only note, and its owner keeps the chat in their session. Public builds carry the author's display name: their own (account menu, `PUT /api/profile`), else "Jane Doe" for an `@hcompany.ai` address, "Jane D." when the address reads as a first and last name, and none otherwise. Only its author can rename, publish, make private, unpublish or delete a build. The emails in `BRICKYARD_ADMINS` can take anyone's build out of the public library to moderate it, but never delete it: it becomes private, kept for its owner.
 - Server environment: `BRICKYARD_SECRET`, `BRICKYARD_ADMINS`, `BLOB_READ_WRITE_TOKEN` from the public `brickyard-library` Blob store, and `BRICKYARD_PRIVATE_BLOB_READ_WRITE_TOKEN` from a **separate private** Blob store (the shorter `BRICKYARD_PRIVATE_BLOB_TOKEN` is also accepted). Never reuse the public token. Without private storage, making private returns 503 and preserves the source.
+
+### Stripping chats from builds published before
+
+With the public store's `BLOB_READ_WRITE_TOKEN` in an operator shell, run from `web/`:
+
+```bash
+node scripts/strip-public-chats.mjs                     # dry run: counts only
+node scripts/strip-public-chats.mjs --apply ./backup    # backs up, then strips
+```
+
+For every public library entry with a chat, a prompt or chat images, `--apply` first copies the entry, `build.json.gz` and the images into `./backup/<id>/` (never overwriting an earlier backup), then rewrites the build with no messages and the entry with no prompt, and deletes the images. Rerun it to finish after a failure.
 
 ### Migrating existing private builds
 

@@ -80,7 +80,7 @@ async function published(model: object, edits: unknown, fork = false, photos: st
     });
   };
   try {
-    return await snapshot("mine", "test-key", edits, async (name) => `https://saved.example/${name}`);
+    return await snapshot("mine", "test-key", edits);
   } finally {
     globalThis.fetch = original;
   }
@@ -122,21 +122,8 @@ test("publishing a running fork's saved model keeps its name and omits private a
   expect(JSON.stringify(build)).not.toContain("PRIVATE_ORIGIN");
 });
 
-test("publishing copies platform images but keeps external HTTPS photos as links without fetching them", async () => {
-  const photos = [
-    "https://agp.eu.hcompany.ai/photo",
-    "data:image/png;base64,cGhvdG8=",
-    "https://images.example.org/photo.jpg",
-    "https://agp.eu.hcompany.ai.evil.example/photo.jpg",
-    "https://127.0.0.1/photo.jpg",
-    "http://169.254.169.254/photo.jpg",
-    "https://user:password@images.example.org/photo.jpg",
-    "file:///etc/passwd",
-  ];
-  const build = await published(fixture(), null, false, photos);
-  expect(build.messages[0].images).toEqual([
-    "https://saved.example/images/1.png",
-    "https://saved.example/images/2.png",
-    ...photos.slice(2, 5),
-  ]);
+test("publishing keeps the chat, the prompt and its photos out of the public build", async () => {
+  const build = await published(fixture(), null, false, ["https://agp.eu.hcompany.ai/photo"]);
+  expect(build.messages).toEqual([]);
+  expect(JSON.stringify(build)).not.toMatch(/A tower|\/photo/);
 });

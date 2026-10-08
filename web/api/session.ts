@@ -3,6 +3,7 @@ import { cookie, HANDOFF, HANDOFF_S, type Handoff, local, PENDING, type Pending,
 import { admit, pass } from "./lib/account";
 import { Refusal } from "./lib/http";
 import { exchange, mint, revoke, whoami } from "./lib/portal";
+import { authorOf } from "./lib/profile";
 
 const text = (value: unknown) => (typeof value === "string" ? value : null);
 
@@ -38,7 +39,8 @@ async function portalToken(request: Request, verifier: string | null): Promise<s
 
 /** Mint a HoloBricks key for the Agents API and a pass for this API, both good for a month, and revoke the browser's previous key. */
 async function signIn(access: string, previous: string | null): Promise<Handoff> {
-  const user = admit(await whoami(access));
+  const admitted = admit(await whoami(access));
+  const user = { ...admitted, name: await authorOf(admitted) };
   if (previous) await revoke(access, previous);
   const key = await mint(access, user.email);
   const expires = Date.parse(`${key.expires.slice(0, 10)}T23:59:59Z`) / 1000;
