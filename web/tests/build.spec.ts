@@ -515,3 +515,28 @@ test("missing geometry fails closed; a lost WebGL context never leaves a trusted
   await page.getByRole("button", { name: "Reload model" }).click();
   await shown(page, whole.revision);
 });
+
+test("a seeded live model without a phase timestamp never shows an epoch-length timer", async ({ page }) => {
+  await site(page);
+  const agp = await platform(page);
+  agp.session("seeded");
+  const model = fixture();
+  agp.share("seeded", model);
+  await page.goto("/?build=seeded");
+  await shown(page, model.revision);
+  await expect(page.locator(".msg.live")).toContainText("Reading your idea");
+  await expect(page.locator(".live-clock")).toHaveCount(0);
+});
+
+test("a live phase with a real start time shows a readable elapsed duration", async ({ page }) => {
+  await site(page);
+  const agp = await platform(page);
+  agp.now = Date.now() - 74000;
+  agp.session("timed");
+  agp.say("timed", "A tower");
+  const model = fixture();
+  agp.share("timed", model);
+  await page.goto("/?build=timed");
+  await shown(page, model.revision);
+  await expect(page.locator(".live-clock")).toHaveText(/^1m \d+s$/);
+});
