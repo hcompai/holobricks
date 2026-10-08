@@ -2612,6 +2612,7 @@ main {
   }
 
   header .button-label,
+  header .visibility-label,
   .center-bar .button-label {
     position: absolute;
     width: 1px;
@@ -3761,50 +3762,168 @@ main {
   border-radius: var(--radius-large);
 }
 
+/* Who can open the build: a switch whose knob carries the lock or the globe. */
 .visibility-control {
   position: relative;
   flex-shrink: 0;
 }
 .visibility-control > button {
-  display: flex;
-  align-items: center;
   gap: 8px;
+  padding-left: 6px;
+  border-radius: 999px;
+}
+.visibility-control > button[aria-checked="true"] {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--stroke-default));
+  background: color-mix(in srgb, var(--accent) 10%, var(--background-card));
+}
+.visibility-control > button[aria-checked="true"]:where(:hover:not(:disabled)) {
+  background: color-mix(in srgb, var(--accent) 18%, var(--background-card));
 }
 .visibility-track {
   display: inline-flex;
   align-items: center;
-  width: 28px;
-  height: 16px;
+  width: 34px;
+  height: 20px;
   padding: 2px;
   border-radius: 999px;
   background: var(--text-tertiary);
+  transition: background-color 0.2s;
 }
-.visibility-track > span {
-  width: 12px;
-  height: 12px;
+.visibility-knob {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
   background: white;
-  transition: transform 150ms ease;
+  color: var(--text-tertiary);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  transition:
+    transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1.2),
+    color 0.2s;
 }
-[aria-checked="true"] .visibility-track {
+[aria-checked="true"] > .visibility-track {
   background: var(--accent);
 }
-[aria-checked="true"] .visibility-track > span {
-  transform: translateX(12px);
+[aria-checked="true"] > .visibility-track > .visibility-knob {
+  transform: translateX(14px);
+  color: var(--accent);
+}
+.visibility-label {
+  min-width: 3.2em;
+  text-align: left;
 }
 .visibility-error {
   position: absolute;
   right: 0;
-  top: 100%;
+  top: calc(100% + 6px);
   z-index: 50;
   width: 240px;
-  padding: 12px;
-  background: var(--background-viewer);
-  border: 1px solid var(--glass-stroke);
-  border-radius: 12px;
+  margin: 0;
+  padding: var(--space-3);
+  font-size: var(--font-small);
+  color: var(--text-error);
+  background: var(--background-card);
+  border: 1px solid var(--stroke-default);
+  border-radius: var(--radius-large);
+  box-shadow: var(--elevation-popover);
+}
+
+/* Holo finished: a card over the model, the visibility switch first. */
+.finished-card {
+  position: absolute;
+  z-index: 3;
+  top: 12px;
+  inset-inline: 12px;
+  width: fit-content;
+  max-width: calc(100% - 24px);
+  margin-inline: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 10px 10px 10px 14px;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--background-card) 85%, transparent);
+  backdrop-filter: blur(20px) saturate(1.8);
+  border: 1px solid color-mix(in srgb, var(--stroke-strong) 70%, transparent);
+  box-shadow:
+    0 12px 32px rgba(0, 0, 0, 0.14),
+    var(--elevation-1);
+  animation: rise 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.finished-icon {
+  flex: none;
+  color: var(--accent);
+}
+.finished-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  white-space: nowrap;
+}
+.finished-text > span {
+  font-size: var(--font-small);
+  color: var(--text-secondary);
+}
+.finished-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-left: var(--space-1);
+  border-left: 1px solid var(--stroke-default);
+}
+@media (max-width: 760px) {
+  .app:not(.home) .finished-card {
+    top: calc(var(--bar) + 4px);
+    inset-inline: 12px 64px;
+    max-width: none;
+    margin-inline: 0;
+    flex-wrap: wrap;
+    /* Its confirmation is a fixed sheet: blur would trap it in the card, and it must clear the chat sheet. */
+    z-index: 35;
+    backdrop-filter: none;
+    background: var(--background-card);
+    row-gap: var(--space-2);
+    padding: 10px 12px 12px;
+  }
+  .finished-card > .icon-button {
+    order: 1;
+    margin-left: auto;
+  }
+  .finished-actions {
+    order: 2;
+    flex-basis: 100%;
+    padding-left: 0;
+    border-left: none;
+  }
+  .finished-actions > button {
+    min-height: 36px;
+  }
+  .finished-actions .button-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .app:not(.home) > header > .visibility-control > button {
+    height: 40px;
+    padding: 0 3px;
+    border-radius: 999px;
+    border: 0.5px solid var(--glass-stroke);
+    background: var(--glass);
+    -webkit-backdrop-filter: var(--glass-blur);
+    backdrop-filter: var(--glass-blur);
+    box-shadow: var(--glass-shadow);
+  }
 }
 @media (prefers-reduced-motion: reduce) {
-  .visibility-track > span {
+  .visibility-knob,
+  .visibility-track {
     transition: none;
+  }
+  .finished-card {
+    animation: none;
   }
 }

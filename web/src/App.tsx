@@ -12,6 +12,7 @@ import { type CSSProperties, lazy, Suspense, useCallback, useEffect, useMemo, us
 import { type Account, signInError } from "./account";
 import { AccountMenu } from "./AccountMenu";
 import { SignInDialog } from "./SignInDialog";
+import { FinishedCard } from "./FinishedCard";
 import { RecoveryPanel } from "./RecoveryPanel";
 import { cancel, create, say, stop } from "./agent";
 import type { ProjectActions } from "./ProjectMenu";
@@ -45,7 +46,9 @@ import {
   listing,
   LISTINGS,
   onRemember,
+  markPublished,
   publish,
+  publishedBefore,
   remember,
   setPrivate,
   SHELF,
@@ -201,6 +204,15 @@ export default function App({ account }: { account: Account | null }) {
     if (mode !== "view") setFollowCamera(false);
   }, [mode, edits.editable, built, readOnly]);
   const shoppable = !!build?.pieces.length && build.status !== "building";
+  /** The build this tab watched Holo finish, celebrated over the model until dismissed. */
+  const [finished, setFinished] = useState<string | null>(null);
+  const watched = useRef<{ id: string; building: boolean } | null>(null);
+  useEffect(() => {
+    const previous = watched.current;
+    watched.current = live ? { id: live.id, building: live.status === "building" } : null;
+    if (previous?.building && live?.id === previous.id && live.status === "done" && live.pieces.length)
+      setFinished(live.id);
+  }, [live?.id, live?.status]);
   const shop = () => {
     if (build && shoppable)
       setShopping({ build: structuredClone(build), preview: viewer.current?.image() ?? Promise.resolve(null) });
@@ -244,6 +256,10 @@ export default function App({ account }: { account: Account | null }) {
 
   const home = !ref && !drafted;
   useEffect(() => void refreshBuilds(), [refreshBuilds, me, home]);
+  const hasPublic = !!builds?.some((b) => b.source === "public" && b.owner === me && !b.private);
+  useEffect(() => {
+    if (hasPublic) markPublished();
+  }, [hasPublic]);
   /** Sessions this tab started, before the library lists them. */
   const started = useRef(new Set<string>());
   const mine = (id: string) =>
@@ -592,6 +608,7 @@ export default function App({ account }: { account: Account | null }) {
                 ? "Nothing is built yet"
                 : null,
           author: account.user.name,
+          first: !hasPublic && !publishedBefore(),
           onPublish: imported ? republish : publishBuild,
           onUnpublish: unpublishBuild,
         }
@@ -605,7 +622,9 @@ export default function App({ account }: { account: Account | null }) {
           <span className="button-label">Share a GIF</span>
         </button>
       )}
-      {publishing && <VisibilityToggle key={`${ref?.source}:${ref?.id}`} publishing={publishing} />}
+      {publishing && (
+        <VisibilityToggle key={`${ref?.source}:${ref?.id}`} publishing={publishing} name={actionable.name} />
+      )}
       <ShareMenu
         build={actionable}
         link={!readOnly && shared ? linkTo(shared) : null}
@@ -959,6 +978,15 @@ export default function App({ account }: { account: Account | null }) {
             <div className="pane">
               <PartsPanel build={build} counted={edited ? countParts(build.pieces, titlesOf(live), palette) : null} />
             </div>
+          )}
+          {finished && finished === live?.id && publishing && !previewing && (
+            <FinishedCard
+              build={live}
+              publishing={publishing}
+              onGif={exportReplay}
+              onShop={shoppable ? shop : null}
+              onClose={() => setFinished(null)}
+            />
           )}
           {error && (
             <div className="pane notice" role="alert">

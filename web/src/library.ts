@@ -202,8 +202,14 @@ export async function publish(id: string, thumbnail: string | null, edits: { rev
     body: JSON.stringify({ id, thumbnail, edits }),
   });
   fresh.set(id, published);
+  markPublished();
   return published;
 }
+
+const PUBLISHED = "brickyard.published";
+/** Whether this browser knows the user has had a public build. */
+export const publishedBefore = () => localStorage.getItem(PUBLISHED) === "1";
+export const markPublished = () => localStorage.setItem(PUBLISHED, "1");
 
 /** A HoloBricks model file as the browser reads it, before the library checks it. */
 export type ModelFile = Pick<Model, "name" | "pieces" | "parts"> & Partial<Build>;
@@ -253,6 +259,7 @@ export async function setPrivate(id: string, value: boolean) {
     headers: { ...signed(), "Content-Type": "application/json" },
     body: JSON.stringify({ id, private: value }),
   });
+  if (!value) markPublished();
 }
 
 /** Take a build out of the library and delete its files; for an imported build, that deletes it. */

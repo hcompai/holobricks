@@ -27,6 +27,8 @@ export interface Publishing {
   /** Why the build cannot be published yet, or null when it can. */
   blocked: string | null;
   author: string;
+  /** The user has never made a build public: publishing asks what that means first. */
+  first: boolean;
   onPublish: () => Promise<void>;
   onUnpublish: () => Promise<void>;
 }
