@@ -44,7 +44,7 @@ Every build above was made by Holo from a sentence. Live at [bricks.hcompany.ai]
 You need Node 24, Python with [uv](https://docs.astral.sh/uv/), a free [Rebrickable](https://rebrickable.com/api/) API key, a [Vercel Blob](https://vercel.com/docs/vercel-blob) store, and an H account from [platform.hcompany.ai](https://platform.hcompany.ai): signing in mints the Agents API key Holo builds with.
 
 ```bash
-git clone https://github.com/hcompai/brickyard && cd brickyard
+git clone https://github.com/hcompai/holobricks && cd holobricks
 scripts/fetch-ldraw.sh                                # the LDraw parts library (145 MB)
 (cd server && uv sync && REBRICKABLE_API_KEY=... .venv/bin/brickyard-catalog)   # the parts catalog
 server/.venv/bin/python scripts/pack-toolkit.py       # the toolkit the app sends Holo
