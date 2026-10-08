@@ -13,7 +13,7 @@ from functools import cache
 
 from brickyard import catalog, ldraw, shapes
 from brickyard.model import IDENTITY, Brick, Placement, bounds, extent
-from brickyard.sculpt import Sculpture, circle
+from brickyard.sculpt import Sculpture, Voxel, circle
 from brickyard.shapes import Cell
 
 SOURCE = "<script>"
@@ -26,7 +26,7 @@ ROUNDS = 3
 """Rounds of joining at the end of a run: in each, a piece joins at most one neighbour, so eight 1x1s in a row make a
 1x8 in three."""
 LARGER = {
-    "brick": [(10, 1, "6111"), (12, 1, "6112"), (16, 1, "2465"), (10, 2, "3006")],
+    "brick": [(10, 1, "6111"), (12, 1, "6112"), (16, 1, "2465"), (10, 2, "3006"), (6, 4, "2356"), (12, 4, "4202")],
     "plate": [
         (16, 16, "91405"),
         (24, 6, "3026"),
@@ -53,13 +53,29 @@ LARGER = {
     ],
 }
 """Bigger parts that pieces join into, beyond the sizes that fills and covers are cut in."""
-KINDS = {
-    kind: [*sizes, *LARGER[kind]]
-    for kind, sizes in (("brick", shapes.BRICKS), ("plate", shapes.PLATES), ("tile", shapes.TILES))
+TALL = [
+    (1, 1, 9, "14716"),
+    (2, 1, 6, "3245c"),
+    (2, 1, 9, "22886"),
+    (2, 2, 9, "30145"),
+    (4, 1, 9, "49311"),
+    (4, 2, 9, "30144"),
+    (6, 2, 9, "6213"),
+    (1, 1, 15, "2453b"),
+    (6, 1, 15, "3754"),
+]
+"""Bricks taller than one, that stacks of bricks or plates of one footprint join into."""
+SIZES = {
+    "studs": {
+        **{(w, d, 1): part for w, d, part in [*shapes.PLATES, *LARGER["plate"]]},
+        **{(w, d, 3): part for w, d, part in [*shapes.BRICKS, *LARGER["brick"]]},
+        **{(w, d, h): part for w, d, h, part in TALL},
+    },
+    "tile": {(w, d, 1): part for w, d, part in [*shapes.TILES, *LARGER["tile"]]},
 }
-SIZES = {kind: {(w, d): part for w, d, part in sizes} for kind, sizes in KINDS.items()}
-"""Each kind's rectangular parts by their long and short sides."""
-KIND = {part: kind for kind, sizes in KINDS.items() for _, _, part in sizes}
+"""The box parts by their long side, short side and height in plates: studded ones join each other, tiles only tiles."""
+KIND = {part: kind for kind, sizes in SIZES.items() for part in sizes.values()}
+HEIGHT = {part: h for sizes in SIZES.values() for (_, _, h), part in sizes.items()}
 
 
 class Script:
@@ -285,53 +301,70 @@ def _in_color(b: dict) -> list[dict]:
     return out
 
 
-def _joins(i: int, rects: dict[int, list[int]], at: dict[Cell, int]) -> Iterable[tuple[int, list[int]]]:
-    """The pieces right of and below rectangle i that share a whole side with it, each with their union."""
-    x, y, w, d = rects[i]
-    right, below = at.get((x + w, y)), at.get((x, y + d))
-    if right is not None and rects[right][1] == y and rects[right][3] == d:
-        yield right, [x, y, w + rects[right][2], d]
-    if below is not None and rects[below][0] == x and rects[below][2] == w:
-        yield below, [x, y, w, d + rects[below][3]]
+Box = list[int]
+"""x, y, w, d in studs, then z and height in plates."""
+
+
+def _joins(i: int, boxes: dict[int, Box], at: dict[Voxel, int], kind: str) -> Iterable[tuple[list[int], Box]]:
+    """The joins open to box i: the box right of it or below it sharing a whole side and its height, or the stack on
+    top of it sharing its footprint, up to the tallest part it makes; each with the boxes it takes and their union."""
+    x, y, w, d, z, h = boxes[i]
+    right, below = at.get((x + w, y, z)), at.get((x, y + d, z))
+    if right is not None and (rx := boxes[right])[0] == x + w and (rx[1], rx[3], rx[4], rx[5]) == (y, d, z, h):
+        yield [right], [x, y, w + rx[2], d, z, h]
+    if below is not None and (bx := boxes[below])[1] == y + d and (bx[0], bx[2], bx[4], bx[5]) == (x, w, z, h):
+        yield [below], [x, y, w, d + bx[3], z, h]
+    if kind == "tile":
+        return
+    stack, top, best = [], z + h, None
+    while (j := at.get((x, y, top))) is not None and boxes[j][:5] == [x, y, w, d, top]:
+        stack.append(j)
+        top += boxes[j][5]
+        if (max(w, d), min(w, d), top - z) in SIZES[kind]:
+            best = list(stack), [x, y, w, d, z, top - z]
+    if best:
+        yield best
 
 
 def _merged(bricks: list[dict], rounds: int = ROUNDS) -> list[dict]:
-    """The step's bricks with neighbours of one kind, height and color joined wherever together they make exactly one
-    bigger part that comes in the color: two 1x1 bricks a 1x2, a 1x2 and a 1x1 plate a 1x3. Never re-cut, so no new
-    joint appears and bonded courses stay bonded; the joined piece keeps the place and lines of its first part."""
+    """The step's bricks with neighbours of one color joined wherever together they make exactly one bigger part that
+    comes in the color: side by side, two 1x1 bricks a 1x2 and a 1x2 and a 1x1 plate a 1x3; stacked, three plates a
+    brick and three 1x1 bricks a 1x1x3. Never re-cut, so no new joint appears and bonded courses stay bonded; the
+    joined piece keeps the place and lines of its first part, the bottom one in a stack."""
     groups: dict[tuple, list[int]] = defaultdict(list)
-    rects: dict[int, list[int]] = {}
+    boxes: dict[int, Box] = {}
     for i, b in enumerate(bricks):
-        kind = KIND.get(str(b["part"]).removesuffix(".dat"))
+        part = str(b["part"]).removesuffix(".dat")
         whole = all(type(b.get(k)) is int for k in ("x", "y", "z", "color", "rotation"))
-        if kind is None or "pos" in b or "facing" in b or not whole:
+        if part not in KIND or "pos" in b or "facing" in b or not whole:
             continue
-        w, d = shapes.footprint(b["part"], b["rotation"])
-        rects[i] = [b["x"], b["y"], w, d]
-        groups[kind, b["z"], b["color"]].append(i)
+        w, d = shapes.footprint(part, b["rotation"])
+        boxes[i] = [b["x"], b["y"], w, d, b["z"], HEIGHT[part]]
+        groups[KIND[part], b["color"]].append(i)
     gone: set[int] = set()
-    for (kind, _, color), members in groups.items():
-        at = {cell: i for i in members for cell in shapes.rect(*rects[i])}
+    for (kind, color), members in groups.items():
+        at = {
+            (*cell, z): i
+            for i in members
+            for cell in shapes.rect(*boxes[i][:4])
+            for z in range(boxes[i][4], sum(boxes[i][4:]))
+        }
         for _ in range(rounds):
             joined: set[int] = set()
             for i in members:
                 if i in gone or i in joined:
                     continue
-                for j, union in _joins(i, rects, at):
-                    part = SIZES[kind].get((max(union[2:]), min(union[2:])))
-                    if j in joined or part is None or color not in _made_in(part):
+                for taken, union in _joins(i, boxes, at, kind):
+                    x, y, w, d, z, h = union
+                    part = SIZES[kind].get((max(w, d), min(w, d), h))
+                    if joined.intersection(taken) or part is None or color not in _made_in(part):
                         continue
-                    rects[i] = union
-                    at.update((cell, i) for cell in shapes.rect(*union))
-                    gone.add(j)
+                    boxes[i] = union
+                    at.update(((*cell, k), i) for cell in shapes.rect(x, y, w, d) for k in range(z, z + h))
+                    gone.update(taken)
                     joined.add(i)
-                    turned = shapes.footprint(part, 0) != (union[2], union[3])
-                    bricks[i] = bricks[i] | {
-                        "part": part,
-                        "x": union[0],
-                        "y": union[1],
-                        "rotation": 90 if turned else 0,
-                    }
+                    turned = shapes.footprint(part, 0) != (w, d)
+                    bricks[i] = bricks[i] | {"part": part, "x": x, "y": y, "rotation": 90 if turned else 0}
                     break
             if not joined:
                 break

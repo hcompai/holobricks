@@ -287,6 +287,21 @@ def test_joining_runs_in_rounds_where_each_piece_joins_once(monkeypatch):
     assert [(b["part"], b["x"]) for b in script._merged(plates)] == [("41539", 0)]
 
 
+def test_stacks_of_one_footprint_join_into_a_brick_or_a_taller_one(monkeypatch):
+    monkeypatch.setattr(script, "_made_in", lambda part: frozenset({4, 15}))
+    joined = lambda pieces: sorted((b["part"], b["x"], b["z"]) for b in script._merged([dict(p) for p in pieces]))
+    assert joined([brick("3023b", 0, 0, z) for z in range(3)]) == [("3004", 0, 0)]  # three 1x2 plates: a 1x2 brick
+    assert joined([brick("3005", 0, 0, z) for z in (0, 3, 6)]) == [("14716", 0, 0)]  # three 1x1 bricks: a 1x1x3
+    assert joined([brick("3004", 0, 0, z) for z in (0, 3)]) == [("3245c", 0, 0)]  # two 1x2 bricks: a 1x2x2
+    assert joined([brick("3024", 0, 0, z) for z in range(2)]) == [("3024", 0, 0), ("3024", 0, 1)]  # no 2-plate part
+    kept = [brick("3005", 0, 0, 0), brick("3005", 0, 0, 3, color=15), brick("3070b", 2, 0, 0), brick("3070b", 2, 0, 1)]
+    assert len(script._merged([dict(p) for p in kept])) == 4  # two colors, and tiles never stack
+    assert joined([brick("3004", 0, 0, 0), brick("3005", 0, 0, 3)]) == [
+        ("3004", 0, 0),
+        ("3005", 0, 3),
+    ]  # footprints differ
+
+
 @pytest.mark.skipif(not catalog.SNAPSHOT.exists(), reason="catalog snapshot not built")
 def test_the_showcase_has_valid_catalog_parts_but_does_not_hide_detached_terrain(tmp_path):
     example = (Path(__file__).resolve().parents[2] / "agent" / "showcase" / "bag-end.py").read_text()
