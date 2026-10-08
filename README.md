@@ -18,14 +18,14 @@
 
 ## What you can do
 
-| | |
-| --- | --- |
-| **Describe** | Type an idea or drop in a photo, and Holo builds it in 3D while you watch. |
-| **Trust** | Every brick is a real LDraw part, checked to make sure it fits and connects. |
-| **Replay** | Scrub back through the steps, or share the build as a GIF. |
-| **Tweak** | Move, turn, recolor and replace pieces, or walk through the model. |
-| **Build it for real** | Get the instructions as a PDF, a Pick a Brick list, BrickLink carts through [HoloTab](SHOPPING.md), or 3MF plates to 3D print the bricks. |
-| **Share** | Publish a build so anyone can open it, and builders can remix it into their own. |
+|                       |                                                                                                                                                    |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Describe**          | Type an idea or drop in a photo, and Holo builds it in 3D while you watch.                                                                         |
+| **Trust**             | Every brick is a real LDraw part, checked to make sure it fits and connects.                                                                       |
+| **Replay**            | Scrub back through the steps, or share the build as a GIF.                                                                                         |
+| **Tweak**             | Move, turn, recolor and replace pieces, or walk through the model.                                                                                 |
+| **Build it for real** | Get the instructions as a PDF, an official parts store list, BrickLink carts through [HoloTab](SHOPPING.md), or 3MF plates to 3D print the bricks. |
+| **Share**             | Publish a build so anyone can open it, and builders can remix it into their own.                                                                   |
 
 ## How it works
 
@@ -39,4 +39,20 @@ Your browser renders every revision and shows it to Holo, so keep the tab open w
 
 ## Run it
 
-Anyone can browse and open the public builds and showcases, no account needed. Building with Holo takes a sign-in with an `@hcompany.ai` account. Setup, deploy, tests and the toolkit's checks are in [docs/README.md](docs/README.md).
+Anyone can browse and open the public builds and showcases, no account needed. Anyone can sign in, with Google or an email, to build with Holo. Setup, deploy, tests and the toolkit's checks are in [docs/README.md](docs/README.md).
+
+## Run it yourself
+
+You need Node 24, Python with [uv](https://docs.astral.sh/uv/), a free [Rebrickable](https://rebrickable.com/api/) API key, a [Vercel Blob](https://vercel.com/docs/vercel-blob) store, and an H account from [platform.hcompany.ai](https://platform.hcompany.ai): signing in mints the Agents API key Holo builds with.
+
+```bash
+git clone https://github.com/hcompai/brickyard && cd brickyard
+scripts/fetch-ldraw.sh                                # the LDraw parts library (145 MB)
+(cd server && uv sync && REBRICKABLE_API_KEY=... .venv/bin/brickyard-catalog)   # the parts catalog
+server/.venv/bin/python scripts/pack-toolkit.py       # the toolkit the app sends Holo
+cd web && npm install
+printf 'BRICKYARD_SECRET=%s\nBLOB_READ_WRITE_TOKEN=...\n' "$(openssl rand -hex 32)" > .env.local
+npm run dev
+```
+
+Open http://127.0.0.1:5173 and sign in with your H account. `sh setup.sh` installs the toolkit's `bricks` command on your own machine, as Holo does on its workstation.

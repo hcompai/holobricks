@@ -19,9 +19,9 @@ Setup, architecture, deploy and the toolkit's checks. The [main README](../READM
 - **Every brick is checked**: a run places the bricks that fit and names each one that does not by its script line. Checks use bounding boxes and supported stud connections; they do not certify strength or stability.
 - **Replay** the steps on the timeline, browse the Parts tab, and from **Share** download the `.ldr` or a PNG, or make a GIF of the build (8 seconds by default, up to 30).
 - **Building instructions** (Share, or the Get the bricks sheet): a PDF with a cover, then each step split into layers from the bottom up, one page each, the new pieces outlined in a render framed on the model so far and pictured in a parts callout, and the whole parts list at the end. It is drawn in the browser, so it includes your edits; large models take a while (the Grand Rex makes about 250 pages).
-- **Get the bricks**: one sheet with BrickLink carts through HoloTab (it imports the verified parts list and prepares carts for you to review and pay), a Pick a Brick list with its price, and the instructions. See [SHOPPING.md](../SHOPPING.md).
+- **Get the bricks**: one sheet with BrickLink carts through HoloTab (it imports the verified parts list and prepares carts for you to review and pay), an official parts store list with its price, and the instructions. See [SHOPPING.md](../SHOPPING.md).
 - **Edit** by hand: choose **Edit**, click a piece (the one under the pointer is outlined), Shift-click to add more or Shift-drag a box around the pieces you see (Shift-Option-drag takes hidden ones too), then move them a stud or a plate, turn them a quarter about their middle, recolor them from the LDraw palette, replace them with another part (search the model's own parts and the ones Holo builds with, each previewed in the selection's color; the new part keeps the old one's bottom and first stud), duplicate them beside themselves (⌘D) or delete them; undo, redo and reset. The **?** button or key lists every shortcut. Edits are saved in this browser per build and revision, and the `.ldr` download includes them. The builder never sees them: the Parts tab counts the edited model's parts without BrickLink verification, shopping stays off while a model is edited, edits are hidden while the builder works, and a new revision leaves them to discard.
-- **Walk** through the model like in Minecraft: choose **Walk**, click the model, then WASD or the arrows to move and the mouse to look. You stand on the bricks and step up one brick at a time; Space jumps, W twice sprints, Space twice flies (Space up, Shift down), and arches, doors and plants let you through. Esc releases the mouse, Esc again leaves.
+- **Walk** through the model in first person: choose **Walk**, click the model, then WASD or the arrows to move and the mouse to look. You stand on the bricks and step up one brick at a time; Space jumps, W twice sprints, Space twice flies (Space up, Shift down), and arches, doors and plants let you through. Esc releases the mouse, Esc again leaves.
 - **Import a build**: the Your builds section of the home page imports a model file (what `brickyard-gallery` exports, or a session's `model.json.gz`) as your public build, after a confirmation. `/api/imports` checks every piece and part, recomputes the revision and `.ldr`, keeps the chat's text without its images, and marks the parts list unverified. Imported builds show under Your builds too.
 
 ## How it works
@@ -48,11 +48,11 @@ REBRICKABLE_API_KEY=... server/.venv/bin/brickyard-catalog   # data/rebrickable.
 server/.venv/bin/brickyard-prices                             # web/public/pick-a-brick.json (--locale en-US for another store)
 server/.venv/bin/python scripts/pack-toolkit.py               # web/public/brickyard.tgz, LDConfig.ldr and parts.json
 cd web && npm install
-vercel link --yes --scope h-company --project brickyard && vercel env pull .env.local   # the server's secrets
+vercel link --yes --scope <team> --project <project> && vercel env pull .env.local     # the server's secrets
 npm run dev                                                                            # http://127.0.0.1:5173
 ```
 
-Anyone can open the home page, the public builds and the showcases, read only. Building, and owning builds (publish, rename, fork, import, delete), takes a sign-in with an `@hcompany.ai` account on the H portal, which mints the user's Agents API key. Export the showcases for local use with
+Anyone can open the home page, the public builds and the showcases, read only. Building, and owning builds (publish, rename, fork, import, delete), takes a sign-in on the H portal, open to everyone, which mints the user's Agents API key. Export the showcases for local use with
 `BRICKYARD_DATA=<data dir> server/.venv/bin/brickyard-gallery web/public 6eb28d127e`.
 
 Try the toolkit by hand: in a folder with a `build.py`, run `<repo>/server/.venv/bin/bricks run` (`--help` lists the tools).
@@ -73,8 +73,19 @@ signed in ──GET /api/builds?mine=1, ?id=&file= (pass + key)──▶ their p
 - The public library reads need no pass: signed out, the home page lists the public builds and showcases and opens them read only, and every export works. Sending Holo a message, forking, importing and managing builds ask to sign in first; a prompt typed on the home page survives the sign-in. Private builds, forks and sessions need the owner's pass and key. A session is its owner's to publish, stop and change; a teammate who opens its link sees it read only, to remix.
 - Signing in again revokes the previous key. The key lives in the browser's local storage; the pass, signed with `BRICKYARD_SECRET`, names its holder to the functions.
 - An imported build has no session, so it lives only in the library: **Make private** copies its metadata, model and images into a separate private Blob store, then deletes the public copies. It stays listed (`GET /api/builds?mine=1`) and opens through an owner-authenticated file route. Private file responses are never cached by the app. **Delete** removes its entry and files. Sessions cannot be deleted through the Agents API: deleting one (`DELETE /api/projects?id=&source=session`) unpublishes it and records it under `removed/<scope>/`, which `GET /api/projects` lists so the library leaves it out; the platform keeps its chat until the session ends. Deleting a fork removes its files and name, and removes the session it started. Deleting a build while Holo builds it cancels its session first, so Holo stops. Owners rename, publish, make private and delete their builds from the ⋯ on their cards, or from Share in the build.
-- Publishing copies the session's model, transcript and platform-hosted or embedded images, so they survive its session. External HTTPS photos remain links and depend on their original host; the server does not download them. Only its author can rename, publish, make private, unpublish or delete a build. The emails in `BRICKYARD_ADMINS` can take anyone's build out of the public library to moderate it, but never delete it: it becomes private, kept for its owner.
+- Publishing copies the session's model and its name, never its chat, prompt or photos: anyone else opening a public build sees the model and a read-only note, and its owner keeps the chat in their session. Public builds carry the author's display name: their own (account menu, `PUT /api/profile`), else, for an employee, the name from their `@hcompany.ai` address, and none for anyone else. Only its author can rename, publish, make private, unpublish or delete a build. The emails in `BRICKYARD_ADMINS` can take anyone's build out of the public library to moderate it, but never delete it: it becomes private, kept for its owner.
 - Server environment: `BRICKYARD_SECRET`, `BRICKYARD_ADMINS`, `BLOB_READ_WRITE_TOKEN` from the public `brickyard-library` Blob store, and `BRICKYARD_PRIVATE_BLOB_READ_WRITE_TOKEN` from a **separate private** Blob store (the shorter `BRICKYARD_PRIVATE_BLOB_TOKEN` is also accepted). Never reuse the public token. Without private storage, making private returns 503 and preserves the source.
+
+### Stripping chats from builds published before
+
+With the public store's `BLOB_READ_WRITE_TOKEN` in an operator shell, run from `web/`:
+
+```bash
+node scripts/strip-public-chats.mjs                     # dry run: counts only
+node scripts/strip-public-chats.mjs --apply ./backup    # backs up, then strips
+```
+
+For every public library entry with a chat, a prompt or chat images, `--apply` first copies the entry, `build.json.gz` and the images into `./backup/<id>/` (never overwriting an earlier backup), then rewrites the build with no messages and the entry with no prompt, and deletes the images. Rerun it to finish after a failure.
 
 ### Migrating existing private builds
 
@@ -108,9 +119,9 @@ server/.venv/bin/python -m brickyard.showcase paris   # or london, hogwarts: reg
 scripts/deploy.sh --preview                           # or --prod
 ```
 
-Every push to master that passes CI deploys to production (the `deploy` job in `.github/workflows/ci.yml`, secrets `VERCEL_TOKEN` and `REBRICKABLE_API_KEY`); run CI by hand on master from the Actions tab, or deploy from a laptop as above.
+Every push to master that passes CI deploys to production (the `deploy` job in `.github/workflows/ci.yml`, secrets `VERCEL_TOKEN` and `REBRICKABLE_API_KEY`, variables `VERCEL_ORG_ID` and `VERCEL_PROJECT_ID`); run CI by hand on master from the Actions tab, or deploy from a laptop as above.
 
-`deploy.sh` exports Holo's showcases into `web/public/gallery`, rebuilds the catalog snapshot once it is 20 days old (that needs `REBRICKABLE_API_KEY`), packs the toolkit, builds the app and its functions, and deploys them to the Vercel project `brickyard`. It keeps both on the GitHub release `deploy-data`: a laptop deploy uploads them, and CI, which has no showcase data, downloads them. `bricks run` and shopping packages refuse a snapshot after 30 days, so each deploy stays valid for at least 10: redeploy within that.
+`deploy.sh` exports Holo's showcases into `web/public/gallery`, rebuilds the catalog snapshot once it is 20 days old (that needs `REBRICKABLE_API_KEY`), packs the toolkit, builds the app and its functions, and deploys them to the Vercel project linked in `web/.vercel/project.json`, else the one `VERCEL_SCOPE` and `VERCEL_PROJECT` name. It keeps both on the GitHub release `deploy-data`: a laptop deploy uploads them, and CI, which has no showcase data, downloads them. `bricks run` and shopping packages refuse a snapshot after 30 days, so each deploy stays valid for at least 10: redeploy within that.
 
 ## Tests
 

@@ -64,9 +64,7 @@ function publishAsk({ published, imported, author, onPublish, onUnpublish }: Pub
     : {
         name: "Publish",
         question: "Publish this build?",
-        note: imported
-          ? `Anyone can open it from the library, as ${author}'s.`
-          : `Anyone can open it, as ${author}'s: the model, the chat, and the photos you attached.`,
+        note: `Anyone can open the model from the library${author ? `, as ${author}'s` : ""}.${imported ? "" : " Your chat and photos stay private."}`,
         doing: "Publishing…",
         icon: <GlobeIcon size={16} />,
         action: onPublish,

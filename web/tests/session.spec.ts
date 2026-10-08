@@ -1,9 +1,14 @@
 import { expect, test } from "@playwright/test";
+import { admit } from "../api/lib/account";
 import { GET } from "../api/session";
 import { H } from "../src/hosts";
 import { cookie, HANDOFF, PENDING } from "../src/signin";
+import { blobStore } from "./blobStore";
 
 process.env.BRICKYARD_SECRET = "test-secret";
+const blob = blobStore();
+test.beforeAll(() => blob.start());
+test.afterAll(() => blob.stop());
 
 const TOKEN = `h.${Buffer.from(JSON.stringify({ access: { org_id: "org-1" } })).toString("base64url")}.s`;
 
@@ -44,7 +49,14 @@ async function comeBack(cookies: Record<string, string>, url = "https://bricks.t
   return { response, handoff: JSON.parse(cookie(handed.split(";")[0], HANDOFF)!) };
 }
 
-test("the portal's Google sign-in comes back as a key and a pass for every H account, and only them, where the user left", async () => {
+test("anyone gets in, under a public name that never shows their email", () => {
+  const named = (email: string) => admit({ id: "u", email }).name;
+  expect(named("jane.doe@hcompany.ai")).toBe("Jane Doe");
+  expect(named("jane.doe@gmail.com")).toBe("");
+  expect(named("jd1987@gmail.com")).toBe("");
+});
+
+test("the portal's Google sign-in comes back as a key and a pass for anyone, where the user left", async () => {
   const pending = JSON.stringify({ previous: "key-1", back: "/?public=tower" });
   const h = portal("jane.doe@hcompany.ai");
   try {
@@ -77,8 +89,8 @@ test("the portal's Google sign-in comes back as a key and a pass for every H acc
   try {
     const { response, handoff } = await comeBack({ [H.token]: TOKEN, [PENDING]: '{"back": "//evil.test"}' });
     expect(response.headers.get("location")).toBe("/");
-    expect(handoff).toEqual({ error: "HoloBricks is open to H Company accounts." });
-    expect(outsider.calls).toEqual(["GET /auth/me"]);
+    expect(handoff).toMatchObject({ user: { email: "ada@example.com", name: "" }, key: "hk-new" });
+    expect(outsider.calls).toEqual(["GET /auth/me", "POST /organizations/org-1/keys/"]);
     expect((await comeBack({})).handoff).toEqual({ error: "The H sign-in did not reach HoloBricks: try again." });
   } finally {
     outsider.restore();

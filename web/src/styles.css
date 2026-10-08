@@ -892,6 +892,202 @@ aside {
   width: min(400px, calc(100vw - 32px));
 }
 
+.site-footer {
+  flex: none;
+  margin-top: auto;
+  background: #040405;
+  color: #fff;
+}
+
+.site-footer-inner {
+  width: min(1200px, 100%);
+  margin: 0 auto;
+  padding: 56px 24px calc(40px + env(safe-area-inset-bottom));
+}
+
+.site-footer-top {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 48px;
+}
+
+.site-footer-brand {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-width: 320px;
+}
+
+.site-footer-inner .site-footer-brand > a {
+  align-self: flex-start;
+  color: #fff;
+}
+
+.site-footer-brand svg {
+  display: block;
+  width: 45px;
+  height: 26px;
+}
+
+.site-footer-inner p {
+  margin: 0;
+  color: #7a7a8a;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.site-footer-social {
+  display: flex;
+  gap: 16px;
+}
+
+.site-footer-inner nav {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(120px, auto));
+  gap: 40px 64px;
+}
+
+.site-footer-inner h3 {
+  margin: 0 0 16px;
+  color: #7a7a8a;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.site-footer-inner ul {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 14px;
+}
+
+.site-footer-inner :is(a, button) {
+  height: auto;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: none;
+  font: inherit;
+  color: #adadbc;
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+.site-footer-inner :is(a, button):hover {
+  background: none;
+  color: #fff;
+}
+
+.site-footer-social a,
+.site-footer-bottom :is(a, button) {
+  color: #7a7a8a;
+}
+
+.site-footer-bottom {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 48px;
+  padding-top: 32px;
+  border-top: 1px solid #1c1c26;
+}
+
+.site-footer-bottom p,
+.site-footer-bottom ul {
+  font-size: 12px;
+}
+
+.site-footer-bottom ul {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+}
+
+@media (max-width: 560px) {
+  .site-footer-inner nav {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.legal-note a,
+.credits a {
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 2px;
+}
+
+.legal-note a:hover,
+.credits a:hover {
+  background: none;
+  color: var(--text-secondary);
+  text-decoration-color: currentColor;
+}
+
+.legal-note {
+  font-size: var(--font-small);
+  line-height: 16px;
+  color: var(--text-tertiary);
+  text-align: center;
+}
+
+.legal-note a,
+.credits a {
+  text-decoration-color: currentColor;
+}
+
+.credits-dialog,
+.name-dialog {
+  width: min(400px, calc(100vw - 32px));
+}
+
+.credits {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  font-size: var(--font-compact);
+  color: var(--text-secondary);
+}
+
+.credits dt {
+  font-weight: 600;
+  color: var(--text-default);
+}
+
+.credits dd {
+  margin: 0;
+}
+
+.name-input {
+  height: 36px;
+  padding: 0 10px;
+  font: inherit;
+  font-size: var(--font-title);
+  color: inherit;
+  background: var(--background-card);
+  border: 1px solid var(--stroke-default);
+  border-radius: var(--radius-button);
+}
+
+.menu-value {
+  margin-left: auto;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-left: var(--space-3);
+}
+
 .sign-in-method {
   justify-content: center;
   gap: 10px;
@@ -1727,7 +1923,7 @@ main {
   padding: 9px var(--space-4);
 }
 
-/* The Pick a Brick list and the print plates, side by side, stacking on a phone. */
+/* The parts store list and the print plates, side by side, stacking on a phone. */
 .shop-downloads {
   display: flex;
   flex-wrap: wrap;

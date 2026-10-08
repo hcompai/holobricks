@@ -1,6 +1,7 @@
 import { EnvelopeSimpleIcon, GoogleLogoIcon, XIcon } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
 import { signIn, signInError, signInOnPlatform } from "./account";
+import { SignInTerms } from "./Legal";
 
 /** The ways in with an H account, asked for when a signed-out visitor wants to build. */
 export function SignInDialog({ onClose }: { onClose: () => void }) {
@@ -62,6 +63,7 @@ export function SignInDialog({ onClose }: { onClose: () => void }) {
               : signInError}
           </p>
         )}
+        <SignInTerms />
       </div>
     </dialog>
   );

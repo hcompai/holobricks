@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { gzipSync } from "node:zlib";
 import { holder, isAdmin } from "./lib/account";
 import { body, Refusal, route, SHARED } from "./lib/http";
+import { authorOf } from "./lib/profile";
 import { snapshot } from "./lib/snapshot";
 import { projectName } from "./lib/names";
 import {
@@ -90,13 +91,7 @@ export const POST = route(async (request) => {
     written.push(url);
     return url;
   };
-  const build = await snapshot(
-    id,
-    key,
-    given.edits,
-    (name, image) => keep(name, image, image.type || "image/png"),
-    user.id,
-  );
+  const build = await snapshot(id, key, given.edits, user.id);
   build.name = (await projectName(user.id, id))?.name ?? build.name;
   const coverUrl = cover ? await keep(coverName(cover), cover.data, cover.type) : null;
   // The Blob CDN can serve the previous entry for a minute, and with it the previous thumbnail.
@@ -105,10 +100,9 @@ export const POST = route(async (request) => {
   const published: Published = {
     id,
     name: build.name,
-    prompt: build.messages.find((m) => m.role === "user")?.text ?? "",
     pieces: build.pieces.length,
     steps: build.steps.length,
-    author: user.name,
+    author: await authorOf(user),
     owner: user.id,
     published: at,
     thumbnail: coverUrl ?? previous?.thumbnail ?? null,

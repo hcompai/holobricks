@@ -15,7 +15,6 @@ const shown = (page: Page, revision: string) =>
 const entry = (build: Build, author: string, owner: string) => ({
   id: build.id,
   name: build.name,
-  prompt: build.name,
   pieces: build.pieces.length,
   steps: build.steps.length,
   author,
@@ -88,6 +87,38 @@ test("a colleague's public build opens from the home page's public builds, under
   await page.getByRole("button", { name: "Share", exact: true }).click();
   await expect(page.getByRole("menuitem", { name: /Publish/ })).toHaveCount(0);
   await page.keyboard.press("Escape");
+});
+
+test("a display name set from the account menu shows at once on the user's public builds", async ({ page }) => {
+  const tower = { ...fixture(), id: "tower", name: "My tower" };
+  const published = [entry(tower, ACCOUNT.user.name, ACCOUNT.user.id)];
+  await site(page);
+  await library(page, published, [tower]);
+  await page.route("**/api/profile", async (route) => {
+    const name = route.request().postDataJSON().name.trim();
+    if (name.includes("@")) return route.fulfill({ status: 400, json: { error: "No email in a name." } });
+    for (const p of published) p.author = name;
+    return route.fulfill({ json: { name } });
+  });
+  await page.goto("/");
+  const tile = page.getByRole("region", { name: "Public builds" }).locator(".tile");
+  await expect(tile).toContainText(`by ${ACCOUNT.user.name}`);
+
+  await page.getByRole("button", { name: "Account" }).click();
+  await page.getByRole("menuitem", { name: /Display name/ }).click();
+  const dialog = page.getByRole("dialog", { name: "Display name" });
+  await expect(dialog).toContainText("Shown on your public builds.");
+  const field = dialog.getByRole("textbox", { name: "Display name" });
+  await expect(field).toHaveValue(ACCOUNT.user.name);
+  await field.fill("jane@example.com");
+  await field.press("Enter");
+  await expect(dialog.getByRole("alert")).toHaveText("No email in a name.");
+  await field.fill("Jane the Builder");
+  await field.press("Enter");
+  await expect(dialog).toHaveCount(0);
+  await expect(tile).toContainText("by Jane the Builder");
+  await page.getByRole("button", { name: "Account" }).click();
+  await expect(page.getByRole("menu")).toContainText("Jane the Builder");
 });
 
 test("home shows one row of my builds and ten rows of public ones, with more below on demand", async ({ page }) => {
@@ -188,7 +219,7 @@ test("the author publishes a build after a confirmation, stays on it, then makes
 
   const publishing = page.getByRole("dialog", { name: "Publish" });
   await page.getByRole("menuitem", { name: "Publish to the library…" }).click();
-  await expect(publishing).toContainText("the chat, and the photos you attached");
+  await expect(publishing).toContainText("Your chat and photos stay private.");
   await publishing.getByRole("button", { name: "Publish" }).click();
   await expect(publishing).toBeHidden();
   await expect(page).toHaveURL(/\?build=mine$/);
@@ -260,7 +291,7 @@ test("signed out, the build opens and the sign-in waits in a dialog; Google brin
 }) => {
   const tower = fixture();
   await site(page, [tower], null);
-  let handoff: object = { error: "HoloBricks is open to H Company accounts." };
+  let handoff: object = { error: "Google did not finish the sign-in: try again." };
   const pending: { verifier: string }[] = [];
   const challenges: (string | null)[] = [];
   await page.route(`${PORTAL}/auth/authorize?*`, (route) => {
@@ -289,7 +320,7 @@ test("signed out, the build opens and the sign-in waits in a dialog; Google brin
   await expect(dialog).toHaveCount(0);
   await signIn.click();
   await google.click();
-  await expect(dialog.getByRole("alert")).toHaveText("HoloBricks is open to H Company accounts.");
+  await expect(dialog.getByRole("alert")).toHaveText("Google did not finish the sign-in: try again.");
   await shown(page, tower.revision);
 
   handoff = ACCOUNT;

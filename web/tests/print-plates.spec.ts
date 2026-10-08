@@ -5,7 +5,7 @@ import type { PriceTable } from "../src/pickabrick";
 import { colors, fixture, site } from "./fixtures";
 
 const TABLE: PriceTable = {
-  source: "LEGO Pick a Brick",
+  source: "store",
   locale: "en-US",
   currency: "USD",
   fetched_at: Date.UTC(2026, 8, 30) / 1000,
@@ -46,17 +46,17 @@ async function open(page: Page, table: PriceTable | null) {
   return page.getByRole("dialog", { name: "Build it for real" });
 }
 
-test("the print plates sit next to the Pick a Brick list: one plate a color, every brick at real size", async ({
+test("the print plates sit next to the parts store list: one plate a color, every brick at real size", async ({
   page,
 }) => {
   const sheet = await open(page, TABLE);
-  const store = sheet.getByRole("region", { name: "Pick a Brick" });
-  await expect(store.getByRole("button", { name: "Download Pick a Brick list" })).toBeVisible();
+  const store = sheet.getByRole("region", { name: "Official parts store" });
+  await expect(store.getByRole("button", { name: "Download parts store list" })).toBeVisible();
 
   const download = page.waitForEvent("download");
   await store.getByRole("button", { name: "Download 3MF plates" }).click();
   const file = await download;
-  expect(file.suggestedFilename()).toBe("A little LEGO tower print plates.3mf");
+  expect(file.suggestedFilename()).toBe("A little brick tower print plates.3mf");
   await expect(store.getByRole("status")).toHaveText("4 plates of 200 × 200 mm, one color each.");
 
   const parts = unzip(await readFile(await file.path()));
@@ -86,11 +86,11 @@ test("the print plates sit next to the Pick a Brick list: one plate a color, eve
   expect(model.match(/<triangle /g)).toHaveLength(4 * 12);
 });
 
-test("without Pick a Brick prices, the print plates still have their own place", async ({ page }) => {
+test("without parts store prices, the print plates still have their own place", async ({ page }) => {
   const sheet = await open(page, null);
-  await expect(sheet.getByRole("region", { name: "Pick a Brick" })).toHaveCount(0);
+  await expect(sheet.getByRole("region", { name: "Official parts store" })).toHaveCount(0);
   const printing = sheet.getByRole("region", { name: "3D printing" });
   const download = page.waitForEvent("download");
   await printing.getByRole("button", { name: "Download 3MF plates" }).click();
-  expect((await download).suggestedFilename()).toBe("A little LEGO tower print plates.3mf");
+  expect((await download).suggestedFilename()).toBe("A little brick tower print plates.3mf");
 });

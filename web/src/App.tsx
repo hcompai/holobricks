@@ -30,6 +30,7 @@ import { ChatPanel, type ChatHandle } from "./ChatPanel";
 import { selectedArea } from "./selectedArea";
 import { HomeShelves } from "./HomeShelves";
 import { ImportBuild } from "./ImportBuild";
+import { SiteFooter } from "./Legal";
 import { countParts, PartsPanel } from "./PartsPanel";
 import { SESSION_DELETE_NOTE, ShareMenu } from "./ShareMenu";
 import { Timeline } from "./Timeline";
@@ -660,7 +661,19 @@ export default function App({ account }: { account: Account | null }) {
             Sign in
           </button>
         ) : (
-          !sheeted && <AccountMenu account={account} building={running.length > 0} />
+          !sheeted && (
+            <AccountMenu
+              account={account}
+              building={running.length > 0}
+              onRenamed={(author) => {
+                setBuilds(
+                  (previous) =>
+                    previous?.map((b) => (b.source === "public" && b.owner === me ? { ...b, author } : b)) ?? null,
+                );
+                refreshBuilds();
+              }}
+            />
+          )
         )}
       </header>
       <aside
@@ -819,6 +832,7 @@ export default function App({ account }: { account: Account | null }) {
             />
           )}
         </div>
+        {home && <SiteFooter />}
       </aside>
       <main>
         <div className="center-bar">

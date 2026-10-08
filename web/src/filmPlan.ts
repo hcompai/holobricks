@@ -167,6 +167,6 @@ export function filmFilename(name: string, extension: string): string {
 export function filmCaption(build: Build, branded: boolean): string {
   const author = branded && brandable(build) ? `${HOLO.name} by H Company` : "HoloBricks";
   const state = build.status === "building" ? " · work in progress" : "";
-  const tags = branded && brandable(build) ? "#Holo4 #HCompany #HoloBricks #LEGO" : "#HoloBricks #LEGO";
-  return `${build.name}: ${build.pieces.length.toLocaleString()} LEGO pieces, built with ${author}${state}. ${tags}`;
+  const tags = branded && brandable(build) ? "#Holo4 #HCompany #HoloBricks" : "#HoloBricks";
+  return `${build.name}: ${build.pieces.length.toLocaleString()} pieces, built with ${author}${state}. ${tags}`;
 }

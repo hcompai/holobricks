@@ -9,19 +9,22 @@ export interface User {
   name: string;
 }
 
-/** "jane.doe@hcompany.ai" as "Jane Doe". */
-export const nameOf = (email: string) =>
-  email
-    .split("@")[0]
-    .split(/[._-]+/)
-    .filter(Boolean)
-    .map((w) => w[0].toUpperCase() + w.slice(1))
-    .join(" ");
+export const isStaff = (email: string) => email.toLowerCase().endsWith(DOMAIN);
 
-export function admit(user: { id: string; email: string }): User {
-  if (!user.email.toLowerCase().endsWith(DOMAIN)) throw new Refusal(403, "HoloBricks is open to H Company accounts.");
-  return { ...user, name: nameOf(user.email) };
-}
+const capital = (word: string) => word[0].toUpperCase() + word.slice(1);
+
+/** The default public name: an employee's name from their H Company address, else none. */
+export const nameOf = (email: string) =>
+  isStaff(email)
+    ? email
+        .split("@")[0]
+        .split(/[._-]+/)
+        .filter(Boolean)
+        .map(capital)
+        .join(" ")
+    : "";
+
+export const admit = (user: { id: string; email: string }): User => ({ ...user, name: nameOf(user.email) });
 
 export const isAdmin = (user: User) =>
   (process.env.BRICKYARD_ADMINS ?? "")

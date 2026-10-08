@@ -137,8 +137,8 @@ test("an imported build goes private and stays under the user's builds, goes pub
   await expect(page.locator(".viewer")).toHaveAttribute("data-revision", build.revision);
 
   expect(calls.find((c) => c.search.includes("file=build.json.gz"))?.auth).toBe(`Bearer ${ACCOUNT.pass}`);
-  expect(calls.find((c) => c.search.includes("file=images%2F1.png"))?.auth).toBe(`Bearer ${ACCOUNT.pass}`);
-  await expect(page.locator('.chat img[src^="data:image/png"]')).toBeVisible();
+  expect(calls.some((c) => c.search.includes("file=images"))).toBe(false);
+  await expect(page.locator(".chat img")).toHaveCount(0);
   await share.click();
   await page.getByRole("menuitem", { name: "Publish to the library…" }).click();
   await page.getByRole("dialog", { name: "Publish" }).getByRole("button", { name: "Publish" }).click();

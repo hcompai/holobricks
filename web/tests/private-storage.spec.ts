@@ -55,7 +55,6 @@ test.beforeEach(async () => {
     id,
     owner: owner.id,
     name: "Private house",
-    prompt: "Keep this model",
     author: "Owner",
     pieces: model.pieces.length,
     steps: model.steps.length,

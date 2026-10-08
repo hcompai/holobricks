@@ -82,7 +82,6 @@ test.beforeEach(async () => {
     {
       id: RUN,
       name: "Olive's tower",
-      prompt: "",
       pieces: 8,
       steps: 4,
       author: OWNER.name,

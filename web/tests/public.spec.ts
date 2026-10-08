@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { gzipSync } from "node:zlib";
+import type { Build } from "../src/model";
 import { ACCOUNT, fixture, site } from "./fixtures";
 
 const BLOB = "https://blob.test";
@@ -9,21 +10,20 @@ const castle = { ...fixture(), id: "castle", name: "Castle" };
 const shown = (page: Page, revision: string) =>
   expect(page.locator(".viewer")).toHaveAttribute("data-revision", revision);
 
-/** The public library holding Ada's tower. */
-async function library(page: Page) {
+/** The public library holding Ada's tower, as `build` and under `author`. */
+async function library(page: Page, build: Build = tower, author = "Ada Lovelace") {
   const published = {
     id: tower.id,
     name: tower.name,
-    prompt: tower.name,
     pieces: tower.pieces.length,
-    author: "Ada Lovelace",
+    author,
     owner: "u-ada",
     published: 1,
     thumbnail: null,
     build: `${BLOB}/builds/tower/build.json.gz`,
   };
   await page.route(`${BLOB}/builds/tower/build.json.gz`, (route) =>
-    route.fulfill({ headers: { "access-control-allow-origin": "*" }, body: gzipSync(JSON.stringify(tower)) }),
+    route.fulfill({ headers: { "access-control-allow-origin": "*" }, body: gzipSync(JSON.stringify(build)) }),
   );
   await page.route("**/api/builds*", (route) => {
     const id = new URL(route.request().url()).searchParams.get("id");
@@ -94,6 +94,29 @@ test("signed out, a public build's link opens it read only, exports it, and fork
   await page.locator(".gallery-note").getByRole("button", { name: "Sign in" }).click();
   await expect(dialog).toBeVisible();
   expect(asked).toEqual([]);
+});
+
+test("a public build published with its chat shows none of it, and an author with no name shows no byline", async ({
+  page,
+}) => {
+  const chatty: Build = {
+    ...tower,
+    messages: [
+      { role: "user", text: "My secret request", images: [`${BLOB}/builds/tower/images/1.png`] },
+      { role: "assistant", text: "Here is your secret tower.", images: [] },
+    ],
+  };
+  await site(page, [], null);
+  await library(page, chatty, "");
+  await page.goto("/");
+  const tile = page.getByRole("region", { name: "Public builds" }).locator(".tile", { hasText: tower.name });
+  await expect(tile).toContainText("8 pieces");
+  await expect(tile).not.toContainText("by");
+  await tile.click();
+  await shown(page, tower.revision);
+  await expect(page.locator(".gallery-note")).toHaveText(/^Public build · Sign in to fork/);
+  await expect(page.locator(".chat-log .msg")).toHaveCount(0);
+  await expect(page.locator("body")).not.toContainText("secret");
 });
 
 test("signed out, asking Holo for a build opens the sign-in, and the prompt waits in the composer once signed in", async ({

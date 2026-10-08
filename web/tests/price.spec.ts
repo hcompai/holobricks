@@ -36,24 +36,26 @@ test("upload lists hold at most 400 different elements each", () => {
   expect(files[1]).toBe("elementId,quantity\r\n400,401\r\n");
 });
 
-test("one sheet gets the bricks: its price in the header, BrickLink, a Pick a Brick list", async ({ page }) => {
+test("one sheet gets the bricks: its price in the header, BrickLink, an official parts store list", async ({
+  page,
+}) => {
   await open(page, TABLE);
   const trigger = page.getByRole("button", { name: /^Get the bricks/ });
   await expect(trigger).toHaveText(/^Get the bricks · ≈ 4\s€$/);
   await trigger.click();
   const sheet = page.getByRole("dialog", { name: "Build it for real" });
   await expect(sheet.getByRole("region", { name: "BrickLink" })).toContainText("The parts list was not checked.");
-  const store = sheet.getByRole("region", { name: "Pick a Brick" });
+  const store = sheet.getByRole("region", { name: "Official parts store" });
   await expect(store).toContainText(
-    /≈ 4,10\s€ on Pick a Brick for 6 of 8 pieces; 2 are not sold there in their color\. 2 are out of stock\./,
+    /≈ 4,10\s€ at the official parts store for 6 of 8 pieces; 2 are not sold there in their color\. 2 are out of stock\./,
   );
-  await expect(store.getByRole("link", { name: /Open Pick a Brick/ })).toHaveAttribute(
+  await expect(store.getByRole("link", { name: /Open the official parts store/ })).toHaveAttribute(
     "href",
     "https://www.lego.com/fr-fr/pick-and-build/pick-a-brick",
   );
 
   const download = page.waitForEvent("download");
-  await store.getByRole("button", { name: "Download Pick a Brick list" }).click();
+  await store.getByRole("button", { name: "Download parts store list" }).click();
   const csv = await readFile(await (await download).path(), "utf8");
   expect(csv).toBe("elementId,quantity\r\n300121,2\r\n300124,2\r\n300123,2\r\n");
 
@@ -72,13 +74,13 @@ test("a hand-edited build prices its edits, cannot fill a BrickLink cart until r
   await expect(page.locator(".scrub-label span")).toHaveText(/^7 pieces /);
   await page.getByRole("button", { name: /^Get the bricks/ }).click();
   const sheet = page.getByRole("dialog", { name: "Build it for real" });
-  await expect(sheet.getByRole("region", { name: "Pick a Brick" })).toContainText("Includes your edits.");
+  await expect(sheet.getByRole("region", { name: "Official parts store" })).toContainText("Includes your edits.");
   const bricklink = sheet.getByRole("region", { name: "BrickLink" });
   await expect(bricklink.getByRole("alert")).toContainText("Reset your edits");
   await bricklink.getByRole("button", { name: "Reset my edits" }).click();
   await expect(page.locator(".scrub-label span")).toHaveText(/^8 pieces /);
   await expect(bricklink.getByRole("alert")).toContainText("The parts list was not checked.");
-  await expect(sheet.getByRole("region", { name: "Pick a Brick" })).not.toContainText("Includes your edits.");
+  await expect(sheet.getByRole("region", { name: "Official parts store" })).not.toContainText("Includes your edits.");
 
   await page.unrouteAll({ behavior: "ignoreErrors" });
   const errors: string[] = [];
