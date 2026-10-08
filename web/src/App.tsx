@@ -13,13 +13,13 @@ import { type Account, signInError } from "./account";
 import { AccountMenu } from "./AccountMenu";
 import { SignInDialog } from "./SignInDialog";
 import { RecoveryPanel } from "./RecoveryPanel";
-import { cancel, create, remix, say, stop } from "./agent";
+import { cancel, create, say, stop } from "./agent";
 import type { ProjectActions } from "./ProjectMenu";
 import { ProjectTitle } from "./ProjectTitle";
 import { useProjectNames } from "./useProjectNames";
 import { HistoryPanel } from "./HistoryPanel";
 import { design, useHistory, type Version } from "./history";
-import { startFork, forkSeed, type ForkSeed } from "./fork";
+import { startFork, forkOperation, forkSeed, type ForkSeed } from "./fork";
 import { provideParts } from "./scene";
 import { packTitle } from "./partCatalog";
 import { PHASES } from "./activity";
@@ -355,7 +355,18 @@ export default function App({ account }: { account: Account | null }) {
     };
     setDraft({ at, build, since });
     try {
-      const id = await (from ? remix(from, prompt, images, attached) : create(prompt, images, attached));
+      const id = await (from && at
+        ? forkOperation()(
+            forkSeed(
+              from,
+              { ...at, name: from.name, version: selected?.number ?? null, revision: from.revision },
+              name,
+            ),
+            prompt,
+            images,
+            attached,
+          )
+        : create(prompt, images, attached));
       started.current.add(id);
       remember(id, { name: name.slice(0, 60), prompt });
       refreshBuilds();

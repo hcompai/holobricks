@@ -1,4 +1,6 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { gunzipSync } from "node:zlib";
+import { EMPTY_MODEL } from "../src/model";
 import { fixture, revised, site } from "./fixtures";
 import { platform } from "./platform";
 
@@ -395,8 +397,19 @@ test("a change to my ended build continues it as a copy under the same name", as
   await expect(page.locator(".aside-title")).toHaveText(model.name);
   const [first] = agp.posted("/api/v2/sessions")[0].messages;
   expect(first.message).toBe("Make it blue");
-  expect(first.files.map((f: { name: string }) => f.name)).toEqual(["brickyard.tgz", "remix.py"]);
+  const seedFile = first.files.find((f: { name: string }) => f.name === "brickyard-fork.json.gz");
+  expect(seedFile).toBeDefined();
+  const seed = JSON.parse(gunzipSync(Buffer.from(seedFile.source, "base64")).toString());
+  expect(seed.model.name).toBe(model.name);
+  expect(seed.origin).toMatchObject({ id: "ended", source: "session", name: model.name });
+  expect(first.files.some((f: { name: string }) => f.name === "remix.py")).toBe(true);
   expect(agp.posted("/messages")).toHaveLength(0);
+  agp.share("new-build", { ...model, name: EMPTY_MODEL.name });
+  agp.answer("new-build", "Changed.");
+  await page.evaluate(() => localStorage.removeItem("brickyard.library"));
+  await page.reload();
+  await shown(page, model.revision);
+  await expect(page.locator(".aside-title")).toHaveText(model.name);
 });
 
 test("home shows my builds by the names Holo gave them; showcases under Public builds", async ({ page }) => {

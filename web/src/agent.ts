@@ -3,8 +3,6 @@ import prompt from "../../agent/holo.md?raw";
 import { expired, key } from "./account";
 import { H } from "./hosts";
 import { platformAsset, externalImage, assetBlob } from "./assetUrl";
-import type { Build } from "./model";
-import { script } from "./remix";
 import { AGENT } from "./session";
 import { HOLO } from "./holo";
 const MAX_STEPS = 300;
@@ -117,10 +115,6 @@ export async function initialMessage(text: string, photos: string[], attached: R
   if (!toolkit.ok) throw new Error("The HoloBricks toolkit is missing from this site.");
   return message(text, photos, { "brickyard.tgz": await toolkit.blob(), ...attached });
 }
-
-/** Continue an ended model with the existing ordinary chat flow. */
-export const remix = (build: Build, text: string, photos: string[], attached: Record<string, Blob> = {}) =>
-  create(text, photos, { ...attached, "remix.py": new Blob([script(build)], { type: "text/x-python" }) });
 
 export async function say(id: string, text: string, photos: string[], attached: Record<string, Blob> = {}) {
   await client.session(id).sendMessage(await message(text, photos, attached, `photo-${Date.now()}`));
