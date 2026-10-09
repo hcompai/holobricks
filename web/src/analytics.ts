@@ -1,4 +1,5 @@
 import { posthog } from "posthog-js";
+import { HOLO } from "./holo";
 import { scrubbed } from "./privateText";
 
 /** Same project, consent and attribution as hcompany.ai, so a visitor who signs up on the Platform joins their visits here. */
@@ -65,7 +66,7 @@ if (ENABLED) {
     disable_session_recording: true,
     before_send: (event) => (event?.event === "$autocapture" ? scrubbed(event) : event),
   });
-  posthog.register({ site: SITE });
+  posthog.register({ site: SITE, model: HOLO.id });
 }
 
 let posthogAllowed = false;
