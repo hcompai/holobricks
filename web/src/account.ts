@@ -99,7 +99,6 @@ function leave(verifier: string | null) {
 
 /** Leave for the portal's Google sign-in; it comes back through /api/session, then to this page. */
 export async function signIn() {
-  track("sign_in_started", { method: "google" });
   rememberSignup();
   const loopback = window.location.hostname === LOOPBACK;
   const verifier = loopback ? base64url(crypto.getRandomValues(new Uint8Array(32))) : null;
@@ -121,7 +120,6 @@ export async function signIn() {
  * Resolves false if the popup was blocked, true once it closes.
  */
 export function signInOnPlatform(): Promise<boolean> {
-  track("sign_in_started", { method: "platform" });
   rememberSignup();
   const query = new URLSearchParams({ sdk_auth: "true", return_origin: window.location.origin });
   const popup = window.open(`${H.platform}/login?${query}`, "h-platform-sign-in", "width=520,height=720");

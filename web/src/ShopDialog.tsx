@@ -7,7 +7,6 @@ import {
   XIcon,
 } from "@phosphor-icons/react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { track } from "./analytics";
 import { PdfButton } from "./InstructionsExport";
 import type { Build, Piece, ShoppingPackage } from "./model";
 import { type Estimate, estimate, money, type PriceTable, storeUrl, UPLOAD_LIMIT, uploadLists } from "./pickabrick";
@@ -41,7 +40,6 @@ export function ShopDialog({ build, preview, table, edited, describe, onReset, o
 
   useEffect(() => {
     dialog.current?.showModal();
-    track("shop_opened");
   }, []);
 
   useEffect(() => {

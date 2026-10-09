@@ -11,7 +11,7 @@ import {
   TrashIcon,
 } from "@phosphor-icons/react";
 import { type ComponentProps, useEffect, useState } from "react";
-import { type ShareKind, track } from "./analytics";
+import { track } from "./analytics";
 import { Confirm } from "./Confirm";
 import type { Build } from "./model";
 import { useMenu } from "./useMenu";
@@ -70,7 +70,7 @@ function publishAsk({ published, imported, author, onPublish, onUnpublish }: Pub
         icon: <GlobeIcon size={16} />,
         action: async () => {
           await onPublish();
-          track("build_shared", { kind: "publish" });
+          track("build_published");
         },
       };
 }
@@ -121,12 +121,7 @@ export function ShareMenu({
     if (!open) setAsk(null);
   }, [open]);
 
-  const copy = () =>
-    link &&
-    navigator.clipboard.writeText(link).then(() => {
-      setCopied(true);
-      track("build_shared", { kind: "link" });
-    }, console.error);
+  const copy = () => link && navigator.clipboard.writeText(link).then(() => setCopied(true), console.error);
 
   const save = (blob: Blob, extension: string) => {
     const url = URL.createObjectURL(blob);
@@ -134,9 +129,8 @@ export function ShareMenu({
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
-  const then = (kind: ShareKind, action: () => void) => () => {
+  const then = (action: () => void) => () => {
     setOpen(false);
-    track("build_shared", { kind });
     action();
   };
 
@@ -159,14 +153,14 @@ export function ShareMenu({
           <div className="menu-list" role="menu">
             {phone && (
               <>
-                <button role="menuitem" disabled={!exportable} onClick={then("gif", onGif)}>
+                <button role="menuitem" disabled={!exportable} onClick={then(onGif)}>
                   <FilmStripIcon size={18} />
                   GIF
                 </button>
                 <button
                   role="menuitem"
                   disabled={!exportable}
-                  onClick={then("image", () =>
+                  onClick={then(() =>
                     setCapture({ name: build.name, building: build.status === "building", image: image() }),
                   )}
                 >
@@ -204,12 +198,12 @@ export function ShareMenu({
               </>
             )}
             {!phone && (
-              <button role="menuitem" disabled={!exportable} onClick={then("gif", onGif)}>
+              <button role="menuitem" disabled={!exportable} onClick={then(onGif)}>
                 <FilmStripIcon size={16} />
                 Share a GIF…
               </button>
             )}
-            <button role="menuitem" disabled={!exportable} onClick={then("instructions", onInstructions)}>
+            <button role="menuitem" disabled={!exportable} onClick={then(onInstructions)}>
               <BookOpenIcon size={16} />
               Instructions (PDF)…
             </button>
@@ -217,7 +211,7 @@ export function ShareMenu({
             <button
               role="menuitem"
               disabled={!build.ldr}
-              onClick={then("model_file", () => save(new Blob([build.ldr], { type: "text/plain" }), "ldr"))}
+              onClick={then(() => save(new Blob([build.ldr], { type: "text/plain" }), "ldr"))}
             >
               <CubeIcon size={16} />
               Download model (.ldr)
@@ -226,7 +220,7 @@ export function ShareMenu({
               <button
                 role="menuitem"
                 disabled={!built}
-                onClick={then("image", () => void image().then((png) => png && save(png, "png")))}
+                onClick={then(() => void image().then((png) => png && save(png, "png")))}
               >
                 <ImageIcon size={16} />
                 Download image

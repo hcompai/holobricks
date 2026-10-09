@@ -13,7 +13,7 @@ const VENDOR_ATTRIBUTION = "h_attr";
 /** The signup tags platform.hcompany.ai reads from this cookie on `.hcompany.ai`. */
 const ATTRIBUTION_COOKIE = "h_attr";
 const ATTRIBUTION_DAYS = 30;
-const SIGNUP_TAGS = { product: "agent_api", source: SITE };
+const SIGNUP_TAGS = { product: SITE, source: SITE };
 
 type AxeptioChoices = Record<string, boolean | undefined>;
 interface AxeptioSdk {
@@ -27,16 +27,12 @@ declare global {
   }
 }
 
-export type ShareKind = "gif" | "image" | "link" | "publish" | "instructions" | "model_file";
-
 export type Event =
-  | ["sign_in_started", { method: "google" | "platform" }]
   | ["sign_in_completed"]
   | ["build_started", { from: "prompt" | "remix"; image_count: number }]
   | ["build_forked"]
   | ["build_imported"]
-  | ["build_shared", { kind: ShareKind }]
-  | ["shop_opened"];
+  | ["build_published"];
 
 /** Queue a callback on the Axeptio SDK, which GTM loads later: it runs at once if the SDK has already booted. */
 function onAxeptio(cb: (sdk: AxeptioSdk) => void) {
@@ -83,8 +79,9 @@ onAxeptio((sdk) =>
 
 export function track(...[name, properties]: Event) {
   if (!ENABLED) return;
-  posthog.capture(name, properties);
-  window.dataLayer?.push({ event: name, ...properties });
+  const event = `${SITE}.${name}`;
+  posthog.capture(event, properties);
+  window.dataLayer?.push({ event, ...properties });
 }
 
 /** Tag the signup the Platform may be about to see, before the page leaves for it. */
