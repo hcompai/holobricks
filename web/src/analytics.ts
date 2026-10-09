@@ -1,4 +1,5 @@
 import { posthog } from "posthog-js";
+import { scrubbed } from "./privateText";
 
 /** Same project, consent and attribution as hcompany.ai, so a visitor who signs up on the Platform joins their visits here. */
 const POSTHOG_KEY = "phc_pRHgY8yZ8ivPJekkRXYeKvhCxxGgFBjmomNLZGFumJBK";
@@ -59,6 +60,7 @@ if (ENABLED) {
     persistence: "localStorage+cookie",
     capture_pageview: "history_change",
     disable_session_recording: true,
+    before_send: (event) => (event?.event === "$autocapture" ? scrubbed(event) : event),
   });
   posthog.register({ site: SITE });
 }

@@ -20,7 +20,7 @@ export function ReferenceBoard({
   const current = visible.find((reference) => reference.id === selected) ?? latest;
   if (!current) return fallback;
   return (
-    <div className={`thinking-references ${compact ? "thinking-references-compact" : ""}`}>
+    <div className={`thinking-references ph-private ${compact ? "thinking-references-compact" : ""}`}>
       {(!compact || expanded) && (
         <figure className="thinking-reference" key={current.src}>
           <div className="thinking-reference-image">
