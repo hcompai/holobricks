@@ -15,7 +15,7 @@
   --stroke-default: light-dark(#ebebf1, #242424);
   --stroke-strong: light-dark(#d8d8e2, #343434);
   --stroke-focus: light-dark(#adadbc, #555555);
-  --accent: #f76808;
+  --accent: light-dark(#5a04bc, #9a5bec);
 
   --text-success: light-dark(#216748, #88e1b8);
 
