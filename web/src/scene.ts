@@ -7,7 +7,7 @@ import { PointerLockControls } from "three/examples/jsm/controls/PointerLockCont
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { LDrawLoader } from "three/examples/jsm/loaders/LDrawLoader.js";
 import { LDrawConditionalLineMaterial } from "three/examples/jsm/materials/LDrawConditionalLineMaterial.js";
-import type { Box, Camera, Piece } from "./model";
+import type { Box, Camera, Piece, RenderRequest } from "./model";
 import { buildRevision } from "./buildRevision";
 import { placementPop } from "./brickAudio";
 import { placedCount, planPlacement, SETTLE_SECONDS, type PlacementPlan } from "./placement";
@@ -49,8 +49,6 @@ const PLATE = 8;
 const SHADOW_MAP = 2048;
 /** Edge opacity by how many pixels a stud covers: none where a stud's lines would pile into a dark film, crisp up close. */
 const EDGE_FADE = { opacity: 0.6, fromPixels: 3, toPixels: 30 };
-/** The builder's renders keep faint seams down to a few pixels a stud, so its bricks still read as bricks. */
-const LOOK_EDGE_FADE = { opacity: 0.6, fromPixels: 1, toPixels: 12 };
 /** Vertical fields of view, in degrees: narrow to frame the model, wide to look around inside it. */
 const FOV = { orbit: 35, walk: 70 };
 const HOVER = { color: 0x4f8cff, opacity: 0.25 };
@@ -444,6 +442,7 @@ export class BrickScene {
   private placementSpeed = 1;
   private placementEnabled = true;
   private followBuild = true;
+  private inspection: RenderRequest | null = null;
   private buildComplete = false;
   private cameraPlanner = new BuildCameraClient();
   private cameraGeneration = 0;
@@ -714,7 +713,8 @@ export class BrickScene {
     this.camera.aspect = w / h;
     this.dirty = true;
     this.camera.updateProjectionMatrix();
-    if (this.followingBuild && this.cameraPlan) {
+    if (this.inspection && this.followingBuild) this.frameInspection(this.inspection);
+    else if (this.followingBuild && this.cameraPlan) {
       if (aspectChanged) this.planCamera(this.cameraPlan);
     } else if (!this.userMoved) this.frameView(this.framing.view, this.framing.width, this.framing.depth);
   }
@@ -930,8 +930,10 @@ export class BrickScene {
 
   setFollowBuild(follow: boolean) {
     this.followBuild = follow;
-    if (!follow) this.cancelCamera();
-    else {
+    if (!follow) {
+      this.cancelCamera();
+      this.setInspection(null);
+    } else {
       this.userMoved = false;
       this.controls.autoRotate = false;
       if (this.placement) this.planCamera(this.placement.plan);
@@ -1353,8 +1355,44 @@ export class BrickScene {
     this.dirty = true;
   }
 
+  /** Show the last completed inspection while following; manual control clears its crop without moving the camera. */
+  setInspection(request: RenderRequest | null, overview = false) {
+    if (request && !this.followingBuild) return;
+    if (this.inspection?.request === request?.request && this.inspection?.revision === request?.revision) return;
+    const previous = this.inspection;
+    this.inspection = request;
+    this.renderer.clippingPlanes = request?.box ? clippingPlanes(worldBox(request.box)) : [];
+    this.dirty = true;
+    if (request) {
+      this.finishPlacement();
+      this.cancelCamera();
+      this.glide = null;
+      this.frameInspection(request);
+    } else if (previous && overview) this.frameView("iso", this.framing.width, this.framing.depth);
+  }
+
+  private frameInspection({ camera, box }: RenderRequest) {
+    // Consume residual drag damping before applying an absolute inspection camera.
+    const damping = this.controls.enableDamping;
+    this.controls.enableDamping = false;
+    this.controls.update();
+    const at = camera?.at
+      ? new THREE.Vector3(camera.at[0] * STUD, camera.at[2] * PLATE, -camera.at[1] * STUD)
+      : undefined;
+    this.aim(
+      camera ? towardCamera(camera.angle, camera.elevation) : VIEW_DIRECTIONS.iso,
+      this.framing.width,
+      this.framing.depth,
+      camera?.zoom ?? 1,
+      at,
+      box ? worldBox(box) : undefined,
+    );
+    this.controls.enableDamping = damping;
+  }
+
   /** Frame the model from `view`; `smooth` eases the camera there instead of cutting. */
   frameView(view: View, width: number, depth: number, smooth = false) {
+    this.setInspection(null);
     this.framing = { view, width, depth };
     if (this.walking) return;
     const from = [this.camera.position.clone(), this.controls.target.clone()];
@@ -1454,6 +1492,7 @@ export class BrickScene {
       far,
       fov: this.camera.fov,
     };
+    const planes = this.renderer.clippingPlanes;
     const pixelRatio = this.renderer.getPixelRatio();
     const visibleStep = this.visibleStep;
     const canvas = document.createElement("canvas");
@@ -1479,7 +1518,7 @@ export class BrickScene {
           this.light(lookLight(tile.direction));
           this.renderer.shadowMap.needsUpdate = true;
         }
-        this.adaptEdges(size, look ? LOOK_EDGE_FADE : EDGE_FADE);
+        this.adaptEdges(size);
         this.renderer.render(this.scene, this.camera);
         ctx.drawImage(this.renderer.domElement, tile.x, tile.y, size, size);
         if (tile.label) {
@@ -1493,7 +1532,7 @@ export class BrickScene {
     } finally {
       this.showStep(visibleStep);
       this.posePlacement();
-      this.renderer.clippingPlanes = [];
+      this.renderer.clippingPlanes = planes;
       this.renderer.setPixelRatio(pixelRatio);
       this.resize();
       Object.assign(this.camera, { near: saved.near, far: saved.far, fov: saved.fov });

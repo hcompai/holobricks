@@ -44,7 +44,7 @@ async function showcase(id: string): Promise<Card | null> {
         name: build.name,
         description: `${pieces(build.pieces)}, from the HoloBricks gallery`,
         url: link("showcase", id),
-        image: build.thumbnail == null ? null : `${H.site}/gallery/thumbnails/${id}.png?v=${build.thumbnail}`,
+        image: build.thumbnail == null ? null : `${H.site}/gallery/thumbnails/${id}.webp?v=${build.thumbnail}`,
       }
     : null;
 }
@@ -66,13 +66,14 @@ function page(card: Card): string {
   return card.image ? html.replace(/\s*<meta\s+property="og:image:(?:width|height)"[^>]*>/g, "") : html;
 }
 
-/** The app's page for `/?public=<id>` and `/?showcase=<id>`, with a link preview of that build. */
+/** Preview any build link using only its public library entry, or the site's gallery. */
 export async function GET(request: Request): Promise<Response> {
   const params = new URL(request.url).searchParams;
-  const [id, shown] = [params.get("public"), params.get("showcase")];
+  const source = ["build", "public", "showcase", "fork"].find((key) => params.get(key));
+  const id = source ? params.get(source) : null;
   let card: Card | null = null;
   try {
-    card = id ? await published(id) : shown ? await showcase(shown) : null;
+    card = id ? (source === "showcase" ? await showcase(id) : await published(id)) : null;
   } catch (e) {
     console.error("Could not preview the build", e);
   }

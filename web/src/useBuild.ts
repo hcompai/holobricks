@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { publicBuild, showcase, savedFork } from "./library";
 import { forkSession } from "./agent";
-import type { Build, Source } from "./model";
+import type { Build, RenderRequest, Source } from "./model";
 import type { Activity } from "./session";
 import { provideParts } from "./scene";
 import { useSession } from "./useSession";
@@ -15,6 +15,7 @@ export interface BuildRef {
 }
 
 export interface LiveBuild {
+  inspection: RenderRequest | null;
   models: ModelAttachment[];
   seed: ForkSeed | null;
   build: Build | null;
@@ -57,6 +58,7 @@ function useFinished(ref: BuildRef | null): LiveBuild {
     activity: null,
     error,
     syncError: null,
+    inspection: null,
     models: [],
     seed: null,
   };
@@ -108,6 +110,14 @@ export function useBuild(ref: BuildRef | null): LiveBuild & {
   const runId = ref?.source === "session" ? ref.id : (saved?.sessionId ?? null);
   const finished = useFinished(ref && (ref.source === "public" || ref.source === "showcase") ? ref : null);
   const session = useSession(runId);
+  const started = useMemo<Build | null>(
+    () => (saved ? { ...saved.seed.model, id: saved.id, status: "done", open: true, messages: [] } : null),
+    [saved],
+  );
+  const continued = useMemo(
+    () => (copyId && session.build ? { ...session.build, id: copyId } : null),
+    [copyId, session.build],
+  );
   const attachSession = (id: string) => setCopy((copy) => (copy?.id === copyId ? { ...copy, sessionId: id } : copy));
   if (!copyId) return { ...(runId ? session : finished), runId, attachSession };
   if (saved?.sessionId)
@@ -115,16 +125,17 @@ export function useBuild(ref: BuildRef | null): LiveBuild & {
       ...session,
       runId,
       attachSession,
-      build: session.build ? { ...session.build, id: copyId } : null,
+      build: continued,
     };
   return {
-    build: saved ? { ...saved.seed.model, id: copyId, status: "done", open: true, messages: [] } : null,
+    build: started,
     seed: saved?.seed ?? null,
     models: [],
     loading: !saved && !copyError,
     activity: null,
     error: copyError,
     syncError: copySyncError,
+    inspection: null,
     runId: null,
     attachSession,
   };

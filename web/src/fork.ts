@@ -2,6 +2,7 @@ import { client, preparedSession, download, initialMessage, forkSession } from "
 import { card, remember, linkFork } from "./library";
 import { script } from "./remix";
 import { FORK_FILE } from "./session";
+import { track } from "./analytics";
 import { readSeed, type ForkSeed } from "./forkModel";
 export { forkSeed, readSeed, type ForkSeed, type ForkOrigin } from "./forkModel";
 
@@ -87,20 +88,27 @@ export function forkOperation(group = `fork-${crypto.randomUUID()}`) {
 const starts = new Map<string, { run: ReturnType<typeof forkOperation> }>();
 
 /** The first ordinary chat message starts Holo; the saved copy keeps its identity. */
+/**
+ * Holo's run for copy `id`, started with `text`. Carrying a build on from its ended session `after` starts a run in a
+ * group of its own, so the ended one is never mistaken for it.
+ */
 export async function startFork(
   id: string,
   seed: ForkSeed,
   text: string,
   photos: string[],
   attached: Record<string, Blob> = {},
+  after?: string,
 ): Promise<string> {
-  if (!/^fork-[a-f0-9-]{36}$/.test(id)) throw new Error("Invalid copy.");
-  let operation = starts.get(id);
-  if (!operation) starts.set(id, (operation = { run: forkOperation(id) }));
+  if (!/^[\w-]{1,100}$/.test(id)) throw new Error("Invalid copy.");
+  const group = after ? `${id}+${after}` : id;
+  let operation = starts.get(group);
+  if (!operation) starts.set(group, (operation = { run: forkOperation(group) }));
   const start = async () => {
     const session = await operation.run(seed, text, photos, attached);
     await linkFork(id, session);
+    track("build_forked");
     return session;
   };
-  return navigator.locks ? navigator.locks.request(`brickyard-fork-${id}`, start) : start();
+  return navigator.locks ? navigator.locks.request(`brickyard-fork-${group}`, start) : start();
 }

@@ -1,0 +1,27 @@
+name: Sync public
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sync-public
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    if: github.repository == 'hcompai/brickyard'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - run: scripts/sync-public.sh
+        env:
+          PUBLIC: hcompai/holobricks
+          GH_TOKEN: ${{ secrets.PUBLIC_REPO_TOKEN }}

@@ -8,10 +8,19 @@ if (!out) throw new Error("usage: node scripts/build-api.mjs <output directory>"
 const MAX_DURATION_S = { builds: 300 };
 /** Paris: beside the Blob store, the Agents API and most users. */
 const REGIONS = ["cdg1"];
-/** Build assets are named by their content, so browsers keep them; a link to a public build or a showcase gets the app's page with that build's link preview. */
+/**
+ * Build assets are named by their content, so browsers keep them; build links get the app's page with a preview of
+ * their public model; /ingest reaches PostHog through this site, as on hcompany.ai.
+ */
 const ROUTES = [
   { src: "^/assets/.+$", headers: { "cache-control": "public, max-age=31536000, immutable" }, continue: true },
-  ...["public", "showcase"].map((key) => ({ src: "^/$", has: [{ type: "query", key }], dest: "/api/preview" })),
+  ...["build", "public", "showcase", "fork"].map((key) => ({
+    src: "^/$",
+    has: [{ type: "query", key }],
+    dest: "/api/preview",
+  })),
+  { src: "^/ingest/static/(.*)$", dest: "https://eu-assets.i.posthog.com/static/$1" },
+  { src: "^/ingest/(.*)$", dest: "https://eu.i.posthog.com/$1" },
   { handle: "filesystem" },
 ];
 

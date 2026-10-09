@@ -40,8 +40,8 @@ test("one sheet gets the bricks: its price in the header, BrickLink, an official
   page,
 }) => {
   await open(page, TABLE);
-  const trigger = page.getByRole("button", { name: /^Get the bricks/ });
-  await expect(trigger).toHaveText(/^Get the bricks · ≈ 4\s€$/);
+  const trigger = page.getByRole("button", { name: /^Buy bricks/ });
+  await expect(trigger).toHaveText(/^Buy bricks · ≈ 4\s€$/);
   await trigger.click();
   const sheet = page.getByRole("dialog", { name: "Build it for real" });
   await expect(sheet.getByRole("region", { name: "BrickLink" })).toContainText("The parts list was not checked.");
@@ -72,7 +72,7 @@ test("a hand-edited build prices its edits, cannot fill a BrickLink cart until r
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
   await page.getByRole("dialog", { name: "Selection" }).getByRole("button", { name: "Delete" }).click();
   await expect(page.locator(".scrub-label span")).toHaveText(/^7 pieces /);
-  await page.getByRole("button", { name: /^Get the bricks/ }).click();
+  await page.getByRole("button", { name: /^Buy bricks/ }).click();
   const sheet = page.getByRole("dialog", { name: "Build it for real" });
   await expect(sheet.getByRole("region", { name: "Official parts store" })).toContainText("Includes your edits.");
   const bricklink = sheet.getByRole("region", { name: "BrickLink" });
@@ -86,6 +86,6 @@ test("a hand-edited build prices its edits, cannot fill a BrickLink cart until r
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await open(page, null);
-  await expect(page.getByRole("button", { name: /^Get the bricks/ })).toHaveText("Get the bricks");
+  await expect(page.getByRole("button", { name: /^Buy bricks/ })).toHaveText("Buy bricks");
   expect(errors).toEqual([]);
 });

@@ -2,7 +2,15 @@ import { useEffect, useRef, useState } from "react";
 import { type Followed, watch } from "./follow";
 import type { LiveBuild } from "./useBuild";
 
-const NOTHING: Followed = { build: null, activity: null, error: null, syncError: null, models: [], seed: null };
+const NOTHING: Followed = {
+  build: null,
+  activity: null,
+  error: null,
+  syncError: null,
+  models: [],
+  seed: null,
+  inspection: null,
+};
 
 /** A session read live from the Agents API. */
 export function useSession(id: string | null): LiveBuild {
@@ -24,6 +32,7 @@ export function useSession(id: string | null): LiveBuild {
     syncError: current.syncError,
     models: current.models,
     seed: current.seed,
+    inspection: current.inspection,
   };
 }
 
