@@ -1,11 +1,12 @@
 import { posthog } from "posthog-js";
-import { scrubbed } from "./privateText";
+import { HOLO } from "./holo";
+import { scrubbed, withoutEmails } from "./privateText";
 
 /** Same project, consent and attribution as hcompany.ai, so a visitor who signs up on the Platform joins their visits here. */
 const POSTHOG_KEY = "phc_pRHgY8yZ8ivPJekkRXYeKvhCxxGgFBjmomNLZGFumJBK";
 const SITE = "holobricks";
 /** Only the live site measures: local runs, tests and Vercel previews send nothing. */
-const ENABLED = location.hostname.endsWith("hcompany.ai");
+const ENABLED = location.hostname === "hcompany.ai" || location.hostname.endsWith(".hcompany.ai");
 
 /** Axeptio vendor keys, as they appear in `cookies:complete` choices and in `axeptio_authorized_vendors`. */
 const VENDOR_POSTHOG = "posthog";
@@ -33,7 +34,11 @@ export type Event =
   | ["build_started", { from: "prompt" | "remix"; image_count: number }]
   | ["build_forked"]
   | ["build_imported"]
-  | ["build_published"];
+  | ["build_published"]
+  | ["build_liked", { liked: boolean }]
+  | ["link_opened", { to: string }]
+  | ["holotab_request_copied"]
+  | ["build_viewed", { title: string; source: string }];
 
 /** Queue a callback on the Axeptio SDK, which GTM loads later: it runs at once if the SDK has already booted. */
 function onAxeptio(cb: (sdk: AxeptioSdk) => void) {
@@ -60,9 +65,11 @@ if (ENABLED) {
     persistence: "localStorage+cookie",
     capture_pageview: "history_change",
     disable_session_recording: true,
-    before_send: (event) => (event?.event === "$autocapture" ? scrubbed(event) : event),
+    capture_exceptions: true,
+    before_send: (event) =>
+      event?.event === "$autocapture" ? scrubbed(event) : event?.event === "$exception" ? withoutEmails(event) : event,
   });
-  posthog.register({ site: SITE });
+  posthog.register({ site: SITE, model: HOLO.id });
 }
 
 let posthogAllowed = false;
@@ -86,6 +93,11 @@ export function track(...[name, properties]: Event) {
   window.dataLayer?.push({ event, ...properties });
 }
 
+/** Remember on this browser whether its user works at H, so H's own use can be split out; the email itself is never sent. */
+export function markAccount(email: string) {
+  if (ENABLED) posthog.register({ is_internal: email.toLowerCase().endsWith("@hcompany.ai") });
+}
+
 /** Tag the signup the Platform may be about to see, before the page leaves for it. */
 export function rememberSignup() {
   if (attributionAllowed) writeCookie(ATTRIBUTION_COOKIE, JSON.stringify(SIGNUP_TAGS), ATTRIBUTION_DAYS);
@@ -101,6 +113,31 @@ export function signupTags(): Record<string, string> | null {
   if (ENABLED && posthogAllowed) tags.ph_did = posthog.get_distinct_id();
   return Object.keys(tags).length > 0 ? tags : null;
 }
+
+/** Whether `host` is `domain` itself or one of its subdomains, never a lookalike such as `evil-domain`. */
+const onDomain = (host: string, domain: string) => host === domain || host.endsWith(`.${domain}`);
+
+/** Where an outbound link leads, named for the dashboards; other sites by their hostname. */
+function destination(url: URL): string {
+  if (url.hostname === "chromewebstore.google.com" && url.pathname.includes("/holotab/")) return "holotab";
+  if (url.hostname === "github.com") return "github";
+  if (onDomain(url.hostname, "lego.com")) return "pick_a_brick";
+  if (onDomain(url.hostname, "bricklink.com")) return "bricklink";
+  return url.hostname;
+}
+
+document.addEventListener(
+  "click",
+  (event) => {
+    const link = event.target instanceof Element ? event.target.closest("a[href]") : null;
+    if (!(link instanceof HTMLAnchorElement)) return;
+    const url = new URL(link.href, location.href);
+    if (url.protocol.startsWith("http") && url.hostname !== location.hostname) {
+      track("link_opened", { to: destination(url) });
+    }
+  },
+  { capture: true },
+);
 
 /** Reopen the consent banner; it waits for the SDK if GTM has not loaded it yet. */
 export const openCookiePreferences = () => onAxeptio(() => window.openAxeptioCookies?.());
