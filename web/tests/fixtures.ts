@@ -152,6 +152,7 @@ export async function site(page: Page, showcases: Build[] = [], account: typeof 
     const id = new URL(request.url()).searchParams.get("id");
     return route.fulfill({ json: id ? copies.get(id) : [...copies.values()].map(({ seed, ...info }) => info) });
   });
+  await page.route("**/api/hearts*", (route) => route.fulfill({ json: { counts: {}, mine: [] } }));
   await page.route("https://agp.eu.hcompany.ai/**", (route) =>
     route.fulfill({
       headers: { "access-control-allow-origin": "*", "access-control-allow-headers": "*" },
