@@ -90,6 +90,11 @@ export function track(...[name, properties]: Event) {
   window.dataLayer?.push({ event, ...properties });
 }
 
+/** Remember on this browser whether its user works at H, so H's own use can be split out; the email itself is never sent. */
+export function markAccount(email: string) {
+  if (ENABLED) posthog.register({ internal: email.toLowerCase().endsWith("@hcompany.ai") });
+}
+
 /** Tag the signup the Platform may be about to see, before the page leaves for it. */
 export function rememberSignup() {
   if (attributionAllowed) writeCookie(ATTRIBUTION_COOKIE, JSON.stringify(SIGNUP_TAGS), ATTRIBUTION_DAYS);

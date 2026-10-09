@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { rememberSignup, signupTags, track } from "./analytics";
+import { markAccount, rememberSignup, signupTags, track } from "./analytics";
 import { H } from "./hosts";
 import { type Account, cookie, HANDOFF, type Handoff, LOOPBACK, PENDING, type Pending, setCookie } from "./signin";
 
@@ -41,6 +41,8 @@ if (handoff && !("error" in handoff)) {
   track("sign_in_completed");
   localStorage.removeItem(PREVIOUS);
 }
+
+if (account) markAccount(account.user.email);
 
 const listeners = new Set<() => void>();
 const notify = () => listeners.forEach((l) => l());
