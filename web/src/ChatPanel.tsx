@@ -101,7 +101,7 @@ function Live({ activity, early }: { activity: Activity; early: boolean }) {
     </span>
   );
   return (
-    <div className="msg assistant live" title={`${WHO} is working`}>
+    <div className="msg assistant live ph-private" title={`${WHO} is working`}>
       {activity.work ? <WorkLog work={activity.work} summary={head} /> : head}
     </div>
   );
@@ -119,7 +119,7 @@ const Row = memo(
   function Row({ message: m, entering, queued, onOpen }: RowProps) {
     return (
       <div
-        className={`msg ${m.role}${entering ? " enter" : ""}${queued ? " queued" : ""}`}
+        className={`msg ${m.role} ph-private${entering ? " enter" : ""}${queued ? " queued" : ""}`}
         title={queued ? `Sent: ${WHO} reads it at its next step` : undefined}
       >
         {m.work && <WorkLog work={m.work} summary={`Worked for ${duration(m.work.end - m.work.start)}`} />}
@@ -470,7 +470,7 @@ export function ChatPanel({
         }}
       >
         {loading ? (
-          <div className="msg assistant live">
+          <div className="msg assistant live ph-private">
             <span className="shimmer">Opening the chat…</span>
           </div>
         ) : (

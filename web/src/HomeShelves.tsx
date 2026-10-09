@@ -106,7 +106,7 @@ function HeartButton({ count, mine, onToggle }: { count: number; mine: boolean; 
 
 function Card({ build: b, published, onOpen }: { build: BuildSummary; published: boolean; onOpen: () => void }) {
   return (
-    <button className="tile" title={b.prompt} onClick={onOpen}>
+    <button className="tile ph-private-labels" title={b.prompt} onClick={onOpen}>
       {b.thumbnail != null ? (
         <img className="tile-thumb" src={b.thumbnail} alt="" loading="lazy" decoding="async" />
       ) : b.status === "building" ? (
