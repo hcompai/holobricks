@@ -67,6 +67,7 @@ test("hearts count once per user, come back to their giver, and leave with the b
 test("only public builds take hearts, and only from signed-in users", async () => {
   expect((await put(JANE, "nope")).status).toBe(404);
   expect((await put(JANE, "../etc")).status).toBe(400);
+  expect((await PUT(new Request(API, { method: "PUT", headers: headers(JANE), body: "null" }))).status).toBe(400);
   const anonymous = await PUT(new Request(API, { method: "PUT", body: JSON.stringify({ id: "hut" }) }));
   expect(anonymous.status).toBe(401);
   expect(await read()).toEqual({ counts: {}, mine: [] });
