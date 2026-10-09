@@ -66,6 +66,84 @@ test("Draw and Erase direct a running session without editing or restarting its 
   await expect(page.locator(".viewer")).toHaveAttribute("data-revision", fixture().revision);
 });
 
+test("annotation zoom stays local and exported marks keep their original coordinates", async ({ page }, testInfo) => {
+  const agp = await open(page);
+  const layout = await page.evaluate(() => ({ width: innerWidth, scale: visualViewport!.scale }));
+  const canvas = await page.locator(".viewer canvas").first().boundingBox();
+  const surface = page.getByLabel("Draw directions on the model");
+  const frame = page.locator(".annotation-frame");
+  const box = (await frame.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.keyboard.down("Control");
+  await page.mouse.wheel(0, -70);
+  await page.keyboard.up("Control");
+  await expect(page.getByRole("button", { name: "Zoom out", exact: true })).toBeEnabled();
+  await expect
+    .poll(() => page.locator(".annotation-content").evaluate((el) => new DOMMatrix(getComputedStyle(el).transform).a))
+    .toBeGreaterThan(1);
+  expect(await page.evaluate(() => ({ width: innerWidth, scale: visualViewport!.scale }))).toEqual(layout);
+  expect(await frame.boundingBox()).toEqual(box);
+  // Ordinary trackpad scrolling pans the enlarged snapshot rather than scrolling the page.
+  await page.mouse.wheel(35, 20);
+  await expect
+    .poll(() => page.locator(".annotation-content").evaluate((el) => new DOMMatrix(getComputedStyle(el).transform).e))
+    .toBeLessThan(0);
+  const points = await surface.evaluate((element) => {
+    const svg = element as SVGSVGElement;
+    const { width, height } = svg.viewBox.baseVal;
+    return [0.5, 0.55].map((fraction) => {
+      const p = new DOMPoint(width * fraction, height / 2).matrixTransform(svg.getScreenCTM()!);
+      return { x: p.x, y: p.y };
+    });
+  });
+  await page.mouse.move(points[0].x, points[0].y);
+  await page.mouse.down();
+  await page.mouse.move(points[1].x, points[1].y, { steps: 5 });
+  await page.mouse.up();
+  await page.screenshot({ path: testInfo.outputPath("annotation-zoomed.png") });
+  await page.getByRole("button", { name: "Done", exact: true }).click();
+  await page.getByPlaceholder("Ask for a change").fill("Change this detail");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await expect.poll(() => agp.posted("/messages").length).toBe(1);
+  const sent = agp.posted("/messages")[0];
+  const notes = context(sent);
+  const pixel = await page.evaluate(async (image) => {
+    const bitmap = await createImageBitmap(await (await fetch(image)).blob());
+    const output = document.createElement("canvas");
+    output.width = bitmap.width;
+    output.height = bitmap.height;
+    const ctx = output.getContext("2d")!;
+    ctx.drawImage(bitmap, 0, 0);
+    // The mark was made at 50–55% of the original image, despite zoom and pan.
+    return Array.from(
+      ctx.getImageData(Math.round(bitmap.width * 0.525), Math.round((bitmap.height - 44) / 2), 1, 1).data,
+    );
+  }, sent.images[0]);
+  expect(pixel).toEqual([22, 139, 255, 255]);
+  expect(sent.message).toBe("Change this detail");
+  expect(notes.revision).toBe(fixture().revision);
+  expect(await page.locator(".viewer canvas").first().boundingBox()).toEqual(canvas);
+  expect(await page.evaluate(() => ({ width: innerWidth, scale: visualViewport!.scale }))).toEqual(layout);
+  await page.getByRole("button", { name: "Annotate", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Zoom out", exact: true })).toBeDisabled();
+  await page.getByRole("button", { name: "Zoom in", exact: true }).click();
+  await page.getByRole("button", { name: "Fit annotation", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Zoom out", exact: true })).toBeDisabled();
+  await page.getByRole("dialog", { name: "Annotate model" }).focus();
+  await page.keyboard.press("Control+=");
+  await expect(page.getByRole("button", { name: "Zoom out", exact: true })).toBeEnabled();
+  await page.keyboard.press("Control+0");
+  await expect(page.getByRole("button", { name: "Zoom out", exact: true })).toBeDisabled();
+  await page.keyboard.press("Escape");
+  expect(
+    await page.evaluate(() => {
+      const event = new KeyboardEvent("keydown", { key: "+", ctrlKey: true, bubbles: true, cancelable: true });
+      window.dispatchEvent(event);
+      return event.defaultPrevented;
+    }),
+  ).toBe(false);
+});
+
 test("Cancel and removal leave no hidden annotation instruction in the next message", async ({ page }) => {
   const agp = await open(page);
   await mark(page);

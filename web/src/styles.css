@@ -3842,13 +3842,27 @@ main {
   min-height: 0;
   overflow: hidden;
 }
-.annotation-frame img {
+.annotation-zoom {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  display: flex;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 8px;
+  background: var(--background-page, #111);
+}
+.annotation-content {
+  position: absolute;
+  inset: 0;
+}
+.annotation-content > img {
   width: 100%;
   height: 100%;
   object-fit: contain;
   display: block;
 }
-.annotation-frame svg {
+.annotation-content > svg {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -3875,11 +3889,13 @@ main {
   }
 }
 
-.annotation-tools button {
+.annotation-tools button,
+.annotation-zoom button {
   min-height: 32px;
   padding: 5px 8px;
 }
-.annotation-tools button[aria-label] {
+.annotation-tools button[aria-label],
+.annotation-zoom button[aria-label] {
   width: 30px;
   padding: 0;
   justify-content: center;

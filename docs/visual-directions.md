@@ -25,14 +25,14 @@ Add a short instruction to the existing agent prompt. The agent must interpret t
 
 ## Interaction and failure handling
 
-Support mouse, pen and touch using pointer capture; keep SVG and exported PNG coordinates aligned when the image is letterboxed or resized. Reserve space for the phone header and existing chat sheet. Done focuses the current chat, whose existing phone focus behaviour opens the sheet. Camera/timeline controls are unavailable while marking the frozen view.
+Support mouse, pen and touch using pointer capture; keep SVG and exported PNG coordinates aligned when the image is letterboxed, resized, zoomed or panned. Trackpad pinch and zoom shortcuts inside the annotation zoom only its frozen image; ordinary scrolling pans it. Small zoom/fit controls offer the same zoom without a trackpad. Closing the editor discards that local view transform, and exported marks remain on the full original image. Reserve space for the phone header and existing chat sheet. Done focuses the current chat, whose existing phone focus behaviour opens the sheet. Camera/timeline controls are unavailable while marking the frozen view.
 
 An unavailable renderer, changed capture, failed export or full attachment slot leaves an explicit error. Failed chat delivery restores the marked image, sidecar and comment. Removing one annotation removes only its own sidecar. Navigating to another project clears the overlay; an asynchronous attachment must refuse a different project ID. Markup lives in the draft and then the existing chat history; it is not a model version and is not a new public-library asset.
 
 ## Verification and rollout
 
 - TypeScript and production build in both apps.
-- Browser coverage for Draw/Erase and Undo/Clear, same-session mid-run delivery, no model mutation/restart, cancellation and attachment removal, failed-send retry, capacity/duplicate attachments, touch input and capture context after live revision changes, and read-only public previews.
+- Browser coverage for Draw/Erase and Undo/Clear, same-session mid-run delivery, no model mutation/restart, cancellation and attachment removal, failed-send retry, capacity/duplicate attachments, touch input and capture context after live revision changes, read-only public previews, and local zoom/pan with exported coordinate alignment and shortcut cleanup.
 - Inspect desktop and phone screenshots; run existing related chat and editor regressions.
 - Keep real-agent interpretation separate from transport correctness. Mocked API browser tests prove the request payload and UI, not that Holo reliably edits arbitrary sketches. Validate a live annotated build before releasing broadly: mark an obvious visible target, request one addition and one removal, inspect the resulting geometry and verify unrelated areas survive.
 
