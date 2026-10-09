@@ -336,6 +336,13 @@ export default function App({ account }: { account: Account | null }) {
       open({ id: ref.id, source: "fork" });
   });
 
+  // Someone else's build or copy, once published, opens from its owner's link as the public build.
+  useEffect(() => {
+    if ((ref?.source !== "session" && ref?.source !== "fork") || !listed || buildsFailed.includes("mine")) return;
+    if (!builds?.some((b) => (b.source === "session" || b.source === "fork") && b.id === ref.id))
+      open({ id: ref.id, source: "public" });
+  });
+
   useEffect(() => {
     const sync = () => {
       const next = urlBuild();
