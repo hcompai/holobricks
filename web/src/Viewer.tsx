@@ -61,7 +61,7 @@ export function ViewControls({
   framing: Framing;
   spin: boolean;
   followCamera?: boolean;
-  /** Shown while the build is live or replaying, the only times the camera follows it. */
+  /** Shown while the build is live, replaying or placing a step, the only times the camera follows it. */
   onFollowCamera?: (follow: boolean) => void;
   mode: Mode;
   canEdit: boolean;

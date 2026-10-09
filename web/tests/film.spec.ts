@@ -103,7 +103,9 @@ test("close-up follow camera exports a credited GIF and offers orbit and fixed a
     Object.assign(window, { filmText: drawn, filmMarks: marks });
     const fill = CanvasRenderingContext2D.prototype.fillText;
     CanvasRenderingContext2D.prototype.fillText = function (text, x, y, ...rest) {
-      drawn.push({ text, fits: x + this.measureText(text).width <= this.canvas.width });
+      const width = this.measureText(text).width;
+      const left = this.textAlign === "right" ? x - width : this.textAlign === "center" ? x - width / 2 : x;
+      drawn.push({ text, fits: left >= 0 && left + width <= this.canvas.width });
       return fill.call(this, text, x, y, ...rest);
     };
     const arc = CanvasRenderingContext2D.prototype.arc;
