@@ -3907,3 +3907,8 @@ main {
 .app:has(.annotation) .viewer > .placement-sound {
   visibility: hidden;
 }
+
+.github-star {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
