@@ -3809,6 +3809,105 @@ main {
   }
 }
 
+.annotate-launch {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 3;
+}
+.annotation {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  background: var(--background-page, #111);
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+  gap: 8px;
+  border-radius: inherit;
+}
+.annotation-tools {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.annotation-hint {
+  margin: 0;
+  font-size: 12px;
+  opacity: 0.75;
+}
+.annotation-frame {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.annotation-zoom {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  display: flex;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 8px;
+  background: var(--background-page, #111);
+}
+.annotation-content {
+  position: absolute;
+  inset: 0;
+}
+.annotation-content > img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+.annotation-content > svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  cursor: crosshair;
+}
+
+.app:has(.annotation) .view-controls,
+.app:has(.annotation) .view-tabs,
+.app:has(.annotation) .timeline {
+  pointer-events: none;
+  opacity: 0.4;
+}
+@media (max-width: 760px) {
+  .app:not(.home) .annotate-launch {
+    top: calc(var(--bar) + 8px);
+  }
+  .app:not(.home) .annotation {
+    top: calc(var(--bar) + 4px);
+    bottom: calc(var(--peek, 88px) + 80px);
+  }
+  .app:has(.annotation) .view-toggle {
+    visibility: hidden;
+  }
+}
+
+.annotation-tools button,
+.annotation-zoom button {
+  min-height: 32px;
+  padding: 5px 8px;
+}
+.annotation-tools button[aria-label],
+.annotation-zoom button[aria-label] {
+  width: 30px;
+  padding: 0;
+  justify-content: center;
+  flex: none;
+}
+.app:has(.annotation) .history-tools,
+.app:has(.annotation) .edit-availability,
+.app:has(.annotation) .viewer-info,
+.app:has(.annotation) .viewer > .placement-sound {
+  visibility: hidden;
+}
+
 .github-star {
   flex-shrink: 0;
   white-space: nowrap;

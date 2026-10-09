@@ -1,3 +1,4 @@
+import { annotationFile, type VisualInstruction } from "./Annotation";
 import { ThinkingIcon } from "./Thinking";
 import { ArrowUpIcon, PlusIcon, ShuffleIcon, SignInIcon, StopIcon, XIcon } from "@phosphor-icons/react";
 import { memo, type ReactNode, type Ref, useEffect, useImperativeHandle, useRef, useState } from "react";
@@ -11,6 +12,7 @@ import { label, SUGGESTIONS } from "./suggestions";
 import { HOLO } from "./holo";
 
 const MAX_ATTACHMENTS = 2;
+const STARTER = "A red lighthouse on a rock";
 /** The home prompt a signed-out visitor typed, kept in this tab through the sign-in round trip. */
 const KEPT = "brickyard.prompt";
 const WHO = "Holo";
@@ -163,6 +165,7 @@ const Row = memo(
 );
 
 export interface ChatHandle {
+  annotate: (instruction: VisualInstruction) => Promise<void>;
   ask: (prompt: string, attached: Record<string, Blob>) => Promise<boolean>;
 }
 
@@ -202,7 +205,7 @@ export function ChatPanel({
   onSignIn,
 }: Props) {
   const [text, setText] = useState(() => (build || loading ? "" : (sessionStorage.getItem(KEPT) ?? "")));
-  const [attachments, setAttachments] = useState<string[]>([]);
+  const [attachments, setAttachments] = useState<{ src: string; files?: Record<string, Blob> }[]>([]);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   /** Messages sent to the builder that its chat does not show yet, each with how many user messages it showed then. */
@@ -264,7 +267,7 @@ export function ChatPanel({
     if (!files.length) return;
     try {
       const added = await Promise.all(files.map(reference));
-      setAttachments((current) => [...current, ...added].slice(0, MAX_ATTACHMENTS));
+      setAttachments((current) => [...current, ...added.map((src) => ({ src }))].slice(0, MAX_ATTACHMENTS));
     } catch (e) {
       setError(`Could not read that image: ${message(e)}`);
     }
@@ -292,6 +295,13 @@ export function ChatPanel({
   };
 
   useImperativeHandle(ref, () => ({
+    annotate: async (instruction) => {
+      if (sending || closed || preview || !build?.id || build.id !== instruction.context.build)
+        throw new Error("This build cannot receive directions here.");
+      if (attachments.length >= MAX_ATTACHMENTS) throw new Error("Remove an attachment first.");
+      setAttachments((list) => [...list, { src: instruction.image, files: annotationFile(instruction) }]);
+      requestAnimationFrame(() => input.current?.focus());
+    },
     ask: (prompt, attached) => {
       if (closed || preview || sending || !build?.id) return Promise.resolve(false);
       return deliver(prompt, [], attached);
@@ -299,18 +309,29 @@ export function ChatPanel({
   }));
 
   const typed = !!(text.trim() || attachments.length);
-  const unsendable = !!preview || !!closed || !typed || sending || (changing && !build?.id);
+  const suggestion = home && !typed ? STARTER : "";
+  const unsendable = !!preview || !!closed || (!typed && !suggestion) || sending || (changing && !build?.id);
   /** The composer empties at once, and gets its text and images back if the builder does not take them. */
   const send = async () => {
     if (unsendable) return;
-    if (onSignIn) return onSignIn();
-    const prompt = text.trim();
-    const images = attachments;
+    const prompt = text.trim() || (attachments.some((image) => image.files) ? "Apply my marks." : suggestion);
+    if (onSignIn) {
+      if (home) {
+        setText(prompt);
+        sessionStorage.setItem(KEPT, prompt);
+      }
+      return onSignIn();
+    }
+    const draft = attachments;
+    const images = draft.map((a) => a.src);
     setText("");
     setAttachments([]);
-    if (await deliver(prompt, images)) return;
+    const files = Object.assign({}, ...draft.map((a) => a.files ?? {}));
+    if (await deliver(prompt, images, files)) {
+      return;
+    }
     setText((typed) => typed || prompt);
-    setAttachments((added) => (added.length ? added : images));
+    setAttachments((added) => [...draft, ...added]);
   };
 
   const composer = !closed && !preview && (
@@ -331,13 +352,15 @@ export function ChatPanel({
     >
       {attachments.length > 0 && (
         <div className="attachments">
-          {attachments.map((src, i) => (
+          {attachments.map(({ src }, i) => (
             <div key={i} className="attachment">
               <img src={src} alt={`Reference ${i + 1}`} />
               <button
                 title="Remove"
                 aria-label="Remove image"
-                onClick={() => setAttachments((current) => current.filter((_, j) => j !== i))}
+                onClick={() => {
+                  setAttachments((current) => current.filter((_, j) => j !== i));
+                }}
               >
                 <XIcon size={10} weight="bold" />
               </button>
@@ -348,7 +371,7 @@ export function ChatPanel({
       <textarea
         ref={input}
         value={text}
-        placeholder={changing ? "Ask for a change" : "A red lighthouse on a rock… or drop a photo"}
+        placeholder={changing ? "Ask for a change" : `${STARTER}… or drop a photo`}
         onChange={(e) => setText(e.target.value)}
         onPaste={(e) => {
           const files = imageFiles(e.clipboardData.files);

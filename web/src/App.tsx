@@ -933,6 +933,14 @@ export default function App({ account }: { account: Account | null }) {
         <div className="stage">
           <div className={center === "model" || sheeted ? "pane" : "pane hidden"}>
             <Viewer
+              onAnnotate={
+                !closed && !readOnly && owned
+                  ? async (instruction) => {
+                      if (!chat.current) throw new Error("Chat is not ready. Try again.");
+                      await chat.current.annotate(instruction);
+                    }
+                  : undefined
+              }
               ref={viewer}
               build={build}
               opening={buildId && !error ? `Opening ${heading?.name ?? "the build"}` : null}
