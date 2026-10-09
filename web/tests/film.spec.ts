@@ -165,3 +165,32 @@ test("close-up follow camera exports a credited GIF and offers orbit and fixed a
   expect(await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
   await page.keyboard.press("Escape");
 });
+
+test("film frames include a readable website address", async ({ page }, testInfo) => {
+  test.setTimeout(120000);
+  await page.addInitScript((host) => {
+    const frames: boolean[] = [];
+    Object.assign(window, { websiteFrames: frames });
+    const fill = CanvasRenderingContext2D.prototype.fillText;
+    CanvasRenderingContext2D.prototype.fillText = function (text, x, y, ...rest) {
+      if (text === host) {
+        const width = this.measureText(text).width;
+        const left = this.textAlign === "right" ? x - width : this.textAlign === "center" ? x - width / 2 : x;
+        frames.push(left >= 0 && left + width <= this.canvas.width && y < this.canvas.height);
+      }
+      return fill.call(this, text, x, y, ...rest);
+    };
+  }, "bricks.hcompany.ai");
+  await mock(page);
+  await openFilm(page);
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as { websiteFrames: boolean[] }).websiteFrames.length), {
+      timeout: 90000,
+    })
+    .toBeGreaterThan(0);
+  expect(
+    await page.evaluate(() => (window as unknown as { websiteFrames: boolean[] }).websiteFrames.every(Boolean)),
+  ).toBe(true);
+  await page.locator(".film-preview").screenshot({ path: testInfo.outputPath("website-preview.png") });
+  await page.keyboard.press("Escape");
+});

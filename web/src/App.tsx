@@ -4,6 +4,7 @@ import {
   ClockCounterClockwiseIcon,
   FilmStripIcon,
   GitForkIcon,
+  GithubLogoIcon,
   PlusIcon,
   ShoppingBagIcon,
 } from "@phosphor-icons/react";
@@ -32,7 +33,7 @@ import { ChatPanel, type ChatHandle } from "./ChatPanel";
 import { selectedArea } from "./selectedArea";
 import { HomeShelves } from "./HomeShelves";
 import { ImportBuild } from "./ImportBuild";
-import { SiteFooter } from "./Legal";
+import { REPO, SiteFooter } from "./Legal";
 import { countParts, PartsPanel } from "./PartsPanel";
 import { SESSION_DELETE_NOTE, ShareMenu, type Publishing } from "./ShareMenu";
 import { VisibilityToggle } from "./VisibilityToggle";
@@ -712,6 +713,11 @@ export default function App({ account }: { account: Account | null }) {
           />
         )}
         <span className="spacer" />
+        {home && (
+          <a className="button github-star" href={REPO} target="_blank" rel="noopener noreferrer">
+            <GithubLogoIcon size={16} /> Star
+          </a>
+        )}
         {actions}
         {!account ? (
           <button className="sign-in-button" onClick={() => setSigningIn(true)}>

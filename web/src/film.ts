@@ -25,6 +25,7 @@ const FONT = '"Plus Jakarta Sans Variable", system-ui, sans-serif';
 const BACKDROP = "#eceef3";
 const INK = "#1c1c26";
 const MUTED = "#8a8a96";
+const SITE = "bricks.hcompany.ai";
 const FOV = 28;
 /** Share of the frame's height kept clear of the model for the caption. */
 const CAPTION = 0.15;
@@ -532,7 +533,14 @@ export class FilmRenderer {
     vignette.addColorStop(1, "rgba(20, 20, 40, 0.08)");
     ctx.fillStyle = vignette;
     ctx.fillRect(0, 0, width, height);
-    if (branded && brandable(this.build)) this.mark(margin * 0.75, margin * 0.75, Math.max(24, 48 * unit));
+    const top = margin * 0.75;
+    const markPx = Math.max(24, 48 * unit);
+    if (branded && brandable(this.build)) this.mark(top, top, markPx);
+    ctx.fillStyle = MUTED;
+    ctx.font = `600 ${26 * unit}px ${FONT}`;
+    ctx.textAlign = "right";
+    ctx.fillText(SITE, width - top, top + markPx / 2 + 9 * unit);
+    ctx.textAlign = "left";
 
     const total = plan.order.length;
     const done = landed(plan, time);

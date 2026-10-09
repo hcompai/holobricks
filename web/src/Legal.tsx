@@ -11,7 +11,7 @@ const out = (href: string, text: ReactNode) => (
 );
 
 /** Third-party assets, with the attribution their licenses ask for. */
-const REPO = "https://github.com/hcompai/holobricks";
+export const REPO = "https://github.com/hcompai/holobricks";
 
 const CREDITS: { what: string; credit: ReactNode }[] = [
   {
