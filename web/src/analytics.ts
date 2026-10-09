@@ -37,7 +37,8 @@ export type Event =
   | ["build_published"]
   | ["build_liked", { liked: boolean }]
   | ["link_opened", { to: string }]
-  | ["holotab_request_copied"];
+  | ["holotab_request_copied"]
+  | ["build_viewed", { title: string; source: string }];
 
 /** Queue a callback on the Axeptio SDK, which GTM loads later: it runs at once if the SDK has already booted. */
 function onAxeptio(cb: (sdk: AxeptioSdk) => void) {
