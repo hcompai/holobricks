@@ -3,7 +3,7 @@ import { buildRevision } from "../../src/buildRevision";
 import { H } from "../../src/hosts";
 import { platformAsset, assetBlob } from "../../src/assetUrl";
 import { applyEdits, type Edit, toLdraw } from "../../src/edits";
-import { type Build, EMPTY_MODEL, type Model } from "../../src/model";
+import { type Build, EMPTY_MODEL, type Model, type Piece } from "../../src/model";
 import { AGENT, EMPTY_TRANSCRIPT, read, status, type Transcript, unpack } from "../../src/session";
 import { isFork, readFork } from "./forks";
 import { Refusal } from "./http";
@@ -25,6 +25,13 @@ function wellFormed(e: any): e is Edit {
       return (e.turns === 1 || e.turns === -1) && numbers(e.about, 2);
     case "color":
       return Number.isInteger(e.color);
+    case "replace":
+      return (
+        typeof e.part === "string" &&
+        Array.isArray(e.by) &&
+        e.by.length === e.ids.length &&
+        e.by.every((by: unknown) => numbers(by, 3))
+      );
     case "duplicate":
       return numbers(e.by, 3) && Number.isInteger(e.first);
     default:
@@ -96,6 +103,18 @@ function checked(edited: unknown): Edited | null {
   return edits.length ? { revision, edits } : null;
 }
 
+/** The build's parts with those its replaced pieces now use, from the catalog the editor picks them from. */
+async function partsFor(build: Build, pieces: Piece[]): Promise<Build["parts"]> {
+  const missing = [...new Set(pieces.map((p) => p.part))].filter((part) => !build.parts[part]);
+  if (!missing.length) return build.parts;
+  const response = await fetch(`${H.site}/parts.json`, { signal: AbortSignal.timeout(30_000) });
+  if (!response.ok) throw new Error(`The part catalog is unavailable (HTTP ${response.status})`);
+  const { packs } = (await response.json()) as { packs: Record<string, string> };
+  if (missing.some((part) => typeof packs[part] !== "string"))
+    throw new Refusal(400, "Your edits use a part HoloBricks does not have.");
+  return { ...build.parts, ...Object.fromEntries(missing.map((part) => [part, packs[part]])) };
+}
+
 async function withEdits(build: Build, edited: Edited | null): Promise<Build> {
   if (!edited) return build;
   if (edited.revision !== build.revision)
@@ -104,6 +123,7 @@ async function withEdits(build: Build, edited: Edited | null): Promise<Build> {
   return {
     ...build,
     pieces,
+    parts: await partsFor(build, pieces),
     revision: await buildRevision(pieces),
     ldr: toLdraw(build, pieces),
     bom: { error: EDITED },

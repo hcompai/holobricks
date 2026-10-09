@@ -8,7 +8,7 @@ import { projectName } from "../api/lib/names";
 import { linkFork } from "../api/lib/forks";
 import { snapshot } from "../api/lib/snapshot";
 import { forkSeed } from "../src/forkModel";
-import { ACCOUNT, fixture } from "./fixtures";
+import { ACCOUNT, fixture, partsCatalog } from "./fixtures";
 
 // Exercise the actual Blob SDK against an isolated local transport. No production credentials or writes.
 process.env.BRICKYARD_SECRET = "fork-test-secret";
@@ -90,6 +90,7 @@ test.beforeAll(async () => {
   globalThis.fetch = async (input, init) => {
     const url = new URL(input instanceof Request ? input.url : String(input));
     if (url.origin === base) return realFetch(input, init);
+    if (url.href === "https://bricks.hcompany.ai/parts.json") return Response.json(partsCatalog);
     if (url.hostname !== "agp.eu.hcompany.ai") throw new Error(`Unexpected test request: ${url.origin}`);
     agentCalls.push(`${init?.method ?? "GET"} ${url.pathname}`);
     const asked = url.pathname.match(/^\/api\/v2\/sessions\/([^/]+)$/)?.[1];
@@ -127,7 +128,7 @@ test("a copy persists without an agent, retries once under the same identity, an
   const changed = seed();
   changed.model.name = "Must not replace the saved copy";
   expect((await POST(request("POST", { id: copy, seed: changed }))).status).toBe(201);
-  expect(writes).toBe(2); // one seed and one metadata record, not a second copy
+  expect(writes).toBe(3); // one id claim, one seed and one metadata record, not a second copy
   const saved = await GET(request("GET", undefined, ACCOUNT.user, `?id=${copy}`));
   expect(saved.headers.get("cache-control")).toBe("private, no-store");
   expect(await saved.json()).toMatchObject({
@@ -143,6 +144,9 @@ test("a copy persists without an agent, retries once under the same identity, an
   const other = { ...ACCOUNT.user, id: "another-user" };
   expect(await (await GET(request("GET", undefined, other))).json()).toEqual([]);
   expect((await GET(request("GET", undefined, other, `?id=${copy}`))).status).toBe(404);
+  expect((await POST(request("POST", { id: copy, seed: seed() }, other))).status).toBe(409);
+  expect(objects.get(`fork-owners/${copy}.json`)!.toString()).not.toContain(privateScope(ACCOUNT.user.id));
+  expect(await (await GET(request("GET", undefined, other))).json()).toEqual([]);
   expect(agentCalls).toEqual([]);
 });
 
@@ -155,6 +159,7 @@ test("authentication and geometry validation reject invalid copies before storin
   incomplete.model.parts = {};
   expect((await POST(request("POST", { id: copy, seed: incomplete }))).status).toBe(400);
   expect((await POST(request("POST", { id: "../elsewhere", seed: seed() }))).status).toBe(400);
+  expect((await POST(request("POST", null))).status).toBe(400);
   expect(objects.size).toBe(0);
   expect(agentCalls).toEqual([]);
 });
@@ -189,6 +194,29 @@ test("publishing a saved copy includes its model and hand edits without private 
   expect(edited.revision).not.toBe(original.revision);
   await expect(snapshot(copy, "test-key", null, "another-user")).rejects.toMatchObject({ status: 404 });
   expect(agentCalls).toEqual([]);
+});
+
+test("a published copy carries a replaced part, with its geometry from the part catalog", async () => {
+  await POST(request("POST", { id: copy, seed: seed() }));
+  const replace = (part: string, by = [[0, 0, 0]]) =>
+    snapshot(
+      copy,
+      "test-key",
+      { revision: original.revision, edits: [{ kind: "replace", ids: [0], part, by }] },
+      ACCOUNT.user.id,
+    );
+  const published = await replace("test-tile.dat");
+  expect(published.pieces[0].part).toBe("test-tile.dat");
+  expect(published.parts["test-tile.dat"]).toBe(partsCatalog.packs["test-tile.dat"]);
+  await expect(replace("unknown.dat")).rejects.toMatchObject({ status: 400 });
+  await expect(replace("test-tile.dat", [])).rejects.toMatchObject({ status: 400 });
+});
+
+test("a copy's name is bounded like an import's, so publishing it cannot bloat the public library", async () => {
+  const long = seed();
+  long.model.name = "x".repeat(100_000);
+  expect((await POST(request("POST", { id: copy, seed: long }))).status).toBe(201);
+  expect((await snapshot(copy, "test-key", null, ACCOUNT.user.id)).name).toBe("x".repeat(120));
 });
 
 test("attaching Holo requires both session ownership and the same copy operation", async () => {
@@ -279,7 +307,7 @@ test("a stale pre-start record cannot hide the session from reload or Library", 
   expect((await PATCH(request("PATCH", { id: copy, sessionId: "own-run" }))).status).toBe(204);
   expect((await PATCH(request("PATCH", { id: copy, sessionId: "own-run" }))).status).toBe(204);
   expect(objects.get(path)).toEqual(before);
-  expect(writes).toBe(3); // Seed, metadata and one immutable session link.
+  expect(writes).toBe(4); // Id claim, seed, metadata and one immutable session link.
   expect(await (await GET(request("GET", undefined, ACCOUNT.user, `?id=${copy}`))).json()).toMatchObject({
     sessionId: "own-run",
     seed: { model: { revision: original.revision } },
