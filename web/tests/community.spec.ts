@@ -197,9 +197,7 @@ test("a public build's link copies to the clipboard", async ({ page, context }) 
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(`${new URL(page.url()).origin}/?public=tower`);
 });
 
-test("the author publishes a build after a confirmation, stays on it, then makes it private after another", async ({
-  page,
-}) => {
+test("the author publishes and makes a build private with one-click toggles", async ({ page }) => {
   const model = fixture();
   await site(page);
   const agp = await platform(page);
@@ -217,11 +215,12 @@ test("the author publishes a build after a confirmation, stays on it, then makes
   await expect(menu).toContainText("Private: not in the public library");
   await expect(copyLink).toBeDisabled();
 
-  const publishing = page.getByRole("dialog", { name: "Publish" });
-  await page.getByRole("menuitem", { name: "Publish to the library…" }).click();
-  await expect(publishing).toContainText("Your chat and photos stay private.");
-  await publishing.getByRole("button", { name: "Publish" }).click();
-  await expect(publishing).toBeHidden();
+  await share.click();
+  const visibility = page.getByRole("switch", { name: "Public", exact: true });
+  await expect(visibility).not.toBeChecked();
+  await visibility.click();
+  await page.getByRole("dialog", { name: "Make it public" }).getByRole("button", { name: "Make it public" }).click();
+  await expect(visibility).toBeChecked();
   await expect(page).toHaveURL(/\?build=mine$/);
   await share.click();
   await expect(menu).toContainText("In the public library: anyone can open it");
@@ -240,19 +239,11 @@ test("the author publishes a build after a confirmation, stays on it, then makes
   await page.goBack();
   await shown(page, model.revision);
 
-  const confirm = page.getByRole("dialog", { name: "Make private" });
-  const unpublish = page.getByRole("menuitem", { name: "Make private…" });
-  await share.click();
-  await unpublish.click();
-  await confirm.getByRole("button", { name: "Cancel" }).click();
-  await expect(confirm).toBeHidden();
-  expect(calls.some((c) => c.method === "DELETE")).toBe(false);
-  await share.click();
-  await unpublish.click();
-  await confirm.getByRole("button", { name: "Make private" }).click();
+  await visibility.click();
+  await expect(visibility).not.toBeChecked();
   await expect(page).toHaveURL(/\?build=mine$/);
   await share.click();
-  await expect(page.getByRole("menuitem", { name: "Publish to the library…" })).toBeVisible();
+  await expect(visibility).not.toBeChecked();
   await expect(copyLink).toBeDisabled();
   await share.click();
   expect(calls.find((c) => c.method === "DELETE")).toMatchObject({

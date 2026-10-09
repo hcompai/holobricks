@@ -1,5 +1,6 @@
+import { annotationFile, type VisualInstruction } from "./Annotation";
 import { ThinkingIcon } from "./Thinking";
-import { ArrowUpIcon, PlusIcon, ShuffleIcon, SignInIcon, StopIcon, XIcon } from "@phosphor-icons/react";
+import { ArrowUpIcon, GitForkIcon, PlusIcon, StopIcon, XIcon } from "@phosphor-icons/react";
 import { memo, type ReactNode, type Ref, useEffect, useImperativeHandle, useRef, useState } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -11,6 +12,7 @@ import { label, SUGGESTIONS } from "./suggestions";
 import { HOLO } from "./holo";
 
 const MAX_ATTACHMENTS = 2;
+const STARTER = "A red lighthouse on a rock";
 /** The home prompt a signed-out visitor typed, kept in this tab through the sign-in round trip. */
 const KEPT = "brickyard.prompt";
 const WHO = "Holo";
@@ -29,11 +31,6 @@ function duration(ms: number): string {
   const m = Math.floor(s / 60);
   return m < 60 ? `${m}m ${s % 60}s` : `${Math.floor(m / 60)}h ${m % 60}m`;
 }
-
-const clock = (ms: number) => {
-  const s = Math.floor(ms / 1000);
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
-};
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -98,7 +95,9 @@ function Live({ activity, early }: { activity: Activity; early: boolean }) {
       <span key={label} className="shimmer">
         {label}
       </span>
-      {!early && elapsed >= CLOCK_MS && <span className="live-clock">{clock(elapsed)}</span>}
+      {!early && Number.isFinite(activity.since) && activity.since > 0 && elapsed >= CLOCK_MS && (
+        <span className="live-clock">{duration(elapsed)}</span>
+      )}
     </span>
   );
   return (
@@ -166,6 +165,7 @@ const Row = memo(
 );
 
 export interface ChatHandle {
+  annotate: (instruction: VisualInstruction) => Promise<void>;
   ask: (prompt: string, attached: Record<string, Blob>) => Promise<boolean>;
 }
 
@@ -183,7 +183,7 @@ interface Props {
   onFork: () => void;
   /** Receives the notes and composer under the chat log, which a phone's sheet keeps in view. */
   dockRef?: (dock: HTMLDivElement | null) => void;
-  /** Start a new build from a copy of this one, changed as asked: a closed build, or one whose session ended. */
+  /** Change a build whose session ended: the owner's carries on under its id, anyone else's starts a copy. */
   onRemix: (text: string, images: string[], attached?: Record<string, Blob>) => Promise<void>;
   /** Signed out: Holo takes no message, and sending asks to sign in instead. */
   onSignIn?: () => void;
@@ -205,7 +205,7 @@ export function ChatPanel({
   onSignIn,
 }: Props) {
   const [text, setText] = useState(() => (build || loading ? "" : (sessionStorage.getItem(KEPT) ?? "")));
-  const [attachments, setAttachments] = useState<string[]>([]);
+  const [attachments, setAttachments] = useState<{ src: string; files?: Record<string, Blob> }[]>([]);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   /** Messages sent to the builder that its chat does not show yet, each with how many user messages it showed then. */
@@ -219,7 +219,7 @@ export function ChatPanel({
   /** Whether the log sits at its end, so new lines scroll it and reading earlier ones is left alone. */
   const pinned = useRef(true);
   const busy = build?.status === "building";
-  /** The builder no longer takes messages here: a change starts a copy of the build. */
+  /** The builder no longer takes messages here: a change goes through `onRemix`. */
   const ended = !!build && !build.open && !busy;
   const changing = Boolean(build || loading);
   /** How many messages the build had when it opened: only later ones animate in. */
@@ -267,7 +267,7 @@ export function ChatPanel({
     if (!files.length) return;
     try {
       const added = await Promise.all(files.map(reference));
-      setAttachments((current) => [...current, ...added].slice(0, MAX_ATTACHMENTS));
+      setAttachments((current) => [...current, ...added.map((src) => ({ src }))].slice(0, MAX_ATTACHMENTS));
     } catch (e) {
       setError(`Could not read that image: ${message(e)}`);
     }
@@ -295,6 +295,13 @@ export function ChatPanel({
   };
 
   useImperativeHandle(ref, () => ({
+    annotate: async (instruction) => {
+      if (sending || closed || preview || !build?.id || build.id !== instruction.context.build)
+        throw new Error("This build cannot receive directions here.");
+      if (attachments.length >= MAX_ATTACHMENTS) throw new Error("Remove an attachment first.");
+      setAttachments((list) => [...list, { src: instruction.image, files: annotationFile(instruction) }]);
+      requestAnimationFrame(() => input.current?.focus());
+    },
     ask: (prompt, attached) => {
       if (closed || preview || sending || !build?.id) return Promise.resolve(false);
       return deliver(prompt, [], attached);
@@ -302,18 +309,29 @@ export function ChatPanel({
   }));
 
   const typed = !!(text.trim() || attachments.length);
-  const unsendable = !!preview || !!closed || !typed || sending || (changing && !build?.id);
+  const suggestion = home && !typed ? STARTER : "";
+  const unsendable = !!preview || !!closed || (!typed && !suggestion) || sending || (changing && !build?.id);
   /** The composer empties at once, and gets its text and images back if the builder does not take them. */
   const send = async () => {
     if (unsendable) return;
-    if (onSignIn) return onSignIn();
-    const prompt = text.trim();
-    const images = attachments;
+    const prompt = text.trim() || (attachments.some((image) => image.files) ? "Apply my marks." : suggestion);
+    if (onSignIn) {
+      if (home) {
+        setText(prompt);
+        sessionStorage.setItem(KEPT, prompt);
+      }
+      return onSignIn();
+    }
+    const draft = attachments;
+    const images = draft.map((a) => a.src);
     setText("");
     setAttachments([]);
-    if (await deliver(prompt, images)) return;
+    const files = Object.assign({}, ...draft.map((a) => a.files ?? {}));
+    if (await deliver(prompt, images, files)) {
+      return;
+    }
     setText((typed) => typed || prompt);
-    setAttachments((added) => (added.length ? added : images));
+    setAttachments((added) => [...draft, ...added]);
   };
 
   const composer = !closed && !preview && (
@@ -334,13 +352,15 @@ export function ChatPanel({
     >
       {attachments.length > 0 && (
         <div className="attachments">
-          {attachments.map((src, i) => (
+          {attachments.map(({ src }, i) => (
             <div key={i} className="attachment">
               <img src={src} alt={`Reference ${i + 1}`} />
               <button
                 title="Remove"
                 aria-label="Remove image"
-                onClick={() => setAttachments((current) => current.filter((_, j) => j !== i))}
+                onClick={() => {
+                  setAttachments((current) => current.filter((_, j) => j !== i));
+                }}
               >
                 <XIcon size={10} weight="bold" />
               </button>
@@ -351,7 +371,7 @@ export function ChatPanel({
       <textarea
         ref={input}
         value={text}
-        placeholder={changing ? "Ask for a change" : "A red lighthouse on a rock… or drop a photo"}
+        placeholder={changing ? "Ask for a change" : `${STARTER}… or drop a photo`}
         onChange={(e) => setText(e.target.value)}
         onPaste={(e) => {
           const files = imageFiles(e.clipboardData.files);
@@ -419,7 +439,6 @@ export function ChatPanel({
     return (
       <div className="home-intro">
         <h1>What should we build?</h1>
-        <p>Describe anything you like and {WHO} will build it in real bricks while you watch.</p>
         {composer}
         {failure}
         <div className="chips">
@@ -471,12 +490,10 @@ export function ChatPanel({
             <div>{closed}</div>
             {!!build?.pieces.length &&
               (onSignIn ? (
-                <button onClick={onSignIn}>
-                  <SignInIcon size={14} weight="bold" /> Sign in
-                </button>
+                <button onClick={onSignIn}>Sign in</button>
               ) : (
                 <button onClick={onFork} title="Start your own build from a copy of this one">
-                  <ShuffleIcon size={14} weight="bold" /> Fork
+                  <GitForkIcon size={14} weight="bold" /> Fork
                 </button>
               ))}
           </div>

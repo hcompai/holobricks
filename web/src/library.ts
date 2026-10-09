@@ -202,8 +202,14 @@ export async function publish(id: string, thumbnail: string | null, edits: { rev
     body: JSON.stringify({ id, thumbnail, edits }),
   });
   fresh.set(id, published);
+  markPublished();
   return published;
 }
+
+const PUBLISHED = "brickyard.published";
+/** Whether this browser knows the user has had a public build. */
+export const publishedBefore = () => localStorage.getItem(PUBLISHED) === "1";
+export const markPublished = () => localStorage.setItem(PUBLISHED, "1");
 
 /** A HoloBricks model file as the browser reads it, before the library checks it. */
 export type ModelFile = Pick<Model, "name" | "pieces" | "parts"> & Partial<Build>;
@@ -253,6 +259,7 @@ export async function setPrivate(id: string, value: boolean) {
     headers: { ...signed(), "Content-Type": "application/json" },
     body: JSON.stringify({ id, private: value }),
   });
+  if (!value) markPublished();
 }
 
 /** Take a build out of the library and delete its files; for an imported build, that deletes it. */
@@ -333,17 +340,20 @@ export async function library(): Promise<{ builds: BuildSummary[]; failed: Listi
     });
   // A build is public or private, never both: the public listing wins if a stale private entry lingers.
   const privately = own.filter((p) => !listed.has(p.id));
-  const forkRuns = new Set(forks.flatMap((f) => (f.sessionId ? [f.sessionId] : [])));
+  // A copy stands for the runs behind it: the one it links to and every ended session it carried on from.
+  const forkRuns = new Set(forks.flatMap((f) => [f.id, ...(f.runs ?? []), ...(f.sessionId ? [f.sessionId] : [])]));
   const copies: BuildSummary[] = forks
     .filter((f) => !removed.has(f.id))
     .map((f) => {
       const run = builds.find((b) => b.id === f.sessionId);
+      const origin = builds.find((b) => b.id === f.id);
       const saved = known[f.id];
       const rendered = f.sessionId ? known[f.sessionId] : null;
       return {
         ...f,
+        created: origin?.created ?? f.created,
         name: f.name,
-        prompt: run?.prompt ?? "",
+        prompt: run?.prompt ?? origin?.prompt ?? "",
         pieces: run?.pieces ?? f.pieces,
         status: run?.status ?? "done",
         thumbnail:

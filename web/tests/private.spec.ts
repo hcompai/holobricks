@@ -100,7 +100,7 @@ async function library(page: import("@playwright/test").Page, build: Build) {
   return calls;
 }
 
-test("an imported build goes private and stays under the user's builds, goes public again, then is deleted after a confirmation", async ({
+test("an imported build toggles private and public without losing it, then is deleted after a confirmation", async ({
   page,
 }) => {
   const build = { ...fixture(), id: "import-1", name: "Granite house" };
@@ -114,11 +114,11 @@ test("an imported build goes private and stays under the user's builds, goes pub
   const copyLink = page.getByRole("menuitem", { name: "Copy link" });
   await share.click();
   await expect(menu).toContainText("In the public library: anyone can open it");
-  await page.getByRole("menuitem", { name: "Make private…" }).click();
-  const confirm = page.getByRole("dialog", { name: "Make private" });
-  await expect(confirm).toContainText("stays under Your builds for you alone");
-  await confirm.getByRole("button", { name: "Make private" }).click();
-  await expect(confirm).toBeHidden();
+  await share.click();
+  const visibility = page.getByRole("switch", { name: "Public", exact: true });
+  await expect(visibility).toBeChecked();
+  await visibility.click();
+  await expect(visibility).not.toBeChecked();
   await share.click();
   await expect(menu).toContainText("Private: not in the public library");
   await expect(copyLink).toBeDisabled();
@@ -139,9 +139,8 @@ test("an imported build goes private and stays under the user's builds, goes pub
   expect(calls.find((c) => c.search.includes("file=build.json.gz"))?.auth).toBe(`Bearer ${ACCOUNT.pass}`);
   expect(calls.some((c) => c.search.includes("file=images"))).toBe(false);
   await expect(page.locator(".chat img")).toHaveCount(0);
-  await share.click();
-  await page.getByRole("menuitem", { name: "Publish to the library…" }).click();
-  await page.getByRole("dialog", { name: "Publish" }).getByRole("button", { name: "Publish" }).click();
+  await visibility.click();
+  await expect(visibility).toBeChecked();
   await share.click();
   await expect(copyLink).toBeEnabled();
   expect(calls.filter((c) => c.method === "PATCH").map((c) => c.body)).toEqual([
@@ -160,4 +159,43 @@ test("an imported build goes private and stays under the user's builds, goes pub
   await expect(page).toHaveURL(/\/$/);
   expect(calls.find((c) => c.method === "DELETE")).toMatchObject({ search: "?id=import-1&source=public" });
   await expect(page.getByRole("region", { name: "Your builds" }).locator(".tile")).toHaveCount(0);
+});
+
+test("visibility stays public after a failed save, prevents duplicate clicks, and retries", async ({
+  page,
+}, testInfo) => {
+  const build = { ...fixture(), id: "import-1", name: "Granite house" };
+  await site(page);
+  await library(page, build);
+  let requests = 0;
+  let finish: (() => Promise<void>) | undefined;
+  await page.route("**/api/builds*", async (route) => {
+    if (route.request().method() !== "PATCH") return route.fallback();
+    requests++;
+    if (requests > 1) return route.fallback();
+    await new Promise<void>((resolve) => {
+      finish = async () => {
+        await route.fulfill({ status: 503, json: { error: "Storage unavailable" } });
+        resolve();
+      };
+    });
+  });
+  await page.goto("/?public=import-1");
+  const visibility = page.getByRole("switch", { name: "Public", exact: true });
+  await expect(visibility).toBeChecked();
+  await visibility.click();
+  await expect(visibility).toBeDisabled();
+  await expect(visibility).toBeChecked();
+  expect(requests).toBe(1);
+  await finish!();
+  await expect(page.getByRole("alert")).toContainText("Storage unavailable");
+  await expect(visibility).toBeEnabled();
+  await expect(visibility).toBeChecked();
+  await visibility.click();
+  await expect(visibility).not.toBeChecked();
+  await expect(page.locator(".visibility-error")).toHaveCount(0);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(visibility).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("public-toggle-phone.png") });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });

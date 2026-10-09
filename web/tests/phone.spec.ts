@@ -23,7 +23,7 @@ test("on a phone the model fills the screen under a chat sheet that peeks, expan
   await expect(page.getByPlaceholder("Ask for a change")).toBeInViewport();
   await expect(log).toBeHidden();
   await expect(page.getByRole("button", { name: "Share", exact: true })).toBeInViewport();
-  await expect(page.getByRole("button", { name: /^Get the bricks/ })).toBeInViewport();
+  await expect(page.getByRole("button", { name: /^Buy bricks/ })).toBeInViewport();
   await expect(page.locator(".timeline")).toBeInViewport();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   const spin = page.getByRole("button", { name: "Spin", exact: true });

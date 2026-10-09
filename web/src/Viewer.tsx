@@ -1,3 +1,4 @@
+import { Annotation, type AnnotationContext, type VisualInstruction } from "./Annotation";
 import { Thinking } from "./Thinking";
 import type { Activity } from "./session";
 import { PlacementSoundToggle } from "./PlacementSound";
@@ -60,6 +61,7 @@ export function ViewControls({
   framing: Framing;
   spin: boolean;
   followCamera?: boolean;
+  /** Shown while the build is live or replaying, the only times the camera follows it. */
   onFollowCamera?: (follow: boolean) => void;
   mode: Mode;
   canEdit: boolean;
@@ -103,7 +105,7 @@ export function ViewControls({
             onClick={() => onFollowCamera(!followCamera)}
           >
             <VideoCameraIcon size={14} weight="bold" />
-            <span className="button-label">Follow build</span>
+            <span className="button-label">Follow</span>
           </button>
         )}
         <button className={spin ? "active" : ""} aria-pressed={spin} onClick={() => onSpin(!spin)}>
@@ -158,6 +160,7 @@ export interface ViewerHandle {
 }
 
 interface Props {
+  onAnnotate?: (instruction: VisualInstruction) => Promise<void>;
   thinking?: Activity | null;
   placementSpeed?: number;
   onPlacing?: (placing: boolean) => void;
@@ -190,6 +193,35 @@ export function Viewer(props: Props) {
   const { ref, build, opening, step, framing, spin, onThumbnail, thumbnailed, syncError } = props;
   const { mode, edits, describe, palette, onMode } = props;
   const walkScreen = useWalkFullscreen(mode === "walk");
+  const [annotation, setAnnotation] = useState<{ image: Blob; context: AnnotationContext } | null>(null);
+  const [capturing, setCapturing] = useState(false);
+  const [annotationError, setAnnotationError] = useState("");
+  const captureKey = useRef("");
+  captureKey.current = `${build?.id}:${build?.revision}:${step}`;
+  useEffect(() => {
+    setAnnotation(null);
+    setAnnotationError("");
+  }, [build?.id]);
+  const capture = async () => {
+    if (!build || capturing) return;
+    const key = captureKey.current;
+    const context = { build: build.id, revision: build.revision, step };
+    setCapturing(true);
+    setAnnotationError("");
+    try {
+      // Finish only the browser's reveal so removal marks do not target temporary/ghost geometry.
+      scene.current?.finishPlacement();
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      const image = await scene.current?.image();
+      if (captureKey.current !== key) throw new Error("The model changed. Try Annotate again.");
+      if (!image) throw new Error("The model is not ready. Try again.");
+      setAnnotation({ image, context });
+    } catch (error) {
+      setAnnotationError(error instanceof Error ? error.message : "Could not capture this view.");
+    } finally {
+      setCapturing(false);
+    }
+  };
   const container = useRef<HTMLDivElement>(null);
   const scene = useRef<BrickScene | null>(null);
   const framedBuild = useRef<string | null>(null);
@@ -525,6 +557,21 @@ export function Viewer(props: Props) {
         onPointerLeave={() => setHover(null)}
         onClick={clicked}
       />
+      {props.onAnnotate && mode === "view" && !annotation && (
+        <div className="annotate-launch">
+          <button onClick={capture} disabled={capturing || !(ready && !syncError)}>
+            <PencilSimpleIcon size={16} /> {capturing ? "Opening…" : "Annotate"}
+          </button>
+          {annotationError && (
+            <p className="error-text" role="alert">
+              {annotationError}
+            </p>
+          )}
+        </div>
+      )}
+      {annotation && props.onAnnotate && (
+        <Annotation {...annotation} onDone={props.onAnnotate} onClose={() => setAnnotation(null)} />
+      )}
       {shown && (edits.stale > 0 || edits.hidden > 0) && (
         <div className="edit-notice" role="status">
           {edits.stale > 0 ? (
@@ -593,18 +640,6 @@ export function Viewer(props: Props) {
               <button onClick={() => scene.current?.finishPlacement()}>Skip</button>
             </div>
           )}
-          <dl className="model-size" aria-label="Model size" title="Approximate size · full model">
-            {[
-              { label: "Height", value: drawn.size.y },
-              { label: "Width", value: drawn.size.x },
-              { label: "Depth", value: drawn.size.z },
-            ].map(({ label, value }) => (
-              <div key={label}>
-                <dt>{label}</dt>
-                <dd>{value.toFixed(1)} cm</dd>
-              </div>
-            ))}
-          </dl>
         </div>
       )}
       {shown && <PlacementSoundToggle />}

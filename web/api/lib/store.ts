@@ -1,5 +1,6 @@
 import { BlobNotFoundError, del, head, list, put } from "@vercel/blob";
 import { gunzipSync, gzipSync } from "node:zlib";
+import { clearHearts } from "./hearts";
 import { Refusal } from "./http";
 import {
   privateDelete,
@@ -329,6 +330,7 @@ export async function unlist(id: string, owner?: string) {
   if (owner && privateConfigured()) await removePrivate(owner, id);
   const urls = await files(id);
   if (urls.length) await del(urls);
+  await clearHearts(id);
 }
 
 /** Renaming a published/imported project keeps its files, visibility and URL. */

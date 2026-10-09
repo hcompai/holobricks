@@ -62,7 +62,7 @@ test("the PDF starts on open and downloads in one click: a cover, a page per lay
   await share.click();
   await expect(page.getByRole("menuitem")).toHaveText([
     "Copy link",
-    "Share a GIF…",
+    "Share GIF…",
     "Instructions (PDF)…",
     "Download model (.ldr)",
     "Download image",

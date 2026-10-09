@@ -66,7 +66,7 @@ async function open(page: Page, build: Build) {
 test("one copy hands HoloTab the verified XML and nothing private", async ({ page, context }, info) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await open(page, duck());
-  await page.getByRole("button", { name: /^Get the bricks/ }).click();
+  await page.getByRole("button", { name: /^Buy bricks/ }).click();
   const dialog = page.getByRole("dialog", { name: "Build it for real" });
   await expect(dialog.getByRole("link", { name: "Get HoloTab" })).toHaveAttribute(
     "href",
@@ -98,7 +98,7 @@ test("clipboard denial gives selectable text without claiming success", async ({
     }),
   );
   await open(page, duck());
-  await page.getByRole("button", { name: /^Get the bricks/ }).click();
+  await page.getByRole("button", { name: /^Buy bricks/ }).click();
   const dialog = page.getByRole("dialog");
   await dialog.getByRole("button", { name: "Fill my BrickLink cart" }).click();
   const text = dialog.getByRole("textbox");
@@ -131,7 +131,7 @@ const broken: Record<string, [string, (b: ReturnType<typeof duck>) => Build]> = 
 for (const [name, [message, damage]] of Object.entries(broken)) {
   test(`no handoff: ${name} shopping package`, async ({ page }) => {
     await open(page, damage(duck()));
-    await page.getByRole("button", { name: /^Get the bricks/ }).click();
+    await page.getByRole("button", { name: /^Buy bricks/ }).click();
     const dialog = page.getByRole("dialog");
     await expect(dialog.getByRole("region", { name: "BrickLink" }).getByRole("alert")).toContainText(message);
     await expect(dialog.getByRole("button", { name: "Fill my BrickLink cart" })).toHaveCount(0);
@@ -142,7 +142,7 @@ for (const [name, [message, damage]] of Object.entries(broken)) {
 test("an open dialog cannot copy XML after its validation expires", async ({ page }) => {
   const build = duck();
   await open(page, build);
-  await page.getByRole("button", { name: /^Get the bricks/ }).click();
+  await page.getByRole("button", { name: /^Buy bricks/ }).click();
   const dialog = page.getByRole("dialog");
   const copy = dialog.getByRole("button", { name: "Fill my BrickLink cart" });
   await expect(copy).toBeEnabled();

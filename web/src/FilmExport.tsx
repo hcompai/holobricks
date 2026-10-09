@@ -44,6 +44,36 @@ function browserOptions(
 
 const megabytes = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 
+interface ChoiceProps<T extends string | number> {
+  label: string;
+  value: T;
+  options: { value: T; label: string; title?: string }[];
+  onChange: (value: T) => void;
+}
+
+/** One of a few options, as a row of pills. */
+function Choice<T extends string | number>({ label, value, options, onChange }: ChoiceProps<T>) {
+  return (
+    <div className="film-choice">
+      <span id={`film-${label}`}>{label}</span>
+      <div className="tabs film-tabs" role="radiogroup" aria-labelledby={`film-${label}`}>
+        {options.map((o) => (
+          <button
+            key={o.value}
+            role="radio"
+            aria-checked={o.value === value}
+            className={o.value === value ? "active" : ""}
+            title={o.title}
+            onClick={() => onChange(o.value)}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /** Makes the GIF as soon as the bricks load, and again whenever an option changes. */
 export function FilmExport({ build, onClose }: Props) {
   const dialog = useRef<HTMLDialogElement>(null);
@@ -173,7 +203,7 @@ export function FilmExport({ build, onClose }: Props) {
       "_blank",
       "noopener,noreferrer",
     );
-    setNotice("Attach the downloaded GIF to your post.");
+    setNotice("GIF downloaded. Drop it into your post on X.");
   };
 
   const percent = Math.round(progress * 100);
@@ -182,7 +212,7 @@ export function FilmExport({ build, onClose }: Props) {
     <dialog className="dialog film-dialog" ref={dialog} aria-labelledby="film-title" onCancel={onClose}>
       <div className="dialog-head">
         <div>
-          <h2 id="film-title">Share a GIF</h2>
+          <h2 id="film-title">Share GIF</h2>
           <p>
             Bricks drop in step by step, then the model takes a full turn.
             {build.status === "building" && " It shows the build so far."}
@@ -219,10 +249,9 @@ export function FilmExport({ build, onClose }: Props) {
                     </button>
                   )}
                   <a className="button" href={url} download={file.name}>
-                    <DownloadSimpleIcon size={16} /> Download GIF
+                    <DownloadSimpleIcon size={16} /> Download
                   </a>
                 </div>
-                <p className="small muted">Attach the downloaded GIF on X.</p>
                 <p className="small muted">
                   {made.width} × {made.height} · {seconds}s · {megabytes(file.size)}
                 </p>
@@ -241,46 +270,40 @@ export function FilmExport({ build, onClose }: Props) {
               </button>
             )}
           </div>
-          <details className="film-options">
-            <summary>Options</summary>
-            <label>
-              Camera
-              <select value={camera} onChange={(e) => setCamera(e.target.value as FilmCamera)}>
-                <option value="follow">Follow build</option>
-                <option value="orbit">Orbit</option>
-                <option value="fixed">Fixed</option>
-              </select>
+          <Choice
+            label="Camera"
+            value={camera}
+            options={[
+              { value: "follow", label: "Follow" },
+              { value: "orbit", label: "Orbit" },
+              { value: "fixed", label: "Fixed" },
+            ]}
+            onChange={setCamera}
+          />
+          <Choice
+            label="Format"
+            value={aspect}
+            options={(Object.keys(FILM_ASPECTS) as FilmAspect[]).map((key) => ({
+              value: key,
+              label: key,
+              title: FILM_ASPECTS[key].label,
+            }))}
+            onChange={setAspect}
+          />
+          <Choice
+            label="Duration"
+            value={seconds}
+            options={FILM_SECONDS.map((s) => ({ value: s, label: `${s}s` }))}
+            onChange={setSeconds}
+          />
+          {brandable(build) && (
+            <label className="film-branding">
+              <input type="checkbox" checked={branded} onChange={(e) => setBranded(e.target.checked)} />H logo
             </label>
-            <label>
-              Format
-              <select value={aspect} onChange={(e) => setAspect(e.target.value as FilmAspect)}>
-                {Object.entries(FILM_ASPECTS).map(([key, value]) => (
-                  <option key={key} value={key}>
-                    {value.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Duration
-              <select value={seconds} onChange={(e) => setSeconds(Number(e.target.value))}>
-                {FILM_SECONDS.map((s) => (
-                  <option key={s} value={s}>
-                    {s} seconds
-                  </option>
-                ))}
-              </select>
-            </label>
-            {brandable(build) && (
-              <label className="film-branding">
-                <input type="checkbox" checked={branded} onChange={(e) => setBranded(e.target.checked)} />H Company
-                credit
-              </label>
-            )}
-          </details>
+          )}
           <label className="film-caption">
-            Suggested caption
-            <textarea value={caption} readOnly rows={4} onFocus={(e) => e.target.select()} />
+            Caption
+            <textarea value={caption} readOnly rows={3} onFocus={(e) => e.target.select()} />
           </label>
           <button
             className="film-copy"
@@ -293,7 +316,7 @@ export function FilmExport({ build, onClose }: Props) {
               }
             }}
           >
-            <CopyIcon size={16} /> Copy caption
+            <CopyIcon size={16} /> Copy
           </button>
           {notice && (
             <p className="small" role="status">
