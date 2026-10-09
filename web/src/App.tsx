@@ -10,6 +10,7 @@ import {
 } from "@phosphor-icons/react";
 import { type CSSProperties, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type Account, signInError } from "./account";
+import { track } from "./analytics";
 import { AccountMenu } from "./AccountMenu";
 import { SignInDialog } from "./SignInDialog";
 import { FinishedCard } from "./FinishedCard";
@@ -393,6 +394,7 @@ export default function App({ account }: { account: Account | null }) {
           )
         : create(prompt, images, attached));
       started.current.add(id);
+      track("build_started", { from: from ? "remix" : "prompt", image_count: images.length });
       remember(id, { name: name.slice(0, 60), prompt });
       refreshBuilds();
       if (!same(opened.current, at)) return;

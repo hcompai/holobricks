@@ -1,5 +1,6 @@
 import { UploadSimpleIcon } from "@phosphor-icons/react";
 import { useRef, useState } from "react";
+import { track } from "./analytics";
 import { Confirm } from "./Confirm";
 import { importModel, type ModelFile, readModel } from "./library";
 import { useMenu } from "./useMenu";
@@ -41,7 +42,11 @@ export function ImportBuild({ onImported }: { onImported: (id: string) => void }
             note={`Its ${model.pieces.length.toLocaleString()} pieces go public in the library under your name, with an unverified parts list.`}
             doing="Importing…"
             icon={<UploadSimpleIcon size={16} />}
-            action={async () => onImported(await importModel(model))}
+            action={async () => {
+              const id = await importModel(model);
+              track("build_imported");
+              onImported(id);
+            }}
             onClose={() => setOpen(false)}
           />
         )}

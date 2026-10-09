@@ -2,6 +2,7 @@ import { client, preparedSession, download, initialMessage, forkSession } from "
 import { card, remember, linkFork } from "./library";
 import { script } from "./remix";
 import { FORK_FILE } from "./session";
+import { track } from "./analytics";
 import { readSeed, type ForkSeed } from "./forkModel";
 export { forkSeed, readSeed, type ForkSeed, type ForkOrigin } from "./forkModel";
 
@@ -106,6 +107,7 @@ export async function startFork(
   const start = async () => {
     const session = await operation.run(seed, text, photos, attached);
     await linkFork(id, session);
+    track("build_forked");
     return session;
   };
   return navigator.locks ? navigator.locks.request(`brickyard-fork-${group}`, start) : start();
