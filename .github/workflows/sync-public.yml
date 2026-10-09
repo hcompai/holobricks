@@ -20,6 +20,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: false
       - run: scripts/sync-public.sh
         env:
           PUBLIC: hcompai/holobricks
