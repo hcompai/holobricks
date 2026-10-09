@@ -54,17 +54,22 @@ async function host() {
 }
 
 /** The preview function as it deploys, bundled with the webServer's build of dist/index.html. */
-async function bundled(): Promise<(request: Request) => Promise<Response>> {
+async function bundled() {
   const out = mkdtempSync(join(tmpdir(), "brickyard-api-"));
   execFileSync("node", ["scripts/build-api.mjs", out]);
-  return (await import(pathToFileURL(join(out, "functions/api/preview.func/index.mjs")).href)).GET;
+  const GET = (await import(pathToFileURL(join(out, "functions/api/preview.func/index.mjs")).href)).GET as (
+    request: Request,
+  ) => Promise<Response>;
+  return { GET, routes: JSON.parse(readFileSync(join(out, "config.json"), "utf8")).routes };
 }
 
 const meta = (html: string, key: string) =>
   html.match(new RegExp(`<meta\\s+(?:property|name)="${key}"\\s+content="([^"]*)"`))?.[1];
 
-test("a link to a public build or a showcase previews its name, pieces, author and cover; any other gets the app as is", async () => {
-  const GET = await bundled();
+test("all published build links preview the set; private and missing builds keep the generic card", async () => {
+  const { GET, routes } = await bundled();
+  for (const key of ["build", "public", "showcase", "fork"])
+    expect(routes).toContainEqual({ src: "^/$", has: [{ type: "query", key }], dest: "/api/preview" });
   const index = readFileSync("dist/index.html", "utf8");
   const { origin, close } = await host();
   const page = async (search: string) => {
@@ -84,14 +89,30 @@ test("a link to a public build or a showcase previews its name, pieces, author a
     expect(tower.replace(/<meta\s+property="og:[^>]*>\s*/g, "")).toBe(
       index.replace(/<meta\s+property="og:[^>]*>\s*/g, ""),
     );
+    for (const search of ["?build=tower", "?fork=tower", "?fork=tower&version=1"])
+      expect(await page(search), search).toBe(tower);
 
     const hogwarts = await page("?showcase=hogwarts");
     expect(meta(hogwarts, "og:title")).toBe("Hogwarts · HoloBricks");
     expect(meta(hogwarts, "og:description")).toBe("26,987 pieces, from the HoloBricks gallery");
-    expect(meta(hogwarts, "og:image")).toMatch(/^https:\/\/[^/?]+\/gallery\/thumbnails\/hogwarts\.png\?v=179$/);
+    expect(meta(hogwarts, "og:image")).toMatch(/^https:\/\/[^/?]+\/gallery\/thumbnails\/hogwarts\.webp\?v=179$/);
     expect(hogwarts).not.toContain(SHOWCASE.prompt);
+    expect(await page("?showcase=hogwarts&fork=tower")).toBe(hogwarts);
 
-    for (const search of ["?public=gone", "?public=broken", "?public=../tower", "?showcase=gone", "?build=tower"])
+    for (const search of [
+      "?public=gone",
+      "?public=broken",
+      "?public=../tower",
+      "?showcase=gone",
+      "?build=private",
+      "?fork=private",
+      "?build=gone",
+      "?fork=gone",
+      "?fork=../tower",
+      "?fork=broken",
+      "?build=private&public=tower",
+      "?unrelated=tower",
+    ])
       expect(await page(search), search).toBe(index);
   } finally {
     close();
