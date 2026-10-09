@@ -12,6 +12,7 @@ import { label, SUGGESTIONS } from "./suggestions";
 import { HOLO } from "./holo";
 
 const MAX_ATTACHMENTS = 2;
+const STARTER = "A red lighthouse on a rock";
 /** The home prompt a signed-out visitor typed, kept in this tab through the sign-in round trip. */
 const KEPT = "brickyard.prompt";
 const WHO = "Holo";
@@ -308,12 +309,19 @@ export function ChatPanel({
   }));
 
   const typed = !!(text.trim() || attachments.length);
-  const unsendable = !!preview || !!closed || !typed || sending || (changing && !build?.id);
+  const suggestion = home && !typed ? STARTER : "";
+  const unsendable = !!preview || !!closed || (!typed && !suggestion) || sending || (changing && !build?.id);
   /** The composer empties at once, and gets its text and images back if the builder does not take them. */
   const send = async () => {
     if (unsendable) return;
-    if (onSignIn) return onSignIn();
-    const prompt = text.trim() || (attachments.some((image) => image.files) ? "Apply my marks." : "");
+    const prompt = text.trim() || (attachments.some((image) => image.files) ? "Apply my marks." : suggestion);
+    if (onSignIn) {
+      if (home) {
+        setText(prompt);
+        sessionStorage.setItem(KEPT, prompt);
+      }
+      return onSignIn();
+    }
     const draft = attachments;
     const images = draft.map((a) => a.src);
     setText("");
@@ -363,7 +371,7 @@ export function ChatPanel({
       <textarea
         ref={input}
         value={text}
-        placeholder={changing ? "Ask for a change" : "A red lighthouse on a rock… or drop a photo"}
+        placeholder={changing ? "Ask for a change" : `${STARTER}… or drop a photo`}
         onChange={(e) => setText(e.target.value)}
         onPaste={(e) => {
           const files = imageFiles(e.clipboardData.files);
