@@ -276,6 +276,17 @@ test("a teammate's build link opens read only, to remix", async ({ page }) => {
   await expect(page.getByPlaceholder("Ask for a change")).toBeVisible();
 });
 
+for (const viewer of ["signed out", "a teammate"] as const) {
+  test(`${viewer} opening the owner's link to a published copy sees the public build`, async ({ page }) => {
+    const tower = fixture();
+    await site(page, [], viewer === "signed out" ? null : ACCOUNT);
+    await library(page, [entry(tower, "Michael", "someone-else")], [tower]);
+    await page.goto(`/?fork=${tower.id}`);
+    await expect(page).toHaveURL(new RegExp(`\\?public=${tower.id}$`));
+    await shown(page, tower.revision);
+  });
+}
+
 test("signed out, the build opens and the sign-in waits in a dialog; Google brings the user back signed in where they left", async ({
   page,
   context,
