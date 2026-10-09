@@ -1,5 +1,6 @@
 import { DiscordLogoIcon, GithubLogoIcon, LinkedinLogoIcon, XIcon, XLogoIcon } from "@phosphor-icons/react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
+import { openCookiePreferences } from "./analytics";
 
 export const TERMS = "https://www.hcompany.ai/terms-of-use";
 export const PRIVACY = "https://www.hcompany.ai/privacy-policy";
@@ -155,6 +156,9 @@ export function SiteFooter() {
             <li>{out(PRIVACY, "Privacy Policy")}</li>
             <li>{out(TERMS, "Terms of Service")}</li>
             <li>{out("https://trust.hcompany.ai/", "Trust Center")}</li>
+            <li>
+              <button onClick={openCookiePreferences}>Cookie preferences</button>
+            </li>
             <li>
               <button onClick={() => setCredits(true)}>Credits</button>
             </li>

@@ -1,0 +1,94 @@
+import { posthog } from "posthog-js";
+
+/** Same project, consent and attribution as hcompany.ai, so a visitor who signs up on the Platform joins their visits here. */
+const POSTHOG_KEY = "phc_pRHgY8yZ8ivPJekkRXYeKvhCxxGgFBjmomNLZGFumJBK";
+const SITE = "holobricks";
+/** Only the live site measures: local runs, tests and Vercel previews send nothing. */
+const ENABLED = location.hostname.endsWith("hcompany.ai");
+
+/** Axeptio vendor keys, as they appear in `cookies:complete` choices and in `axeptio_authorized_vendors`. */
+const VENDOR_POSTHOG = "posthog";
+const VENDOR_ATTRIBUTION = "h_attr";
+
+/** The signup tags platform.hcompany.ai reads from this cookie on `.hcompany.ai`. */
+const ATTRIBUTION_COOKIE = "h_attr";
+const ATTRIBUTION_DAYS = 30;
+const SIGNUP_TAGS = { product: "computeruseagents", source: SITE };
+
+type AxeptioChoices = Record<string, boolean | undefined>;
+interface AxeptioSdk {
+  on(event: "cookies:complete", cb: (choices: AxeptioChoices) => void): void;
+}
+declare global {
+  interface Window {
+    openAxeptioCookies?: () => void;
+    _axcb?: Array<(sdk: AxeptioSdk) => void>;
+    dataLayer?: object[];
+  }
+}
+
+export type ShareKind = "gif" | "image" | "link" | "publish" | "instructions" | "model_file";
+
+export type Event =
+  | ["sign_in_started", { method: "google" | "platform" }]
+  | ["sign_in_completed"]
+  | ["build_started", { from: "prompt" | "remix"; image_count: number }]
+  | ["build_forked"]
+  | ["build_imported"]
+  | ["build_shared", { kind: ShareKind }]
+  | ["shop_opened"];
+
+/** Queue a callback on the Axeptio SDK, which GTM loads later: it runs at once if the SDK has already booted. */
+function onAxeptio(cb: (sdk: AxeptioSdk) => void) {
+  window._axcb = window._axcb ?? [];
+  window._axcb.push(cb);
+}
+
+const domainAttribute = () => (ENABLED ? "; Domain=.hcompany.ai" : "");
+
+function writeCookie(name: string, value: string, days: number) {
+  const expires = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+  document.cookie = `${name}=${encodeURIComponent(value)}; Expires=${expires.toUTCString()}${domainAttribute()}; Path=/; SameSite=Lax; Secure`;
+}
+
+const deleteCookie = (name: string) =>
+  (document.cookie = `${name}=; Expires=Thu, 01 Jan 1970 00:00:00 GMT${domainAttribute()}; Path=/; SameSite=Lax; Secure`);
+
+if (ENABLED) {
+  posthog.init(POSTHOG_KEY, {
+    api_host: "/ingest",
+    ui_host: "https://eu.posthog.com",
+    person_profiles: "identified_only",
+    cookieless_mode: "on_reject",
+    persistence: "localStorage+cookie",
+    capture_pageview: "history_change",
+    disable_session_recording: true,
+  });
+  posthog.register({ site: SITE });
+}
+
+let attributionAllowed = false;
+
+onAxeptio((sdk) =>
+  sdk.on("cookies:complete", (choices) => {
+    if (choices[VENDOR_POSTHOG]) posthog.opt_in_capturing();
+    else posthog.opt_out_capturing();
+
+    attributionAllowed = choices[VENDOR_ATTRIBUTION] === true;
+    if (!attributionAllowed) deleteCookie(ATTRIBUTION_COOKIE);
+  }),
+);
+
+export function track(...[name, properties]: Event) {
+  if (!ENABLED) return;
+  posthog.capture(name, properties);
+  window.dataLayer?.push({ event: name, ...properties });
+}
+
+/** Tag the signup the Platform may be about to see, before the page leaves for it. */
+export function rememberSignup() {
+  if (attributionAllowed) writeCookie(ATTRIBUTION_COOKIE, JSON.stringify(SIGNUP_TAGS), ATTRIBUTION_DAYS);
+}
+
+/** Reopen the consent banner; it waits for the SDK if GTM has not loaded it yet. */
+export const openCookiePreferences = () => onAxeptio(() => window.openAxeptioCookies?.());
