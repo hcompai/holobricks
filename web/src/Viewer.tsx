@@ -16,7 +16,7 @@ import {
   XIcon,
 } from "@phosphor-icons/react";
 import * as THREE from "three";
-import type { Build, Piece } from "./model";
+import type { RenderRequest, Build, Piece } from "./model";
 import { BrickLoader } from "./BrickLoader";
 import { buildRevision } from "./buildRevision";
 import { ACTION_KEYS, type Action, EditBar, EditPanel } from "./EditPanel";
@@ -101,7 +101,7 @@ export function ViewControls({
             className={followCamera ? "active" : ""}
             aria-pressed={followCamera}
             disabled={mode !== "view"}
-            title="Frame each step during builds and replay. Drag or zoom to take control."
+            title="Follow Holo’s views and replay. Drag or zoom to take control."
             onClick={() => onFollowCamera(!followCamera)}
           >
             <VideoCameraIcon size={14} weight="bold" />
@@ -160,6 +160,7 @@ export interface ViewerHandle {
 }
 
 interface Props {
+  inspection?: RenderRequest | null;
   onAnnotate?: (instruction: VisualInstruction) => Promise<void>;
   thinking?: Activity | null;
   placementSpeed?: number;
@@ -370,6 +371,17 @@ export function Viewer(props: Props) {
     () => scene.current?.setFollowBuild((props.followCamera ?? true) && mode === "view" && !spin),
     [props.followCamera, mode, spin, retry],
   );
+  useEffect(() => {
+    const s = scene.current;
+    if (!s) return;
+    // Capture and draw on exactly the view the user chose, even if another inspection finishes meanwhile.
+    if (annotation || capturing) return;
+    const follow = (props.followCamera ?? true) && mode === "view" && !spin;
+    const request = props.inspection;
+    const live = follow && ready && build?.status === "building" && request?.revision === build.revision;
+    s.setInspection(live ? request : null, follow && ready && build?.status !== "building");
+  }, [props.inspection, props.followCamera, ready, build?.status, version, mode, spin, !!annotation, capturing, retry]);
+
   useEffect(() => scene.current?.setPlacementSpeed(props.placementSpeed ?? 1), [props.placementSpeed, retry]);
 
   useEffect(() => {

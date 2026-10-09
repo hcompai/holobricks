@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { publicBuild, showcase, savedFork } from "./library";
 import { forkSession } from "./agent";
-import type { Build, Source } from "./model";
+import type { Build, RenderRequest, Source } from "./model";
 import type { Activity } from "./session";
 import { provideParts } from "./scene";
 import { useSession } from "./useSession";
@@ -15,6 +15,7 @@ export interface BuildRef {
 }
 
 export interface LiveBuild {
+  inspection: RenderRequest | null;
   models: ModelAttachment[];
   seed: ForkSeed | null;
   build: Build | null;
@@ -57,6 +58,7 @@ function useFinished(ref: BuildRef | null): LiveBuild {
     activity: null,
     error,
     syncError: null,
+    inspection: null,
     models: [],
     seed: null,
   };
@@ -125,6 +127,7 @@ export function useBuild(ref: BuildRef | null): LiveBuild & {
     activity: null,
     error: copyError,
     syncError: copySyncError,
+    inspection: null,
     runId: null,
     attachSession,
   };

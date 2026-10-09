@@ -223,6 +223,8 @@ test("LEGO replay uses the close-up worker camera and dragging returns control",
   await expect(viewer).toHaveAttribute("data-placing", "true");
   await expect.poll(async () => Number(await viewer.getAttribute("data-placed"))).toBeGreaterThan(0);
   await page.getByRole("button", { name: "Pause placement", exact: true }).click();
+  // Follow is offered only while a build runs or replay is playing.
+  await page.getByRole("button", { name: "Play", exact: true }).click();
   await page.screenshot({ path: info.outputPath("closeup-lego.png") });
   const follow = page.getByRole("button", { name: "Follow", exact: true });
   await expect(follow).toHaveAttribute("aria-pressed", "true");

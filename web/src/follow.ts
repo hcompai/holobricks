@@ -4,7 +4,7 @@ import { card, remember, thumbnail } from "./library";
 import { H } from "./hosts";
 import { cachedSeed, readSeed, requestedSeed, type ForkSeed } from "./fork";
 import { caption, dataUrl, view } from "./look";
-import { EMPTY_MODEL, type Build, type Message, type Model } from "./model";
+import { EMPTY_MODEL, type Build, type Message, type Model, type RenderRequest } from "./model";
 import { BrickScene, provideParts } from "./scene";
 import {
   type Activity,
@@ -25,6 +25,8 @@ const LOAD_TRIES = 3;
 
 /** A session as the Agents API last told it. */
 export interface Followed {
+  /** The completed inspection of the currently loaded revision. */
+  inspection: RenderRequest | null;
   models: ModelAttachment[];
   seed: ForkSeed | null;
   build: Build | null;
@@ -64,7 +66,15 @@ function render(model: Model, draw: (scene: BrickScene) => Promise<Blob | null>)
 
 /** Poll session `id` until it ends or `signal` aborts, answering every `look` it waits on. */
 function follow(id: string, signal: AbortSignal, notify: Listener, displayed: () => boolean) {
-  let state: Followed = { build: null, activity: null, error: null, syncError: null, models: [], seed: null };
+  let state: Followed = {
+    build: null,
+    activity: null,
+    error: null,
+    syncError: null,
+    models: [],
+    seed: null,
+    inspection: null,
+  };
   const set = (next: Partial<Followed>) => {
     if (signal.aborted) return;
     state = { ...state, ...next };
@@ -123,7 +133,12 @@ function follow(id: string, signal: AbortSignal, notify: Listener, displayed: ()
         );
         if (!png) throw new Error("the render came back empty");
         const request = { request: call.id!, ...wanted, revision: shot.revision };
-        return await answer(id, call, [caption(shot, request), await dataUrl(png)]);
+        await answer(id, call, [caption(shot, request), await dataUrl(png)]);
+        if (!signal.aborted && model.revision === shot.revision) {
+          transcript = { ...transcript, inspection: request };
+          publish();
+        }
+        return;
       } catch (e) {
         if (signal.aborted || status(e) === 409) return;
         console.error("Could not answer a look", e);
@@ -152,6 +167,10 @@ function follow(id: string, signal: AbortSignal, notify: Listener, displayed: ()
     }
     const end = ending(session, failure ?? transcript.error);
     set({
+      inspection:
+        transcript.inspection && model.revision.startsWith(transcript.inspection.revision)
+          ? { ...transcript.inspection, revision: model.revision }
+          : null,
       models: transcript.models,
       seed,
       build: {
