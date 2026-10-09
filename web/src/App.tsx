@@ -933,7 +933,7 @@ export default function App({ account }: { account: Account | null }) {
               spin={spin}
               followCamera={followCamera && mode === "view"}
               onFollowCamera={
-                live?.status === "building" || playing
+                live?.status === "building" || playing || placing
                   ? (follow) => {
                       setFollowCamera(follow);
                       if (follow) setSpin(false);
