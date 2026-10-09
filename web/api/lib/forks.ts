@@ -1,4 +1,5 @@
 import { BlobNotFoundError, del, head, list, put } from "@vercel/blob";
+import { createHash } from "node:crypto";
 import { gzipSync } from "node:zlib";
 import { readSeed, type ForkSeed, type ForkSummary, type SavedFork } from "../../src/forkModel";
 import { privateScope } from "./account";
@@ -15,6 +16,26 @@ const options = { access: "public", addRandomSuffix: false, allowOverwrite: true
 const prefix = (owner: string) => `models/${privateScope(owner)}/`;
 const path = (owner: string, id: string) => `${prefix(owner)}${id}.json`;
 const sessionPath = (owner: string, id: string) => `${prefix(owner)}${id}.session.json`;
+/** Library ids are global, so each copy id is claimed for good by the first owner to save it. */
+const ownerClaim = (id: string) => `fork-owners/${id}.json`;
+
+async function claimed(owner: string, id: string): Promise<boolean> {
+  // The claim is public: it must not reveal the scope that names the owner's storage paths.
+  const scope = createHash("sha256").update(privateScope(owner)).digest("hex");
+  try {
+    await put(ownerClaim(id), JSON.stringify({ owner: scope }), {
+      ...options,
+      allowOverwrite: false,
+      contentType: "application/json",
+    });
+    return true;
+  } catch (e) {
+    const blob = await head(ownerClaim(id)).catch(() => null);
+    const response = blob && (await fetch(blob.url));
+    if (!response?.ok) throw e;
+    return (await response.json()).owner === scope;
+  }
+}
 
 type Link = { sessionId: string; runs: string[] };
 
@@ -83,6 +104,7 @@ export async function forkList(owner: string): Promise<ForkSummary[]> {
 export async function saveFork(owner: string, id: string, seed: ForkSeed): Promise<ForkSummary> {
   const existing = await entry(owner, id);
   if (existing) return existing;
+  if (!(await claimed(owner, id))) throw new Refusal(409, "This copy id is taken.");
   const info: ForkSummary = {
     id,
     name: seed.model.name,

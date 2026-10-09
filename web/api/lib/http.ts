@@ -28,11 +28,9 @@ export function route(handler: (request: Request) => Promise<Response>) {
 }
 
 export async function body<T>(request: Request): Promise<T> {
-  try {
-    return (await request.json()) as T;
-  } catch {
-    throw new Refusal(400, "The request body is not JSON.");
-  }
+  const given = await request.json().catch(() => null);
+  if (!given || typeof given !== "object") throw new Refusal(400, "The request body is not a JSON object.");
+  return given as T;
 }
 
 export const bearer = (request: Request) => request.headers.get("authorization")?.match(/^Bearer (\S+)$/)?.[1] ?? null;
