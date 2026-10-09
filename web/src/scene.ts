@@ -52,7 +52,7 @@ const EDGE_FADE = { opacity: 0.6, fromPixels: 3, toPixels: 30 };
 /** Vertical fields of view, in degrees: narrow to frame the model, wide to look around inside it. */
 const FOV = { orbit: 35, walk: 70 };
 const HOVER = { color: 0x4f8cff, opacity: 0.25 };
-const SELECTED = { color: 0xf76808, opacity: 0.35, through: 0.12 };
+const SELECTED = { color: 0x9a5bec, opacity: 0.35, through: 0.12 };
 
 interface Light {
   sun: THREE.Vector3;
