@@ -38,11 +38,10 @@ let account = load();
 if (handoff && !("error" in handoff)) {
   account = handoff;
   localStorage.setItem(STORE, JSON.stringify(handoff));
+  markAccount(handoff.user.email);
   track("sign_in_completed");
   localStorage.removeItem(PREVIOUS);
-}
-
-if (account) markAccount(account.user.email);
+} else if (account) markAccount(account.user.email);
 
 const listeners = new Set<() => void>();
 const notify = () => listeners.forEach((l) => l());
