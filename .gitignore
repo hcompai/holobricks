@@ -5,6 +5,7 @@ shadow/
 data/
 docs/*
 !docs/README.md
+!docs/visual-directions.md
 !docs/holobricks.jpg
 !docs/gallery/
 !docs/brick.png
