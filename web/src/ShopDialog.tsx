@@ -7,6 +7,7 @@ import {
   XIcon,
 } from "@phosphor-icons/react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { track } from "./analytics";
 import { PdfButton } from "./InstructionsExport";
 import type { Build, Piece, ShoppingPackage } from "./model";
 import { type Estimate, estimate, money, type PriceTable, storeUrl, UPLOAD_LIMIT, uploadLists } from "./pickabrick";
@@ -91,6 +92,7 @@ export function ShopDialog({ build, preview, table, edited, describe, onReset, o
     try {
       await navigator.clipboard.writeText(shoppingPrompt(pack));
       setCopied(true);
+      track("holotab_request_copied");
       setManual(false);
     } catch {
       setManual(true);

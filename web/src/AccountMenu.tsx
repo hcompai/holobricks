@@ -32,7 +32,7 @@ export function AccountMenu({
       </button>
       {open && (
         <div className="menu-list" role="menu">
-          <div className="menu-head">
+          <div className="menu-head ph-private">
             {name && <b>{name}</b>}
             <span className="muted small">{email}</span>
           </div>
@@ -44,7 +44,7 @@ export function AccountMenu({
             }}
           >
             <IdentificationCardIcon size={16} /> Display name
-            <span className="menu-value muted">{name || "None"}</span>
+            <span className="menu-value muted ph-private">{name || "None"}</span>
           </button>
           <ThemeToggle />
           <hr />

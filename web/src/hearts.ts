@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { current, key } from "./account";
+import { track } from "./analytics";
 
 const API = "/api/hearts";
 
@@ -48,10 +49,13 @@ export function useHearts(me: string | null, onSignIn?: () => void) {
         return { counts: { ...h.counts, [id]: Math.max(0, (h.counts[id] ?? 0) + (to ? 1 : -1)) }, mine };
       };
       setHearts((h) => flip(h, on));
-      setHeart(id, on).catch((e) => {
-        console.error(e);
-        setHearts((h) => flip(h, !on));
-      });
+      setHeart(id, on).then(
+        () => track("build_liked", { liked: on }),
+        (e) => {
+          console.error(e);
+          setHearts((h) => flip(h, !on));
+        },
+      );
     },
     [me, hearts.mine, onSignIn],
   );
