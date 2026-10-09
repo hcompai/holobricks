@@ -24,7 +24,7 @@
     <link rel="apple-touch-icon" href="/brick-touch.png" />
     <title>HoloBricks · H Company</title>
     <script>
-      if (location.hostname.endsWith("hcompany.ai"))
+      if (location.hostname === "hcompany.ai" || location.hostname.endsWith(".hcompany.ai"))
         (function (w, d, s, l, i) {
           w[l] = w[l] || [];
           w[l].push({ "gtm.start": new Date().getTime(), event: "gtm.js" });

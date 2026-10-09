@@ -6,7 +6,7 @@ import { scrubbed, withoutEmails } from "./privateText";
 const POSTHOG_KEY = "phc_pRHgY8yZ8ivPJekkRXYeKvhCxxGgFBjmomNLZGFumJBK";
 const SITE = "holobricks";
 /** Only the live site measures: local runs, tests and Vercel previews send nothing. */
-const ENABLED = location.hostname.endsWith("hcompany.ai");
+const ENABLED = location.hostname === "hcompany.ai" || location.hostname.endsWith(".hcompany.ai");
 
 /** Axeptio vendor keys, as they appear in `cookies:complete` choices and in `axeptio_authorized_vendors`. */
 const VENDOR_POSTHOG = "posthog";
@@ -114,12 +114,15 @@ export function signupTags(): Record<string, string> | null {
   return Object.keys(tags).length > 0 ? tags : null;
 }
 
+/** Whether `host` is `domain` itself or one of its subdomains, never a lookalike such as `evil-domain`. */
+const onDomain = (host: string, domain: string) => host === domain || host.endsWith(`.${domain}`);
+
 /** Where an outbound link leads, named for the dashboards; other sites by their hostname. */
 function destination(url: URL): string {
   if (url.hostname === "chromewebstore.google.com" && url.pathname.includes("/holotab/")) return "holotab";
   if (url.hostname === "github.com") return "github";
-  if (url.hostname.endsWith("lego.com")) return "pick_a_brick";
-  if (url.hostname.endsWith("bricklink.com")) return "bricklink";
+  if (onDomain(url.hostname, "lego.com")) return "pick_a_brick";
+  if (onDomain(url.hostname, "bricklink.com")) return "bricklink";
   return url.hostname;
 }
 
