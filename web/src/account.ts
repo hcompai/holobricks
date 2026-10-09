@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { rememberSignup, signupTags, track } from "./analytics";
 import { H } from "./hosts";
 import { type Account, cookie, HANDOFF, type Handoff, LOOPBACK, PENDING, type Pending, setCookie } from "./signin";
 
@@ -37,6 +38,7 @@ let account = load();
 if (handoff && !("error" in handoff)) {
   account = handoff;
   localStorage.setItem(STORE, JSON.stringify(handoff));
+  track("sign_in_completed");
   localStorage.removeItem(PREVIOUS);
 }
 
@@ -97,10 +99,13 @@ function leave(verifier: string | null) {
 
 /** Leave for the portal's Google sign-in; it comes back through /api/session, then to this page. */
 export async function signIn() {
+  rememberSignup();
   const loopback = window.location.hostname === LOOPBACK;
   const verifier = loopback ? base64url(crypto.getRandomValues(new Uint8Array(32))) : null;
   leave(verifier);
   const query = new URLSearchParams({ provider: "google", redirect_uri: `${window.location.origin}/api/session` });
+  const tags = signupTags();
+  if (tags) query.set("tags", JSON.stringify(tags));
   if (verifier) {
     const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
     query.set("code_challenge", base64url(new Uint8Array(digest)));
@@ -115,6 +120,7 @@ export async function signIn() {
  * Resolves false if the popup was blocked, true once it closes.
  */
 export function signInOnPlatform(): Promise<boolean> {
+  rememberSignup();
   const query = new URLSearchParams({ sdk_auth: "true", return_origin: window.location.origin });
   const popup = window.open(`${H.platform}/login?${query}`, "h-platform-sign-in", "width=520,height=720");
   if (!popup) return Promise.resolve(false);

@@ -19,6 +19,7 @@
     "gifenc": "^1.0.3",
     "hai-agents": "1.2.0",
     "jspdf": "^4.2.1",
+    "posthog-js": "^1.438.3",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "react-markdown": "^10.1.0",
