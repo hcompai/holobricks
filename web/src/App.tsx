@@ -302,6 +302,8 @@ export default function App({ account }: { account: Account | null }) {
 
   useEffect(() => {
     document.title = heading ? `${heading.name} · ${TITLE}` : TITLE;
+    if (heading && ref && heading.name !== NEW_BUILD)
+      track("build_viewed", { title: heading.name, source: ref.source });
   }, [heading?.name]);
 
   const show = useCallback((next: BuildRef | null, version: number | null = null) => {
