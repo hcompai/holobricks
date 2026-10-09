@@ -93,7 +93,7 @@ function Live({ activity, early }: { activity: Activity; early: boolean }) {
       <span key={label} className="shimmer">
         {label}
       </span>
-      {!early && activity.since > 0 && Number.isFinite(activity.since) && elapsed >= CLOCK_MS && (
+      {!early && Number.isFinite(activity.since) && activity.since > 0 && elapsed >= CLOCK_MS && (
         <span className="live-clock">{duration(elapsed)}</span>
       )}
     </span>
