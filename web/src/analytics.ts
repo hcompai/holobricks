@@ -33,7 +33,10 @@ export type Event =
   | ["build_started", { from: "prompt" | "remix"; image_count: number }]
   | ["build_forked"]
   | ["build_imported"]
-  | ["build_published"];
+  | ["build_published"]
+  | ["build_liked", { liked: boolean }]
+  | ["link_opened", { to: string }]
+  | ["holotab_request_copied"];
 
 /** Queue a callback on the Axeptio SDK, which GTM loads later: it runs at once if the SDK has already booted. */
 function onAxeptio(cb: (sdk: AxeptioSdk) => void) {
@@ -101,6 +104,28 @@ export function signupTags(): Record<string, string> | null {
   if (ENABLED && posthogAllowed) tags.ph_did = posthog.get_distinct_id();
   return Object.keys(tags).length > 0 ? tags : null;
 }
+
+/** Where an outbound link leads, named for the dashboards; other sites by their hostname. */
+function destination(url: URL): string {
+  if (url.hostname === "chromewebstore.google.com" && url.pathname.includes("/holotab/")) return "holotab";
+  if (url.hostname === "github.com") return "github";
+  if (url.hostname.endsWith("lego.com")) return "pick_a_brick";
+  if (url.hostname.endsWith("bricklink.com")) return "bricklink";
+  return url.hostname;
+}
+
+document.addEventListener(
+  "click",
+  (event) => {
+    const link = event.target instanceof Element ? event.target.closest("a[href]") : null;
+    if (!(link instanceof HTMLAnchorElement)) return;
+    const url = new URL(link.href, location.href);
+    if (url.protocol.startsWith("http") && url.hostname !== location.hostname) {
+      track("link_opened", { to: destination(url) });
+    }
+  },
+  { capture: true },
+);
 
 /** Reopen the consent banner; it waits for the SDK if GTM has not loaded it yet. */
 export const openCookiePreferences = () => onAxeptio(() => window.openAxeptioCookies?.());
