@@ -40,6 +40,12 @@ function depth(classes: string[][], marker: string): number {
 
 const redact = (value: string) => value.replace(EMAIL, "[email]");
 
+/** Any event with every email in its properties replaced by `[email]`: error messages can quote what was on screen. */
+export function withoutEmails(event: CaptureResult): CaptureResult {
+  event.properties = JSON.parse(JSON.stringify(event.properties).replace(EMAIL, "[email]"));
+  return event;
+}
+
 /** The click with no user's words in it: marked areas lose their text and labels, and no email survives anywhere. */
 export function scrubbed(event: CaptureResult): CaptureResult {
   const properties = event.properties;
