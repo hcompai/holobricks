@@ -24,6 +24,19 @@
     <link rel="apple-touch-icon" href="/brick-touch.png" />
     <title>HoloBricks · H Company</title>
     <script>
+      if (location.hostname.endsWith("hcompany.ai"))
+        (function (w, d, s, l, i) {
+          w[l] = w[l] || [];
+          w[l].push({ "gtm.start": new Date().getTime(), event: "gtm.js" });
+          var f = d.getElementsByTagName(s)[0],
+            j = d.createElement(s),
+            dl = l != "dataLayer" ? "&l=" + l : "";
+          j.async = true;
+          j.src = "https://www.googletagmanager.com/gtm.js?id=" + i + dl;
+          f.parentNode.insertBefore(j, f);
+        })(window, document, "script", "dataLayer", "GTM-TSPNMNM3");
+    </script>
+    <script>
       {
         const theme = localStorage.getItem("brickyard-theme");
         if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
@@ -31,6 +44,14 @@
     </script>
   </head>
   <body>
+    <noscript>
+      <iframe
+        src="https://www.googletagmanager.com/ns.html?id=GTM-TSPNMNM3"
+        height="0"
+        width="0"
+        style="display: none; visibility: hidden"
+      ></iframe>
+    </noscript>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

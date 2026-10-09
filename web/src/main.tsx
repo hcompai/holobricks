@@ -2,6 +2,7 @@ import { lazy, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import "@fontsource-variable/fira-code";
 import "@fontsource-variable/plus-jakarta-sans";
+import "./analytics";
 import { useAccount } from "./account";
 import { BrickLoader } from "./BrickLoader";
 import "./styles.css";

@@ -1,5 +1,6 @@
 import { GlobeIcon, LockSimpleIcon } from "@phosphor-icons/react";
 import { useRef, useState } from "react";
+import { track } from "./analytics";
 import { Confirm } from "./Confirm";
 import type { Publishing } from "./ShareMenu";
 import { useMenu } from "./useMenu";
@@ -28,7 +29,11 @@ export function VisibilityToggle({ publishing, name }: { publishing: Publishing;
     setPending(true);
     setError("");
     try {
-      await (published ? publishing.onUnpublish() : publishing.onPublish());
+      if (published) await publishing.onUnpublish();
+      else {
+        await publishing.onPublish();
+        track("build_published");
+      }
     } finally {
       busy.current = false;
       setPending(false);
