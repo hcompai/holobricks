@@ -13,7 +13,7 @@ const VENDOR_ATTRIBUTION = "h_attr";
 /** The signup tags platform.hcompany.ai reads from this cookie on `.hcompany.ai`. */
 const ATTRIBUTION_COOKIE = "h_attr";
 const ATTRIBUTION_DAYS = 30;
-const SIGNUP_TAGS = { product: "computeruseagents", source: SITE };
+const SIGNUP_TAGS = { product: "agent_api", source: SITE };
 
 type AxeptioChoices = Record<string, boolean | undefined>;
 interface AxeptioSdk {
@@ -67,11 +67,13 @@ if (ENABLED) {
   posthog.register({ site: SITE });
 }
 
+let posthogAllowed = false;
 let attributionAllowed = false;
 
 onAxeptio((sdk) =>
   sdk.on("cookies:complete", (choices) => {
-    if (choices[VENDOR_POSTHOG]) posthog.opt_in_capturing();
+    posthogAllowed = choices[VENDOR_POSTHOG] === true;
+    if (posthogAllowed) posthog.opt_in_capturing();
     else posthog.opt_out_capturing();
 
     attributionAllowed = choices[VENDOR_ATTRIBUTION] === true;
@@ -88,6 +90,17 @@ export function track(...[name, properties]: Event) {
 /** Tag the signup the Platform may be about to see, before the page leaves for it. */
 export function rememberSignup() {
   if (attributionAllowed) writeCookie(ATTRIBUTION_COOKIE, JSON.stringify(SIGNUP_TAGS), ATTRIBUTION_DAYS);
+}
+
+/**
+ * The tags the portal puts on `user.signed_up` when a Google sign-in started here creates the account: what the
+ * Platform reads from the `h_attr` and PostHog cookies for its own sign-ups, so both paths attribute and merge alike.
+ */
+export function signupTags(): Record<string, string> | null {
+  const tags: Record<string, string> = {};
+  if (attributionAllowed) Object.assign(tags, SIGNUP_TAGS);
+  if (ENABLED && posthogAllowed) tags.ph_did = posthog.get_distinct_id();
+  return Object.keys(tags).length > 0 ? tags : null;
 }
 
 /** Reopen the consent banner; it waits for the SDK if GTM has not loaded it yet. */

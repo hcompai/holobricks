@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { rememberSignup, track } from "./analytics";
+import { rememberSignup, signupTags, track } from "./analytics";
 import { H } from "./hosts";
 import { type Account, cookie, HANDOFF, type Handoff, LOOPBACK, PENDING, type Pending, setCookie } from "./signin";
 
@@ -105,6 +105,8 @@ export async function signIn() {
   const verifier = loopback ? base64url(crypto.getRandomValues(new Uint8Array(32))) : null;
   leave(verifier);
   const query = new URLSearchParams({ provider: "google", redirect_uri: `${window.location.origin}/api/session` });
+  const tags = signupTags();
+  if (tags) query.set("tags", JSON.stringify(tags));
   if (verifier) {
     const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
     query.set("code_challenge", base64url(new Uint8Array(digest)));
