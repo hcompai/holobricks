@@ -990,6 +990,7 @@ export default function App({ account }: { account: Account | null }) {
               }
               ref={viewer}
               build={build}
+              inspection={following && !previewing && !syncError ? read.inspection : null}
               opening={buildId && !error ? `Opening ${heading?.name ?? "the build"}` : null}
               step={visibleStep}
               thinking={!built && !error && build?.status === "building" ? activity : null}

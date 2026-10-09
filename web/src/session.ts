@@ -1,6 +1,7 @@
 import { isSettledSessionStatus, type HaiAgents } from "hai-agents";
 import { doing, PHASES } from "./activity";
-import type { Message, Status, Work } from "./model";
+import { inspected } from "./look";
+import type { Message, RenderRequest, Status, Work } from "./model";
 
 export const AGENT = "brickyard";
 export const MODEL_FILE = "model.json.gz";
@@ -35,6 +36,8 @@ export interface Transcript {
   fork: string | null;
   /** `look` calls awaiting a render, with how many models were shared when each was made. */
   looks: { call: HaiAgents.ToolRequest; shared: number }[];
+  /** The last successful inspection, with the public result's revision prefix. */
+  inspection: RenderRequest | null;
   references: Reference[];
   parts: StudyPart[];
   title: string | null;
@@ -52,6 +55,7 @@ export const EMPTY_TRANSCRIPT: Transcript = {
   models: [],
   fork: null,
   looks: [],
+  inspection: null,
   references: [],
   parts: [],
   title: null,
@@ -130,7 +134,7 @@ function step(t: Transcript, event: HaiAgents.SessionEvent): Transcript {
       const pending = (pendingToolCalls ?? []).filter((c) => c.toolName === "look");
       const shared = t.model?.shared ?? 0;
       const looks = pending.map((call) => t.looks.find((l) => l.call.id === call.id) ?? { call, shared });
-      return { ...t, state, looks };
+      return { ...t, state, looks, inspection: state === "running" && t.state === "idle" ? null : t.inspection };
     }
     case "AttachmentEvent": {
       const { origin, name, url } = (event as HaiAgents.SessionEventZero.AttachmentEvent).data;
@@ -189,7 +193,8 @@ function step(t: Transcript, event: HaiAgents.SessionEvent): Transcript {
     }
     case "tool_result": {
       const looked = data.toolReq.toolName === "look" ? render(data.result) : null;
-      if (looked) return say(looked);
+      if (looked)
+        return { ...say(looked), inspection: inspected(data.toolReq.id, data.toolReq.args, looked) ?? t.inspection };
       const { toolName, args = {}, id } = data.toolReq;
       if (toolName === "view_image" || toolName === "web_search") {
         const path = String(args.path ?? args.file_path ?? args.source ?? "");
