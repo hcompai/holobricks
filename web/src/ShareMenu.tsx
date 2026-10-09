@@ -168,7 +168,7 @@ export function ShareMenu({
             {!phone && (
               <button role="menuitem" disabled={!exportable} onClick={then(onGif)}>
                 <FilmStripIcon size={16} />
-                Share a GIF…
+                Share GIF…
               </button>
             )}
             <button role="menuitem" disabled={!exportable} onClick={then(onInstructions)}>

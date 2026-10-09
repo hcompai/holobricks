@@ -110,7 +110,6 @@ test("a public build published with its chat shows none of it, and an author wit
   await library(page, chatty, "");
   await page.goto("/");
   const tile = page.getByRole("region", { name: "Public builds" }).locator(".tile", { hasText: tower.name });
-  await expect(tile).toContainText("8 pieces");
   await expect(tile).not.toContainText("by");
   await tile.click();
   await shown(page, tower.revision);

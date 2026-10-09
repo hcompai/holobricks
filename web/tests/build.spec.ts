@@ -358,7 +358,7 @@ test("a startup failure keeps the request visible without hiding recovery or lea
   await expect(page.locator(".msg.user")).toHaveText("Space Needle Seattle");
   await expect(page.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);
 
-  await page.getByRole("button", { name: "New build", exact: true }).click();
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await expect(page.locator(".msg.user")).toHaveCount(0);
   await expect(page.getByRole("textbox")).toHaveValue("");
 });
@@ -437,7 +437,6 @@ test("home shows my builds by the names Holo gave them; showcases under Public b
   const mine = page.getByRole("region", { name: "Your builds" }).locator(".tile");
   await expect(mine).toHaveCount(1);
   await expect(mine).toContainText("Hollowbough");
-  await expect(mine).toContainText("42 pieces");
   const everyone = page.getByRole("region", { name: "Public builds" }).locator(".tile");
   await expect(everyone).toHaveCount(1);
   await expect(everyone).toContainText("Showcase");

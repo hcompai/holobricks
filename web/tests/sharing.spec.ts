@@ -72,10 +72,10 @@ test("phone GIF uses a square frame and the native sheet with a save fallback", 
   await expect(page.locator(".viewer")).toHaveAttribute("data-revision", model.revision);
   await page.getByRole("button", { name: "Share", exact: true }).click();
   await page.getByRole("menuitem", { name: "GIF", exact: true }).click();
-  const dialog = page.getByRole("dialog", { name: "Share a GIF", exact: true });
-  await dialog.getByText("Options", { exact: true }).click();
-  await expect(dialog.getByRole("combobox", { name: "Format", exact: true })).toHaveValue("1:1");
-  await dialog.getByText("Options", { exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Share GIF", exact: true });
+  await expect(
+    dialog.getByRole("radiogroup", { name: "Format", exact: true }).getByRole("radio", { name: "1:1" }),
+  ).toHaveAttribute("aria-checked", "true");
   const share = dialog.getByRole("button", { name: "Share…", exact: true });
   await expect(share).toBeVisible({ timeout: 540000 });
   await expect(dialog.getByRole("button", { name: "Post on X", exact: true })).toHaveClass("primary");
@@ -96,7 +96,7 @@ test("phone GIF uses a square frame and the native sheet with a save fallback", 
   await share.click();
   await expect(dialog.getByRole("status")).toContainText("Download the GIF");
   const download = page.waitForEvent("download");
-  await dialog.getByRole("link", { name: "Download GIF", exact: true }).click();
+  await dialog.getByRole("link", { name: "Download", exact: true }).click();
   const bytes = await readFile(await (await download).path());
   expect(bytes.subarray(0, 6).toString()).toBe("GIF89a");
   expect(bytes.readUInt16LE(6)).toBe(640);

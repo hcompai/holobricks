@@ -1903,26 +1903,35 @@ main {
 
 .film-controls,
 .film-controls label,
-.film-options[open] {
+.film-choice {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
   min-width: 0;
 }
 
-.film-options summary {
-  cursor: pointer;
-  font-weight: 600;
-  color: var(--text-secondary);
-}
-
-.film-controls label {
+.film-controls label,
+.film-choice {
   gap: var(--space-1);
   font-size: var(--font-small);
   font-weight: 600;
 }
 
-.film-controls select,
+.film-choice > span {
+  color: var(--text-secondary);
+}
+
+.film-tabs {
+  align-self: stretch;
+}
+
+.film-tabs button {
+  flex: 1;
+  padding: 5px 8px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
 .film-caption textarea {
   width: 100%;
   font: inherit;
@@ -2969,26 +2978,6 @@ main {
     display: none;
   }
 
-  .app:not(.home) .model-size {
-    gap: 12px;
-    padding: 5px 10px;
-    border: 0.5px solid var(--glass-stroke);
-    border-radius: 12px;
-    background: var(--glass);
-    -webkit-backdrop-filter: var(--glass-blur);
-    backdrop-filter: var(--glass-blur);
-  }
-
-  .app:not(.home):not(:has(.view-controls.open)) .model-size {
-    display: none;
-  }
-
-  .app:not(.home) .model-size dd {
-    margin: 0;
-    font-size: 11px;
-    line-height: 14px;
-  }
-
   .app:not(.home) .viewer > .placement-sound {
     bottom: 82px;
     right: 12px;
@@ -3712,30 +3701,6 @@ main {
   align-items: flex-start;
   gap: 8px;
   pointer-events: none;
-}
-
-.model-size {
-  display: flex;
-  gap: 20px;
-  margin: 0;
-  padding: 8px 12px;
-  border: 1px solid var(--stroke-default);
-  border-radius: var(--radius-medium);
-  background: color-mix(in srgb, var(--background-card) 94%, transparent);
-  font-variant-numeric: tabular-nums;
-  pointer-events: auto;
-}
-
-.model-size dt {
-  color: var(--text-secondary);
-  font-size: 10px;
-}
-
-.model-size dd {
-  margin: 2px 0 0;
-  color: var(--text-default);
-  font-size: 12px;
-  white-space: nowrap;
 }
 
 .placement-hud {

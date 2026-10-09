@@ -32,12 +32,12 @@ export function FinishedCard({
         <VisibilityToggle publishing={publishing} name={build.name} />
         <button onClick={onGif} title="Share a GIF">
           <FilmStripIcon size={16} />
-          <span className="button-label">Share a GIF</span>
+          <span className="button-label">GIF</span>
         </button>
         {onShop && (
-          <button onClick={onShop} title="Get the bricks">
+          <button onClick={onShop} title="Buy bricks">
             <ShoppingBagIcon size={16} />
-            <span className="button-label">Get the bricks</span>
+            <span className="button-label">Buy bricks</span>
           </button>
         )}
       </div>

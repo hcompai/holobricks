@@ -25,23 +25,23 @@ async function mock(page: Page, build: Build = fixture()) {
   await site(page, [build]);
   await page.goto(`/?showcase=${build.id}`);
   await page.getByRole("button", { name: "Share", exact: true }).click();
-  await expect(page.getByRole("menuitem", { name: "Share a GIF…" })).toBeEnabled();
+  await expect(page.getByRole("menuitem", { name: "Share GIF…" })).toBeEnabled();
   await page.keyboard.press("Escape");
 }
 
 async function openFilm(page: Page) {
   await page.getByRole("button", { name: "Share", exact: true }).click();
-  await page.getByRole("menuitem", { name: "Share a GIF…" }).click();
+  await page.getByRole("menuitem", { name: "Share GIF…" }).click();
 }
 
 test("the GIF call to action appears only for a completed, nonempty build", async ({ page }) => {
   for (const status of ["building", "error", "done"] as const) {
     await mock(page, { ...fixture(), status });
-    await expect(page.getByRole("button", { name: "Share a GIF", exact: true })).toHaveCount(status === "done" ? 1 : 0);
+    await expect(page.getByRole("button", { name: "GIF", exact: true })).toHaveCount(status === "done" ? 1 : 0);
   }
   await site(page, [{ ...fixture(), pieces: [], steps: [] }]);
   await page.goto(`/?showcase=${fixture().id}`);
-  await expect(page.getByRole("button", { name: "Share a GIF", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "GIF", exact: true })).toHaveCount(0);
 });
 
 test("film plans are deterministic and land every piece before the turntable", () => {
@@ -83,10 +83,9 @@ test("missing parts block exporting a misleading partial model; other builders c
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByRole("alert")).toContainText("Invalid render asset: test-brick");
   await expect(dialog.getByRole("button", { name: /Making the GIF/ })).toHaveCount(0);
-  await expect(dialog.getByRole("link", { name: "Download GIF" })).toHaveCount(0);
-  await expect(dialog.getByLabel("Suggested caption")).not.toContainText("Holo4");
-  await dialog.getByText("Options").click();
-  await expect(dialog.getByRole("combobox", { name: "Duration", exact: true })).toBeVisible();
+  await expect(dialog.getByRole("link", { name: "Download" })).toHaveCount(0);
+  await expect(dialog.getByLabel("Caption")).not.toContainText("Holo4");
+  await expect(dialog.getByRole("radiogroup", { name: "Duration", exact: true })).toBeVisible();
   await expect(dialog.getByRole("checkbox")).toHaveCount(0);
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
@@ -98,28 +97,32 @@ test("close-up follow camera exports a credited GIF and offers orbit and fixed a
   // Software WebGL on CI takes several minutes to render the real 160-frame export.
   test.setTimeout(600000);
   await page.addInitScript(() => {
-    const credits: { text: string; fits: boolean; font: string }[] = [];
-    Object.assign(window, { filmCredits: credits });
+    Object.defineProperty(navigator, "canShare", { configurable: true, value: () => false });
+    const drawn: { text: string; fits: boolean }[] = [];
+    const marks = { count: 0 };
+    Object.assign(window, { filmText: drawn, filmMarks: marks });
     const fill = CanvasRenderingContext2D.prototype.fillText;
     CanvasRenderingContext2D.prototype.fillText = function (text, x, y, ...rest) {
-      if (text.startsWith("Powered by ") || text === "from H Company")
-        credits.push({ text, fits: x + this.measureText(text).width <= this.canvas.width, font: this.font });
+      drawn.push({ text, fits: x + this.measureText(text).width <= this.canvas.width });
       return fill.call(this, text, x, y, ...rest);
+    };
+    const arc = CanvasRenderingContext2D.prototype.arc;
+    CanvasRenderingContext2D.prototype.arc = function (...args) {
+      marks.count++;
+      return arc.apply(this, args);
     };
   });
   await mock(page);
-  await page.getByRole("button", { name: "Share a GIF", exact: true }).click();
+  await page.getByRole("button", { name: "GIF", exact: true }).click();
   const dialog = page.getByRole("dialog");
-  await expect(dialog.getByLabel("Suggested caption")).toContainText("Holo4 27B by H Company");
-  await dialog.getByText("Options", { exact: true }).click();
-  const camera = dialog.getByRole("combobox", { name: "Camera", exact: true });
-  await expect(camera).toHaveValue("follow");
-  await expect(camera.locator("option")).toHaveText(["Follow build", "Orbit", "Fixed"]);
-  await expect(dialog.getByRole("checkbox", { name: "H Company credit" })).toBeChecked();
-  const link = dialog.getByRole("link", { name: "Download GIF", exact: true });
+  await expect(dialog.getByLabel("Caption")).toContainText("Holo4 27B by H Company");
+  const camera = dialog.getByRole("radiogroup", { name: "Camera", exact: true });
+  await expect(camera.getByRole("radio", { name: "Follow" })).toHaveAttribute("aria-checked", "true");
+  await expect(camera.getByRole("radio")).toHaveText(["Follow", "Orbit", "Fixed"]);
+  await expect(dialog.getByRole("checkbox", { name: "H logo" })).toBeChecked();
+  const link = dialog.getByRole("link", { name: "Download", exact: true });
   await expect(link).toBeVisible({ timeout: 540000 });
   await expect(dialog.getByRole("button", { name: "Post on X", exact: true })).toBeVisible();
-  await expect(dialog.getByText("Attach the downloaded GIF on X.", { exact: true })).toBeVisible();
   await page.evaluate(() => {
     window.open = (url, target, features) => {
       Object.assign(window, { xPost: { url: String(url), target, features } });
@@ -143,17 +146,19 @@ test("close-up follow camera exports a credited GIF and offers orbit and fixed a
   expect(bytes.subarray(0, 6).toString()).toBe("GIF89a");
   expect(bytes.includes(Buffer.from("NETSCAPE2.0"))).toBe(true);
   expect([bytes.readUInt16LE(6), bytes.readUInt16LE(8)]).toEqual([640, 360]);
-  const credits = await page.evaluate(
-    () => (window as unknown as { filmCredits: { text: string; fits: boolean }[] }).filmCredits,
-  );
-  expect(credits.filter((c) => c.text === "Powered by Holo4 27B").length).toBeGreaterThanOrEqual(160);
-  expect(credits.filter((c) => c.text === "from H Company").length).toBeGreaterThanOrEqual(160);
-  expect(credits.every((c) => c.fits)).toBe(true);
+  const { drawn, marks } = await page.evaluate(() => {
+    const w = window as unknown as { filmText: { text: string; fits: boolean }[]; filmMarks: { count: number } };
+    return { drawn: w.filmText, marks: w.filmMarks.count };
+  });
+  expect(drawn.filter((c) => c.text === " pieces").length).toBeGreaterThanOrEqual(160);
+  expect(drawn.some((c) => c.text.startsWith("Powered by"))).toBe(false);
+  expect(drawn.every((c) => c.fits)).toBe(true);
+  expect(marks).toBeGreaterThanOrEqual(160);
   await dialog.locator(".film-preview img").screenshot({ path: testInfo.outputPath("credited-gif.png") });
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
   await page.setViewportSize({ width: 390, height: 844 });
-  const cta = page.getByRole("button", { name: "Share a GIF", exact: true });
+  const cta = page.getByRole("button", { name: "GIF", exact: true });
   await expect(cta).toBeVisible();
   await cta.click();
   await expect(dialog).toBeVisible();

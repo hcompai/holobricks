@@ -3,9 +3,9 @@ import {
   CaretLeftIcon,
   ClockCounterClockwiseIcon,
   FilmStripIcon,
+  GitForkIcon,
   PlusIcon,
   ShoppingBagIcon,
-  ShuffleIcon,
 } from "@phosphor-icons/react";
 import { type CSSProperties, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type Account, signInError } from "./account";
@@ -607,7 +607,7 @@ export default function App({ account }: { account: Account | null }) {
       <div>
         <button onClick={() => selectVersion(null)}>Latest</button>
         <button disabled={!selected || forking} onClick={beginFork}>
-          Fork
+          <GitForkIcon size={16} /> Fork
         </button>
       </div>
     </>
@@ -636,9 +636,9 @@ export default function App({ account }: { account: Account | null }) {
   const actions = actionable && (
     <>
       {actionable.status === "done" && actionable.pieces.length > 0 && !loading && (
-        <button className="primary" onClick={exportReplay}>
+        <button onClick={exportReplay} title="Share a GIF">
           <FilmStripIcon size={16} />
-          <span className="button-label">Share a GIF</span>
+          <span className="button-label">GIF</span>
         </button>
       )}
       {publishing && (
@@ -657,13 +657,12 @@ export default function App({ account }: { account: Account | null }) {
       />
       {actionable.pieces.length > 0 && (
         <button
-          className="primary"
           onClick={shop}
           disabled={!shoppable}
-          title={shoppable ? undefined : "Get the bricks once Holo finishes"}
+          title={shoppable ? undefined : "Buy the bricks once Holo finishes"}
         >
           <ShoppingBagIcon size={16} />
-          <span className="button-label">Get the bricks{price && ` · ≈ ${price}`}</span>
+          <span className="button-label">Buy bricks{price && ` · ≈ ${price}`}</span>
         </button>
       )}
     </>
@@ -776,7 +775,7 @@ export default function App({ account }: { account: Account | null }) {
                 disabled={unforkable}
                 onClick={beginFork}
               >
-                <ShuffleIcon size={18} />
+                <GitForkIcon size={18} />
               </button>
             )}
           </div>
@@ -791,7 +790,7 @@ export default function App({ account }: { account: Account | null }) {
             {ref && (
               <button className="quiet" onClick={() => open(null)}>
                 <PlusIcon size={16} />
-                New build
+                New
               </button>
             )}
           </div>
@@ -915,7 +914,8 @@ export default function App({ account }: { account: Account | null }) {
                 </button>
               )}
               <button disabled={unforkable} onClick={beginFork}>
-                Fork
+                <GitForkIcon size={16} />
+                <span className="button-label">{forking ? "Forking…" : "Fork"}</span>
               </button>
             </div>
           )}
@@ -924,10 +924,14 @@ export default function App({ account }: { account: Account | null }) {
               framing={framing}
               spin={spin}
               followCamera={followCamera && mode === "view"}
-              onFollowCamera={(follow) => {
-                setFollowCamera(follow);
-                if (follow) setSpin(false);
-              }}
+              onFollowCamera={
+                live?.status === "building" || playing
+                  ? (follow) => {
+                      setFollowCamera(follow);
+                      if (follow) setSpin(false);
+                    }
+                  : undefined
+              }
               mode={mode}
               canEdit={!readOnly && edits.editable && built}
               editHint={

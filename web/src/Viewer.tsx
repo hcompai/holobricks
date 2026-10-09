@@ -60,6 +60,7 @@ export function ViewControls({
   framing: Framing;
   spin: boolean;
   followCamera?: boolean;
+  /** Shown while the build is live or replaying, the only times the camera follows it. */
   onFollowCamera?: (follow: boolean) => void;
   mode: Mode;
   canEdit: boolean;
@@ -103,7 +104,7 @@ export function ViewControls({
             onClick={() => onFollowCamera(!followCamera)}
           >
             <VideoCameraIcon size={14} weight="bold" />
-            <span className="button-label">Follow build</span>
+            <span className="button-label">Follow</span>
           </button>
         )}
         <button className={spin ? "active" : ""} aria-pressed={spin} onClick={() => onSpin(!spin)}>
@@ -593,18 +594,6 @@ export function Viewer(props: Props) {
               <button onClick={() => scene.current?.finishPlacement()}>Skip</button>
             </div>
           )}
-          <dl className="model-size" aria-label="Model size" title="Approximate size · full model">
-            {[
-              { label: "Height", value: drawn.size.y },
-              { label: "Width", value: drawn.size.x },
-              { label: "Depth", value: drawn.size.z },
-            ].map(({ label, value }) => (
-              <div key={label}>
-                <dt>{label}</dt>
-                <dd>{value.toFixed(1)} cm</dd>
-              </div>
-            ))}
-          </dl>
         </div>
       )}
       {shown && <PlacementSoundToggle />}
