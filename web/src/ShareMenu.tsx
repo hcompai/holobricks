@@ -27,6 +27,8 @@ export interface Publishing {
   /** Why the build cannot be published yet, or null when it can. */
   blocked: string | null;
   author: string;
+  /** The user has never made a build public: publishing asks what that means first. */
+  first: boolean;
   onPublish: () => Promise<void>;
   onUnpublish: () => Promise<void>;
 }
@@ -166,7 +168,7 @@ export function ShareMenu({
             {!phone && (
               <button role="menuitem" disabled={!exportable} onClick={then(onGif)}>
                 <FilmStripIcon size={16} />
-                Share a GIF…
+                Share GIF…
               </button>
             )}
             <button role="menuitem" disabled={!exportable} onClick={then(onInstructions)}>

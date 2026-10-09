@@ -80,6 +80,8 @@ const realFetch = globalThis.fetch;
 let agentCalls: string[] = [];
 let own = true;
 let group = copy;
+/** Sessions by id, with their status; others answer as `own-run`. */
+let sessions: Record<string, { status: string; group?: string }> = {};
 
 test.beforeAll(async () => {
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -90,13 +92,18 @@ test.beforeAll(async () => {
     if (url.origin === base) return realFetch(input, init);
     if (url.hostname !== "agp.eu.hcompany.ai") throw new Error(`Unexpected test request: ${url.origin}`);
     agentCalls.push(`${init?.method ?? "GET"} ${url.pathname}`);
-    const item = { id: "own-run", agent: "brickyard", status: "idle", created_at: "2026-01-01T00:00:00Z" };
-    if (url.pathname === "/api/v2/sessions")
-      return Response.json({ items: own ? [item] : [], total: own ? 1 : 0, page: 1 });
+    const asked = url.pathname.match(/^\/api\/v2\/sessions\/([^/]+)$/)?.[1];
+    const known = asked ? sessions[asked] : undefined;
+    const id = known ? asked! : "own-run";
+    const item = { id, agent: "brickyard", status: known?.status ?? "idle", created_at: "2026-01-01T00:00:00Z" };
+    if (url.pathname === "/api/v2/sessions") {
+      const items = own ? [item, ...Object.keys(sessions).map((id) => ({ ...item, id }))] : [];
+      return Response.json({ items, total: items.length, page: 1 });
+    }
     return Response.json({
       ...item,
-      request: { agent: "brickyard", group_id: group, messages: [] },
-      status: { status: "idle" },
+      request: { agent: "brickyard", group_id: known?.group ?? group, messages: [] },
+      status: { status: item.status },
     });
   };
 });
@@ -107,6 +114,7 @@ test.beforeEach(() => {
   agentCalls = [];
   own = true;
   group = copy;
+  sessions = {};
 });
 test.afterAll(async () => {
   globalThis.fetch = realFetch;
@@ -301,4 +309,36 @@ test("concurrent links cannot replace the winning session and legacy links still
   expect(await (await GET(request("GET", undefined, ACCOUNT.user, `?id=${copy}`))).json()).toMatchObject({
     sessionId: "legacy",
   });
+});
+
+test("a build carries on under its session id: only its owner may, and its link moves on once each run ends", async () => {
+  const carried = { id: "own-run", seed: seed() };
+  own = false;
+  expect((await POST(request("POST", carried))).status).toBe(403);
+  expect(objects.size).toBe(0);
+  own = true;
+  expect((await POST(request("POST", carried))).status).toBe(201);
+  const link = (sessionId: string) => PATCH(request("PATCH", { id: "own-run", sessionId }));
+  const linked = async () => {
+    const { sessionId, runs } = await (await GET(request("GET", undefined, ACCOUNT.user, `?id=own-run`))).json();
+    return { sessionId, runs };
+  };
+
+  sessions["run-2"] = { status: "running", group: "someone-else+own-run" };
+  expect((await link("run-2")).status).toBe(400);
+  sessions["run-2"] = { status: "running", group: "own-run+own-run" };
+  sessions["own-run"] = { status: "awaiting_tool_results" };
+  expect((await link("run-2")).status).toBe(409);
+  sessions["own-run"] = { status: "completed" };
+  expect((await link("run-2")).status).toBe(204);
+  expect(await linked()).toEqual({ sessionId: "run-2", runs: [] });
+
+  sessions["run-3"] = { status: "running", group: "own-run+own-run" };
+  expect((await link("run-3")).status).toBe(400);
+  sessions["run-3"] = { status: "running", group: "own-run+run-2" };
+  expect((await link("run-3")).status).toBe(409);
+  sessions["run-2"] = { status: "completed", group: "own-run+own-run" };
+  expect((await link("run-3")).status).toBe(204);
+  expect(await linked()).toEqual({ sessionId: "run-3", runs: ["run-2"] });
+  expect((await link("run-3")).status).toBe(204);
 });

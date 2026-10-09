@@ -6,7 +6,6 @@ import { FullScreenQuad } from "three/examples/jsm/postprocessing/Pass.js";
 import { HorizontalTiltShiftShader } from "three/examples/jsm/shaders/HorizontalTiltShiftShader.js";
 import { VerticalTiltShiftShader } from "three/examples/jsm/shaders/VerticalTiltShiftShader.js";
 import type { Build, Piece } from "./model";
-import { HOLO } from "./holo";
 import {
   DROP,
   brandable,
@@ -26,6 +25,7 @@ const FONT = '"Plus Jakarta Sans Variable", system-ui, sans-serif';
 const BACKDROP = "#eceef3";
 const INK = "#1c1c26";
 const MUTED = "#8a8a96";
+const SITE = "bricks.hcompany.ai";
 const FOV = 28;
 /** Share of the frame's height kept clear of the model for the caption. */
 const CAPTION = 0.15;
@@ -511,7 +511,7 @@ export class FilmRenderer {
     camera.clearViewOffset();
   }
 
-  /** A vignette, the H mark when branded, the build's name over the current step, and how many pieces are in. */
+  /** A vignette, the H mark when branded, then the build's name over how many pieces are in and the current step. */
   private overlay(time: number) {
     const { width, height, branded } = this.options;
     const { plan, ctx } = this;
@@ -533,40 +533,30 @@ export class FilmRenderer {
     vignette.addColorStop(1, "rgba(20, 20, 40, 0.08)");
     ctx.fillStyle = vignette;
     ctx.fillRect(0, 0, width, height);
-    ctx.fillStyle = INK;
-    ctx.font = `500 ${Math.max(12, 26 * unit)}px ${FONT}`;
-    ctx.textAlign = "center";
-    ctx.fillText("bricks.hcompany.ai", width / 2, height - Math.max(10, 24 * unit));
+    const top = margin * 0.75;
+    const markPx = Math.max(24, 48 * unit);
+    if (branded && brandable(this.build)) this.mark(top, top, markPx);
+    ctx.fillStyle = MUTED;
+    ctx.font = `600 ${26 * unit}px ${FONT}`;
+    ctx.textAlign = "right";
+    ctx.fillText(SITE, width - top, top + markPx / 2 + 9 * unit);
     ctx.textAlign = "left";
-    if (branded && brandable(this.build)) {
-      const size = Math.max(18, 34 * unit);
-      const textX = margin + (1035 / 600) * size + Math.max(10, 20 * unit);
-      const font = Math.max(12, 32 * unit);
-      this.mark(margin, margin + font * 0.25, size);
-      ctx.fillStyle = INK;
-      ctx.font = `600 ${font}px ${FONT}`;
-      this.text(`Powered by ${HOLO.name}`, textX, margin + font, width - margin - textX);
-      ctx.font = `500 ${font * 0.9}px ${FONT}`;
-      this.text("from H Company", textX, margin + font * 2.25, width - margin - textX);
-    }
 
     const total = plan.order.length;
     const done = landed(plan, time);
     const base = height - margin;
+    const room = width - margin * 2;
+    ctx.font = `700 ${NAME_PX * unit}px ${FONT}`;
+    ctx.fillStyle = INK;
+    this.text(this.build.name, margin, base - 48 * unit, room);
+    ctx.font = `600 ${26 * unit}px ${FONT}`;
+    let x = margin + this.digits(done.toLocaleString("en-US"), margin, base);
     ctx.font = `500 ${26 * unit}px ${FONT}`;
     ctx.fillStyle = MUTED;
-    const unitLabel = total === 1 ? " piece" : " pieces";
-    const suffix = ctx.measureText(unitLabel).width;
-    ctx.textAlign = "right";
-    ctx.fillText(unitLabel, width - margin, base);
-    ctx.fillStyle = INK;
-    ctx.font = `600 ${26 * unit}px ${FONT}`;
-    const counter = this.digits(done.toLocaleString("en-US"), width - margin - suffix, base) + suffix;
-    const room = width - margin * 3 - counter;
-
     ctx.textAlign = "left";
-    ctx.font = `700 ${NAME_PX * unit}px ${FONT}`;
-    this.text(this.build.name, margin, base - 48 * unit, room);
+    const unitLabel = total === 1 ? " piece" : " pieces";
+    ctx.fillText(unitLabel, x, base);
+    x += ctx.measureText(unitLabel).width;
     const assembled = plan.starts[total - 1] + plan.flight;
     if (started(plan, time) === 0 || time >= assembled + FADE_S) return;
     let step = this.captions[0];
@@ -574,9 +564,7 @@ export class FilmRenderer {
     const fadeIn = (time - step.start) / FADE_S;
     const fadeOut = (assembled + FADE_S - time) / FADE_S;
     ctx.globalAlpha = THREE.MathUtils.clamp(Math.min(fadeIn, fadeOut), 0, 1);
-    ctx.font = `500 ${26 * unit}px ${FONT}`;
-    ctx.fillStyle = MUTED;
-    this.text(step.title, margin, base, room);
+    this.text(` · ${step.title}`, x, base, width - margin - x);
     ctx.globalAlpha = 1;
   }
 
@@ -584,7 +572,7 @@ export class FilmRenderer {
   private mark(x: number, y: number, size: number) {
     const { ctx } = this;
     const s = size / 600;
-    ctx.fillStyle = "#000";
+    ctx.fillStyle = INK;
     ctx.beginPath();
     ctx.arc(x + 300 * s, y + 300 * s, 300 * s, 0, 2 * Math.PI);
     ctx.fill();
@@ -593,19 +581,18 @@ export class FilmRenderer {
     ctx.fillRect(x + 838 * s, y + 282 * s, 197 * s, 45 * s);
   }
 
-  /** Right-aligned at `right` with every digit in the same width, so a changing count does not jitter. */
-  private digits(value: string, right: number, y: number): number {
+  /** Left-aligned at `left` with every digit in the same width, so a changing count does not jitter; returns its width. */
+  private digits(value: string, left: number, y: number): number {
     const { ctx } = this;
     const cell = ctx.measureText("0").width;
     const widths = [...value].map((c) => (c >= "0" && c <= "9" ? cell : ctx.measureText(c).width));
-    const width = widths.reduce((a, b) => a + b, 0);
     ctx.textAlign = "center";
-    let x = right - width;
+    let x = left;
     [...value].forEach((c, i) => {
       ctx.fillText(c, x + widths[i] / 2, y);
       x += widths[i];
     });
-    return width;
+    return x - left;
   }
 
   private text(value: string, x: number, y: number, width: number) {

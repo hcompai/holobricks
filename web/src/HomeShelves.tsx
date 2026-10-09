@@ -1,5 +1,7 @@
+import { HeartIcon } from "@phosphor-icons/react";
 import { type ReactNode, useLayoutEffect, useRef, useState } from "react";
 import { Brick } from "./BrickLoader";
+import type { Hearts } from "./hearts";
 import type { Shelf } from "./library";
 import type { BuildSummary } from "./model";
 import { type ProjectActions, ProjectMenu } from "./ProjectMenu";
@@ -19,6 +21,8 @@ interface Props {
   mineActions?: ReactNode;
   /** What the owner can do with one of their builds from its card, or null for none. */
   manage?: (build: BuildSummary, published: boolean) => ProjectActions | null;
+  hearts: Hearts;
+  onHeart: (id: string) => void;
 }
 
 const AGES: [Intl.RelativeTimeFormatUnit, number][] = [
@@ -44,7 +48,6 @@ function meta(b: BuildSummary, published = false): string {
     published ? "public" : null,
     b.id.startsWith("import-") ? "imported" : null,
     b.private ? "private" : null,
-    b.pieces === null ? null : `${b.pieces.toLocaleString()} pieces`,
     b.status === "building" ? "building…" : b.status === "error" ? "stopped" : null,
     b.source === "showcase" || !b.created ? null : ago(b.created),
   ]
@@ -63,15 +66,41 @@ function mine(builds: BuildSummary[], me: string | null): BuildSummary[] {
   );
 }
 
-/** A build as a card: its thumbnail, name and what to know about it, with the owner's menu in its corner. */
-function Tile(props: { build: BuildSummary; published: boolean; onOpen: () => void; actions?: ProjectActions | null }) {
-  const { actions, ...card } = props;
-  if (!actions) return <Card {...card} />;
+/** A build as a card: its thumbnail, captioned with its name and author, the owner's menu and the hearts in its top corner. */
+function Tile({
+  build,
+  published,
+  onOpen,
+  actions,
+  hearts,
+}: {
+  build: BuildSummary;
+  published: boolean;
+  onOpen: () => void;
+  actions?: ProjectActions | null;
+  hearts?: { count: number; mine: boolean; onToggle: () => void } | null;
+}) {
   return (
-    <div className="tile-owned">
-      <Card {...card} />
-      <ProjectMenu {...actions} />
+    <div className={`tile-frame${actions ? " tile-owned" : ""}`}>
+      <Card build={build} published={published} onOpen={onOpen} />
+      {actions && <ProjectMenu {...actions} />}
+      {hearts && <HeartButton {...hearts} />}
     </div>
+  );
+}
+
+function HeartButton({ count, mine, onToggle }: { count: number; mine: boolean; onToggle: () => void }) {
+  return (
+    <button
+      className="tile-heart"
+      aria-pressed={mine}
+      aria-label={mine ? "Remove your heart" : "Heart this build"}
+      title={mine ? "You heart this build" : "Heart this build"}
+      onClick={onToggle}
+    >
+      <HeartIcon size={15} weight={mine ? "fill" : "bold"} />
+      {count > 0 && <span>{count.toLocaleString()}</span>}
+    </button>
   );
 }
 
@@ -89,9 +118,9 @@ function Card({ build: b, published, onOpen }: { build: BuildSummary; published:
       ) : (
         <div className="tile-thumb">{b.name.slice(0, 1).toUpperCase()}</div>
       )}
-      <div className="tile-body">
+      <div className="tile-caption">
         <b>{b.name}</b>
-        <span className="muted small">{meta(b, published)}</span>
+        <span>{meta(b, published)}</span>
       </div>
     </button>
   );
@@ -102,11 +131,12 @@ function useColumns() {
   const root = useRef<HTMLDivElement>(null);
   const [columns, setColumns] = useState(4);
   useLayoutEffect(() => {
-    const observer = new ResizeObserver(([entry]) => {
-      const width = entry.contentRect.width;
+    const fit = (width: number) => {
       const tile = width < 600 ? 150 : 220;
       setColumns(Math.max(1, Math.floor((width + GAP) / (tile + GAP))));
-    });
+    };
+    fit(root.current!.clientWidth);
+    const observer = new ResizeObserver(([entry]) => fit(entry.contentRect.width));
     observer.observe(root.current!);
     return () => observer.disconnect();
   }, []);
@@ -114,7 +144,7 @@ function useColumns() {
 }
 
 /** Under the home composer: one row of the user's builds, then the public builds with the showcases, ten rows at a time. */
-export function HomeShelves({ builds, failed, me, onRetry, onOpen, mineActions, manage }: Props) {
+export function HomeShelves({ builds, failed, me, onRetry, onOpen, mineActions, manage, hearts, onHeart }: Props) {
   const [root, columns] = useColumns();
   const [allMine, setAllMine] = useState(false);
   const [publicRows, setPublicRows] = useState(PUBLIC_ROWS);
@@ -152,7 +182,7 @@ export function HomeShelves({ builds, failed, me, onRetry, onOpen, mineActions, 
           {Array.from({ length: columns }, (_, i) => (
             <div key={i} className="skeleton">
               <div className="tile-thumb" />
-              <div className="tile-body">
+              <div className="tile-caption">
                 <div className="bar wide" />
                 <div className="bar" />
               </div>
@@ -165,6 +195,7 @@ export function HomeShelves({ builds, failed, me, onRetry, onOpen, mineActions, 
         <div className="home-grid" style={grid}>
           {shown.map((b) => {
             const isPublic = (b.source === "session" || b.source === "fork") && published.has(b.id);
+            const hearted = b.source === "public" && !b.private;
             return (
               <Tile
                 key={`${b.source}:${b.id}`}
@@ -172,6 +203,11 @@ export function HomeShelves({ builds, failed, me, onRetry, onOpen, mineActions, 
                 published={isPublic}
                 onOpen={() => onOpen(b)}
                 actions={owned ? manage?.(b, isPublic || (b.source === "public" && !b.private)) : null}
+                hearts={
+                  hearted
+                    ? { count: hearts.counts[b.id] ?? 0, mine: hearts.mine.has(b.id), onToggle: () => onHeart(b.id) }
+                    : null
+                }
               />
             );
           })}

@@ -20,11 +20,14 @@ for (const singleStep of [false, true]) {
     await expect(viewer).toHaveAttribute("data-revision", build.revision);
     // Slow down the short fixture's placement so the test can pause it.
     for (let i = 0; i < 3; i++) await page.getByTitle("Playback speed", { exact: true }).click();
+    const follow = page.getByRole("button", { name: "Follow", exact: true });
+    await expect(follow).toHaveCount(0);
     if (singleStep) {
       await page.locator(".scrub-label").click();
       await page.keyboard.press("Space");
     } else await page.getByTitle("Play", { exact: true }).click();
     await expect(slider).toHaveValue("-1");
+    await expect(follow).toBeVisible();
     await page.getByTitle("Pause", { exact: true }).click();
     await expect(page.locator(".scrub-label")).toHaveText(`Empty canvas0 pieces · 0/${build.steps.length} steps`);
     await expect(slider).toHaveCSS("--fill", "0%");
@@ -101,7 +104,7 @@ test("live revisions place individually, pause, resume and skip; backward steps 
   await page.waitForTimeout(250);
   await expect(viewer).toHaveAttribute("data-placed", String(count));
   // Keep the view fixed when comparing exports: follow mode changes composition between steps.
-  const follow = page.getByRole("button", { name: "Follow build", exact: true });
+  const follow = page.getByRole("button", { name: "Follow", exact: true });
   await follow.click();
   await expect(follow).toHaveAttribute("aria-pressed", "false");
   const png = async () => {

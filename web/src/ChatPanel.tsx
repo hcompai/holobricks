@@ -1,6 +1,6 @@
 import { annotationFile, type VisualInstruction } from "./Annotation";
 import { ThinkingIcon } from "./Thinking";
-import { ArrowUpIcon, PlusIcon, ShuffleIcon, SignInIcon, StopIcon, XIcon } from "@phosphor-icons/react";
+import { ArrowUpIcon, GitForkIcon, PlusIcon, StopIcon, XIcon } from "@phosphor-icons/react";
 import { memo, type ReactNode, type Ref, useEffect, useImperativeHandle, useRef, useState } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -183,7 +183,7 @@ interface Props {
   onFork: () => void;
   /** Receives the notes and composer under the chat log, which a phone's sheet keeps in view. */
   dockRef?: (dock: HTMLDivElement | null) => void;
-  /** Start a new build from a copy of this one, changed as asked: a closed build, or one whose session ended. */
+  /** Change a build whose session ended: the owner's carries on under its id, anyone else's starts a copy. */
   onRemix: (text: string, images: string[], attached?: Record<string, Blob>) => Promise<void>;
   /** Signed out: Holo takes no message, and sending asks to sign in instead. */
   onSignIn?: () => void;
@@ -219,7 +219,7 @@ export function ChatPanel({
   /** Whether the log sits at its end, so new lines scroll it and reading earlier ones is left alone. */
   const pinned = useRef(true);
   const busy = build?.status === "building";
-  /** The builder no longer takes messages here: a change starts a copy of the build. */
+  /** The builder no longer takes messages here: a change goes through `onRemix`. */
   const ended = !!build && !build.open && !busy;
   const changing = Boolean(build || loading);
   /** How many messages the build had when it opened: only later ones animate in. */
@@ -439,7 +439,6 @@ export function ChatPanel({
     return (
       <div className="home-intro">
         <h1>What should we build?</h1>
-        <p>Describe anything you like and {WHO} will build it in real bricks while you watch.</p>
         {composer}
         {failure}
         <div className="chips">
@@ -491,12 +490,10 @@ export function ChatPanel({
             <div>{closed}</div>
             {!!build?.pieces.length &&
               (onSignIn ? (
-                <button onClick={onSignIn}>
-                  <SignInIcon size={14} weight="bold" /> Sign in
-                </button>
+                <button onClick={onSignIn}>Sign in</button>
               ) : (
                 <button onClick={onFork} title="Start your own build from a copy of this one">
-                  <ShuffleIcon size={14} weight="bold" /> Fork
+                  <GitForkIcon size={14} weight="bold" /> Fork
                 </button>
               ))}
           </div>

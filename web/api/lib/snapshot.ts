@@ -5,7 +5,7 @@ import { platformAsset, assetBlob } from "../../src/assetUrl";
 import { applyEdits, type Edit, toLdraw } from "../../src/edits";
 import { type Build, EMPTY_MODEL, type Model } from "../../src/model";
 import { AGENT, EMPTY_TRANSCRIPT, read, status, type Transcript, unpack } from "../../src/session";
-import { readFork } from "./forks";
+import { isFork, readFork } from "./forks";
 import { Refusal } from "./http";
 
 const EDITED = "Edited by hand after Holo built it: the parts list is not verified.";
@@ -113,12 +113,12 @@ async function withEdits(build: Build, edited: Edited | null): Promise<Build> {
 
 /** The caller's finished build as the public sees it: its latest model with any hand edits, and no chat. */
 export async function snapshot(id: string, key: string, edited: unknown, owner?: string): Promise<Build> {
-  if (id.startsWith("fork-")) {
-    const fork = owner ? await readFork(owner, id) : null;
-    if (!fork) throw new Refusal(404, "No such build.");
-    if (fork.sessionId) return { ...(await snapshot(fork.sessionId, key, edited)), id };
-    return withEdits({ ...fork.seed.model, id, status: "done", open: false, messages: [] }, checked(edited));
+  const copy = owner ? await readFork(owner, id) : null;
+  if (copy) {
+    if (copy.sessionId) return { ...(await snapshot(copy.sessionId, key, edited)), id };
+    return withEdits({ ...copy.seed.model, id, status: "done", open: false, messages: [] }, checked(edited));
   }
+  if (isFork(id)) throw new Refusal(404, "No such build.");
   const agp = platform(key);
   const session = await mine(agp, id);
   const state = status(session.status.status);

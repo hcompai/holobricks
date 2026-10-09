@@ -357,7 +357,7 @@ test("Shift-drag selects every piece in the box, and ⌘D duplicates the selecti
   await expect(panel).toBeHidden();
 });
 
-test("the ? key or the Shortcuts button lists every shortcut", async ({ page }) => {
+test("the ? key lists every shortcut", async ({ page }) => {
   await open(page);
   const help = page.getByRole("dialog", { name: "Shortcuts" });
   await page.keyboard.press("?");
@@ -366,9 +366,9 @@ test("the ? key or the Shortcuts button lists every shortcut", async ({ page }) 
   await expect(help).toContainText("Release the mouse; again to stop walking");
   await page.keyboard.press("Escape");
   await expect(help).toBeHidden();
-  await page.getByRole("button", { name: "Shortcuts" }).click();
+  await page.keyboard.press("?");
   await expect(help).toBeVisible();
-  await page.getByRole("button", { name: "Shortcuts" }).click();
+  await page.keyboard.press("?");
   await expect(help).toBeHidden();
 });
 

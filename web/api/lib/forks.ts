@@ -4,18 +4,28 @@ import { readSeed, type ForkSeed, type ForkSummary, type SavedFork } from "../..
 import { privateScope } from "./account";
 import { Refusal } from "./http";
 
+export const isFork = (id: string) => /^fork-[a-f0-9-]{36}$/.test(id);
+/** The run a copy's session carries on from, named by its group: `<copy>+<ended run>`; a fresh copy's run is in `<copy>`. */
+export function carriedFrom(id: string, group: string | null | undefined): string | null | undefined {
+  if (group === id) return null;
+  return group?.startsWith(`${id}+`) ? group.slice(id.length + 1) : undefined;
+}
+
 const options = { access: "public", addRandomSuffix: false, allowOverwrite: true, cacheControlMaxAge: 60 } as const;
 const prefix = (owner: string) => `models/${privateScope(owner)}/`;
 const path = (owner: string, id: string) => `${prefix(owner)}${id}.json`;
 const sessionPath = (owner: string, id: string) => `${prefix(owner)}${id}.session.json`;
 
-/** Written once: a cached pre-start metadata record cannot hide an accepted session. */
-async function sessionLink(owner: string, id: string): Promise<string | null> {
+type Link = { sessionId: string; runs: string[] };
+
+/** Kept apart from the metadata record: a cached pre-start record cannot hide an accepted session. */
+async function sessionLink(owner: string, id: string): Promise<Link | null> {
   try {
     const blob = await head(sessionPath(owner, id));
-    const response = await fetch(blob.url);
+    const response = await fetch(`${blob.url}?v=${blob.uploadedAt.getTime()}`);
     if (!response.ok) throw new Error("Session link unavailable");
-    return (await response.json()).sessionId;
+    const link = await response.json();
+    return { sessionId: link.sessionId, runs: link.runs ?? [] };
   } catch (e) {
     if (e instanceof BlobNotFoundError) return null;
     throw e;
@@ -23,7 +33,8 @@ async function sessionLink(owner: string, id: string): Promise<string | null> {
 }
 
 async function linked(owner: string, info: ForkSummary): Promise<ForkSummary> {
-  return { ...info, sessionId: (await sessionLink(owner, info.id)) ?? info.sessionId };
+  const link = await sessionLink(owner, info.id);
+  return link ? { ...info, ...link } : info;
 }
 
 async function entry(owner: string, id: string): Promise<ForkSummary | null> {
@@ -87,23 +98,23 @@ export async function saveFork(owner: string, id: string, seed: ForkSeed): Promi
   return info;
 }
 
-export async function linkFork(owner: string, id: string, sessionId: string): Promise<void> {
+/** Bind the copy to `sessionId`; a copy whose run `after` ended moves on to the run carrying it on. */
+export async function linkFork(owner: string, id: string, sessionId: string, after?: string | null): Promise<void> {
   const info = await entry(owner, id);
   if (!info) throw new Error("Copy unavailable");
-  if (info.sessionId) {
-    if (info.sessionId !== sessionId) throw new Refusal(409, "Copy already has a session.");
-    return;
-  }
+  if (info.sessionId === sessionId) return;
+  if (info.sessionId && info.sessionId !== after) throw new Refusal(409, "Copy already has a session.");
+  const link: Link = { sessionId, runs: [...(info.runs ?? []), ...(info.sessionId ? [info.sessionId] : [])] };
   try {
-    await put(sessionPath(owner, id), JSON.stringify({ sessionId }), {
+    await put(sessionPath(owner, id), JSON.stringify(link), {
       ...options,
-      allowOverwrite: false,
+      allowOverwrite: !!info.sessionId,
       contentType: "application/json",
     });
   } catch (e) {
     // A lost response or simultaneous retry may have saved the same link already.
     const saved = await sessionLink(owner, id);
-    if (saved === sessionId) return;
+    if (saved?.sessionId === sessionId) return;
     if (saved) throw new Refusal(409, "Copy already has a session.");
     throw e;
   }

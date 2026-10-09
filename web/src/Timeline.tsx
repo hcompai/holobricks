@@ -2,7 +2,7 @@ import { PauseIcon, PlayIcon, SkipBackIcon, SkipForwardIcon } from "@phosphor-ic
 import { type CSSProperties, useEffect } from "react";
 import type { Build } from "./model";
 
-const SPEEDS = [0.5, 1, 2, 4];
+const SPEEDS = [1, 2, 3, 0.5];
 
 interface Props {
   build: Build | null;

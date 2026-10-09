@@ -3,16 +3,17 @@ import {
   CaretLeftIcon,
   ClockCounterClockwiseIcon,
   FilmStripIcon,
+  GitForkIcon,
   GithubLogoIcon,
   PlusIcon,
   ShoppingBagIcon,
-  ShuffleIcon,
-  SignInIcon,
 } from "@phosphor-icons/react";
 import { type CSSProperties, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type Account, signInError } from "./account";
 import { AccountMenu } from "./AccountMenu";
 import { SignInDialog } from "./SignInDialog";
+import { FinishedCard } from "./FinishedCard";
+import { useHearts } from "./hearts";
 import { RecoveryPanel } from "./RecoveryPanel";
 import { cancel, create, say, stop } from "./agent";
 import type { ProjectActions } from "./ProjectMenu";
@@ -46,7 +47,9 @@ import {
   listing,
   LISTINGS,
   onRemember,
+  markPublished,
   publish,
+  publishedBefore,
   remember,
   setPrivate,
   SHELF,
@@ -114,6 +117,7 @@ export default function App({ account }: { account: Account | null }) {
   const { names, rename } = useProjectNames(me);
   const [signingIn, setSigningIn] = useState(() => !account && signInError !== null);
   const askSignIn = account ? undefined : () => setSigningIn(true);
+  const { hearts, toggle: heartBuild } = useHearts(me, askSignIn);
   /** What the user just asked for, shown as a starting build where they asked it, until its session answers. */
   const [draft, setDraft] = useState<{ at: BuildRef | null; build: Build; since: number } | null>(null);
   const drafted = draft && same(draft.at, ref) && read.build?.id !== draft.build.id ? draft.build : null;
@@ -202,6 +206,15 @@ export default function App({ account }: { account: Account | null }) {
     if (mode !== "view") setFollowCamera(false);
   }, [mode, edits.editable, built, readOnly]);
   const shoppable = !!build?.pieces.length && build.status !== "building";
+  /** The build this tab watched Holo finish, celebrated over the model until dismissed. */
+  const [finished, setFinished] = useState<string | null>(null);
+  const watched = useRef<{ id: string; building: boolean } | null>(null);
+  useEffect(() => {
+    const previous = watched.current;
+    watched.current = live ? { id: live.id, building: live.status === "building" } : null;
+    if (previous?.building && live?.id === previous.id && live.status === "done" && live.pieces.length)
+      setFinished(live.id);
+  }, [live?.id, live?.status]);
   const shop = () => {
     if (build && shoppable)
       setShopping({ build: structuredClone(build), preview: viewer.current?.image() ?? Promise.resolve(null) });
@@ -245,6 +258,10 @@ export default function App({ account }: { account: Account | null }) {
 
   const home = !ref && !drafted;
   useEffect(() => void refreshBuilds(), [refreshBuilds, me, home]);
+  const hasPublic = !!builds?.some((b) => b.source === "public" && b.owner === me && !b.private);
+  useEffect(() => {
+    if (hasPublic) markPublished();
+  }, [hasPublic]);
   /** Sessions this tab started, before the library lists them. */
   const started = useRef(new Set<string>());
   const mine = (id: string) =>
@@ -311,6 +328,12 @@ export default function App({ account }: { account: Account | null }) {
     if (next) url.searchParams.set(PARAMS[next.source], next.id);
     if (url.href !== window.location.href) window.history.pushState(null, "", url);
   };
+
+  // A build carried on past its session lists as a copy under its own id: its old link follows it there.
+  useEffect(() => {
+    if (ref?.source === "session" && builds?.some((b) => b.source === "fork" && b.id === ref.id))
+      open({ id: ref.id, source: "fork" });
+  });
 
   useEffect(() => {
     const sync = () => {
@@ -380,6 +403,18 @@ export default function App({ account }: { account: Account | null }) {
       setDraft((current) => (current?.build === build ? null : current));
       throw e;
     }
+  };
+
+  /** Carry the open build on past its ended session: a fresh run seeded with the model as it stands, under the same id. */
+  const carryOn = async (text: string, images: string[], attached: Record<string, Blob> = {}) => {
+    if (!live || !ref || (ref.source !== "session" && ref.source !== "fork")) return;
+    const seed = forkSeed(live, { ...ref, name: live.name, version: null, revision: live.revision }, live.name);
+    if (ref.source === "session") await copyModel(ref.id, seed);
+    const id = await startFork(ref.id, seed, text, images, attached, runId ?? undefined);
+    started.current.add(id);
+    if (ref.source === "fork") attachSession(id);
+    else if (same(ref, opened.current)) open({ id: ref.id, source: "fork" });
+    refreshBuilds();
   };
 
   /** Open a listed build: the user's public builds as their session, when they have one. */
@@ -573,7 +608,7 @@ export default function App({ account }: { account: Account | null }) {
       <div>
         <button onClick={() => selectVersion(null)}>Latest</button>
         <button disabled={!selected || forking} onClick={beginFork}>
-          Fork
+          <GitForkIcon size={16} /> Fork
         </button>
       </div>
     </>
@@ -593,6 +628,7 @@ export default function App({ account }: { account: Account | null }) {
                 ? "Nothing is built yet"
                 : null,
           author: account.user.name,
+          first: !hasPublic && !publishedBefore(),
           onPublish: imported ? republish : publishBuild,
           onUnpublish: unpublishBuild,
         }
@@ -601,12 +637,14 @@ export default function App({ account }: { account: Account | null }) {
   const actions = actionable && (
     <>
       {actionable.status === "done" && actionable.pieces.length > 0 && !loading && (
-        <button className="primary" onClick={exportReplay}>
+        <button onClick={exportReplay} title="Share a GIF">
           <FilmStripIcon size={16} />
-          <span className="button-label">Share a GIF</span>
+          <span className="button-label">GIF</span>
         </button>
       )}
-      {publishing && <VisibilityToggle key={`${ref?.source}:${ref?.id}`} publishing={publishing} />}
+      {publishing && (
+        <VisibilityToggle key={`${ref?.source}:${ref?.id}`} publishing={publishing} name={actionable.name} />
+      )}
       <ShareMenu
         build={actionable}
         link={!readOnly && shared ? linkTo(shared) : null}
@@ -620,13 +658,12 @@ export default function App({ account }: { account: Account | null }) {
       />
       {actionable.pieces.length > 0 && (
         <button
-          className="primary"
           onClick={shop}
           disabled={!shoppable}
-          title={shoppable ? undefined : "Get the bricks once Holo finishes"}
+          title={shoppable ? undefined : "Buy the bricks once Holo finishes"}
         >
           <ShoppingBagIcon size={16} />
-          <span className="button-label">Get the bricks{price && ` · ≈ ${price}`}</span>
+          <span className="button-label">Buy bricks{price && ` · ≈ ${price}`}</span>
         </button>
       )}
     </>
@@ -684,7 +721,6 @@ export default function App({ account }: { account: Account | null }) {
         {actions}
         {!account ? (
           <button className="sign-in-button" onClick={() => setSigningIn(true)}>
-            <SignInIcon size={16} weight="bold" />
             Sign in
           </button>
         ) : (
@@ -745,7 +781,7 @@ export default function App({ account }: { account: Account | null }) {
                 disabled={unforkable}
                 onClick={beginFork}
               >
-                <ShuffleIcon size={18} />
+                <GitForkIcon size={18} />
               </button>
             )}
           </div>
@@ -760,7 +796,7 @@ export default function App({ account }: { account: Account | null }) {
             {ref && (
               <button className="quiet" onClick={() => open(null)}>
                 <PlusIcon size={16} />
-                New build
+                New
               </button>
             )}
           </div>
@@ -832,7 +868,9 @@ export default function App({ account }: { account: Account | null }) {
             onSignIn={askSignIn}
             dockRef={setDock}
             onRemix={async (text, images, attached) => {
-              if (build && !readOnly && owned) await start(text, images, build, attached);
+              if (!build || readOnly || !owned) return;
+              if (ref?.source === "public") await start(text, images, build, attached);
+              else await carryOn(text, images, attached);
             }}
           />
           {forkError && (
@@ -848,6 +886,8 @@ export default function App({ account }: { account: Account | null }) {
               onRetry={refreshBuilds}
               onOpen={openListed}
               manage={manage}
+              hearts={hearts}
+              onHeart={heartBuild}
               mineActions={
                 <ImportBuild
                   onImported={(id) => {
@@ -880,7 +920,8 @@ export default function App({ account }: { account: Account | null }) {
                 </button>
               )}
               <button disabled={unforkable} onClick={beginFork}>
-                Fork
+                <GitForkIcon size={16} />
+                <span className="button-label">{forking ? "Forking…" : "Fork"}</span>
               </button>
             </div>
           )}
@@ -889,10 +930,14 @@ export default function App({ account }: { account: Account | null }) {
               framing={framing}
               spin={spin}
               followCamera={followCamera && mode === "view"}
-              onFollowCamera={(follow) => {
-                setFollowCamera(follow);
-                if (follow) setSpin(false);
-              }}
+              onFollowCamera={
+                live?.status === "building" || playing
+                  ? (follow) => {
+                      setFollowCamera(follow);
+                      if (follow) setSpin(false);
+                    }
+                  : undefined
+              }
               mode={mode}
               canEdit={!readOnly && edits.editable && built}
               editHint={
@@ -973,6 +1018,15 @@ export default function App({ account }: { account: Account | null }) {
             <div className="pane">
               <PartsPanel build={build} counted={edited ? countParts(build.pieces, titlesOf(live), palette) : null} />
             </div>
+          )}
+          {finished && finished === live?.id && publishing && !previewing && (
+            <FinishedCard
+              build={live}
+              publishing={publishing}
+              onGif={exportReplay}
+              onShop={shoppable ? shop : null}
+              onClose={() => setFinished(null)}
+            />
           )}
           {error && (
             <div className="pane notice" role="alert">

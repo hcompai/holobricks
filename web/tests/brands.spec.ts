@@ -71,7 +71,7 @@ test("no brand name shows on the home page, the credits, the sign-in, a public b
   await page.goto("/?public=tower");
   await expect(page.locator(".viewer")).toHaveAttribute("data-render-state", "ready");
   await unbranded(page.locator("body"));
-  await page.getByRole("button", { name: /^Get the bricks/ }).click();
+  await page.getByRole("button", { name: /^Buy bricks/ }).click();
   const shop = page.getByRole("dialog", { name: "Build it for real" });
   await expect(shop.getByRole("region", { name: "Official parts store" })).toBeVisible();
   await unbranded(shop);
