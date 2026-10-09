@@ -323,26 +323,26 @@ export default function App({ account }: { account: Account | null }) {
     copyAttempt.current = null;
   }, []);
 
-  /** Open a build at Latest, or return home, and put it in the URL. */
-  const open = (next: BuildRef | null) => {
+  /** Open a build at Latest, or return home, and put it in the URL; `moved` replaces the entry of the same build under its old link. */
+  const open = (next: BuildRef | null, moved = false) => {
     show(next);
     const url = new URL(window.location.href);
     for (const param of [...Object.values(PARAMS), "version", "library"]) url.searchParams.delete(param);
     if (next) url.searchParams.set(PARAMS[next.source], next.id);
-    if (url.href !== window.location.href) window.history.pushState(null, "", url);
+    if (url.href !== window.location.href) window.history[moved ? "replaceState" : "pushState"](null, "", url);
   };
 
   // A build carried on past its session lists as a copy under its own id: its old link follows it there.
   useEffect(() => {
     if (ref?.source === "session" && builds?.some((b) => b.source === "fork" && b.id === ref.id))
-      open({ id: ref.id, source: "fork" });
+      open({ id: ref.id, source: "fork" }, true);
   });
 
   // Someone else's build or copy, once published, opens from its owner's link as the public build.
   useEffect(() => {
     if ((ref?.source !== "session" && ref?.source !== "fork") || !listed || buildsFailed.includes("mine")) return;
     if (!builds?.some((b) => (b.source === "session" || b.source === "fork") && b.id === ref.id))
-      open({ id: ref.id, source: "public" });
+      open({ id: ref.id, source: "public" }, true);
   });
 
   useEffect(() => {
@@ -424,7 +424,7 @@ export default function App({ account }: { account: Account | null }) {
     const id = await startFork(ref.id, seed, text, images, attached, runId ?? undefined);
     started.current.add(id);
     if (ref.source === "fork") attachSession(id);
-    else if (same(ref, opened.current)) open({ id: ref.id, source: "fork" });
+    else if (same(ref, opened.current)) open({ id: ref.id, source: "fork" }, true);
     refreshBuilds();
   };
 
@@ -879,7 +879,7 @@ export default function App({ account }: { account: Account | null }) {
             onSignIn={askSignIn}
             dockRef={setDock}
             onRemix={async (text, images, attached) => {
-              if (!build || readOnly || !owned) return;
+              if (!build || readOnly) return;
               if (ref?.source === "public") await start(text, images, build, attached);
               else await carryOn(text, images, attached);
             }}
