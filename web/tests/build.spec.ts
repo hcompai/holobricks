@@ -249,6 +249,20 @@ test("a model that fails to load leaves the chat readable, and Holo hears why", 
   });
 });
 
+test("an ended build whose last model fails to load once still shows it", async ({ page }) => {
+  await site(page);
+  const agp = await platform(page);
+  const model = fixture();
+  agp.session("done", "completed");
+  agp.share("done", model);
+  const files = new Map(agp.files);
+  agp.files.clear();
+  await page.goto("/?build=done");
+  await expect(page.getByRole("alert")).toContainText("Couldn't load the latest model.");
+  for (const [path, file] of files) agp.files.set(path, file);
+  await shown(page, model.revision);
+});
+
 test("a lost connection hides the model until the platform answers again", async ({ page }) => {
   await site(page);
   const agp = await platform(page);
@@ -454,6 +468,50 @@ test("a change to my ended build carries it on under the same id: one card, one 
   const yours = page.getByRole("region", { name: "Your builds" }).locator(".tile");
   await expect(yours).toHaveCount(1);
   await expect(yours).toContainText(model.name);
+});
+
+test("a change to my ended build carries it on even while my builds fail to list", async ({ page }) => {
+  await site(page);
+  const agp = await platform(page);
+  const model = fixture();
+  agp.session("ended", "completed");
+  agp.say("ended", "A tower");
+  agp.share("ended", model);
+  agp.answer("ended", "Built.");
+  agp.sessions.get("ended")!.status = "completed";
+  await page.route("https://agp.eu.hcompany.ai/api/v2/sessions?*", (route) =>
+    new URL(route.request().url()).searchParams.has("group_id")
+      ? route.fallback()
+      : route.fulfill({ status: 503, headers: { "access-control-allow-origin": "*" }, json: {} }),
+  );
+  await page.goto("/?build=ended");
+  await shown(page, model.revision);
+  await page.getByPlaceholder("Ask for a change").fill("Make it blue");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await expect(page).toHaveURL(/\?fork=ended$/);
+  expect(agp.posted("/api/v2/sessions")[0].messages[0].message).toBe("Make it blue");
+});
+
+test("Back leaves a build carried on under its old link, rather than looping on it", async ({ page }) => {
+  await site(page);
+  const agp = await platform(page);
+  const model = fixture();
+  agp.session("ended", "completed");
+  agp.say("ended", "A tower");
+  agp.share("ended", model);
+  agp.answer("ended", "Built.");
+  agp.sessions.get("ended")!.status = "completed";
+  await page.goto("/");
+  await page.getByRole("region", { name: "Your builds" }).locator(".tile").click();
+  await expect(page).toHaveURL(/\?build=ended$/);
+  await shown(page, model.revision);
+  await page.getByPlaceholder("Ask for a change").fill("Make it blue");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await expect(page).toHaveURL(/\?fork=ended$/);
+
+  await page.goBack();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByRole("region", { name: "Your builds" }).locator(".tile")).toHaveCount(1);
 });
 
 test("home shows my builds by the names Holo gave them; showcases under Public builds", async ({ page }) => {

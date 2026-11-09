@@ -36,13 +36,13 @@ export const POST = route(async (request) => {
   } catch {
     throw new Refusal(400, "Invalid copy.");
   }
-  const id = copyId(given.id);
+  const id = copyId(given?.id);
   if (!isFork(id)) await ownedSession(id, key);
   const seed = await readSeed(new Blob([JSON.stringify(given.seed)])).catch(() => {
     throw new Refusal(400, "Invalid copy.");
   });
-  await imported(seed.model, id); // Reuse the existing geometry and size validation.
-  const clean = forkSeed(seed.model as Build, seed.origin, seed.model.name);
+  const { name } = await imported(seed.model, id); // Reuse the existing geometry and size validation.
+  const clean = forkSeed(seed.model as Build, seed.origin, name);
   return Response.json(await saveFork(user.id, id, clean), { status: 201, headers });
 });
 

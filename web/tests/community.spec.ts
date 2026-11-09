@@ -281,9 +281,12 @@ for (const viewer of ["signed out", "a teammate"] as const) {
     const tower = fixture();
     await site(page, [], viewer === "signed out" ? null : ACCOUNT);
     await library(page, [entry(tower, "Michael", "someone-else")], [tower]);
+    await page.goto("/");
     await page.goto(`/?fork=${tower.id}`);
     await expect(page).toHaveURL(new RegExp(`\\?public=${tower.id}$`));
     await shown(page, tower.revision);
+    await page.goBack();
+    await expect(page).not.toHaveURL(new RegExp(tower.id));
   });
 }
 
