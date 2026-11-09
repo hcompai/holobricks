@@ -78,7 +78,7 @@ const COLUMNS: { title: string; links: [string, string][] }[] = [
     links: [
       ["HoloBricks", "https://bricks.hcompany.ai"],
       ["HoloBlocks", "https://blocks.hcompany.ai"],
-      ["All demos", "https://build.hcompany.ai"],
+      ["All demos", "https://showcase.hcompany.ai/?tab=from-h"],
       ["Source on GitHub", REPO],
     ],
   },
