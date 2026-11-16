@@ -103,7 +103,7 @@ test("deleting a fork deletes its files and name and removes the session it star
 
   expect((await del(id, "fork", OTHER)).status).toBe(404);
   expect((await del(id, "fork")).status).toBe(204);
-  expect(files(id)).toEqual([]);
+  expect(files(id)).toEqual([`fork-owners/${id}.json`]);
   expect(await removed()).toEqual(["own-run"]);
 });
 

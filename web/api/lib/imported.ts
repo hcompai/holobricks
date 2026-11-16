@@ -2,6 +2,7 @@ import { buildRevision } from "../../src/buildRevision";
 import { toLdraw } from "../../src/edits";
 import type { Build, Message, Piece, Step } from "../../src/model";
 import { Refusal } from "./http";
+import { MAX_NAME_CHARS, validName } from "./names";
 
 /** What one import may hold; the largest Holo builds are about 17,000 pieces and 3 MB. */
 export const LIMITS = { pieces: 50_000, steps: 2_000, parts: 2_000, geometry: 30_000_000 };
@@ -73,7 +74,7 @@ export async function imported(input: unknown, id: string): Promise<Build> {
   if (new Set(pieces.map((p) => p.id)).size !== pieces.length) refuse("two pieces share an id");
   const model = {
     id,
-    name: text(given!.name, 120).trim() || "Imported build",
+    name: validName(text(given!.name, MAX_NAME_CHARS)) ?? "Imported build",
     builder: text(given!.builder, 40) || "import",
     width: whole(given!.width) ? (given!.width as number) : 0,
     depth: whole(given!.depth) ? (given!.depth as number) : 0,

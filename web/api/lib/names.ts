@@ -7,6 +7,14 @@ export interface ProjectName {
   updated: number;
 }
 
+export const MAX_NAME_CHARS = 80;
+
+/** A project's name: trimmed, 1–80 characters, no control characters; null if it is none. */
+export function validName(value: unknown): string | null {
+  const name = typeof value === "string" ? value.trim() : "";
+  return name && name.length <= MAX_NAME_CHARS && !/[\u0000-\u001f\u007f]/.test(name) ? name : null;
+}
+
 const prefix = (owner: string) => `names/${privateScope(owner)}/`;
 const path = (owner: string, id: string) => `${prefix(owner)}${id}.json`;
 

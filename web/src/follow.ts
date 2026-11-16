@@ -270,7 +270,10 @@ function follow(id: string, signal: AbortSignal, notify: Listener, displayed: ()
         fetchPictures();
         publish();
         set({ error: null, syncError: unloaded && "Couldn't load the latest model." });
-        if (!changes && isTerminalSessionStatus(session)) return;
+        if (!changes && isTerminalSessionStatus(session)) {
+          if (!unloaded || unloaded.tries >= LOAD_TRIES) return;
+          await sleep(RETRY_MS);
+        }
       } catch (e) {
         if (signal.aborted) return;
         console.error(e);
