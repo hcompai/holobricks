@@ -27,6 +27,13 @@ test("an import is checked and rebuilt: new id, recomputed revision and .ldr, un
   expect(build).toMatchObject({ status: "done", open: false, parts: model.parts });
 });
 
+test("an import's name follows the rename rule: at most 80 characters, none of them control characters", async () => {
+  const named = async (name: string) => (await imported({ ...exported(), name }, "import-1")).name;
+  expect(await named("x".repeat(500))).toBe("x".repeat(80));
+  expect(await named("Grand\u0000Rex")).toBe("Imported build");
+  expect(await named("  Grand Rex  ")).toBe("Grand Rex");
+});
+
 for (const [why, damage, message] of [
   ["no geometry", (m: any) => ({ ...m, parts: undefined }), /no part geometry/],
   ["a part without geometry", (m: any) => ({ ...m, parts: { "test-brick": "0 FILE x\n0 NOFILE" } }), /no geometry/],
