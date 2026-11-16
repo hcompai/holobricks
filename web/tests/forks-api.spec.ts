@@ -216,7 +216,7 @@ test("a copy's name is bounded like an import's, so publishing it cannot bloat t
   const long = seed();
   long.model.name = "x".repeat(100_000);
   expect((await POST(request("POST", { id: copy, seed: long }))).status).toBe(201);
-  expect((await snapshot(copy, "test-key", null, ACCOUNT.user.id)).name).toBe("x".repeat(120));
+  expect((await snapshot(copy, "test-key", null, ACCOUNT.user.id)).name).toBe("x".repeat(80));
 });
 
 test("attaching Holo requires both session ownership and the same copy operation", async () => {
