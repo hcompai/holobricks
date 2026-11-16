@@ -75,16 +75,33 @@ if (ENABLED) {
 let posthogAllowed = false;
 let attributionAllowed = false;
 
-onAxeptio((sdk) =>
-  sdk.on("cookies:complete", (choices) => {
-    posthogAllowed = choices[VENDOR_POSTHOG] === true;
-    if (posthogAllowed) posthog.opt_in_capturing();
-    else posthog.opt_out_capturing();
+/** Apply a consent choice, changing PostHog only when it changes, so a reload sends no new `$opt_in`. */
+function applyChoices(choices: AxeptioChoices) {
+  posthogAllowed = choices[VENDOR_POSTHOG] === true;
+  if (posthogAllowed && !posthog.has_opted_in_capturing()) posthog.opt_in_capturing();
+  if (!posthogAllowed && !posthog.has_opted_out_capturing()) posthog.opt_out_capturing();
 
-    attributionAllowed = choices[VENDOR_ATTRIBUTION] === true;
-    if (!attributionAllowed) deleteCookie(ATTRIBUTION_COOKIE);
-  }),
-);
+  attributionAllowed = choices[VENDOR_ATTRIBUTION] === true;
+  if (!attributionAllowed) deleteCookie(ATTRIBUTION_COOKIE);
+}
+
+/**
+ * The choice this browser already made, from Axeptio's own cookie: `cookies:complete` reaches only listeners
+ * registered before it fires, and Axeptio boots first whenever GTM comes from the cache.
+ */
+function storedChoices(): AxeptioChoices | null {
+  const entry = document.cookie.split("; ").find((cookie) => cookie.startsWith("axeptio_authorized_vendors="));
+  if (entry === undefined) return null;
+  const vendors = decodeURIComponent(entry.slice(entry.indexOf("=") + 1)).split(",");
+  return {
+    [VENDOR_POSTHOG]: vendors.includes(VENDOR_POSTHOG),
+    [VENDOR_ATTRIBUTION]: vendors.includes(VENDOR_ATTRIBUTION),
+  };
+}
+
+const stored = storedChoices();
+if (stored) applyChoices(stored);
+onAxeptio((sdk) => sdk.on("cookies:complete", applyChoices));
 
 export function track(...[name, properties]: Event) {
   if (!ENABLED) return;
